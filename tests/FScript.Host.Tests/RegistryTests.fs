@@ -23,7 +23,18 @@ type RegistryTests () =
         names.Contains "Map.tryFind" |> should equal true
         names.Contains "Map.remove" |> should equal true
         names.Contains "List.map" |> should equal true
+        names.Contains "List.choose" |> should equal true
+        names.Contains "List.collect" |> should equal true
+        names.Contains "List.contains" |> should equal true
+        names.Contains "List.distinct" |> should equal true
+        names.Contains "List.exists" |> should equal true
+        names.Contains "List.fold" |> should equal true
+        names.Contains "List.filter" |> should equal true
         names.Contains "List.iter" |> should equal true
+        names.Contains "List.rev" |> should equal true
+        names.Contains "List.length" |> should equal true
+        names.Contains "List.tryFind" |> should equal true
+        names.Contains "List.tryFindIndex" |> should equal true
         names.Contains "List.tryHead" |> should equal true
         names.Contains "List.tail" |> should equal true
         names.Contains "List.append" |> should equal true

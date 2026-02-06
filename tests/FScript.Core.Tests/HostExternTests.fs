@@ -74,6 +74,52 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected concatenated list")
 
     [<Test>]
+    member _.``List externs support choose collect contains distinct exists fold rev tryFind tryFindIndex and filter`` () =
+        match Helpers.evalWithExterns externs "[1;2;3;4] |> List.choose (fun x -> if x % 2 = 0 then Some x else None)" with
+        | VList [ VInt 2L; VInt 4L ] -> ()
+        | _ -> Assert.Fail("Expected choose of even elements")
+
+        match Helpers.evalWithExterns externs "[1;2;3] |> List.collect (fun x -> [x; x + 10])" with
+        | VList [ VInt 1L; VInt 11L; VInt 2L; VInt 12L; VInt 3L; VInt 13L ] -> ()
+        | _ -> Assert.Fail("Expected collected list")
+
+        match Helpers.evalWithExterns externs "List.contains 2 [1;2;3]" with
+        | VBool true -> ()
+        | _ -> Assert.Fail("Expected contains true")
+
+        match Helpers.evalWithExterns externs "[1;2;1;3;2] |> List.distinct" with
+        | VList [ VInt 1L; VInt 2L; VInt 3L ] -> ()
+        | _ -> Assert.Fail("Expected distinct values preserving order")
+
+        match Helpers.evalWithExterns externs "List.exists (fun x -> x > 2) [1;2;3]" with
+        | VBool true -> ()
+        | _ -> Assert.Fail("Expected exists true")
+
+        match Helpers.evalWithExterns externs "List.fold (fun s -> fun x -> s + x) 0 [1;2;3]" with
+        | VInt 6L -> ()
+        | _ -> Assert.Fail("Expected fold sum")
+
+        match Helpers.evalWithExterns externs "List.rev [1;2;3]" with
+        | VList [ VInt 3L; VInt 2L; VInt 1L ] -> ()
+        | _ -> Assert.Fail("Expected reversed list")
+
+        match Helpers.evalWithExterns externs "List.length [1;2;3]" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected list length 3")
+
+        match Helpers.evalWithExterns externs "List.tryFind (fun x -> x > 2) [1;2;3]" with
+        | VOption (Some (VInt 3L)) -> ()
+        | _ -> Assert.Fail("Expected tryFind Some 3")
+
+        match Helpers.evalWithExterns externs "List.tryFindIndex (fun x -> x = 2) [1;2;3]" with
+        | VOption (Some (VInt 1L)) -> ()
+        | _ -> Assert.Fail("Expected tryFindIndex Some 1")
+
+        match Helpers.evalWithExterns externs "List.filter (fun x -> x % 2 = 1) [1;2;3;4]" with
+        | VList [ VInt 1L; VInt 3L ] -> ()
+        | _ -> Assert.Fail("Expected filtered odd list")
+
+    [<Test>]
     member _.``Option externs support mapping and defaults`` () =
         match Helpers.evalWithExterns externs "Option.get (Some 3)" with
         | VInt 3L -> ()

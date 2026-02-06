@@ -17,7 +17,18 @@ module Registry =
           MapExterns.containsKey
           MapExterns.remove
           ListExterns.map
+          ListExterns.choose
+          ListExterns.collect
+          ListExterns.contains
+          ListExterns.distinct
+          ListExterns.exists
+          ListExterns.fold
+          ListExterns.filter
           ListExterns.iter
+          ListExterns.rev
+          ListExterns.length
+          ListExterns.tryFind
+          ListExterns.tryFindIndex
           ListExterns.tryHead
           ListExterns.tail
           ListExterns.append

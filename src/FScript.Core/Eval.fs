@@ -119,6 +119,104 @@ module Eval =
                             applyFunctionValue eval typeDefs span iterator item |> ignore
                         VUnit
                     | _ -> raise (EvalException { Message = "List.iter expects (function, list)"; Span = span })
+                elif ext.Name = "List.choose" then
+                    match args' with
+                    | [ chooser; VList items ] ->
+                        let chosen =
+                            items
+                            |> List.fold (fun acc item ->
+                                match applyFunctionValue eval typeDefs span chooser item with
+                                | VOption (Some value) -> value :: acc
+                                | VOption None -> acc
+                                | _ -> raise (EvalException { Message = "List.choose chooser must return option"; Span = span })) []
+                            |> List.rev
+                        VList chosen
+                    | _ -> raise (EvalException { Message = "List.choose expects (function, list)"; Span = span })
+                elif ext.Name = "List.collect" then
+                    match args' with
+                    | [ collector; VList items ] ->
+                        let collected =
+                            items
+                            |> List.fold (fun acc item ->
+                                match applyFunctionValue eval typeDefs span collector item with
+                                | VList values -> acc @ values
+                                | _ -> raise (EvalException { Message = "List.collect collector must return list"; Span = span })) []
+                        VList collected
+                    | _ -> raise (EvalException { Message = "List.collect expects (function, list)"; Span = span })
+                elif ext.Name = "List.contains" then
+                    match args' with
+                    | [ needle; VList items ] -> VBool (items |> List.exists (fun item -> valueEquals item needle))
+                    | _ -> raise (EvalException { Message = "List.contains expects (value, list)"; Span = span })
+                elif ext.Name = "List.distinct" then
+                    match args' with
+                    | [ VList items ] ->
+                        let distinctItems =
+                            items
+                            |> List.fold (fun acc item ->
+                                if acc |> List.exists (fun existing -> valueEquals existing item) then acc
+                                else acc @ [ item ]) []
+                        VList distinctItems
+                    | _ -> raise (EvalException { Message = "List.distinct expects (list)"; Span = span })
+                elif ext.Name = "List.exists" then
+                    match args' with
+                    | [ predicate; VList items ] ->
+                        let rec loop xs =
+                            match xs with
+                            | [] -> false
+                            | x :: rest ->
+                                match applyFunctionValue eval typeDefs span predicate x with
+                                | VBool true -> true
+                                | VBool false -> loop rest
+                                | _ -> raise (EvalException { Message = "List.exists predicate must return bool"; Span = span })
+                        VBool (loop items)
+                    | _ -> raise (EvalException { Message = "List.exists expects (function, list)"; Span = span })
+                elif ext.Name = "List.fold" then
+                    match args' with
+                    | [ folder; state; VList items ] ->
+                        let finalState =
+                            items
+                            |> List.fold (fun acc item ->
+                                let step = applyFunctionValue eval typeDefs span folder acc
+                                applyFunctionValue eval typeDefs span step item) state
+                        finalState
+                    | _ -> raise (EvalException { Message = "List.fold expects (function, state, list)"; Span = span })
+                elif ext.Name = "List.filter" then
+                    match args' with
+                    | [ predicate; VList items ] ->
+                        let filtered =
+                            items
+                            |> List.filter (fun item ->
+                                match applyFunctionValue eval typeDefs span predicate item with
+                                | VBool b -> b
+                                | _ -> raise (EvalException { Message = "List.filter predicate must return bool"; Span = span }))
+                        VList filtered
+                    | _ -> raise (EvalException { Message = "List.filter expects (function, list)"; Span = span })
+                elif ext.Name = "List.tryFind" then
+                    match args' with
+                    | [ predicate; VList items ] ->
+                        let rec loop xs =
+                            match xs with
+                            | [] -> VOption None
+                            | x :: rest ->
+                                match applyFunctionValue eval typeDefs span predicate x with
+                                | VBool true -> VOption (Some x)
+                                | VBool false -> loop rest
+                                | _ -> raise (EvalException { Message = "List.tryFind predicate must return bool"; Span = span })
+                        loop items
+                    | _ -> raise (EvalException { Message = "List.tryFind expects (function, list)"; Span = span })
+                elif ext.Name = "List.tryFindIndex" then
+                    match args' with
+                    | [ predicate; VList items ] ->
+                        let rec loop index xs =
+                            match xs with
+                            | [] -> VOption None
+                            | x :: rest ->
+                                match applyFunctionValue eval typeDefs span predicate x with
+                                | VBool true -> VOption (Some (VInt index))
+                                | VBool false -> loop (index + 1L) rest
+                                | _ -> raise (EvalException { Message = "List.tryFindIndex predicate must return bool"; Span = span })
+                        loop 0L items
+                    | _ -> raise (EvalException { Message = "List.tryFindIndex expects (function, list)"; Span = span })
                 elif ext.Name = "Option.map" then
                     match args' with
                     | [ mapper; VOption (Some value) ] ->
