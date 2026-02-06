@@ -5,7 +5,7 @@ open FScript.Core
 
 module JsonExterns =
     let deserialize : ExternalFunction =
-        { Name = "json_deserialize"
+        { Name = "Json.deserialize"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption (TVar 0))))
           Arity = 2
           Impl = function
@@ -16,4 +16,4 @@ module JsonExterns =
                       | Some value -> HostCommon.some value
                       | None -> HostCommon.none
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "json_deserialize expects (type, string)") }
+              | _ -> raise (HostCommon.evalError "Json.deserialize expects (type, string)") }

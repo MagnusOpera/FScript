@@ -55,12 +55,12 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 
 ### Type Reflection and Decoding
 - `typeof Name` produces a type token.
-- `json_deserialize (typeof Name) jsonText` can decode JSON into an `option` record value.
+- `Json.deserialize (typeof Name) jsonText` can decode JSON into an `option` record value.
 
 ### Host Externals
 - `print : string -> unit`
-- `map_empty`, `map_add`, `map_tryFind`, `map_containsKey`, `map_remove`
-- `hash_md5`, `guid_new`, `regex_match_groups`, `xml_values`, `fs_glob`, `fs_read_text`, `json_deserialize`
+- `Map.empty`, `Map.add`, `Map.tryFind`, `Map.containsKey`, `Map.remove`
+- `Hash.md5`, `Guid.new`, `Regex.matchGroups`, `Xml.values`, `Fs.glob`, `Fs.readText`, `Json.deserialize`
 
 ### Immutability
 - Lists, tuples, and records are immutable values in FScript.

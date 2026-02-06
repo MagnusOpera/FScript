@@ -5,7 +5,7 @@ open FScript.Core
 
 module RegexExterns =
     let match_groups : ExternalFunction =
-        { Name = "regex_match_groups"
+        { Name = "Regex.matchGroups"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
           Impl = function
@@ -19,4 +19,4 @@ module RegexExterns =
                           |> VList
                           |> HostCommon.some
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "regex_match_groups expects (string, string)") }
+              | _ -> raise (HostCommon.evalError "Regex.matchGroups expects (string, string)") }

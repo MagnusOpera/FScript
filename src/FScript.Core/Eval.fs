@@ -147,12 +147,25 @@ module Eval =
                 VRecord updated
             | _ -> raise (EvalException { Message = "Record update requires a record value"; Span = span })
         | EFieldGet (target, fieldName, span) ->
-            match evalExpr typeDefs env target with
-            | VRecord fields ->
-                match fields.TryFind fieldName with
+            match target with
+            | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
+                let qualifiedName = $"{moduleName}.{fieldName}"
+                match env.TryFind qualifiedName with
                 | Some value -> value
-                | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-            | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
+                | None ->
+                    match evalExpr typeDefs env target with
+                    | VRecord fields ->
+                        match fields.TryFind fieldName with
+                        | Some fieldValue -> fieldValue
+                        | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                    | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
+            | _ ->
+                match evalExpr typeDefs env target with
+                | VRecord fields ->
+                    match fields.TryFind fieldName with
+                    | Some value -> value
+                    | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
         | ECons (head, tail, span) ->
             let h = evalExpr typeDefs env head
             let t = evalExpr typeDefs env tail

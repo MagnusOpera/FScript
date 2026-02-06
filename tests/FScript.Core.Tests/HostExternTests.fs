@@ -14,7 +14,7 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Map externs support CRUD`` () =
-        let script = "map_empty 0 |> map_add \"a\" 1 |> map_tryFind \"a\""
+        let script = "Map.empty 0 |> Map.add \"a\" 1 |> Map.tryFind \"a\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 1L)) -> ()
         | _ -> Assert.Fail("Expected Some 1")
@@ -24,7 +24,7 @@ type HostExternTests () =
         let script =
             "type Package = { Name: string; Version: string option; Deps: int map }\n" +
             "let json = \"{\\\"Name\\\":\\\"pkg\\\",\\\"Version\\\":null,\\\"Deps\\\":{\\\"a\\\":1}}\"\n" +
-            "json_deserialize (typeof Package) json"
+            "Json.deserialize (typeof Package) json"
 
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VRecord fields)) ->
@@ -33,10 +33,15 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Regex groups external returns captures`` () =
-        let script = "regex_match_groups \"^file:(.*)$\" \"file:foo\""
+        let script = "Regex.matchGroups \"^file:(.*)$\" \"file:foo\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VList [ VString "foo" ])) -> ()
         | _ -> Assert.Fail("Expected group capture")
+
+    [<Test>]
+    member _.``Old flat extern names are no longer available`` () =
+        let act () = Helpers.evalWithExterns externs "regex_match_groups \"^file:(.*)$\" \"file:foo\"" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``print external writes to console`` () =

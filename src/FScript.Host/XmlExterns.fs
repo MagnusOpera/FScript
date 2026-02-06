@@ -6,7 +6,7 @@ open FScript.Core
 
 module XmlExterns =
     let values : ExternalFunction =
-        { Name = "xml_values"
+        { Name = "Xml.values"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TFun(TString, TOption (TList (TVar 0))))))
           Arity = 3
           Impl = function
@@ -36,4 +36,4 @@ module XmlExterns =
                       |> Option.map (List.rev >> VList >> HostCommon.some)
                       |> Option.defaultValue HostCommon.none
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "xml_values expects (type, xml, query)") }
+              | _ -> raise (HostCommon.evalError "Xml.values expects (type, xml, query)") }

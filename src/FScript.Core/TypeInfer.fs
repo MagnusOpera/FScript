@@ -335,13 +335,29 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
         | EFieldGet (target, fieldName, span) ->
-            let s1, tTarget, _ = inferExpr typeDefs env target
-            match applyType s1 tTarget with
-            | TRecord fields ->
-                match fields.TryFind fieldName with
-                | Some tField -> s1, tField, asTyped expr tField
-                | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-            | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
+            match target with
+            | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
+                let qualifiedName = $"{moduleName}.{fieldName}"
+                match env.TryFind qualifiedName with
+                | Some scheme ->
+                    let t = instantiate scheme
+                    emptySubst, t, asTyped expr t
+                | None ->
+                    let s1, tTarget, _ = inferExpr typeDefs env target
+                    match applyType s1 tTarget with
+                    | TRecord fields ->
+                        match fields.TryFind fieldName with
+                        | Some tField -> s1, tField, asTyped expr tField
+                        | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                    | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
+            | _ ->
+                let s1, tTarget, _ = inferExpr typeDefs env target
+                match applyType s1 tTarget with
+                | TRecord fields ->
+                    match fields.TryFind fieldName with
+                    | Some tField -> s1, tField, asTyped expr tField
+                    | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->

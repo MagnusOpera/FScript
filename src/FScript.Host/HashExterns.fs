@@ -7,7 +7,7 @@ open FScript.Core
 
 module HashExterns =
     let md5 : ExternalFunction =
-        { Name = "hash_md5"
+        { Name = "Hash.md5"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = function
@@ -19,4 +19,4 @@ module HashExterns =
                       let hex = Convert.ToHexString(hash).ToLowerInvariant()
                       HostCommon.some (VString hex)
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "hash_md5 expects (string)") }
+              | _ -> raise (HostCommon.evalError "Hash.md5 expects (string)") }

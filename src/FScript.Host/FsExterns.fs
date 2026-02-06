@@ -6,7 +6,7 @@ open FScript.Core
 
 module FsExterns =
     let read_text (ctx: HostContext) : ExternalFunction =
-        { Name = "fs_read_text"
+        { Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = function
@@ -14,10 +14,10 @@ module FsExterns =
                   match HostCommon.tryResolvePath ctx path with
                   | Some full when File.Exists(full) -> HostCommon.some (VString (File.ReadAllText(full)))
                   | _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "fs_read_text expects (string)") }
+              | _ -> raise (HostCommon.evalError "Fs.readText expects (string)") }
 
     let glob (ctx: HostContext) : ExternalFunction =
-        { Name = "fs_glob"
+        { Name = "Fs.glob"
           Scheme = Forall([], TFun(TString, TOption (TList TString)))
           Arity = 1
           Impl = function
@@ -33,4 +33,4 @@ module FsExterns =
                       |> VList
                       |> HostCommon.some
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "fs_glob expects (string)") }
+              | _ -> raise (HostCommon.evalError "Fs.glob expects (string)") }
