@@ -158,6 +158,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match on tuple`` () =
+        let typed = Helpers.infer "match (1, true) with | (x, true) -> x | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers comparison and logical operators`` () =
         let t1 = Helpers.infer "1 < 2" |> List.last
         match t1 with

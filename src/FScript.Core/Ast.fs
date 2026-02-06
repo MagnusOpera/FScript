@@ -22,6 +22,7 @@ and Pattern =
     | PLiteral of Literal * Span
     | PNil of Span
     | PCons of Pattern * Pattern * Span
+    | PTuple of Pattern list * Span
     | PSome of Pattern * Span
     | PNone of Span
 
@@ -68,6 +69,7 @@ module Ast =
         | PLiteral (_, s) -> s
         | PNil s -> s
         | PCons (_, _, s) -> s
+        | PTuple (_, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
 

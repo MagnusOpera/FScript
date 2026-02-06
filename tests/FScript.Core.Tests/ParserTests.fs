@@ -141,6 +141,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected match")
 
     [<Test>]
+    member _.``Parses match with tuple patterns`` () =
+        let src = "match (1, true) with | (x, true) -> x | _ -> 0"
+        let program = Helpers.parse src
+        match program.[0] with
+        | SExpr (EMatch (_, (PTuple (_, _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected tuple pattern in match")
+
+    [<Test>]
     member _.``Parses operator precedence`` () =
         let p = Helpers.parse "1 + 2 * 3"
         match p.[0] with

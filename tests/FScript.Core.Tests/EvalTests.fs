@@ -88,6 +88,11 @@ type EvalTests () =
         Helpers.eval src |> assertInt 4L
 
     [<Test>]
+    member _.``Evaluates match on tuple`` () =
+        let src = "match (1, true) with | (x, true) -> x | _ -> 0"
+        Helpers.eval src |> assertInt 1L
+
+    [<Test>]
     member _.``Evaluates if expressions`` () =
         Helpers.eval "if true then 1 else 2" |> assertInt 1L
         Helpers.eval "if false then 1 else 2" |> assertInt 2L

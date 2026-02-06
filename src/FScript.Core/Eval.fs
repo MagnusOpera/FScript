@@ -79,6 +79,13 @@ module Eval =
             | Some env1, Some env2 ->
                 Some (Map.fold (fun acc k v -> Map.add k v acc) env1 env2)
             | _ -> None
+        | PTuple (patterns, _), VTuple values when patterns.Length = values.Length ->
+            (Some Map.empty, List.zip patterns values)
+            ||> List.fold (fun accOpt (p, v) ->
+                match accOpt, patternMatch p v with
+                | Some acc, Some next ->
+                    Some (Map.fold (fun state k value -> Map.add k value state) acc next)
+                | _ -> None)
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty

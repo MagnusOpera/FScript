@@ -228,6 +228,20 @@ module Parser =
                     PNil (mkSpanFrom lb.Span lb.Span)
                 else
                     raise (ParseException { Message = "Only empty list pattern [] supported"; Span = lb.Span })
+            | LParen ->
+                let lp = stream.Next()
+                let first = parsePatternCons()
+                if stream.Match(Comma) then
+                    let elements = ResizeArray<Pattern>()
+                    elements.Add(first)
+                    elements.Add(parsePatternCons())
+                    while stream.Match(Comma) do
+                        elements.Add(parsePatternCons())
+                    let rp = stream.Expect(RParen, "Expected ')' after tuple pattern")
+                    PTuple(elements |> Seq.toList, mkSpanFrom lp.Span rp.Span)
+                else
+                    stream.Expect(RParen, "Expected ')' after parenthesized pattern") |> ignore
+                    first
             | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
 
         and parsePatternCons () : Pattern =

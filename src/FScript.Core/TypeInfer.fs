@@ -153,6 +153,14 @@ module TypeInfer =
             let s = unify t2 (TList t1) span
             let env = Map.fold (fun acc k v -> Map.add k v acc) env1 env2
             env |> Map.map (fun _ ty -> applyType s ty), applyType s (TList t1)
+        | PTuple (ps, _) ->
+            let env, types =
+                ps
+                |> List.fold (fun (envAcc, typesAcc) p ->
+                    let envPart, tPart = inferPattern p
+                    let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
+                    merged, tPart :: typesAcc) (Map.empty, [])
+            env, TTuple (List.rev types)
         | PSome (p, _) ->
             let env, t = inferPattern p
             env, TOption t
