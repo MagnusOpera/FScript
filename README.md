@@ -62,6 +62,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `print : string -> unit`
 - `Map.empty`, `Map.add`, `Map.try`, `Map.tryFind`, `Map.containsKey`, `Map.remove`
 - `List.map`, `List.iter`, `List.tryHead`, `List.tail`, `List.append`
+- `Option.get`, `Option.defaultValue`, `Option.defaultWith`, `Option.isNone`, `Option.isSome`, `Option.map`
 - `Hash.md5`, `Guid.new`, `Regex.matchGroups`, `Xml.values`, `Fs.glob`, `Fs.readText`, `Json.deserialize`
 
 ### Immutability

@@ -27,5 +27,11 @@ type RegistryTests () =
         names.Contains "List.tryHead" |> should equal true
         names.Contains "List.tail" |> should equal true
         names.Contains "List.append" |> should equal true
+        names.Contains "Option.get" |> should equal true
+        names.Contains "Option.defaultValue" |> should equal true
+        names.Contains "Option.defaultWith" |> should equal true
+        names.Contains "Option.isNone" |> should equal true
+        names.Contains "Option.isSome" |> should equal true
+        names.Contains "Option.map" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Xml.values" |> should equal true

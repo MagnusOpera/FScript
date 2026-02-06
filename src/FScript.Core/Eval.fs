@@ -119,6 +119,19 @@ module Eval =
                             applyFunctionValue eval typeDefs span iterator item |> ignore
                         VUnit
                     | _ -> raise (EvalException { Message = "List.iter expects (function, list)"; Span = span })
+                elif ext.Name = "Option.map" then
+                    match args' with
+                    | [ mapper; VOption (Some value) ] ->
+                        let mapped = applyFunctionValue eval typeDefs span mapper value
+                        VOption (Some mapped)
+                    | [ _; VOption None ] -> VOption None
+                    | _ -> raise (EvalException { Message = "Option.map expects (function, option)"; Span = span })
+                elif ext.Name = "Option.defaultWith" then
+                    match args' with
+                    | [ _; VOption (Some value) ] -> value
+                    | [ fallback; VOption None ] ->
+                        applyFunctionValue eval typeDefs span fallback VUnit
+                    | _ -> raise (EvalException { Message = "Option.defaultWith expects (function, option)"; Span = span })
                 else
                     ext.Impl args'
             elif args'.Length < ext.Arity then

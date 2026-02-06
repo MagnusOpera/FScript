@@ -74,6 +74,49 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected concatenated list")
 
     [<Test>]
+    member _.``Option externs support mapping and defaults`` () =
+        match Helpers.evalWithExterns externs "Option.get (Some 3)" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected Option.get Some value")
+
+        match Helpers.evalWithExterns externs "Option.defaultValue 9 None" with
+        | VInt 9L -> ()
+        | _ -> Assert.Fail("Expected default on None")
+
+        match Helpers.evalWithExterns externs "Option.defaultValue 9 (Some 3)" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected Some value over default")
+
+        match Helpers.evalWithExterns externs "Option.defaultWith (fun _ -> 11) None" with
+        | VInt 11L -> ()
+        | _ -> Assert.Fail("Expected computed default on None")
+
+        match Helpers.evalWithExterns externs "Option.defaultWith (fun _ -> raise \"boom\") (Some 3)" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected Option.defaultWith to skip fallback for Some")
+
+        match Helpers.evalWithExterns externs "Option.isNone None" with
+        | VBool true -> ()
+        | _ -> Assert.Fail("Expected Option.isNone true")
+
+        match Helpers.evalWithExterns externs "Option.isSome (Some 1)" with
+        | VBool true -> ()
+        | _ -> Assert.Fail("Expected Option.isSome true")
+
+        match Helpers.evalWithExterns externs "Option.map (fun x -> x + 1) (Some 1)" with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected mapped Some value")
+
+        match Helpers.evalWithExterns externs "Option.map (fun x -> x + 1) None" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None unchanged")
+
+    [<Test>]
+    member _.``Option.get throws on None`` () =
+        let act () = Helpers.evalWithExterns externs "Option.get None" |> ignore
+        act |> should throw typeof<EvalException>
+
+    [<Test>]
     member _.``Json deserialize uses typeof record`` () =
         let script =
             "type Package = { Name: string; Version: string option; Deps: int map }\n" +

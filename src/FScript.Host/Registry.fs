@@ -21,5 +21,11 @@ module Registry =
           ListExterns.tryHead
           ListExterns.tail
           ListExterns.append
+          OptionExterns.get
+          OptionExterns.defaultValue
+          OptionExterns.defaultWith
+          OptionExterns.isNone
+          OptionExterns.isSome
+          OptionExterns.map
           JsonExterns.deserialize
           XmlExterns.values ]
