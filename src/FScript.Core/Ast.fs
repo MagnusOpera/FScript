@@ -45,6 +45,11 @@ and Expr =
     | ESome of Expr * Span
     | ENone of Span
     | ETypeOf of string * Span
+    | EInterpolatedString of InterpolatedPart list * Span
+
+and InterpolatedPart =
+    | IPText of string
+    | IPExpr of Expr
 
 and Stmt =
     | SType of TypeDef
@@ -85,3 +90,4 @@ module Ast =
         | ESome (_, s) -> s
         | ENone s -> s
         | ETypeOf (_, s) -> s
+        | EInterpolatedString (_, s) -> s

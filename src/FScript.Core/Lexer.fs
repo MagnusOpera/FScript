@@ -67,6 +67,49 @@ module Lexer =
             raise (ParseException { Message = "Unterminated string literal"; Span = mkSpan line col 1 })
         sb.ToString(), idx, cLine, cCol
 
+    let private readInterpolatedRaw (src: string) (i: int) (line: int) (col: int) =
+        let mutable idx = i + 2 // skip $"
+        let mutable cLine = line
+        let mutable cCol = col + 2
+        let mutable doneFlag = false
+        let mutable escaped = false
+
+        while idx < src.Length && not doneFlag do
+            let ch = src.[idx]
+            if escaped then
+                escaped <- false
+                if ch = '\n' then
+                    cLine <- cLine + 1
+                    cCol <- 1
+                else
+                    cCol <- cCol + 1
+                idx <- idx + 1
+            else
+                match ch with
+                | '\\' ->
+                    escaped <- true
+                    idx <- idx + 1
+                    cCol <- cCol + 1
+                | '"' ->
+                    doneFlag <- true
+                    idx <- idx + 1
+                    cCol <- cCol + 1
+                | '\n' ->
+                    idx <- idx + 1
+                    cLine <- cLine + 1
+                    cCol <- 1
+                | _ ->
+                    idx <- idx + 1
+                    cCol <- cCol + 1
+
+        if not doneFlag then
+            raise (ParseException { Message = "Unterminated interpolated string literal"; Span = mkSpan line col 2 })
+
+        let start = i + 2
+        let contentLen = (idx - 1) - start
+        let raw = if contentLen <= 0 then "" else src.Substring(start, contentLen)
+        raw, idx, cLine, cCol
+
     let tokenize (src: string) : Token list =
         let tokens = ResizeArray<Token>()
         let indentStack = ResizeArray<int>()
@@ -146,6 +189,13 @@ module Lexer =
                     let str, idx, nline, ncol = readString src i line col
                     let span = mkSpan line col (idx - i)
                     addToken (StringLit str) span tokens
+                    i <- idx
+                    line <- nline
+                    col <- ncol
+                | '$' when i + 1 < src.Length && src.[i + 1] = '"' ->
+                    let raw, idx, nline, ncol = readInterpolatedRaw src i line col
+                    let span = mkSpan line col (idx - i)
+                    addToken (InterpString raw) span tokens
                     i <- idx
                     line <- nline
                     col <- ncol

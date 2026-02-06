@@ -125,6 +125,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected block-desugared let")
 
     [<Test>]
+    member _.``Parses interpolated string`` () =
+        let p = Helpers.parse "$\"hello {name}\""
+        match p.[0] with
+        | SExpr (EInterpolatedString ([ IPText "hello "; IPExpr (EVar ("name", _)) ], _)) -> ()
+        | _ -> Assert.Fail("Expected interpolated string")
+
+    [<Test>]
     member _.``Rejects in keyword in let expression`` () =
         let act () = Helpers.parse "(let x = 1 in x)" |> ignore
         act |> should throw typeof<ParseException>
@@ -149,3 +156,8 @@ type ParserTests () =
 
         let act3 () = Helpers.parse "[1..2;3]" |> ignore
         act3 |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects empty interpolation placeholder`` () =
+        let act () = Helpers.parse "$\"a {} b\"" |> ignore
+        act |> should throw typeof<ParseException>

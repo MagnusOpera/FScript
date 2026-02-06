@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match | Typeof -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match | Typeof -> true
         | _ -> false
 
     let private parseLiteral (t: Token) =
@@ -50,9 +50,92 @@ module Parser =
         | BoolLit v -> LBool v
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
-    let parseProgram (src: string) : Program =
+    let rec parseProgram (src: string) : Program =
         let tokens = Lexer.tokenize src
         let stream = TokenStream(tokens)
+
+        let parseSingleExpression (exprText: string) =
+            let parsed = parseProgram exprText
+            match parsed with
+            | [ SExpr expr ] -> expr
+            | _ ->
+                raise (ParseException { Message = "Interpolation placeholders must contain a single expression"; Span = stream.Peek().Span })
+
+        let parseInterpolatedString (raw: string) (span: Span) : Expr =
+            let parts = ResizeArray<InterpolatedPart>()
+            let text = System.Text.StringBuilder()
+
+            let flushText () =
+                if text.Length > 0 then
+                    parts.Add(IPText (text.ToString()))
+                    text.Clear() |> ignore
+
+            let rec readPlaceholder (s: string) (start: int) =
+                let mutable i = start
+                let mutable depth = 1
+                let mutable inString = false
+                let mutable escaped = false
+
+                while i < s.Length && depth > 0 do
+                    let ch = s.[i]
+                    if inString then
+                        if escaped then
+                            escaped <- false
+                            i <- i + 1
+                        else
+                            match ch with
+                            | '\\' -> escaped <- true; i <- i + 1
+                            | '"' -> inString <- false; i <- i + 1
+                            | _ -> i <- i + 1
+                    else
+                        match ch with
+                        | '"' -> inString <- true; i <- i + 1
+                        | '{' -> depth <- depth + 1; i <- i + 1
+                        | '}' -> depth <- depth - 1; i <- i + 1
+                        | _ -> i <- i + 1
+
+                if depth <> 0 then
+                    raise (ParseException { Message = "Unterminated interpolation placeholder"; Span = span })
+
+                let exprText = s.Substring(start, i - start - 1)
+                if System.String.IsNullOrWhiteSpace(exprText) then
+                    raise (ParseException { Message = "Interpolation placeholder cannot be empty"; Span = span })
+                let expr = parseSingleExpression exprText
+                expr, i
+
+            let mutable i = 0
+            while i < raw.Length do
+                match raw.[i] with
+                | '{' when i + 1 < raw.Length && raw.[i + 1] = '{' ->
+                    text.Append('{') |> ignore
+                    i <- i + 2
+                | '}' when i + 1 < raw.Length && raw.[i + 1] = '}' ->
+                    text.Append('}') |> ignore
+                    i <- i + 2
+                | '{' ->
+                    flushText ()
+                    let expr, nextIdx = readPlaceholder raw (i + 1)
+                    parts.Add(IPExpr expr)
+                    i <- nextIdx
+                | '}' ->
+                    raise (ParseException { Message = "Unescaped '}' in interpolated string"; Span = span })
+                | '\\' when i + 1 < raw.Length ->
+                    let next = raw.[i + 1]
+                    match next with
+                    | 'n' -> text.Append('\n') |> ignore
+                    | 't' -> text.Append('\t') |> ignore
+                    | '"' -> text.Append('"') |> ignore
+                    | '\\' -> text.Append('\\') |> ignore
+                    | _ -> text.Append(next) |> ignore
+                    i <- i + 2
+                | ch ->
+                    text.Append(ch) |> ignore
+                    i <- i + 1
+
+            flushText ()
+            let finalParts =
+                if parts.Count = 0 then [ IPText "" ] else parts |> Seq.toList
+            EInterpolatedString(finalParts, span)
 
         let rec parseTypeRefAtom () : TypeRef =
             stream.SkipNewlines()
@@ -162,6 +245,9 @@ module Parser =
             | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ ->
                 let t = stream.Next()
                 ELiteral(parseLiteral t, t.Span)
+            | InterpString raw ->
+                let t = stream.Next()
+                parseInterpolatedString raw t.Span
             | Ident name ->
                 let t = stream.Next()
                 match name with

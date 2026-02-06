@@ -140,3 +140,9 @@ type EvalTests () =
     [<Test>]
     member _.``Evaluates block with explicit ignore`` () =
         Helpers.eval "let a =\n  42 |> ignore\n  666\na" |> assertInt 666L
+
+    [<Test>]
+    member _.``Evaluates interpolated string`` () =
+        match Helpers.eval "let name = \"world\"\n$\"hello {name}\"" with
+        | VString "hello world" -> ()
+        | _ -> Assert.Fail("Expected interpolated string result")

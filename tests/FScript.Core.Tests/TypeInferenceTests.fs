@@ -195,3 +195,15 @@ type TypeInferenceTests () =
             let depType = t.Fields |> List.find (fun (n, _) -> n = "Deps") |> snd
             depType |> should equal (TRPostfix(TRName "int", "map"))
         | _ -> Assert.Fail("Expected type declaration")
+
+    [<Test>]
+    member _.``Infers interpolated string as string`` () =
+        let typed = Helpers.infer "let name = \"world\"\n$\"hello {name}\""
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for non-string interpolation placeholder`` () =
+        let act () = Helpers.infer "$\"value={1}\"" |> ignore
+        act |> should throw typeof<TypeException>

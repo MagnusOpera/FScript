@@ -43,6 +43,16 @@ type LexerTests () =
         |> should equal true
 
     [<Test>]
+    member _.``Tokenizes interpolated string literal`` () =
+        let tokens = Lexer.tokenize "$\"hello {name}\""
+        tokens
+        |> List.exists (fun t ->
+            match t.Kind with
+            | InterpString s -> s = "hello {name}"
+            | _ -> false)
+        |> should equal true
+
+    [<Test>]
     member _.``Tokenizes pipeline operator`` () =
         let tokens = Lexer.tokenize "1 |> f"
         tokens |> List.exists (fun t -> t.Kind = PipeForward) |> should equal true

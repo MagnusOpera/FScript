@@ -9,6 +9,7 @@ type TokenKind =
     | IntLit of int64
     | FloatLit of float
     | StringLit of string
+    | InterpString of string
     | BoolLit of bool
     | Let
     | Rec

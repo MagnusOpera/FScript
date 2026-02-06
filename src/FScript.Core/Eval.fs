@@ -231,6 +231,16 @@ module Eval =
             match typeDefs.TryFind name with
             | Some t -> VTypeToken t
             | None -> raise (EvalException { Message = $"Unknown type '{name}'"; Span = span })
+        | EInterpolatedString (parts, span) ->
+            let sb = System.Text.StringBuilder()
+            for part in parts do
+                match part with
+                | IPText text -> sb.Append(text) |> ignore
+                | IPExpr pexpr ->
+                    match evalExpr typeDefs env pexpr with
+                    | VString s -> sb.Append(s) |> ignore
+                    | _ -> raise (EvalException { Message = "Interpolation placeholder must evaluate to string"; Span = Ast.spanOfExpr pexpr })
+            VString (sb.ToString())
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
         let decls =

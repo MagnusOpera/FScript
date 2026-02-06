@@ -187,6 +187,16 @@ module TypeInfer =
                 emptySubst, TTypeToken, asTyped expr TTypeToken
             else
                 raise (TypeException { Message = sprintf "Unknown type '%s'" name; Span = span })
+        | EInterpolatedString (parts, span) ->
+            let mutable sAcc = emptySubst
+            for part in parts do
+                match part with
+                | IPText _ -> ()
+                | IPExpr pexpr ->
+                    let s1, t1, _ = inferExpr typeDefs (applyEnv sAcc env) pexpr
+                    let s2 = unify (applyType s1 t1) TString (Ast.spanOfExpr pexpr)
+                    sAcc <- compose s2 (compose s1 sAcc)
+            sAcc, TString, asTyped expr TString
         | ELambda (arg, body, _) ->
             let tv = Types.freshVar()
             let env' = env |> Map.add arg (Forall([], tv))
