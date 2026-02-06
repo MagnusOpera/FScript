@@ -516,14 +516,47 @@ module Parser =
                 let body = parseExprOrBlock()
                 let span = mkSpanFrom (Ast.spanOfPattern pat) (Ast.spanOfExpr body)
                 cases.Add(pat, body, span)
-            parseCase()
-            let mutable doneCases = false
-            while not doneCases do
-                stream.SkipNewlines()
-                match stream.Peek().Kind with
-                | Bar -> parseCase()
-                | Dedent | EOF -> doneCases <- true
-                | _ -> doneCases <- true
+            if stream.Match(Newline) then
+                while stream.Match(Newline) do ()
+                let hasIndentedCaseBlock = stream.Match(Indent)
+                let firstCaseToken = stream.Peek()
+                if firstCaseToken.Kind = EOF || firstCaseToken.Kind = Dedent then
+                    raise (ParseException { Message = "Expected match case"; Span = firstCaseToken.Span })
+                let caseColumn = firstCaseToken.Span.Start.Column
+                if caseColumn < matchTok.Span.Start.Column then
+                    raise (ParseException { Message = "Match cases must start at match column or deeper"; Span = firstCaseToken.Span })
+                let ensureAlignedCaseStart () =
+                    let t = stream.Peek()
+                    if t.Span.Start.Column <> caseColumn then
+                        raise (ParseException { Message = "Match case columns must align"; Span = t.Span })
+                ensureAlignedCaseStart()
+                parseCase()
+                let mutable doneCases = false
+                while not doneCases do
+                    stream.SkipNewlines()
+                    match stream.Peek().Kind with
+                    | Bar ->
+                        ensureAlignedCaseStart()
+                        parseCase()
+                    | Dedent when hasIndentedCaseBlock ->
+                        stream.Next() |> ignore
+                        doneCases <- true
+                    | Indent ->
+                        raise (ParseException { Message = "Match case columns must align"; Span = stream.Peek().Span })
+                    | _ ->
+                        if hasIndentedCaseBlock then
+                            raise (ParseException { Message = "Expected match case or dedent"; Span = stream.Peek().Span })
+                        else
+                            doneCases <- true
+            else
+                parseCase()
+                let mutable doneCases = false
+                while not doneCases do
+                    stream.SkipNewlines()
+                    match stream.Peek().Kind with
+                    | Bar -> parseCase()
+                    | Dedent | EOF -> doneCases <- true
+                    | _ -> doneCases <- true
             EMatch(expr, cases |> Seq.toList, mkSpanFrom matchTok.Span (Ast.spanOfExpr expr))
 
         and parseLetExpr () : Expr =

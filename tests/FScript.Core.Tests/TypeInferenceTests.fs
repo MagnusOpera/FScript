@@ -145,21 +145,21 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Infers match on option`` () =
-        let typed = Helpers.infer "match Some 1 with | Some x -> x | None -> 0"
+        let typed = Helpers.infer "match Some 1 with\n    | Some x -> x\n    | None -> 0"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers match on list`` () =
-        let typed = Helpers.infer "match [1;2] with | x::xs -> x | [] -> 0"
+        let typed = Helpers.infer "match [1;2] with\n    | x::xs -> x\n    | [] -> 0"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers match on tuple`` () =
-        let typed = Helpers.infer "match (1, true) with | (x, true) -> x | _ -> 0"
+        let typed = Helpers.infer "match (1, true) with\n    | (x, true) -> x\n    | _ -> 0"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")

@@ -70,7 +70,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates match on list`` () =
-        let src = "match [1;2] with\n| x::xs -> x\n| [] -> 0"
+        let src = "match [1;2] with\n    | x::xs -> x\n    | [] -> 0"
         Helpers.eval src |> assertInt 1L
 
     [<Test>]
@@ -84,12 +84,12 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates match on option`` () =
-        let src = "match Some 3 with | Some x -> x + 1 | None -> 0"
+        let src = "match Some 3 with\n    | Some x -> x + 1\n    | None -> 0"
         Helpers.eval src |> assertInt 4L
 
     [<Test>]
     member _.``Evaluates match on tuple`` () =
-        let src = "match (1, true) with | (x, true) -> x | _ -> 0"
+        let src = "match (1, true) with\n    | (x, true) -> x\n    | _ -> 0"
         Helpers.eval src |> assertInt 1L
 
     [<Test>]
@@ -155,7 +155,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Reports runtime error for non-exhaustive match`` () =
-        let act () = Helpers.eval "match [1] with | [] -> 0" |> ignore
+        let act () = Helpers.eval "match [1] with\n    | [] -> 0" |> ignore
         act |> should throw typeof<EvalException>
 
     [<Test>]

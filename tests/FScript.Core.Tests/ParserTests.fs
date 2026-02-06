@@ -134,7 +134,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses match with option patterns`` () =
-        let src = "match Some 1 with | Some x -> x | None -> 0"
+        let src = "match Some 1 with\n    | Some x -> x\n    | None -> 0"
         let program = Helpers.parse src
         match program.[0] with
         | SExpr (EMatch (_, cases, _)) -> cases.Length |> should equal 2
@@ -142,11 +142,16 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses match with tuple patterns`` () =
-        let src = "match (1, true) with | (x, true) -> x | _ -> 0"
+        let src = "match (1, true) with\n    | (x, true) -> x\n    | _ -> 0"
         let program = Helpers.parse src
         match program.[0] with
         | SExpr (EMatch (_, (PTuple (_, _), _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected tuple pattern in match")
+
+    [<Test>]
+    member _.``Rejects misaligned multiline match cases`` () =
+        let act () = Helpers.parse "match [1;2] with\n| x::xs -> x\n    | [] -> 0" |> ignore
+        act |> should throw typeof<ParseException>
 
     [<Test>]
     member _.``Parses operator precedence`` () =
