@@ -116,6 +116,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers raise as polymorphic in branch context`` () =
+        let typed = Helpers.infer "if true then raise \"boom\" else 1"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers for loop as unit`` () =
         let typed = Helpers.infer "for x in [1;2] do x |> ignore"
         match typed |> List.last with
@@ -150,6 +157,11 @@ type TypeInferenceTests () =
     [<Test>]
     member _.``Reports type error for non-bool if condition`` () =
         let act () = Helpers.infer "if 1 then 2 else 3" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for raise with non-string`` () =
+        let act () = Helpers.infer "raise 1" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

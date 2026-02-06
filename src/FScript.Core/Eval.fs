@@ -84,6 +84,10 @@ module Eval =
             | VBool true -> evalExpr typeDefs env tExpr
             | VBool false -> evalExpr typeDefs env fExpr
             | _ -> raise (EvalException { Message = "Condition must be bool"; Span = span })
+        | ERaise (valueExpr, span) ->
+            match evalExpr typeDefs env valueExpr with
+            | VString message -> raise (EvalException { Message = message; Span = span })
+            | _ -> raise (EvalException { Message = "raise expects a string"; Span = span })
         | EFor (name, source, body, span) ->
             match evalExpr typeDefs env source with
             | VList items ->

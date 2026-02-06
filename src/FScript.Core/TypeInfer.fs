@@ -224,6 +224,12 @@ module TypeInfer =
             let s = compose s4 (compose s3 (compose s2 (compose sBool s1)))
             let tRes = applyType s tElse
             s, tRes, asTyped expr tRes
+        | ERaise (value, span) ->
+            let s1, t1, _ = inferExpr typeDefs env value
+            let s2 = unify (applyType s1 t1) TString span
+            let s = compose s2 s1
+            let tRes = Types.freshVar()
+            s, tRes, asTyped expr tRes
         | EFor (name, source, body, span) ->
             let s1, tSource, _ = inferExpr typeDefs env source
             let tv = Types.freshVar()

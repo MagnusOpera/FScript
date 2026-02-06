@@ -87,6 +87,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected if expression")
 
     [<Test>]
+    member _.``Parses raise expression`` () =
+        let p = Helpers.parse "raise \"boom\""
+        match p.[0] with
+        | SExpr (ERaise (ELiteral (LString "boom", _), _)) -> ()
+        | _ -> Assert.Fail("Expected raise expression")
+
+    [<Test>]
     member _.``Parses for loop with inline body`` () =
         let p = Helpers.parse "for x in [1;2] do x |> ignore"
         match p.[0] with
@@ -181,4 +188,9 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects malformed for loop missing in`` () =
         let act () = Helpers.parse "for x [1] do x |> ignore" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects raise without argument`` () =
+        let act () = Helpers.parse "raise" |> ignore
         act |> should throw typeof<ParseException>

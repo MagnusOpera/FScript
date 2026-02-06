@@ -93,6 +93,11 @@ type EvalTests () =
         Helpers.eval "if false then 1 else 2" |> assertInt 2L
 
     [<Test>]
+    member _.``Evaluates raise by aborting execution`` () =
+        let act () = Helpers.eval "raise \"boom\"" |> ignore
+        act |> should throw typeof<EvalException>
+
+    [<Test>]
     member _.``Evaluates for loop as unit`` () =
         let result = Helpers.eval "for x in [1;2;3] do x |> ignore"
         match result with
