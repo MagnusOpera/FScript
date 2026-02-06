@@ -15,6 +15,7 @@
     <Compile Include="RegexExternsTests.fs" />
     <Compile Include="HashExternsTests.fs" />
     <Compile Include="GuidExternsTests.fs" />
+    <Compile Include="PrintExternsTests.fs" />
     <Compile Include="MapExternsTests.fs" />
     <Compile Include="JsonExternsTests.fs" />
     <Compile Include="XmlExternsTests.fs" />

@@ -13,6 +13,7 @@
     <Compile Include="RegexExterns.fs" />
     <Compile Include="HashExterns.fs" />
     <Compile Include="GuidExterns.fs" />
+    <Compile Include="PrintExterns.fs" />
     <Compile Include="MapExterns.fs" />
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />

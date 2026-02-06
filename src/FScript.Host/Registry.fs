@@ -9,6 +9,7 @@ module Registry =
           RegexExterns.match_groups
           HashExterns.md5
           GuidExterns.new_guid
+          PrintExterns.print
           MapExterns.empty
           MapExterns.add
           MapExterns.tryFind

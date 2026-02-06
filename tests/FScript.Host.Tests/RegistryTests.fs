@@ -16,6 +16,7 @@ type RegistryTests () =
         names.Contains "regex_match_groups" |> should equal true
         names.Contains "hash_md5" |> should equal true
         names.Contains "guid_new" |> should equal true
+        names.Contains "print" |> should equal true
         names.Contains "map_empty" |> should equal true
         names.Contains "json_deserialize" |> should equal true
         names.Contains "xml_values" |> should equal true

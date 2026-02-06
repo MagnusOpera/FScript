@@ -1,5 +1,7 @@
 namespace FScript.Core.Tests
 
+open System
+open System.IO
 open NUnit.Framework
 open FsUnit
 open FScript.Core
@@ -35,3 +37,17 @@ type HostExternTests () =
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VList [ VString "foo" ])) -> ()
         | _ -> Assert.Fail("Expected group capture")
+
+    [<Test>]
+    member _.``print external writes to console`` () =
+        let original = Console.Out
+        use writer = new StringWriter()
+        Console.SetOut(writer)
+        try
+            let result = Helpers.evalWithExterns externs "print \"hello-core-test\""
+            match result with
+            | VUnit -> ()
+            | _ -> Assert.Fail("Expected unit")
+            writer.ToString().TrimEnd() |> should equal "hello-core-test"
+        finally
+            Console.SetOut(original)
