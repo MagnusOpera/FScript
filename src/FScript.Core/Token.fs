@@ -19,6 +19,7 @@ type TokenKind =
     | If
     | Then
     | Else
+    | Elif
     | Raise
     | For
     | In

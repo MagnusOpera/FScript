@@ -26,6 +26,11 @@ type LexerTests () =
         tokens |> List.exists (fun t -> t.Kind = Raise) |> should equal true
 
     [<Test>]
+    member _.``Tokenizes elif keyword`` () =
+        let tokens = Lexer.tokenize "if true then 1 elif false then 2 else 3"
+        tokens |> List.exists (fun t -> t.Kind = Elif) |> should equal true
+
+    [<Test>]
     member _.``Skips line comments`` () =
         let tokens = Lexer.tokenize "// comment\nlet x = 1\n"
         tokens |> List.exists (fun t -> t.Kind = Let) |> should equal true

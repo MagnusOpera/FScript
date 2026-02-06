@@ -24,6 +24,7 @@ module Lexer =
         | "if" -> Some If
         | "then" -> Some Then
         | "else" -> Some Else
+        | "elif" -> Some Elif
         | "raise" -> Some Raise
         | "for" -> Some For
         // 'in' is intentionally not a keyword in FScript layout-style let expressions.

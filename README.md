@@ -14,6 +14,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 ### Expressions
 - Literals: `int`, `float`, `bool`, `string`
 - `if ... then ... else ...`
+- `if ... then ... elif ... then ... else ...` (`elif` is sugar for nested `else if`)
 - `for x in <list> do <expr-or-block>`
 - `match ... with` using list/option patterns
 - Lists: `[a; b; c]`, `::` (cons), `@` (append)

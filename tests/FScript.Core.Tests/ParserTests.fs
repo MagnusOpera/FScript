@@ -95,6 +95,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected if expression")
 
     [<Test>]
+    member _.``Parses if with elif`` () =
+        let p = Helpers.parse "if false then 1 elif true then 2 else 3"
+        match p.[0] with
+        | SExpr (EIf (_, _, EIf (_, _, _, _), _)) -> ()
+        | _ -> Assert.Fail("Expected nested if from elif")
+
+    [<Test>]
     member _.``Parses raise expression`` () =
         let p = Helpers.parse "raise \"boom\""
         match p.[0] with

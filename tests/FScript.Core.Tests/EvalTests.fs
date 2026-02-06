@@ -93,6 +93,10 @@ type EvalTests () =
         Helpers.eval "if false then 1 else 2" |> assertInt 2L
 
     [<Test>]
+    member _.``Evaluates if with elif`` () =
+        Helpers.eval "if false then 1 elif true then 2 else 3" |> assertInt 2L
+
+    [<Test>]
     member _.``Evaluates raise by aborting execution`` () =
         let act () = Helpers.eval "raise \"boom\"" |> ignore
         act |> should throw typeof<EvalException>

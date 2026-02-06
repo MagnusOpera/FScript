@@ -435,14 +435,25 @@ module Parser =
 
         and parseIf () : Expr =
             let ifTok = stream.Expect(If, "Expected 'if'")
+            parseIfAfterKeyword ifTok.Span
+
+        and parseIfAfterKeyword (startSpan: Span) : Expr =
             let cond = parseExpr()
             stream.SkipNewlines()
             stream.Expect(Then, "Expected 'then'") |> ignore
             let thenExpr = parseExprOrBlock()
             stream.SkipNewlines()
-            stream.Expect(Else, "Expected 'else'") |> ignore
-            let elseExpr = parseExprOrBlock()
-            EIf(cond, thenExpr, elseExpr, mkSpanFrom ifTok.Span (Ast.spanOfExpr elseExpr))
+            let elseExpr =
+                match stream.Peek().Kind with
+                | Else ->
+                    stream.Next() |> ignore
+                    parseExprOrBlock()
+                | Elif ->
+                    let elifTok = stream.Next()
+                    parseIfAfterKeyword elifTok.Span
+                | _ ->
+                    raise (ParseException { Message = "Expected 'else' or 'elif'"; Span = stream.Peek().Span })
+            EIf(cond, thenExpr, elseExpr, mkSpanFrom startSpan (Ast.spanOfExpr elseExpr))
 
         and parseFor () : Expr =
             let forTok = stream.Expect(For, "Expected 'for'")

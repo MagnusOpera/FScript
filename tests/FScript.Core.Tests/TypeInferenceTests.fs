@@ -123,6 +123,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers if expression type with elif`` () =
+        let typed = Helpers.infer "if false then 1 elif true then 2 else 3"
+        match typed |> List.last with
+        | TypeInfer.TSExpr texpr -> texpr.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers raise as polymorphic in branch context`` () =
         let typed = Helpers.infer "if true then raise \"boom\" else 1"
         match typed |> List.last with

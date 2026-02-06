@@ -1,22 +1,15 @@
+let fizzbuzz n = n % 15 = 0
+let fizz n = n % 3 = 0
+let buzz n = n % 5 = 0
+
 for n in [1..10] do
-    match n % 15 with
-    | 0 -> print "FizzBuzz"
-    | _ ->
-        match n % 3 with
-        | 0 -> print "Fizz"
-        | _ ->
-            match n % 5 with
-            | 0 -> print "Buzz"
-            | _ ->
-                match n with
-                | 1 -> print "1"
-                | 2 -> print "2"
-                | 3 -> print "3"
-                | 4 -> print "4"
-                | 5 -> print "5"
-                | 6 -> print "6"
-                | 7 -> print "7"
-                | 8 -> print "8"
-                | 9 -> print "9"
-                | 10 -> print "10"
-                | _ -> raise "Unexpected case in fizzbuzz"
+    if fizzbuzz n then
+        print "FizzBuzz"
+    elif fizz n then
+        print "Fizz"
+    elif buzz n then
+        print "Buzz"
+    elif n >= 1 && n <= 10 then
+        print $"{n}"
+    else
+        raise "Unexpected case in fizzbuzz"
