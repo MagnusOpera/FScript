@@ -84,6 +84,42 @@ module Eval =
         | PNone _, VOption None -> Some Map.empty
         | _ -> None
 
+    let rec private applyFunctionValue
+        (eval: Map<string, Type> -> Env -> Expr -> Value)
+        (typeDefs: Map<string, Type>)
+        (span: Span)
+        (fnValue: Value)
+        (argValue: Value)
+        : Value =
+        match fnValue with
+        | VClosure (argName, body, closureEnv) ->
+            let env' = closureEnv |> Map.add argName argValue
+            eval typeDefs env' body
+        | VExternal (ext, args) ->
+            let args' = args @ [ argValue ]
+            if args'.Length = ext.Arity then
+                if ext.Name = "List.map" then
+                    match args' with
+                    | [ mapper; VList items ] ->
+                        items
+                        |> List.map (fun item -> applyFunctionValue eval typeDefs span mapper item)
+                        |> VList
+                    | _ -> raise (EvalException { Message = "List.map expects (function, list)"; Span = span })
+                elif ext.Name = "List.iter" then
+                    match args' with
+                    | [ iterator; VList items ] ->
+                        for item in items do
+                            applyFunctionValue eval typeDefs span iterator item |> ignore
+                        VUnit
+                    | _ -> raise (EvalException { Message = "List.iter expects (function, list)"; Span = span })
+                else
+                    ext.Impl args'
+            elif args'.Length < ext.Arity then
+                VExternal (ext, args')
+            else
+                raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
+        | _ -> raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
+
     let rec private evalExpr (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
         match expr with
         | ELiteral (lit, _) -> literalToValue lit
@@ -95,19 +131,7 @@ module Eval =
         | EApply (fn, arg, span) ->
             let fVal = evalExpr typeDefs env fn
             let aVal = evalExpr typeDefs env arg
-            match fVal with
-            | VClosure (argName, body, closureEnv) ->
-                let env' = closureEnv |> Map.add argName aVal
-                evalExpr typeDefs env' body
-            | VExternal (ext, args) ->
-                let args' = args @ [ aVal ]
-                if args'.Length = ext.Arity then
-                    ext.Impl args'
-                elif args'.Length < ext.Arity then
-                    VExternal (ext, args')
-                else
-                    raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
-            | _ -> raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
+            applyFunctionValue evalExpr typeDefs span fVal aVal
         | EIf (cond, tExpr, fExpr, span) ->
             match evalExpr typeDefs env cond with
             | VBool true -> evalExpr typeDefs env tExpr
@@ -226,19 +250,7 @@ module Eval =
                 | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
             match op with
             | "|>" ->
-                match bv with
-                | VClosure (argName, body, closureEnv) ->
-                    let env' = closureEnv |> Map.add argName av
-                    evalExpr typeDefs env' body
-                | VExternal (ext, args) ->
-                    let args' = args @ [ av ]
-                    if args'.Length = ext.Arity then
-                        ext.Impl args'
-                    elif args'.Length < ext.Arity then
-                        VExternal (ext, args')
-                    else
-                        raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
-                | _ -> raise (EvalException { Message = "Right side of '|>' must be a function"; Span = span })
+                applyFunctionValue evalExpr typeDefs span bv av
             | "+" -> arith ( + ) ( + )
             | "-" -> arith ( - ) ( - )
             | "*" -> arith ( * ) ( * )

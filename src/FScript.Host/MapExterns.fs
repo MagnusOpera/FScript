@@ -27,6 +27,14 @@ module MapExterns =
               | [ VString key; VStringMap m ] -> m.TryFind(key) |> VOption
               | _ -> raise (HostCommon.evalError "Map.tryFind expects (string, map)") }
 
+    let tryGet : ExternalFunction =
+        { Name = "Map.try"
+          Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TOption (TVar 0))))
+          Arity = 2
+          Impl = function
+              | [ VString key; VStringMap m ] -> m.TryFind(key) |> VOption
+              | _ -> raise (HostCommon.evalError "Map.try expects (string, map)") }
+
     let containsKey : ExternalFunction =
         { Name = "Map.containsKey"
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TBool)))

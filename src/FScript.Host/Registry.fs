@@ -12,8 +12,14 @@ module Registry =
           PrintExterns.print
           MapExterns.empty
           MapExterns.add
+          MapExterns.tryGet
           MapExterns.tryFind
           MapExterns.containsKey
           MapExterns.remove
+          ListExterns.map
+          ListExterns.iter
+          ListExterns.tryHead
+          ListExterns.tail
+          ListExterns.append
           JsonExterns.deserialize
           XmlExterns.values ]

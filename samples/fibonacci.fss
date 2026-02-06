@@ -5,7 +5,10 @@ let rec fib n =
     | _ -> fib (n - 1) + fib (n - 2)
 
 let main =
-    for i in [0..9] do
-        i |> fib |> fun x -> $"{x}" |> print
+    [0..9]
+    |> List.map (fun i -> i |> fib |> fun x -> $"{x}")
+    |> fun values ->
+        for value in values do
+            value |> print
 
 main

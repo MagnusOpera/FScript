@@ -15,6 +15,7 @@
     <Compile Include="GuidExterns.fs" />
     <Compile Include="PrintExterns.fs" />
     <Compile Include="MapExterns.fs" />
+    <Compile Include="ListExterns.fs" />
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />

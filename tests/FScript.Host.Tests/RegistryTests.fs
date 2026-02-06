@@ -18,5 +18,14 @@ type RegistryTests () =
         names.Contains "Guid.new" |> should equal true
         names.Contains "print" |> should equal true
         names.Contains "Map.empty" |> should equal true
+        names.Contains "Map.add" |> should equal true
+        names.Contains "Map.try" |> should equal true
+        names.Contains "Map.tryFind" |> should equal true
+        names.Contains "Map.remove" |> should equal true
+        names.Contains "List.map" |> should equal true
+        names.Contains "List.iter" |> should equal true
+        names.Contains "List.tryHead" |> should equal true
+        names.Contains "List.tail" |> should equal true
+        names.Contains "List.append" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Xml.values" |> should equal true
