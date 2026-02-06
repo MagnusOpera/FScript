@@ -36,6 +36,7 @@ type TokenKind =
     | LBrace
     | RBrace
     | Type
+    | Typeof
     | Of
     | Plus
     | Minus

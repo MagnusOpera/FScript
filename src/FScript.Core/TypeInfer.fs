@@ -1,6 +1,7 @@
 namespace FScript.Core
 
 module TypeInfer =
+    let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
     type Subst = Map<int, Type>
 
     let private emptySubst : Subst = Map.empty
@@ -11,6 +12,7 @@ module TypeInfer =
         | TList t1 -> TList (applyType s t1)
         | TTuple ts -> TTuple (ts |> List.map (applyType s))
         | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> applyType s t1))
+        | TStringMap t1 -> TStringMap (applyType s t1)
         | TOption t1 -> TOption (applyType s t1)
         | TFun (a, b) -> TFun (applyType s a, applyType s b)
         | _ -> t
@@ -32,7 +34,13 @@ module TypeInfer =
     let private unify (t1: Type) (t2: Type) (span: Span) : Subst =
         let rec uni a b =
             match a, b with
-            | TUnit, TUnit | TInt, TInt | TFloat, TFloat | TBool, TBool | TString, TString -> emptySubst
+            | TUnit, TUnit
+            | TInt, TInt
+            | TFloat, TFloat
+            | TBool, TBool
+            | TString, TString
+            | TTypeToken, TTypeToken -> emptySubst
+            | TNamed x, TNamed y when x = y -> emptySubst
             | TList x, TList y -> uni x y
             | TTuple xs, TTuple ys ->
                 if xs.Length <> ys.Length then
@@ -50,6 +58,7 @@ module TypeInfer =
                     let yt = yf.[name]
                     let s1 = uni (applyType sAcc xt) (applyType sAcc yt)
                     compose s1 sAcc) emptySubst
+            | TStringMap x, TStringMap y -> uni x y
             | TOption x, TOption y -> uni x y
             | TFun (a1, b1), TFun (a2, b2) ->
                 let s1 = uni a1 a2
@@ -72,6 +81,7 @@ module TypeInfer =
             | TList a -> TList (subst a)
             | TTuple ts -> TTuple (ts |> List.map subst)
             | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> subst t1))
+            | TStringMap a -> TStringMap (subst a)
             | TOption a -> TOption (subst a)
             | TFun (a, b) -> TFun (subst a, subst b)
             | _ -> t
@@ -79,11 +89,46 @@ module TypeInfer =
 
     type TypedExpr = { Expr: Expr; Type: Type; Span: Span }
     type TypedStmt =
+        | TSType of TypeDef
         | TSLet of string * Expr * Type * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
     let private asTyped expr t = { Expr = expr; Type = t; Span = Ast.spanOfExpr expr }
+
+    let private builtinType (name: string) : Type option =
+        match name with
+        | "unit" -> Some TUnit
+        | "int" -> Some TInt
+        | "float" -> Some TFloat
+        | "bool" -> Some TBool
+        | "string" -> Some TString
+        | _ -> None
+
+    let rec private typeFromRef (decls: Map<string, TypeDef>) (seen: Set<string>) (tref: TypeRef) : Type =
+        match tref with
+        | TRName name ->
+            match builtinType name with
+            | Some t -> t
+            | None ->
+                if seen.Contains name then
+                    raise (TypeException { Message = $"Recursive type '{name}' is not supported"; Span = unknownSpan })
+                match decls.TryFind name with
+                | Some def ->
+                    def.Fields
+                    |> List.map (fun (field, t) -> field, typeFromRef decls (seen.Add name) t)
+                    |> Map.ofList
+                    |> TRecord
+                | None -> TNamed name
+        | TRTuple ts ->
+            ts |> List.map (typeFromRef decls seen) |> TTuple
+        | TRPostfix (inner, suffix) ->
+            let resolved = typeFromRef decls seen inner
+            match suffix with
+            | "list" -> TList resolved
+            | "option" -> TOption resolved
+            | "map" -> TStringMap resolved
+            | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
 
     let rec private inferPattern (pat: Pattern) : Map<string, Type> * Type =
         match pat with
@@ -121,7 +166,7 @@ module TypeInfer =
         | TVar _ -> TInt
         | _ -> raise (TypeException { Message = "Expected numeric type"; Span = span })
 
-    let rec private inferExpr (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+    let rec private inferExpr (typeDefs: Map<string, Type>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
         match expr with
         | ELiteral (lit, _) ->
             let t =
@@ -137,35 +182,40 @@ module TypeInfer =
                 let t = instantiate scheme
                 emptySubst, t, asTyped expr t
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
+        | ETypeOf (name, span) ->
+            if typeDefs.ContainsKey name then
+                emptySubst, TTypeToken, asTyped expr TTypeToken
+            else
+                raise (TypeException { Message = sprintf "Unknown type '%s'" name; Span = span })
         | ELambda (arg, body, _) ->
             let tv = Types.freshVar()
             let env' = env |> Map.add arg (Forall([], tv))
-            let s1, tBody, _ = inferExpr env' body
+            let s1, tBody, _ = inferExpr typeDefs env' body
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
             s1, tFun, asTyped expr tFun
         | EApply (fn, arg, span) ->
-            let s1, t1, _ = inferExpr env fn
+            let s1, t1, _ = inferExpr typeDefs env fn
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr env2 arg
+            let s2, t2, _ = inferExpr typeDefs env2 arg
             let tv = Types.freshVar()
             let s3 = unify (applyType s2 t1) (TFun (t2, tv)) span
             let s = compose s3 (compose s2 s1)
             let tRes = applyType s tv
             s, tRes, asTyped expr tRes
         | EIf (cond, tExpr, fExpr, span) ->
-            let s1, tCond, _ = inferExpr env cond
+            let s1, tCond, _ = inferExpr typeDefs env cond
             let sBool = unify tCond TBool span
             let env2 = applyEnv (compose sBool s1) env
-            let s2, tThen, _ = inferExpr env2 tExpr
+            let s2, tThen, _ = inferExpr typeDefs env2 tExpr
             let env3 = applyEnv (compose s2 (compose sBool s1)) env
-            let s3, tElse, _ = inferExpr env3 fExpr
+            let s3, tElse, _ = inferExpr typeDefs env3 fExpr
             let s4 = unify (applyType s3 tThen) tElse span
             let s = compose s4 (compose s3 (compose s2 (compose sBool s1)))
             let tRes = applyType s tElse
             s, tRes, asTyped expr tRes
         | ELet (name, value, body, span) ->
-            let s1, t1, _ = inferExpr env value
+            let s1, t1, _ = inferExpr typeDefs env value
             let sDiscard =
                 if name = "_" then
                     unify (applyType s1 t1) TUnit (Ast.spanOfExpr value)
@@ -175,11 +225,11 @@ module TypeInfer =
             let env1 = applyEnv sValue env
             let scheme = Types.generalize env1 (applyType sValue t1)
             let env2 = env1 |> Map.add name scheme
-            let s2, t2, _ = inferExpr env2 body
+            let s2, t2, _ = inferExpr typeDefs env2 body
             let s = compose s2 sValue
             s, t2, asTyped expr t2
         | EMatch (scrutinee, cases, span) ->
-            let s1, tScrut, _ = inferExpr env scrutinee
+            let s1, tScrut, _ = inferExpr typeDefs env scrutinee
             let mutable sAcc = s1
             let mutable resultTypeOpt : Type option = None
             for (pat, body, caseSpan) in cases do
@@ -187,7 +237,7 @@ module TypeInfer =
                 let sPat = unify (applyType sAcc tScrut) tPat caseSpan
                 let envCase = applyEnv (compose sPat sAcc) env
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
-                let sBody, tBody, _ = inferExpr envCase' body
+                let sBody, tBody, _ = inferExpr typeDefs envCase' body
                 let tBody' = applyType sBody tBody
                 resultTypeOpt <-
                     match resultTypeOpt with
@@ -203,15 +253,15 @@ module TypeInfer =
             let tv = Types.freshVar()
             let mutable sAcc = emptySubst
             for item in items do
-                let s1, t1, _ = inferExpr (applyEnv sAcc env) item
+                let s1, t1, _ = inferExpr typeDefs (applyEnv sAcc env) item
                 let s2 = unify (applyType s1 tv) t1 span
                 sAcc <- compose s2 (compose s1 sAcc)
             let tRes = TList (applyType sAcc tv)
             sAcc, tRes, asTyped expr tRes
         | ERange (startExpr, endExpr, span) ->
-            let s1, tStart, _ = inferExpr env startExpr
+            let s1, tStart, _ = inferExpr typeDefs env startExpr
             let env2 = applyEnv s1 env
-            let s2, tEnd, _ = inferExpr env2 endExpr
+            let s2, tEnd, _ = inferExpr typeDefs env2 endExpr
             let s3 = unify (applyType s2 tStart) TInt span
             let s4 = unify (applyType s3 (applyType s2 tEnd)) TInt span
             let s = compose s4 (compose s3 (compose s2 s1))
@@ -221,7 +271,7 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             let mutable inferred : Type list = []
             for item in items do
-                let s1, t1, _ = inferExpr (applyEnv sAcc env) item
+                let s1, t1, _ = inferExpr typeDefs (applyEnv sAcc env) item
                 sAcc <- compose s1 sAcc
                 inferred <- inferred @ [ applyType sAcc t1 ]
             let tRes = TTuple inferred
@@ -230,13 +280,13 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
             for (name, valueExpr) in fields do
-                let s1, t1, _ = inferExpr (applyEnv sAcc env) valueExpr
+                let s1, t1, _ = inferExpr typeDefs (applyEnv sAcc env) valueExpr
                 sAcc <- compose s1 sAcc
                 inferred <- inferred.Add(name, applyType sAcc t1)
             let tRes = TRecord inferred
             sAcc, tRes, asTyped expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr env baseExpr
+            let sBase, tBase, _ = inferExpr typeDefs env baseExpr
             let baseFields =
                 match applyType sBase tBase with
                 | TRecord fields -> fields
@@ -248,7 +298,7 @@ module TypeInfer =
                     | Some t -> t
                     | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" name; Span = Ast.spanOfExpr valueExpr })
                 let envForField = applyEnv sAcc env
-                let sField, tField, _ = inferExpr envForField valueExpr
+                let sField, tField, _ = inferExpr typeDefs envForField valueExpr
                 let expected = applyType sField (applyType sAcc expectedFieldType)
                 let sEq = unify expected tField (Ast.spanOfExpr valueExpr)
                 sAcc <- compose sEq (compose sField sAcc)
@@ -256,7 +306,7 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
         | EFieldGet (target, fieldName, span) ->
-            let s1, tTarget, _ = inferExpr env target
+            let s1, tTarget, _ = inferExpr typeDefs env target
             match applyType s1 tTarget with
             | TRecord fields ->
                 match fields.TryFind fieldName with
@@ -266,34 +316,34 @@ module TypeInfer =
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->
-                let s1, tLeft, _ = inferExpr env a
+                let s1, tLeft, _ = inferExpr typeDefs env a
                 let env2 = applyEnv s1 env
-                let s2, tRight, _ = inferExpr env2 b
+                let s2, tRight, _ = inferExpr typeDefs env2 b
                 let tv = Types.freshVar()
                 let s3 = unify (applyType s2 tRight) (TFun (applyType s2 tLeft, tv)) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s tv
                 s, tRes, asTyped expr tRes
             | "::" ->
-                let s1, tHead, _ = inferExpr env a
+                let s1, tHead, _ = inferExpr typeDefs env a
                 let env2 = applyEnv s1 env
-                let s2, tTail, _ = inferExpr env2 b
+                let s2, tTail, _ = inferExpr typeDefs env2 b
                 let s3 = unify (applyType s2 tTail) (TList tHead) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s (TList tHead)
                 s, tRes, asTyped expr tRes
             | "@" ->
-                let s1, t1, _ = inferExpr env a
+                let s1, t1, _ = inferExpr typeDefs env a
                 let env2 = applyEnv s1 env
-                let s2, t2, _ = inferExpr env2 b
+                let s2, t2, _ = inferExpr typeDefs env2 b
                 let s3 = unify (applyType s2 t1) t2 span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s t2
                 s, tRes, asTyped expr tRes
             | _ ->
-                let s1, t1, _ = inferExpr env a
+                let s1, t1, _ = inferExpr typeDefs env a
                 let env2 = applyEnv s1 env
-                let s2, t2, _ = inferExpr env2 b
+                let s2, t2, _ = inferExpr typeDefs env2 b
                 let s3 = unify (applyType s2 t1) t2 span
                 let t = applyType s3 t2
                 let resultType =
@@ -310,23 +360,23 @@ module TypeInfer =
                 let s = compose s3 (compose s2 s1)
                 s, resultType, asTyped expr resultType
         | ESome (value, _) ->
-            let s1, t1, _ = inferExpr env value
+            let s1, t1, _ = inferExpr typeDefs env value
             s1, TOption t1, asTyped expr (TOption t1)
         | ENone _ ->
             let tv = Types.freshVar()
             emptySubst, TOption tv, asTyped expr (TOption tv)
         | ECons (head, tail, span) ->
-            let s1, t1, _ = inferExpr env head
+            let s1, t1, _ = inferExpr typeDefs env head
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr env2 tail
+            let s2, t2, _ = inferExpr typeDefs env2 tail
             let s3 = unify (applyType s2 t2) (TList t1) span
             let s = compose s3 (compose s2 s1)
             let tRes = applyType s (TList t1)
             s, tRes, asTyped expr tRes
         | EAppend (a, b, span) ->
-            let s1, t1, _ = inferExpr env a
+            let s1, t1, _ = inferExpr typeDefs env a
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr env2 b
+            let s2, t2, _ = inferExpr typeDefs env2 b
             let s3 = unify (applyType s2 t1) t2 span
             let s = compose s3 (compose s2 s1)
             s, t2, asTyped expr t2
@@ -340,19 +390,33 @@ module TypeInfer =
         |> List.fold (fun acc ext -> acc.Add(ext.Name, ext.Scheme)) builtins
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+        let decls =
+            program
+            |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None)
+            |> Map.ofList
+        let typeDefs =
+            decls
+            |> Map.map (fun _ d ->
+                d.Fields
+                |> List.map (fun (name, t) -> name, typeFromRef decls Set.empty t)
+                |> Map.ofList
+                |> TRecord)
+
         let mutable env : Map<string, Scheme> = envFromExterns externs
         let typed = ResizeArray<TypedStmt>()
         for i, stmt in program |> List.indexed do
             match stmt with
+            | SType def ->
+                typed.Add(TSType def)
             | SLet(name, args, expr, span) ->
                 let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
-                let s1, t1, _ = inferExpr env exprVal
+                let s1, t1, _ = inferExpr typeDefs env exprVal
                 let env' = applyEnv s1 env
                 let scheme = Types.generalize env' t1
                 env <- env' |> Map.add name scheme
                 typed.Add(TSLet(name, exprVal, t1, span))
             | SExpr expr ->
-                let s1, t1, typedExpr = inferExpr env expr
+                let s1, t1, typedExpr = inferExpr typeDefs env expr
                 let sDiscard =
                     if i < (program.Length - 1) then
                         unify (applyType s1 t1) TUnit (Ast.spanOfExpr expr)

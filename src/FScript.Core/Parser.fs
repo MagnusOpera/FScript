@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match | Typeof -> true
         | _ -> false
 
     let private parseLiteral (t: Token) =
@@ -54,7 +54,74 @@ module Parser =
         let tokens = Lexer.tokenize src
         let stream = TokenStream(tokens)
 
-        let rec parsePattern () : Pattern =
+        let rec parseTypeRefAtom () : TypeRef =
+            stream.SkipNewlines()
+            match stream.Peek().Kind with
+            | Ident name ->
+                stream.Next() |> ignore
+                TRName name
+            | LParen ->
+                stream.Next() |> ignore
+                let first = parseTypeRef()
+                if stream.Match(Star) then
+                    let items = ResizeArray<TypeRef>()
+                    items.Add(first)
+                    items.Add(parseTypeRef())
+                    while stream.Match(Star) do
+                        items.Add(parseTypeRef())
+                    stream.Expect(RParen, "Expected ')' in tuple type") |> ignore
+                    TRTuple (items |> Seq.toList)
+                else
+                    stream.Expect(RParen, "Expected ')' in type expression") |> ignore
+                    first
+            | _ -> raise (ParseException { Message = "Expected type expression"; Span = stream.Peek().Span })
+
+        and parseTypeRef () : TypeRef =
+            let mutable t = parseTypeRefAtom()
+            let mutable loop = true
+            while loop do
+                match stream.Peek().Kind with
+                | Ident "list" ->
+                    stream.Next() |> ignore
+                    t <- TRPostfix(t, "list")
+                | Ident "option" ->
+                    stream.Next() |> ignore
+                    t <- TRPostfix(t, "option")
+                | Ident "map" ->
+                    stream.Next() |> ignore
+                    t <- TRPostfix(t, "map")
+                | _ -> loop <- false
+            t
+
+        and parseTypeDecl () : Stmt =
+            let typeTok = stream.Expect(Type, "Expected 'type'")
+            let nameTok = stream.ExpectIdent("Expected identifier after 'type'")
+            let name =
+                match nameTok.Kind with
+                | Ident n -> n
+                | _ -> ""
+            stream.SkipNewlines()
+            stream.Expect(Equals, "Expected '=' in type declaration") |> ignore
+            stream.SkipNewlines()
+            stream.Expect(LBrace, "Expected '{' in record type declaration") |> ignore
+            let fields = ResizeArray<string * TypeRef>()
+            let parseField () =
+                let fieldTok = stream.ExpectIdent("Expected field name in type declaration")
+                let fieldName =
+                    match fieldTok.Kind with
+                    | Ident n -> n
+                    | _ -> ""
+                stream.SkipNewlines()
+                stream.Expect(Colon, "Expected ':' after field name") |> ignore
+                let fieldType = parseTypeRef()
+                fields.Add(fieldName, fieldType)
+            parseField()
+            while stream.Match(Semicolon) do
+                parseField()
+            let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
+            SType { Name = name; Fields = fields |> Seq.toList; Span = mkSpanFrom typeTok.Span rb.Span }
+
+        and parsePattern () : Pattern =
             stream.SkipNewlines()
             let t = stream.Peek()
             match t.Kind with
@@ -192,6 +259,14 @@ module Parser =
                 parseIf()
             | Match ->
                 parseMatch()
+            | Typeof ->
+                let t = stream.Next()
+                let nameTok = stream.ExpectIdent("Expected type name after 'typeof'")
+                let name =
+                    match nameTok.Kind with
+                    | Ident n -> n
+                    | _ -> ""
+                ETypeOf(name, mkSpanFrom t.Span nameTok.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in expression"; Span = t.Span })
 
         and parsePostfix () : Expr =
@@ -381,11 +456,15 @@ module Parser =
                 | SExpr e :: rest ->
                     let body = desugar rest
                     ELet("_", e, body, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
+                | SType def :: _ ->
+                    raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
             desugar (statements |> Seq.toList)
 
         and parseStmt () : Stmt =
             stream.SkipNewlines()
             match stream.Peek().Kind with
+            | Type ->
+                parseTypeDecl()
             | Let ->
                 let letTok = stream.Next()
                 let nameTok = stream.ExpectIdent("Expected identifier after 'let'")

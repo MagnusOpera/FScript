@@ -1,4 +1,4 @@
-namespace FScript.Tests
+namespace FScript.Core.Tests
 
 open NUnit.Framework
 open FsUnit
@@ -179,3 +179,19 @@ type TypeInferenceTests () =
     member _.``Reports occurs check failure for self application`` () =
         let act () = Helpers.infer "fun x -> x x" |> ignore
         act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Infers typeof as type token`` () =
+        let typed = Helpers.infer "type Package = { Name: string }\ntypeof Package"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TTypeToken
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers string keyed map type suffix`` () =
+        let typed = Helpers.infer "type Package = { Deps: int map }\n0"
+        match typed.Head with
+        | TypeInfer.TSType t ->
+            let depType = t.Fields |> List.find (fun (n, _) -> n = "Deps") |> snd
+            depType |> should equal (TRPostfix(TRName "int", "map"))
+        | _ -> Assert.Fail("Expected type declaration")

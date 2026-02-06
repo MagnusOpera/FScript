@@ -15,7 +15,9 @@ and Value =
     | VList of Value list
     | VTuple of Value list
     | VRecord of Map<string, Value>
+    | VStringMap of Map<string, Value>
     | VOption of Value option
+    | VTypeToken of Type
     | VClosure of string * Expr * Env
     | VExternal of ExternalFunction * Value list
 

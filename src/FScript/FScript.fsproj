@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>fscript</AssemblyName>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -12,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FScript.Core\FScript.Core.fsproj" />
+    <ProjectReference Include="..\FScript.Host\FScript.Host.fsproj" />
   </ItemGroup>
 
 </Project>

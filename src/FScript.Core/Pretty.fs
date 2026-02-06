@@ -20,7 +20,14 @@ module Pretty =
             |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToString value))
             |> String.concat "; "
             |> sprintf "{ %s }"
+        | VStringMap fields ->
+            fields
+            |> Map.toList
+            |> List.map (fun (name, value) -> sprintf "\"%s\" => %s" name (valueToString value))
+            |> String.concat "; "
+            |> sprintf "map { %s }"
         | VOption None -> "None"
         | VOption (Some v) -> sprintf "Some %s" (valueToString v)
+        | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
         | VClosure _ -> "<fun>"
         | VExternal _ -> "<extern>"

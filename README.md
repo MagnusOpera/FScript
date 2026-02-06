@@ -79,7 +79,7 @@ let add x = fun y -> x + y
 add 2 3
 EOF
 
-dotnet run --project /Users/pct/src/MagnusOpera/FScript/src/FScript.Cli -- /tmp/sample.fss
+dotnet run --project /Users/pct/src/MagnusOpera/FScript/src/FScript -- /tmp/sample.fss
 ```
 
 ## Output

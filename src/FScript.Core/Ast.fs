@@ -1,5 +1,15 @@
 namespace FScript.Core
 
+type TypeDef =
+    { Name: string
+      Fields: (string * TypeRef) list
+      Span: Span }
+
+and TypeRef =
+    | TRName of string
+    | TRTuple of TypeRef list
+    | TRPostfix of TypeRef * string
+
 type Literal =
     | LInt of int64
     | LFloat of float
@@ -34,8 +44,10 @@ and Expr =
     | EBinOp of string * Expr * Expr * Span
     | ESome of Expr * Span
     | ENone of Span
+    | ETypeOf of string * Span
 
 and Stmt =
+    | SType of TypeDef
     | SLet of string * string list * Expr * Span
     | SExpr of Expr
 
@@ -72,3 +84,4 @@ module Ast =
         | EBinOp (_, _, _, s) -> s
         | ESome (_, s) -> s
         | ENone s -> s
+        | ETypeOf (_, s) -> s

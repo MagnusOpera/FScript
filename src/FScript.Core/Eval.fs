@@ -29,8 +29,13 @@ module Eval =
             xf.Count = yf.Count
             && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
+        | VStringMap xf, VStringMap yf ->
+            xf.Count = yf.Count
+            && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
+            && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
         | VOption None, VOption None -> true
         | VOption (Some x), VOption (Some y) -> valueEquals x y
+        | VTypeToken tx, VTypeToken ty -> tx = ty
         | _ -> false
 
     let rec private patternMatch (pat: Pattern) (value: Value) : Env option =
@@ -50,7 +55,7 @@ module Eval =
         | PNone _, VOption None -> Some Map.empty
         | _ -> None
 
-    let rec private evalExpr (env: Env) (expr: Expr) : Value =
+    let rec private evalExpr (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
         match expr with
         | ELiteral (lit, _) -> literalToValue lit
         | EVar (name, span) ->
@@ -59,12 +64,12 @@ module Eval =
             | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | ELambda (arg, body, _) -> VClosure (arg, body, env)
         | EApply (fn, arg, span) ->
-            let fVal = evalExpr env fn
-            let aVal = evalExpr env arg
+            let fVal = evalExpr typeDefs env fn
+            let aVal = evalExpr typeDefs env arg
             match fVal with
             | VClosure (argName, body, closureEnv) ->
                 let env' = closureEnv |> Map.add argName aVal
-                evalExpr env' body
+                evalExpr typeDefs env' body
             | VExternal (ext, args) ->
                 let args' = args @ [ aVal ]
                 if args'.Length = ext.Arity then
@@ -75,16 +80,16 @@ module Eval =
                     raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
             | _ -> raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
         | EIf (cond, tExpr, fExpr, span) ->
-            match evalExpr env cond with
-            | VBool true -> evalExpr env tExpr
-            | VBool false -> evalExpr env fExpr
+            match evalExpr typeDefs env cond with
+            | VBool true -> evalExpr typeDefs env tExpr
+            | VBool false -> evalExpr typeDefs env fExpr
             | _ -> raise (EvalException { Message = "Condition must be bool"; Span = span })
         | ELet (name, value, body, _) ->
-            let v = evalExpr env value
+            let v = evalExpr typeDefs env value
             let env' = env |> Map.add name v
-            evalExpr env' body
+            evalExpr typeDefs env' body
         | EMatch (scrutinee, cases, span) ->
-            let v = evalExpr env scrutinee
+            let v = evalExpr typeDefs env scrutinee
             let rec tryCases cs =
                 match cs with
                 | [] -> raise (EvalException { Message = "No match cases matched"; Span = span })
@@ -92,14 +97,14 @@ module Eval =
                     match patternMatch pat v with
                     | Some bindings ->
                         let env' = Map.fold (fun acc k v -> Map.add k v acc) env bindings
-                        evalExpr env' body
+                        evalExpr typeDefs env' body
                     | None -> tryCases rest
             tryCases cases
         | EList (items, _) ->
-            items |> List.map (evalExpr env) |> VList
+            items |> List.map (evalExpr typeDefs env) |> VList
         | ERange (startExpr, endExpr, span) ->
-            let startValue = evalExpr env startExpr
-            let endValue = evalExpr env endExpr
+            let startValue = evalExpr typeDefs env startExpr
+            let endValue = evalExpr typeDefs env endExpr
             match startValue, endValue with
             | VInt s, VInt e ->
                 let step = if s <= e then 1L else -1L
@@ -111,46 +116,46 @@ module Eval =
                 VList (build [] s)
             | _ -> raise (EvalException { Message = "Range endpoints must be int"; Span = span })
         | ETuple (items, _) ->
-            items |> List.map (evalExpr env) |> VTuple
+            items |> List.map (evalExpr typeDefs env) |> VTuple
         | ERecord (fields, _) ->
             fields
-            |> List.map (fun (name, valueExpr) -> name, evalExpr env valueExpr)
+            |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
             |> Map.ofList
             |> VRecord
         | ERecordUpdate (target, updates, span) ->
-            match evalExpr env target with
+            match evalExpr typeDefs env target with
             | VRecord fields ->
                 let updated =
                     updates
                     |> List.fold (fun acc (name, valueExpr) ->
                         if Map.containsKey name acc then
-                            Map.add name (evalExpr env valueExpr) acc
+                            Map.add name (evalExpr typeDefs env valueExpr) acc
                         else
                             raise (EvalException { Message = sprintf "Record field '%s' not found" name; Span = span })) fields
                 VRecord updated
             | _ -> raise (EvalException { Message = "Record update requires a record value"; Span = span })
         | EFieldGet (target, fieldName, span) ->
-            match evalExpr env target with
+            match evalExpr typeDefs env target with
             | VRecord fields ->
                 match fields.TryFind fieldName with
                 | Some value -> value
                 | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
             | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
         | ECons (head, tail, span) ->
-            let h = evalExpr env head
-            let t = evalExpr env tail
+            let h = evalExpr typeDefs env head
+            let t = evalExpr typeDefs env tail
             match t with
             | VList xs -> VList (h :: xs)
             | _ -> raise (EvalException { Message = "Right side of '::' must be list"; Span = span })
         | EAppend (a, b, span) ->
-            let av = evalExpr env a
-            let bv = evalExpr env b
+            let av = evalExpr typeDefs env a
+            let bv = evalExpr typeDefs env b
             match av, bv with
             | VList xs, VList ys -> VList (xs @ ys)
             | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
         | EBinOp (op, a, b, span) ->
-            let av = evalExpr env a
-            let bv = evalExpr env b
+            let av = evalExpr typeDefs env a
+            let bv = evalExpr typeDefs env b
             let arith fInt fFloat =
                 match av, bv with
                 | VInt x, VInt y -> VInt (fInt x y)
@@ -161,7 +166,7 @@ module Eval =
                 match bv with
                 | VClosure (argName, body, closureEnv) ->
                     let env' = closureEnv |> Map.add argName av
-                    evalExpr env' body
+                    evalExpr typeDefs env' body
                 | VExternal (ext, args) ->
                     let args' = args @ [ av ]
                     if args'.Length = ext.Arity then
@@ -220,21 +225,63 @@ module Eval =
                 | VList xs, VList ys -> VList (xs @ ys)
                 | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
             | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
-        | ESome (value, _) -> VOption (Some (evalExpr env value))
+        | ESome (value, _) -> VOption (Some (evalExpr typeDefs env value))
         | ENone _ -> VOption None
+        | ETypeOf (name, span) ->
+            match typeDefs.TryFind name with
+            | Some t -> VTypeToken t
+            | None -> raise (EvalException { Message = $"Unknown type '{name}'"; Span = span })
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
+        let decls =
+            program
+            |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None)
+            |> Map.ofList
+
+        let rec fromRef (seen: Set<string>) (tref: TypeRef) =
+            match tref with
+            | TRName "unit" -> TUnit
+            | TRName "int" -> TInt
+            | TRName "float" -> TFloat
+            | TRName "bool" -> TBool
+            | TRName "string" -> TString
+            | TRName n ->
+                if seen.Contains n then TNamed n
+                else
+                    match decls.TryFind n with
+                    | Some d ->
+                        d.Fields
+                        |> List.map (fun (fname, ft) -> fname, fromRef (seen.Add n) ft)
+                        |> Map.ofList
+                        |> TRecord
+                    | None -> TNamed n
+            | TRTuple ts -> ts |> List.map (fromRef seen) |> TTuple
+            | TRPostfix (inner, "list") -> TList (fromRef seen inner)
+            | TRPostfix (inner, "option") -> TOption (fromRef seen inner)
+            | TRPostfix (inner, "map") -> TStringMap (fromRef seen inner)
+            | TRPostfix (_, suffix) -> failwith $"Unsupported type suffix {suffix}"
+
+        let typeDefs =
+            decls
+            |> Map.map (fun name def ->
+                def.Fields
+                |> List.map (fun (fname, ft) -> fname, fromRef (Set.singleton name) ft)
+                |> Map.ofList
+                |> TRecord)
+
         let mutable env : Env =
             (builtinIgnore :: externs)
             |> List.fold (fun acc ext -> acc.Add(ext.Name, VExternal (ext, []))) Map.empty
         let mutable lastValue = VUnit
         for stmt in program do
             match stmt with
+            | TypeInfer.TSType _ ->
+                ()
             | TypeInfer.TSLet(name, expr, _, _) ->
-                let v = evalExpr env expr
+                let v = evalExpr typeDefs env expr
                 env <- env |> Map.add name v
             | TypeInfer.TSExpr texpr ->
-                lastValue <- evalExpr env texpr.Expr
+                lastValue <- evalExpr typeDefs env texpr.Expr
         lastValue
 
     let evalProgram (program: TypeInfer.TypedProgram) : Value =

@@ -12,9 +12,11 @@ type Type =
     | TList of Type
     | TTuple of Type list
     | TRecord of Map<string, Type>
+    | TStringMap of Type
     | TOption of Type
     | TFun of Type * Type
     | TNamed of string
+    | TTypeToken
     | TVar of int
 
 [<StructuralEquality; StructuralComparison>]
@@ -34,9 +36,10 @@ module Types =
         | TList t1 -> ftvType t1
         | TTuple ts -> ts |> List.map ftvType |> List.fold Set.union Set.empty
         | TRecord fields -> fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty
+        | TStringMap t1 -> ftvType t1
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
-        | TNamed _ -> Set.empty
+        | TNamed _ | TTypeToken -> Set.empty
         | TVar v -> Set.singleton v
 
     let ftvScheme (Forall (vars, t)) =
@@ -65,9 +68,11 @@ module Types =
                 |> List.map (fun (name, t) -> sprintf "%s: %s" name (go t))
                 |> String.concat "; "
                 |> sprintf "{ %s }"
+            | TStringMap t1 -> sprintf "%s map" (postfixArg t1)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
+            | TTypeToken -> "type"
             | TVar v ->
                 let letter = char (int 'a' + (v % 26))
                 let suffix = v / 26

@@ -1,4 +1,4 @@
-namespace FScript.Tests
+namespace FScript.Core.Tests
 
 open NUnit.Framework
 open FsUnit

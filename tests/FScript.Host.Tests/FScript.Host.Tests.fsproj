@@ -9,13 +9,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Helpers.fs" />
-    <Compile Include="LexerTests.fs" />
-    <Compile Include="ParserTests.fs" />
-    <Compile Include="TypeInferenceTests.fs" />
-    <Compile Include="EvalTests.fs" />
-    <Compile Include="PrettyTests.fs" />
-    <Compile Include="ExternalTests.fs" />
+    <Compile Include="HostTestHelpers.fs" />
+    <Compile Include="RegistryTests.fs" />
+    <Compile Include="FsExternsTests.fs" />
+    <Compile Include="RegexExternsTests.fs" />
+    <Compile Include="HashExternsTests.fs" />
+    <Compile Include="GuidExternsTests.fs" />
+    <Compile Include="MapExternsTests.fs" />
+    <Compile Include="JsonExternsTests.fs" />
+    <Compile Include="XmlExternsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
@@ -30,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FScript.Core\FScript.Core.fsproj" />
+    <ProjectReference Include="..\..\src\FScript.Host\FScript.Host.fsproj" />
   </ItemGroup>
 
 </Project>

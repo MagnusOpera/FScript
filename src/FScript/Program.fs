@@ -1,6 +1,7 @@
 open System
 open System.IO
 open FScript.Core
+open FScript.Host
 
 let formatSpan (span: Span) =
     sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
@@ -17,19 +18,8 @@ let main argv =
             1
         else
             try
-                let externs : ExternalFunction list =
-                    [ { Name = "readFile"
-                        Scheme = Forall([], TFun(TString, TString))
-                        Arity = 1
-                        Impl = function
-                            | [ VString p ] -> VString (File.ReadAllText p)
-                            | _ -> raise (EvalException { Message = "readFile expects a single string"; Span = { Start = { Line = 0; Column = 0 }; End = { Line = 0; Column = 0 } } }) }
-                      { Name = "regexIsMatch"
-                        Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
-                        Arity = 2
-                        Impl = function
-                            | [ VString pattern; VString input ] -> VBool (Text.RegularExpressions.Regex.IsMatch(input, pattern))
-                            | _ -> raise (EvalException { Message = "regexIsMatch expects pattern and input strings"; Span = { Start = { Line = 0; Column = 0 }; End = { Line = 0; Column = 0 } } }) } ]
+                let context : HostContext = { RootDirectory = Directory.GetCurrentDirectory() }
+                let externs : ExternalFunction list = Registry.all context
                 let source = File.ReadAllText(path)
                 let program = Parser.parseProgram source
                 let typed = TypeInfer.inferProgramWithExterns externs program
