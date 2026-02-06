@@ -1,0 +1,420 @@
+namespace FScript.Core
+
+module Parser =
+    type private TokenStream(tokens: Token list) =
+        let mutable index = 0
+        member _.Peek() = tokens.[index]
+        member _.PeekAt(offset: int) = tokens.[index + offset]
+        member _.Mark() = index
+        member _.Restore(mark: int) = index <- mark
+        member _.Next() =
+            let t = tokens.[index]
+            index <- index + 1
+            t
+        member _.Match(kind) =
+            if tokens.[index].Kind = kind then
+                index <- index + 1
+                true
+            else
+                false
+        member _.Expect(kind, message) =
+            let t = tokens.[index]
+            if t.Kind = kind then
+                index <- index + 1
+                t
+            else
+                raise (ParseException { Message = message; Span = t.Span })
+        member _.ExpectIdent(message) =
+            let t = tokens.[index]
+            match t.Kind with
+            | Ident _ ->
+                index <- index + 1
+                t
+            | _ -> raise (ParseException { Message = message; Span = t.Span })
+        member _.AtEnd = tokens.[index].Kind = EOF
+        member _.SkipNewlines() =
+            while tokens.[index].Kind = Newline do index <- index + 1
+
+    let private mkSpanFrom a b = Span.merge a b
+
+    let private isStartAtom (k: TokenKind) =
+        match k with
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match -> true
+        | _ -> false
+
+    let private parseLiteral (t: Token) =
+        match t.Kind with
+        | IntLit v -> LInt v
+        | FloatLit v -> LFloat v
+        | StringLit v -> LString v
+        | BoolLit v -> LBool v
+        | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
+
+    let parseProgram (src: string) : Program =
+        let tokens = Lexer.tokenize src
+        let stream = TokenStream(tokens)
+
+        let rec parsePattern () : Pattern =
+            stream.SkipNewlines()
+            let t = stream.Peek()
+            match t.Kind with
+            | Ident name when name = "_" ->
+                let t = stream.Next()
+                PWildcard t.Span
+            | Ident name ->
+                let t = stream.Next()
+                match name with
+                | "None" -> PNone t.Span
+                | "Some" ->
+                    let p = parsePattern()
+                    PSome(p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                | _ -> PVar(name, t.Span)
+            | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ ->
+                let t = stream.Next()
+                PLiteral(parseLiteral t, t.Span)
+            | LBracket ->
+                let lb = stream.Next()
+                if stream.Match(RBracket) then
+                    PNil (mkSpanFrom lb.Span lb.Span)
+                else
+                    raise (ParseException { Message = "Only empty list pattern [] supported"; Span = lb.Span })
+            | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
+
+        and parsePatternCons () : Pattern =
+            let left = parsePattern()
+            if stream.Match(Cons) then
+                let right = parsePatternCons()
+                PCons(left, right, mkSpanFrom (Ast.spanOfPattern left) (Ast.spanOfPattern right))
+            else
+                left
+
+        and parsePrimary () : Expr =
+            stream.SkipNewlines()
+            let t = stream.Peek()
+            match t.Kind with
+            | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ ->
+                let t = stream.Next()
+                ELiteral(parseLiteral t, t.Span)
+            | Ident name ->
+                let t = stream.Next()
+                match name with
+                | "None" -> ENone t.Span
+                | "Some" ->
+                    let arg = parsePrimary()
+                    ESome(arg, mkSpanFrom t.Span (Ast.spanOfExpr arg))
+                | _ -> EVar(name, t.Span)
+            | LParen ->
+                let lp = stream.Next()
+                let first = parseExpr()
+                if stream.Match(Comma) then
+                    let elements = ResizeArray<Expr>()
+                    elements.Add(first)
+                    elements.Add(parseExpr())
+                    while stream.Match(Comma) do
+                        elements.Add(parseExpr())
+                    let rp = stream.Expect(RParen, "Expected ')' after tuple expression")
+                    ETuple(elements |> Seq.toList, mkSpanFrom lp.Span rp.Span)
+                else
+                    stream.Expect(RParen, "Expected ')' after expression") |> ignore
+                    first
+            | LBracket ->
+                let lb = stream.Next()
+                if stream.Match(RBracket) then
+                    EList([], mkSpanFrom lb.Span lb.Span)
+                else
+                    let first = parseExpr()
+                    if stream.Match(RangeDots) then
+                        let second = parseExpr()
+                        if stream.Match(Semicolon) || stream.Match(RangeDots) then
+                            raise (ParseException { Message = "Invalid range syntax"; Span = stream.Peek().Span })
+                        let rb = stream.Expect(RBracket, "Expected ']' in range expression")
+                        ERange(first, second, mkSpanFrom lb.Span rb.Span)
+                    else
+                        let elements = ResizeArray<Expr>()
+                        elements.Add(first)
+                        while stream.Match(Semicolon) do
+                            elements.Add(parseExpr())
+                        let rb = stream.Expect(RBracket, "Expected ']' in list literal")
+                        EList(elements |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+            | LBrace ->
+                let lb = stream.Next()
+                if stream.Match(RBrace) then
+                    ERecord([], mkSpanFrom lb.Span lb.Span)
+                else
+                    let mark = stream.Mark()
+                    let tryRecordUpdate () =
+                        let baseExpr = parseExpr()
+                        stream.SkipNewlines()
+                        if not (stream.Match(With)) then
+                            stream.Restore(mark)
+                            None
+                        else
+                            let updates = ResizeArray<string * Expr>()
+                            let parseUpdateField () =
+                                let nameTok = stream.ExpectIdent("Expected field name in record update")
+                                let name =
+                                    match nameTok.Kind with
+                                    | Ident n -> n
+                                    | _ -> ""
+                                stream.SkipNewlines()
+                                stream.Expect(Equals, "Expected '=' in record update field") |> ignore
+                                let value = parseExpr()
+                                updates.Add(name, value)
+                            parseUpdateField()
+                            while stream.Match(Semicolon) do
+                                parseUpdateField()
+                            let rb = stream.Expect(RBrace, "Expected '}' in record update")
+                            Some (ERecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
+                    match tryRecordUpdate() with
+                    | Some updateExpr -> updateExpr
+                    | None ->
+                        let fields = ResizeArray<string * Expr>()
+                        let parseField () =
+                            let nameTok = stream.ExpectIdent("Expected field name in record literal")
+                            let name =
+                                match nameTok.Kind with
+                                | Ident n -> n
+                                | _ -> ""
+                            stream.SkipNewlines()
+                            stream.Expect(Equals, "Expected '=' in record field") |> ignore
+                            let value = parseExpr()
+                            fields.Add(name, value)
+                        parseField()
+                        while stream.Match(Semicolon) do
+                            parseField()
+                        let rb = stream.Expect(RBrace, "Expected '}' in record literal")
+                        ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+            | Let ->
+                parseLetExpr()
+            | Fun ->
+                parseLambda()
+            | If ->
+                parseIf()
+            | Match ->
+                parseMatch()
+            | _ -> raise (ParseException { Message = "Unexpected token in expression"; Span = t.Span })
+
+        and parsePostfix () : Expr =
+            let mutable expr = parsePrimary()
+            let mutable keepGoing = true
+            while keepGoing do
+                if stream.Match(Dot) then
+                    let fieldTok = stream.ExpectIdent("Expected field name after '.'")
+                    let fieldName =
+                        match fieldTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    expr <- EFieldGet(expr, fieldName, mkSpanFrom (Ast.spanOfExpr expr) fieldTok.Span)
+                else
+                    keepGoing <- false
+            expr
+
+        and parseApplication () : Expr =
+            let mutable expr = parsePostfix()
+            let mutable keepGoing = true
+            while keepGoing do
+                let next = stream.Peek()
+                if isStartAtom next.Kind then
+                    let arg = parsePostfix()
+                    expr <- EApply(expr, arg, mkSpanFrom (Ast.spanOfExpr expr) (Ast.spanOfExpr arg))
+                else
+                    keepGoing <- false
+            expr
+
+        and parseBinary (minPrec: int) : Expr =
+            let mutable left = parseApplication()
+            let precedence op =
+                match op with
+                | Star | Slash | Percent -> 7
+                | Plus | Minus -> 6
+                | Append -> 5
+                | Cons -> 4
+                | Equals | Less | Greater | LessEqual | GreaterEqual -> 3
+                | AndAnd -> 2
+                | OrOr -> 1
+                | PipeForward -> 0
+                | _ -> -1
+            let opToString op =
+                match op with
+                | Plus -> "+"
+                | Minus -> "-"
+                | Star -> "*"
+                | Slash -> "/"
+                | Percent -> "%"
+                | Equals -> "="
+                | Less -> "<"
+                | Greater -> ">"
+                | LessEqual -> "<="
+                | GreaterEqual -> ">="
+                | AndAnd -> "&&"
+                | OrOr -> "||"
+                | PipeForward -> "|>"
+                | Cons -> "::"
+                | Append -> "@"
+                | _ -> "?"
+
+            let mutable looping = true
+            while looping do
+                stream.SkipNewlines()
+                let next = stream.Peek()
+                let prec = precedence next.Kind
+                if prec >= minPrec then
+                    let opTok = stream.Next()
+                    let right = parseBinary (prec + 1)
+                    left <- EBinOp(opToString opTok.Kind, left, right, mkSpanFrom (Ast.spanOfExpr left) (Ast.spanOfExpr right))
+                else
+                    looping <- false
+            left
+
+        and parseIf () : Expr =
+            let ifTok = stream.Expect(If, "Expected 'if'")
+            let cond = parseExpr()
+            stream.SkipNewlines()
+            stream.Expect(Then, "Expected 'then'") |> ignore
+            let thenExpr = parseExprOrBlock()
+            stream.SkipNewlines()
+            stream.Expect(Else, "Expected 'else'") |> ignore
+            let elseExpr = parseExprOrBlock()
+            EIf(cond, thenExpr, elseExpr, mkSpanFrom ifTok.Span (Ast.spanOfExpr elseExpr))
+
+        and parseLambda () : Expr =
+            let funTok = stream.Expect(Fun, "Expected 'fun'")
+            let nameTok = stream.ExpectIdent("Expected identifier after 'fun'")
+            let argName = match nameTok.Kind with Ident n -> n | _ -> ""
+            stream.SkipNewlines()
+            stream.Expect(Arrow, "Expected '->' in lambda") |> ignore
+            let body = parseExprOrBlock()
+            ELambda(argName, body, mkSpanFrom funTok.Span (Ast.spanOfExpr body))
+
+        and parseMatch () : Expr =
+            let matchTok = stream.Expect(Match, "Expected 'match'")
+            let expr = parseExpr()
+            stream.SkipNewlines()
+            stream.Expect(With, "Expected 'with' in match") |> ignore
+            let cases = ResizeArray<Pattern * Expr * Span>()
+            let rec parseCase () =
+                stream.SkipNewlines()
+                if stream.Match(Bar) then ()
+                let pat = parsePatternCons()
+                stream.SkipNewlines()
+                stream.Expect(Arrow, "Expected '->' in match case") |> ignore
+                let body = parseExprOrBlock()
+                let span = mkSpanFrom (Ast.spanOfPattern pat) (Ast.spanOfExpr body)
+                cases.Add(pat, body, span)
+            parseCase()
+            let mutable doneCases = false
+            while not doneCases do
+                stream.SkipNewlines()
+                match stream.Peek().Kind with
+                | Bar -> parseCase()
+                | Dedent | EOF -> doneCases <- true
+                | _ -> doneCases <- true
+            EMatch(expr, cases |> Seq.toList, mkSpanFrom matchTok.Span (Ast.spanOfExpr expr))
+
+        and parseLetExpr () : Expr =
+            let letTok = stream.Expect(Let, "Expected 'let'")
+            let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+            let name = match nameTok.Kind with Ident n -> n | _ -> ""
+            let args = ResizeArray<string>()
+            let mutable argsDone = false
+            while not argsDone do
+                stream.SkipNewlines()
+                match stream.Peek().Kind with
+                | Ident n ->
+                    args.Add(n)
+                    stream.Next() |> ignore
+                | _ -> argsDone <- true
+            stream.SkipNewlines()
+            stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+            let value = parseExprOrBlock()
+            match stream.Peek().Kind with
+            | Ident "in" ->
+                raise (ParseException { Message = "'in' keyword is not supported"; Span = stream.Peek().Span })
+            | _ ->
+                // parseExpr may already have consumed trailing newline before a block body.
+                let body =
+                    match stream.Peek().Kind with
+                    | Indent ->
+                        stream.Next() |> ignore
+                        parseBlock()
+                    | _ -> parseExprOrBlock()
+                let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
+                ELet(name, funValue, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+
+        and parseExprOrBlock () : Expr =
+            let mutable sawNewline = false
+            while stream.Match(Newline) do
+                sawNewline <- true
+            if sawNewline && stream.Match(Indent) then
+                parseBlock()
+            else
+                parseExpr()
+
+        and parseExpr () : Expr =
+            parseBinary 0
+
+        and parseBlock () : Expr =
+            let statements = ResizeArray<Stmt>()
+            let mutable doneBlock = false
+            while not doneBlock do
+                stream.SkipNewlines()
+                match stream.Peek().Kind with
+                | Dedent ->
+                    stream.Next() |> ignore
+                    doneBlock <- true
+                | EOF -> doneBlock <- true
+                | Let ->
+                    statements.Add(parseStmt())
+                | _ ->
+                    let expr = parseExpr()
+                    statements.Add(SExpr expr)
+            if statements.Count = 0 then
+                raise (ParseException { Message = "Empty block"; Span = stream.Peek().Span })
+            let rec desugar (stmts: Stmt list) =
+                match stmts with
+                | [] -> ELiteral(LBool true, stream.Peek().Span)
+                | [SExpr e] -> e
+                | SLet(name, args, value, span) :: rest ->
+                    let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
+                    let body = desugar rest
+                    ELet(name, valExpr, body, mkSpanFrom span (Ast.spanOfExpr body))
+                | SExpr e :: rest ->
+                    let body = desugar rest
+                    ELet("_", e, body, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
+            desugar (statements |> Seq.toList)
+
+        and parseStmt () : Stmt =
+            stream.SkipNewlines()
+            match stream.Peek().Kind with
+            | Let ->
+                let letTok = stream.Next()
+                let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+                let name = match nameTok.Kind with Ident n -> n | _ -> ""
+                let args = ResizeArray<string>()
+                let mutable argsDone = false
+                while not argsDone do
+                    stream.SkipNewlines()
+                    match stream.Peek().Kind with
+                    | Ident n ->
+                        args.Add(n)
+                        stream.Next() |> ignore
+                    | _ -> argsDone <- true
+                stream.SkipNewlines()
+                stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+                let value = parseExprOrBlock()
+                SLet(name, args |> Seq.toList, value, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+            | _ ->
+                let expr = parseExpr()
+                SExpr expr
+
+        let program = ResizeArray<Stmt>()
+        stream.SkipNewlines()
+        while not stream.AtEnd do
+            match stream.Peek().Kind with
+            | EOF -> stream.Next() |> ignore
+            | Dedent -> raise (ParseException { Message = "Unexpected dedent at top level"; Span = stream.Peek().Span })
+            | _ ->
+                let stmt = parseStmt()
+                program.Add(stmt)
+                stream.SkipNewlines()
+        program |> Seq.toList
