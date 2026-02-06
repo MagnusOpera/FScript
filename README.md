@@ -2,7 +2,7 @@
 
 FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses a single file, performs Hindley–Milner type inference, annotates the AST with types, and then evaluates the program.
 
-## Supported Syntax and Features (v1)
+## Supported Syntax and Features
 
 ### Bindings and Functions
 - `let` bindings (top-level and nested)
@@ -14,12 +14,16 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 ### Expressions
 - Literals: `int`, `float`, `bool`, `string`
 - `if ... then ... else ...`
+- `for x in <list> do <expr-or-block>`
 - `match ... with` using list/option patterns
 - Lists: `[a; b; c]`, `::` (cons), `@` (append)
 - Integer ranges: `[a..b]` (inclusive, auto-descending when `a > b`)
 - Tuples: `(a, b, c)`
 - Records: literals `{ First = "a"; Last = "b" }`, field access `p.First`, copy-update `{ p with Age = 2 }`
 - Option values and matching: `Some x`, `None`, and pattern matching with `Some p` / `None`
+- String interpolation: `$"hello {name}"`
+- `raise <stringExpr>` to abort execution with an eval error
+- `typeof <TypeName>` to produce a type token value
 - Pipeline operator: `x |> f` (equivalent to `f x`)
 - Built-in discard function: `ignore` (`'a -> unit`)
 - Operators with precedence:
@@ -44,8 +48,19 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `'a list`
 - tuples `(t1 * t2 * ...)`
 - `'a option`
+- `'a map` (string-keyed map)
 - structural record types inferred from record literals
+- top-level record type declarations: `type Name = { ... }`
 - `unit` (for empty blocks or programs with only `let` bindings)
+
+### Type Reflection and Decoding
+- `typeof Name` produces a type token.
+- `json_deserialize (typeof Name) jsonText` can decode JSON into an `option` record value.
+
+### Host Externals
+- `print : string -> unit`
+- `map_empty`, `map_add`, `map_tryFind`, `map_containsKey`, `map_remove`
+- `hash_md5`, `guid_new`, `regex_match_groups`, `xml_values`, `fs_glob`, `fs_read_text`, `json_deserialize`
 
 ### Immutability
 - Lists, tuples, and records are immutable values in FScript.
@@ -53,7 +68,8 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 ### Notes and Limitations
 - `let rec` is only supported for function bindings
 - No mutually recursive `and` bindings for `let rec`
-- No user-defined type declarations (`type ...`), including record/DU type definitions
+- User-defined types are currently limited to top-level record declarations
+- `typeof` only accepts declared record type names
 - Discarding a non-`unit` expression is a type error unless explicitly piped to `ignore`
 - No `List.*` or `printfn`
 - Range endpoints must be `int` in v1
