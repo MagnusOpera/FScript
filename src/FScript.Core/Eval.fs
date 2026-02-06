@@ -84,6 +84,14 @@ module Eval =
             | VBool true -> evalExpr typeDefs env tExpr
             | VBool false -> evalExpr typeDefs env fExpr
             | _ -> raise (EvalException { Message = "Condition must be bool"; Span = span })
+        | EFor (name, source, body, span) ->
+            match evalExpr typeDefs env source with
+            | VList items ->
+                for item in items do
+                    let env' = env |> Map.add name item
+                    evalExpr typeDefs env' body |> ignore
+                VUnit
+            | _ -> raise (EvalException { Message = "For loop source must be list"; Span = span })
         | ELet (name, value, body, _) ->
             let v = evalExpr typeDefs env value
             let env' = env |> Map.add name v

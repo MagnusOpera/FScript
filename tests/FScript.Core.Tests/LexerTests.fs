@@ -16,6 +16,11 @@ type LexerTests () =
         tokens |> List.exists (fun t -> t.Kind = Star) |> should equal true
 
     [<Test>]
+    member _.``Tokenizes for keyword`` () =
+        let tokens = Lexer.tokenize "for x in [1] do x"
+        tokens |> List.exists (fun t -> t.Kind = For) |> should equal true
+
+    [<Test>]
     member _.``Skips line comments`` () =
         let tokens = Lexer.tokenize "// comment\nlet x = 1\n"
         tokens |> List.exists (fun t -> t.Kind = Let) |> should equal true

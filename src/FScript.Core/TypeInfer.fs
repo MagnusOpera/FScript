@@ -224,6 +224,19 @@ module TypeInfer =
             let s = compose s4 (compose s3 (compose s2 (compose sBool s1)))
             let tRes = applyType s tElse
             s, tRes, asTyped expr tRes
+        | EFor (name, source, body, span) ->
+            let s1, tSource, _ = inferExpr typeDefs env source
+            let tv = Types.freshVar()
+            let sList = unify (applyType s1 tSource) (TList tv) span
+            let sSource = compose sList s1
+            let itemType = applyType sSource tv
+            let envBody =
+                applyEnv sSource env
+                |> Map.add name (Forall([], itemType))
+            let s2, tBody, _ = inferExpr typeDefs envBody body
+            let sBodyUnit = unify (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
+            let s = compose sBodyUnit (compose s2 sSource)
+            s, TUnit, asTyped expr TUnit
         | ELet (name, value, body, span) ->
             let s1, t1, _ = inferExpr typeDefs env value
             let sDiscard =

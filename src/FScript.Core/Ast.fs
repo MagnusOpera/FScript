@@ -31,6 +31,7 @@ and Expr =
     | ELambda of string * Expr * Span
     | EApply of Expr * Expr * Span
     | EIf of Expr * Expr * Expr * Span
+    | EFor of string * Expr * Expr * Span
     | EMatch of Expr * (Pattern * Expr * Span) list * Span
     | ELet of string * Expr * Expr * Span
     | EList of Expr list * Span
@@ -76,6 +77,7 @@ module Ast =
         | ELambda (_, _, s) -> s
         | EApply (_, _, s) -> s
         | EIf (_, _, _, s) -> s
+        | EFor (_, _, _, s) -> s
         | EMatch (_, _, s) -> s
         | ELet (_, _, _, s) -> s
         | EList (_, s) -> s

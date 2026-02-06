@@ -116,6 +116,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers for loop as unit`` () =
+        let typed = Helpers.infer "for x in [1;2] do x |> ignore"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TUnit
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers match on option`` () =
         let typed = Helpers.infer "match Some 1 with | Some x -> x | None -> 0"
         match typed |> List.last with
@@ -143,6 +150,16 @@ type TypeInferenceTests () =
     [<Test>]
     member _.``Reports type error for non-bool if condition`` () =
         let act () = Helpers.infer "if 1 then 2 else 3" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for for loop over non-list`` () =
+        let act () = Helpers.infer "for x in 1 do x |> ignore" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for for loop non-unit body`` () =
+        let act () = Helpers.infer "for x in [1] do x" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

@@ -87,6 +87,22 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected if expression")
 
     [<Test>]
+    member _.``Parses for loop with inline body`` () =
+        let p = Helpers.parse "for x in [1;2] do x |> ignore"
+        match p.[0] with
+        | SExpr (EFor ("x", EList (items, _), _, _)) ->
+            items.Length |> should equal 2
+        | _ -> Assert.Fail("Expected for loop expression")
+
+    [<Test>]
+    member _.``Parses for loop with block body`` () =
+        let p = Helpers.parse "for x in [1;2] do\n    x |> ignore"
+        match p.[0] with
+        | SExpr (EFor ("x", EList (items, _), EBinOp ("|>", EVar ("x", _), EVar ("ignore", _), _), _)) ->
+            items.Length |> should equal 2
+        | _ -> Assert.Fail("Expected for loop expression with block body")
+
+    [<Test>]
     member _.``Parses match with list patterns`` () =
         let src = "match [1;2] with\n| x::xs -> x\n| [] -> 0"
         let program = Helpers.parse src
@@ -160,4 +176,9 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects empty interpolation placeholder`` () =
         let act () = Helpers.parse "$\"a {} b\"" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects malformed for loop missing in`` () =
+        let act () = Helpers.parse "for x [1] do x |> ignore" |> ignore
         act |> should throw typeof<ParseException>

@@ -93,6 +93,13 @@ type EvalTests () =
         Helpers.eval "if false then 1 else 2" |> assertInt 2L
 
     [<Test>]
+    member _.``Evaluates for loop as unit`` () =
+        let result = Helpers.eval "for x in [1;2;3] do x |> ignore"
+        match result with
+        | VUnit -> ()
+        | _ -> Assert.Fail("Expected unit value")
+
+    [<Test>]
     member _.``Evaluates comparison and logical operators`` () =
         Helpers.eval "1 < 2" |> assertBool true
         Helpers.eval "true && false" |> assertBool false
@@ -120,6 +127,11 @@ type EvalTests () =
     [<Test>]
     member _.``Reports type error for applying non-function`` () =
         let act () = Helpers.eval "1 2" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for for loop with non-unit body`` () =
+        let act () = Helpers.eval "for x in [1;2] do x" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

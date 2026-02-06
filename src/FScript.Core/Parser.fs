@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Match | Typeof -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | For | Match | Typeof -> true
         | _ -> false
 
     let private parseLiteral (t: Token) =
@@ -343,6 +343,8 @@ module Parser =
                 parseLambda()
             | If ->
                 parseIf()
+            | For ->
+                parseFor()
             | Match ->
                 parseMatch()
             | Typeof ->
@@ -437,6 +439,29 @@ module Parser =
             stream.Expect(Else, "Expected 'else'") |> ignore
             let elseExpr = parseExprOrBlock()
             EIf(cond, thenExpr, elseExpr, mkSpanFrom ifTok.Span (Ast.spanOfExpr elseExpr))
+
+        and parseFor () : Expr =
+            let forTok = stream.Expect(For, "Expected 'for'")
+            let nameTok = stream.ExpectIdent("Expected identifier after 'for'")
+            let name =
+                match nameTok.Kind with
+                | Ident n -> n
+                | _ -> ""
+            stream.SkipNewlines()
+            match stream.Peek().Kind with
+            | Ident "in" ->
+                stream.Next() |> ignore
+            | _ ->
+                raise (ParseException { Message = "Expected 'in' after for loop variable"; Span = stream.Peek().Span })
+            let source = parsePostfix()
+            stream.SkipNewlines()
+            match stream.Peek().Kind with
+            | Ident "do" ->
+                stream.Next() |> ignore
+            | _ ->
+                raise (ParseException { Message = "Expected 'do' in for loop"; Span = stream.Peek().Span })
+            let body = parseExprOrBlock()
+            EFor(name, source, body, mkSpanFrom forTok.Span (Ast.spanOfExpr body))
 
         and parseLambda () : Expr =
             let funTok = stream.Expect(Fun, "Expected 'fun'")

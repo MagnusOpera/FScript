@@ -51,3 +51,17 @@ type HostExternTests () =
             writer.ToString().TrimEnd() |> should equal "hello-core-test"
         finally
             Console.SetOut(original)
+
+    [<Test>]
+    member _.``for loop can call print external`` () =
+        let original = Console.Out
+        use writer = new StringWriter()
+        Console.SetOut(writer)
+        try
+            let result = Helpers.evalWithExterns externs "for msg in [\"a\";\"b\"] do print msg"
+            match result with
+            | VUnit -> ()
+            | _ -> Assert.Fail("Expected unit")
+            writer.ToString().Replace("\r\n", "\n").TrimEnd() |> should equal "a\nb"
+        finally
+            Console.SetOut(original)
