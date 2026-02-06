@@ -14,6 +14,35 @@ module Eval =
         | LBool v -> VBool v
         | LString v -> VString v
 
+    let rec private valueToInterpolationString v =
+        match v with
+        | VUnit -> "()"
+        | VInt i -> string i
+        | VFloat f -> string f
+        | VBool b -> if b then "true" else "false"
+        | VString s -> s
+        | VList xs ->
+            xs |> List.map valueToInterpolationString |> String.concat ";" |> sprintf "[%s]"
+        | VTuple xs ->
+            xs |> List.map valueToInterpolationString |> String.concat ", " |> sprintf "(%s)"
+        | VRecord fields ->
+            fields
+            |> Map.toList
+            |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToInterpolationString value))
+            |> String.concat "; "
+            |> sprintf "{ %s }"
+        | VStringMap fields ->
+            fields
+            |> Map.toList
+            |> List.map (fun (name, value) -> sprintf "\"%s\" => %s" name (valueToInterpolationString value))
+            |> String.concat "; "
+            |> sprintf "map { %s }"
+        | VOption None -> "None"
+        | VOption (Some value) -> sprintf "Some %s" (valueToInterpolationString value)
+        | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
+        | VClosure _ -> "<fun>"
+        | VExternal _ -> "<extern>"
+
     let rec private valueEquals a b =
         match a, b with
         | VUnit, VUnit -> true
@@ -96,10 +125,19 @@ module Eval =
                     evalExpr typeDefs env' body |> ignore
                 VUnit
             | _ -> raise (EvalException { Message = "For loop source must be list"; Span = span })
-        | ELet (name, value, body, _) ->
-            let v = evalExpr typeDefs env value
-            let env' = env |> Map.add name v
-            evalExpr typeDefs env' body
+        | ELet (name, value, body, isRec, span) ->
+            if isRec then
+                match value with
+                | ELambda (argName, lambdaBody, _) ->
+                    let rec selfValue : Value = VClosure (argName, lambdaBody, recEnv)
+                    and recEnv : Env = env |> Map.add name selfValue
+                    evalExpr typeDefs recEnv body
+                | _ ->
+                    raise (EvalException { Message = "let rec requires a function binding"; Span = span })
+            else
+                let v = evalExpr typeDefs env value
+                let env' = env |> Map.add name v
+                evalExpr typeDefs env' body
         | EMatch (scrutinee, cases, span) ->
             let v = evalExpr typeDefs env scrutinee
             let rec tryCases cs =
@@ -262,9 +300,8 @@ module Eval =
                 match part with
                 | IPText text -> sb.Append(text) |> ignore
                 | IPExpr pexpr ->
-                    match evalExpr typeDefs env pexpr with
-                    | VString s -> sb.Append(s) |> ignore
-                    | _ -> raise (EvalException { Message = "Interpolation placeholder must evaluate to string"; Span = Ast.spanOfExpr pexpr })
+                    let rendered = evalExpr typeDefs env pexpr |> valueToInterpolationString
+                    sb.Append(rendered) |> ignore
             VString (sb.ToString())
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
@@ -312,9 +349,18 @@ module Eval =
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
-            | TypeInfer.TSLet(name, expr, _, _) ->
-                let v = evalExpr typeDefs env expr
-                env <- env |> Map.add name v
+            | TypeInfer.TSLet(name, expr, _, isRec, span) ->
+                if isRec then
+                    match expr with
+                    | ELambda (argName, lambdaBody, _) ->
+                        let rec selfValue : Value = VClosure (argName, lambdaBody, recEnv)
+                        and recEnv : Env = env |> Map.add name selfValue
+                        env <- recEnv
+                    | _ ->
+                        raise (EvalException { Message = "let rec requires a function binding"; Span = span })
+                else
+                    let v = evalExpr typeDefs env expr
+                    env <- env |> Map.add name v
             | TypeInfer.TSExpr texpr ->
                 lastValue <- evalExpr typeDefs env texpr.Expr
         lastValue

@@ -21,11 +21,18 @@ type TypeInferenceTests () =
     member _.``Infers polymorphic identity function`` () =
         let typed = Helpers.infer "let id x = x"
         match typed.[0] with
-        | TypeInfer.TSLet (_, _, t, _) ->
+        | TypeInfer.TSLet (_, _, t, _, _) ->
             match t with
             | TFun (TVar a, TVar b) when a = b -> ()
             | _ -> Assert.Fail("Expected a -> a")
         | _ -> Assert.Fail("Expected let")
+
+    [<Test>]
+    member _.``Infers recursive function binding`` () =
+        let typed = Helpers.infer "let rec sum n =\n    if n = 0 then 0 else n + sum (n - 1)\nsum 5"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers let-polymorphism in nested let expressions`` () =
@@ -233,6 +240,8 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Reports type error for non-string interpolation placeholder`` () =
-        let act () = Helpers.infer "$\"value={1}\"" |> ignore
-        act |> should throw typeof<TypeException>
+    member _.``Allows non-string interpolation placeholder`` () =
+        let typed = Helpers.infer "$\"value={1}\""
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")

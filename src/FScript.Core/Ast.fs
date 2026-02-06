@@ -34,7 +34,7 @@ and Expr =
     | ERaise of Expr * Span
     | EFor of string * Expr * Expr * Span
     | EMatch of Expr * (Pattern * Expr * Span) list * Span
-    | ELet of string * Expr * Expr * Span
+    | ELet of string * Expr * Expr * bool * Span
     | EList of Expr list * Span
     | ERange of Expr * Expr * Span
     | ETuple of Expr list * Span
@@ -55,7 +55,7 @@ and InterpolatedPart =
 
 and Stmt =
     | SType of TypeDef
-    | SLet of string * string list * Expr * Span
+    | SLet of string * string list * Expr * bool * Span
     | SExpr of Expr
 
 type Program = Stmt list
@@ -81,7 +81,7 @@ module Ast =
         | ERaise (_, s) -> s
         | EFor (_, _, _, s) -> s
         | EMatch (_, _, s) -> s
-        | ELet (_, _, _, s) -> s
+        | ELet (_, _, _, _, s) -> s
         | EList (_, s) -> s
         | ERange (_, _, s) -> s
         | ETuple (_, s) -> s

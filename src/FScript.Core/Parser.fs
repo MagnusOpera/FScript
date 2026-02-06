@@ -503,6 +503,7 @@ module Parser =
 
         and parseLetExpr () : Expr =
             let letTok = stream.Expect(Let, "Expected 'let'")
+            let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
             let name = match nameTok.Kind with Ident n -> n | _ -> ""
             let args = ResizeArray<string>()
@@ -514,6 +515,8 @@ module Parser =
                     args.Add(n)
                     stream.Next() |> ignore
                 | _ -> argsDone <- true
+            if isRec && args.Count = 0 then
+                raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
             stream.SkipNewlines()
             stream.Expect(Equals, "Expected '=' in let binding") |> ignore
             let value = parseExprOrBlock()
@@ -529,7 +532,7 @@ module Parser =
                         parseBlock()
                     | _ -> parseExprOrBlock()
                 let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                ELet(name, funValue, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                ELet(name, funValue, body, isRec, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
 
         and parseExprOrBlock () : Expr =
             let mutable sawNewline = false
@@ -564,13 +567,13 @@ module Parser =
                 match stmts with
                 | [] -> ELiteral(LBool true, stream.Peek().Span)
                 | [SExpr e] -> e
-                | SLet(name, args, value, span) :: rest ->
+                | SLet(name, args, value, isRec, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
-                    ELet(name, valExpr, body, mkSpanFrom span (Ast.spanOfExpr body))
+                    ELet(name, valExpr, body, isRec, mkSpanFrom span (Ast.spanOfExpr body))
                 | SExpr e :: rest ->
                     let body = desugar rest
-                    ELet("_", e, body, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
+                    ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
                 | SType def :: _ ->
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
             desugar (statements |> Seq.toList)
@@ -582,6 +585,7 @@ module Parser =
                 parseTypeDecl()
             | Let ->
                 let letTok = stream.Next()
+                let isRec = stream.Match(Rec)
                 let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
                 let name = match nameTok.Kind with Ident n -> n | _ -> ""
                 let args = ResizeArray<string>()
@@ -593,10 +597,12 @@ module Parser =
                         args.Add(n)
                         stream.Next() |> ignore
                     | _ -> argsDone <- true
+                if isRec && args.Count = 0 then
+                    raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
                 stream.SkipNewlines()
                 stream.Expect(Equals, "Expected '=' in let binding") |> ignore
                 let value = parseExprOrBlock()
-                SLet(name, args |> Seq.toList, value, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                SLet(name, args |> Seq.toList, value, isRec, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
             | _ ->
                 let expr = parseExpr()
                 SExpr expr

@@ -11,7 +11,7 @@ type ParserTests () =
         let program = Helpers.parse "let x = 1"
         program.Length |> should equal 1
         match program.Head with
-        | SLet (name, args, _, _) ->
+        | SLet (name, args, _, _, _) ->
             name |> should equal "x"
             args.Length |> should equal 0
         | _ -> Assert.Fail("Expected top-level let")
@@ -20,7 +20,7 @@ type ParserTests () =
     member _.``Parses top-level function binding with arguments`` () =
         let program = Helpers.parse "let id x = x"
         match program.Head with
-        | SLet ("id", args, _, _) -> args.Length |> should equal 1
+        | SLet ("id", args, _, _, _) -> args.Length |> should equal 1
         | _ -> Assert.Fail("Expected function let")
 
     [<Test>]
@@ -69,8 +69,16 @@ type ParserTests () =
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
-        | SLet (_, _, ELet ("y", _, _, _), _) -> ()
+        | SLet (_, _, ELet ("y", _, _, _, _), _, _) -> ()
         | _ -> Assert.Fail("Expected nested let expression")
+
+    [<Test>]
+    member _.``Parses top-level recursive function binding`` () =
+        let program = Helpers.parse "let rec fib n = if n < 2 then n else fib (n - 1)"
+        match program.Head with
+        | SLet ("fib", args, _, true, _) ->
+            args.Length |> should equal 1
+        | _ -> Assert.Fail("Expected recursive function let")
 
     [<Test>]
     member _.``Parses lambda expression`` () =
@@ -144,7 +152,7 @@ type ParserTests () =
         let src = "let f x =\n    let y = x + 1\n    y"
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("f", [_], ELet _, _) -> ()
+        | SLet ("f", [_], ELet _, false, _) -> ()
         | _ -> Assert.Fail("Expected block-desugared let")
 
     [<Test>]
@@ -193,4 +201,9 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects raise without argument`` () =
         let act () = Helpers.parse "raise" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects let rec without function argument`` () =
+        let act () = Helpers.parse "let rec x = 1" |> ignore
         act |> should throw typeof<ParseException>

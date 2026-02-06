@@ -90,7 +90,7 @@ module TypeInfer =
     type TypedExpr = { Expr: Expr; Type: Type; Span: Span }
     type TypedStmt =
         | TSType of TypeDef
-        | TSLet of string * Expr * Type * Span
+        | TSLet of string * Expr * Type * bool * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
@@ -193,9 +193,8 @@ module TypeInfer =
                 match part with
                 | IPText _ -> ()
                 | IPExpr pexpr ->
-                    let s1, t1, _ = inferExpr typeDefs (applyEnv sAcc env) pexpr
-                    let s2 = unify (applyType s1 t1) TString (Ast.spanOfExpr pexpr)
-                    sAcc <- compose s2 (compose s1 sAcc)
+                    let s1, _, _ = inferExpr typeDefs (applyEnv sAcc env) pexpr
+                    sAcc <- compose s1 sAcc
             sAcc, TString, asTyped expr TString
         | ELambda (arg, body, _) ->
             let tv = Types.freshVar()
@@ -243,20 +242,33 @@ module TypeInfer =
             let sBodyUnit = unify (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
             let s = compose sBodyUnit (compose s2 sSource)
             s, TUnit, asTyped expr TUnit
-        | ELet (name, value, body, span) ->
-            let s1, t1, _ = inferExpr typeDefs env value
-            let sDiscard =
-                if name = "_" then
-                    unify (applyType s1 t1) TUnit (Ast.spanOfExpr value)
-                else
-                    emptySubst
-            let sValue = compose sDiscard s1
-            let env1 = applyEnv sValue env
-            let scheme = Types.generalize env1 (applyType sValue t1)
-            let env2 = env1 |> Map.add name scheme
-            let s2, t2, _ = inferExpr typeDefs env2 body
-            let s = compose s2 sValue
-            s, t2, asTyped expr t2
+        | ELet (name, value, body, isRec, span) ->
+            if isRec then
+                let tv = Types.freshVar()
+                let envRec = env |> Map.add name (Forall([], tv))
+                let s1, t1, _ = inferExpr typeDefs envRec value
+                let s2 = unify (applyType s1 tv) t1 span
+                let sValue = compose s2 s1
+                let env1 = applyEnv sValue env
+                let scheme = Types.generalize env1 (applyType sValue t1)
+                let env2 = env1 |> Map.add name scheme
+                let s3, tBody, _ = inferExpr typeDefs env2 body
+                let s = compose s3 sValue
+                s, tBody, asTyped expr tBody
+            else
+                let s1, t1, _ = inferExpr typeDefs env value
+                let sDiscard =
+                    if name = "_" then
+                        unify (applyType s1 t1) TUnit (Ast.spanOfExpr value)
+                    else
+                        emptySubst
+                let sValue = compose sDiscard s1
+                let env1 = applyEnv sValue env
+                let scheme = Types.generalize env1 (applyType sValue t1)
+                let env2 = env1 |> Map.add name scheme
+                let s2, t2, _ = inferExpr typeDefs env2 body
+                let s = compose s2 sValue
+                s, t2, asTyped expr t2
         | EMatch (scrutinee, cases, span) ->
             let s1, tScrut, _ = inferExpr typeDefs env scrutinee
             let mutable sAcc = s1
@@ -453,13 +465,24 @@ module TypeInfer =
             match stmt with
             | SType def ->
                 typed.Add(TSType def)
-            | SLet(name, args, expr, span) ->
+            | SLet(name, args, expr, isRec, span) ->
                 let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
-                let s1, t1, _ = inferExpr typeDefs env exprVal
-                let env' = applyEnv s1 env
-                let scheme = Types.generalize env' t1
-                env <- env' |> Map.add name scheme
-                typed.Add(TSLet(name, exprVal, t1, span))
+                if isRec then
+                    let tv = Types.freshVar()
+                    let envRec = env |> Map.add name (Forall([], tv))
+                    let s1, t1, _ = inferExpr typeDefs envRec exprVal
+                    let s2 = unify (applyType s1 tv) t1 span
+                    let s = compose s2 s1
+                    let env' = applyEnv s env
+                    let scheme = Types.generalize env' (applyType s t1)
+                    env <- env' |> Map.add name scheme
+                    typed.Add(TSLet(name, exprVal, applyType s t1, true, span))
+                else
+                    let s1, t1, _ = inferExpr typeDefs env exprVal
+                    let env' = applyEnv s1 env
+                    let scheme = Types.generalize env' t1
+                    env <- env' |> Map.add name scheme
+                    typed.Add(TSLet(name, exprVal, t1, false, span))
             | SExpr expr ->
                 let s1, t1, typedExpr = inferExpr typeDefs env expr
                 let sDiscard =

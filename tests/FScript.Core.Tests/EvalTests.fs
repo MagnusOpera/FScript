@@ -119,6 +119,11 @@ type EvalTests () =
         Helpers.eval "let x = 2\nlet addx y = x + y\naddx 3" |> assertInt 5L
 
     [<Test>]
+    member _.``Evaluates recursive function binding`` () =
+        let src = "let rec sum n =\n    if n = 0 then 0 else n + sum (n - 1)\nsum 5"
+        Helpers.eval src |> assertInt 15L
+
+    [<Test>]
     member _.``Evaluates function application`` () =
         Helpers.eval "(fun x -> fun y -> x + y) 2 3" |> assertInt 5L
 
@@ -163,3 +168,9 @@ type EvalTests () =
         match Helpers.eval "let name = \"world\"\n$\"hello {name}\"" with
         | VString "hello world" -> ()
         | _ -> Assert.Fail("Expected interpolated string result")
+
+    [<Test>]
+    member _.``Evaluates interpolation with int placeholder`` () =
+        match Helpers.eval "$\"value={1}\"" with
+        | VString "value=1" -> ()
+        | _ -> Assert.Fail("Expected interpolated string with int placeholder")
