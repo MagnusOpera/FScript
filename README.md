@@ -1,5 +1,7 @@
 # FScript
 [![Build (main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml)
+[![NuGet Language](https://img.shields.io/nuget/v/MagnusOpera.FScript.Language?label=NuGet%20Language)](https://www.nuget.org/packages/MagnusOpera.FScript.Language)
+[![NuGet Runtime](https://img.shields.io/nuget/v/MagnusOpera.FScript.Runtime?label=NuGet%20Runtime)](https://www.nuget.org/packages/MagnusOpera.FScript.Runtime)
 
 FScript is a lightweight, embeddable interpreter with an F#/ML-style language.
 
@@ -55,15 +57,14 @@ Useful samples:
 - `samples/tree.fss`
 - `samples/mutual-recursion.fss`
 
-## Distribution
+## Installation
 
-### Homebrew
+### CLI via Homebrew
 ```bash
-brew tap magnusopera/tap
-brew install fscript
+brew install magnusopera/tap/fscript
 ```
 
-### NuGet
+### Embeddable language via NuGet
 - `MagnusOpera.FScript.Language`
 - `MagnusOpera.FScript.Runtime`
 
