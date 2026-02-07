@@ -99,3 +99,8 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 - [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md)
 - [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
 - [`docs/assemblies-and-roles.md`](docs/assemblies-and-roles.md)
+
+## License
+
+This project is licensed under the MIT License.  
+See [`LICENSE`](LICENSE).
