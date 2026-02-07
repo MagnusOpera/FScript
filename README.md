@@ -43,6 +43,11 @@ make test
 dotnet run --project src/FScript -- samples/types-showcase.fss
 ```
 
+Optional sandbox root override:
+```bash
+dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.fss
+```
+
 Useful samples:
 - `samples/types-showcase.fss`
 - `samples/patterns-and-collections.fss`

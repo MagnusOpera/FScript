@@ -11,7 +11,8 @@ This document defines the security model for running FScript programs with host 
 ## Host context and filesystem boundary
 - Host context includes:
   - `RootDirectory : string`
-- The CLI sets `RootDirectory` to process current working directory.
+- The CLI defaults `RootDirectory` to the script file directory.
+- The CLI allows overriding root with `--root <path>` (or `-r <path>`).
 
 Filesystem extern behavior:
 - `Fs.readText` and `Fs.glob` resolve candidate paths through `HostCommon.tryResolvePath`.

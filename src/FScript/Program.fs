@@ -1,5 +1,7 @@
 open System
 open System.IO
+open Argu
+open CliArgs
 open FScript.Core
 open FScript.Host
 
@@ -8,19 +10,30 @@ let formatSpan (span: Span) =
 
 [<EntryPoint>]
 let main argv =
-    if argv.Length <> 1 then
-        Console.Error.WriteLine("Usage: fscript <file.fss>")
-        1
-    else
-        let path = argv.[0]
-        if not (File.Exists path) then
-            Console.Error.WriteLine($"File not found: {path}")
+    let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
+    try
+        let args = parser.ParseCommandLine(inputs = argv, raiseOnUsage = true)
+        let scriptPath = args.GetResult <@ Script @> |> Path.GetFullPath
+
+        if not (File.Exists scriptPath) then
+            Console.Error.WriteLine($"File not found: {scriptPath}")
             1
         else
+            let scriptDirectory =
+                match Path.GetDirectoryName(scriptPath) with
+                | null
+                | "" -> Directory.GetCurrentDirectory()
+                | dir -> dir
+
+            let rootDirectory =
+                args.TryGetResult <@ Root @>
+                |> Option.map Path.GetFullPath
+                |> Option.defaultValue scriptDirectory
+
             try
-                let context : HostContext = { RootDirectory = Directory.GetCurrentDirectory() }
+                let context : HostContext = { RootDirectory = rootDirectory }
                 let externs : ExternalFunction list = Registry.all context
-                let source = File.ReadAllText(path)
+                let source = File.ReadAllText(scriptPath)
                 let program = Parser.parseProgram source
                 let typed = TypeInfer.inferProgramWithExterns externs program
                 let result = Eval.evalProgramWithExterns externs typed
@@ -36,3 +49,7 @@ let main argv =
             | EvalException err ->
                 Console.Error.WriteLine($"Eval error {formatSpan err.Span}: {err.Message}")
                 3
+    with
+    | :? ArguParseException as ex ->
+        Console.Error.WriteLine(ex.Message)
+        1
