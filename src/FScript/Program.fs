@@ -2,8 +2,8 @@ open System
 open System.IO
 open Argu
 open CliArgs
-open FScript.Core
-open FScript.Host
+open FScript.Language
+open FScript.Runtime
 
 let formatSpan (span: Span) =
     sprintf "(line %d, col %d)" span.Start.Line span.Start.Column

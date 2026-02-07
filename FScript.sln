@@ -5,17 +5,17 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Core", "src\FScript.Core\FScript.Core.fsproj", "{73C9C013-4E93-45EC-A69D-E490788D8E2B}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Language", "src\FScript.Language\FScript.Language.fsproj", "{73C9C013-4E93-45EC-A69D-E490788D8E2B}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript", "src\FScript\FScript.fsproj", "{56151E59-268A-4A4B-BE94-B7AD2E8B32FA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Core.Tests", "tests\FScript.Core.Tests\FScript.Core.Tests.fsproj", "{9C62883E-EFB0-4D9E-84F3-4138C123F55E}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Language.Tests", "tests\FScript.Language.Tests\FScript.Language.Tests.fsproj", "{9C62883E-EFB0-4D9E-84F3-4138C123F55E}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Host", "src\FScript.Host\FScript.Host.fsproj", "{8C2C5767-857A-44B0-80C2-DC90E0A60F4D}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Runtime", "src\FScript.Runtime\FScript.Runtime.fsproj", "{8C2C5767-857A-44B0-80C2-DC90E0A60F4D}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Host.Tests", "tests\FScript.Host.Tests\FScript.Host.Tests.fsproj", "{1E2C7B34-04B8-42C9-880D-CC47DEC156A7}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Runtime.Tests", "tests\FScript.Runtime.Tests\FScript.Runtime.Tests.fsproj", "{1E2C7B34-04B8-42C9-880D-CC47DEC156A7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

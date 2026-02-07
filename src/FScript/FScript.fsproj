@@ -17,8 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FScript.Core\FScript.Core.fsproj" />
-    <ProjectReference Include="..\FScript.Host\FScript.Host.fsproj" />
+    <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
+    <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
   </ItemGroup>
 
 </Project>

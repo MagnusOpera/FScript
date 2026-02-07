@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Common.fs" />
+    <Compile Include="Decode.fs" />
+    <Compile Include="FsExterns.fs" />
+    <Compile Include="RegexExterns.fs" />
+    <Compile Include="HashExterns.fs" />
+    <Compile Include="GuidExterns.fs" />
+    <Compile Include="PrintExterns.fs" />
+    <Compile Include="MapExterns.fs" />
+    <Compile Include="ListExterns.fs" />
+    <Compile Include="OptionExterns.fs" />
+    <Compile Include="JsonExterns.fs" />
+    <Compile Include="XmlExterns.fs" />
+    <Compile Include="Registry.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
+  </ItemGroup>
+
+</Project>

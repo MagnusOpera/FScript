@@ -57,13 +57,13 @@ Useful samples:
 
 ## Interpreter Architecture
 
-The core engine lives in `src/FScript.Core` and runs in four stages:
+The core engine lives in `src/FScript.Language` and runs in four stages:
 1. **Lexing**: indentation-aware tokenization.
 2. **Parsing**: AST construction with expression/layout rules.
 3. **Type inference**: Hindley-Milner inference + unification + optional annotations.
 4. **Evaluation**: typed AST evaluation with immutable values and pattern matching.
 
-Host integration lives in `src/FScript.Host`.
+Host integration lives in `src/FScript.Runtime`.
 
 ## Extensibility Model
 

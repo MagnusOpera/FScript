@@ -12,7 +12,7 @@ An external function is represented by:
 - `Impl: Value list -> Value`
 
 Registry entrypoint:
-- `FScript.Host.Registry.all : HostContext -> ExternalFunction list`
+- `FScript.Runtime.Registry.all : HostContext -> ExternalFunction list`
 
 Interpreter integration:
 - Extern schemes are injected into type inference environment.
@@ -86,12 +86,12 @@ Current runtime-handled groups include:
 
 ## Extending with new externs
 Recommended steps:
-1. Add extern in a host module (`src/FScript.Host/*Externs.fs`) with `Name/Scheme/Arity/Impl`.
+1. Add extern in a host module (`src/FScript.Runtime/*Externs.fs`) with `Name/Scheme/Arity/Impl`.
 2. Register in `Registry.all`.
 3. If extern requires host callback/function argument behavior, add runtime branch in `Eval.applyFunctionValue`.
 4. Add tests in:
-   - `tests/FScript.Host.Tests` for direct module behavior.
-   - `tests/FScript.Core.Tests/HostExternTests.fs` for interpreter integration.
+   - `tests/FScript.Runtime.Tests` for direct module behavior.
+   - `tests/FScript.Language.Tests/HostExternTests.fs` for interpreter integration.
 
 ## Compatibility guidance
 - External names are part of source-level API; renaming is breaking.
