@@ -1,0 +1,45 @@
+type Address =
+    { City: string
+      Zip: int }
+
+type User =
+    { Id: int
+      Name: string
+      Tags: string list
+      Address: Address option
+      Scores: int map
+      Pair: (int * string) }
+
+let scores =
+    Map.empty 0
+    |> Map.add "math" 20
+    |> Map.add "science" 18
+
+let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
+
+let updated = { user with Tags = user.Tags @ ["mathematician"] }
+
+let city =
+    match updated.Address with
+    | Some address -> address.City
+    | None -> "unknown"
+
+let mathScore =
+    updated.Scores
+    |> Map.tryFind "math"
+    |> Option.defaultValue 0
+
+let hasScience = updated.Scores |> Map.containsKey "science"
+
+print $"User: {updated.Name}"
+print $"City: {city}"
+print $"Math score: {mathScore}"
+print $"Has 'science': {hasScience}"
+
+updated.Tags |> List.iter print
+
+match updated with
+| { Id = id; Pair = (left, right) } ->
+    print $"Record pattern: id={id}, pair=({left}, {right})"
+| _ ->
+    print "Unexpected"

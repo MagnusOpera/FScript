@@ -1,0 +1,7 @@
+let rec even n =
+    if n = 0 then true else odd (n - 1)
+and odd n =
+    if n = 0 then false else even (n - 1)
+
+for n in [0..10] do
+    print $"n={n} even={even n} odd={odd n}"
