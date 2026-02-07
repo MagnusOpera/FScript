@@ -9,6 +9,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `let rec` for recursive function bindings (top-level and inside expressions)
 - Function definitions via `let f x = ...`
 - Lambdas via `fun x -> ...`
+- Optional parameter type annotations: `let f (x: int) = ...`, `fun (x: int) -> ...`
 - Function application by whitespace: `f x`
 
 ### Expressions
@@ -48,6 +49,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `int`, `float`, `bool`, `string`
 - `'a list`
 - tuples `(t1 * t2 * ...)`
+- functions `(t1 -> t2)` in type annotations
 - `'a option`
 - `'a map` (string-keyed map)
 - structural record types inferred from record literals

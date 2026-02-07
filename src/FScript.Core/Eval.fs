@@ -245,7 +245,7 @@ module Eval =
             match env |> Map.tryFind name with
             | Some v -> v
             | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
-        | ELambda (arg, body, _) -> VClosure (arg, body, env)
+        | ELambda (param, body, _) -> VClosure (param.Name, body, env)
         | EApply (fn, arg, span) ->
             let fVal = evalExpr typeDefs env fn
             let aVal = evalExpr typeDefs env arg
@@ -270,8 +270,8 @@ module Eval =
         | ELet (name, value, body, isRec, span) ->
             if isRec then
                 match value with
-                | ELambda (argName, lambdaBody, _) ->
-                    let rec selfValue : Value = VClosure (argName, lambdaBody, recEnv)
+                | ELambda (param, lambdaBody, _) ->
+                    let rec selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
                     and recEnv : Env = env |> Map.add name selfValue
                     evalExpr typeDefs recEnv body
                 | _ ->
@@ -467,6 +467,7 @@ module Eval =
                         |> TRecord
                 | None -> TNamed n
             | TRTuple ts -> ts |> List.map (fromRef stack) |> TTuple
+            | TRFun (a, b) -> TFun(fromRef stack a, fromRef stack b)
             | TRPostfix (inner, "list") -> TList (fromRef stack inner)
             | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
             | TRPostfix (inner, "map") -> TStringMap (fromRef stack inner)
@@ -492,8 +493,8 @@ module Eval =
             | TypeInfer.TSLet(name, expr, _, isRec, span) ->
                 if isRec then
                     match expr with
-                    | ELambda (argName, lambdaBody, _) ->
-                        let rec selfValue : Value = VClosure (argName, lambdaBody, recEnv)
+                    | ELambda (param, lambdaBody, _) ->
+                        let rec selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
                         and recEnv : Env = env |> Map.add name selfValue
                         env <- recEnv
                     | _ ->

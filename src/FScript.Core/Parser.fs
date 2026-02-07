@@ -159,7 +159,7 @@ module Parser =
                     first
             | _ -> raise (ParseException { Message = "Expected type expression"; Span = stream.Peek().Span })
 
-        and parseTypeRef () : TypeRef =
+        and parseTypeRefPostfix () : TypeRef =
             let mutable t = parseTypeRefAtom()
             let mutable loop = true
             while loop do
@@ -175,6 +175,34 @@ module Parser =
                     t <- TRPostfix(t, "map")
                 | _ -> loop <- false
             t
+
+        and parseTypeRef () : TypeRef =
+            let left = parseTypeRefPostfix()
+            if stream.Match(Arrow) then
+                let right = parseTypeRef()
+                TRFun(left, right)
+            else
+                left
+
+        and parseParam () : Param =
+            stream.SkipNewlines()
+            match stream.Peek().Kind with
+            | Ident n ->
+                let tok = stream.Next()
+                { Name = n; Annotation = None; Span = tok.Span }
+            | LParen ->
+                let lp = stream.Next()
+                let nameTok = stream.ExpectIdent("Expected parameter name in annotated parameter")
+                let name =
+                    match nameTok.Kind with
+                    | Ident n -> n
+                    | _ -> ""
+                stream.SkipNewlines()
+                stream.Expect(Colon, "Expected ':' in annotated parameter") |> ignore
+                let anno = parseTypeRef()
+                let rp = stream.Expect(RParen, "Expected ')' after annotated parameter")
+                { Name = name; Annotation = Some anno; Span = mkSpanFrom lp.Span rp.Span }
+            | _ -> raise (ParseException { Message = "Expected parameter"; Span = stream.Peek().Span })
 
         and parseTypeDecl () : Stmt =
             let typeTok = stream.Expect(Type, "Expected 'type'")
@@ -528,12 +556,11 @@ module Parser =
 
         and parseLambda () : Expr =
             let funTok = stream.Expect(Fun, "Expected 'fun'")
-            let nameTok = stream.ExpectIdent("Expected identifier after 'fun'")
-            let argName = match nameTok.Kind with Ident n -> n | _ -> ""
+            let param = parseParam()
             stream.SkipNewlines()
             stream.Expect(Arrow, "Expected '->' in lambda") |> ignore
             let body = parseExprOrBlock()
-            ELambda(argName, body, mkSpanFrom funTok.Span (Ast.spanOfExpr body))
+            ELambda(param, body, mkSpanFrom funTok.Span (Ast.spanOfExpr body))
 
         and parseMatch () : Expr =
             let matchTok = stream.Expect(Match, "Expected 'match'")
@@ -598,18 +625,19 @@ module Parser =
             let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
             let name = match nameTok.Kind with Ident n -> n | _ -> ""
-            let args = ResizeArray<string>()
+            let args = ResizeArray<Param>()
             let mutable argsDone = false
             while not argsDone do
                 stream.SkipNewlines()
                 match stream.Peek().Kind with
-                | Ident n ->
-                    args.Add(n)
-                    stream.Next() |> ignore
+                | Ident _ | LParen ->
+                    args.Add(parseParam())
                 | _ -> argsDone <- true
             if isRec && args.Count = 0 then
                 raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
             stream.SkipNewlines()
+            if stream.Peek().Kind = Colon then
+                raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
             stream.Expect(Equals, "Expected '=' in let binding") |> ignore
             let value = parseExprOrBlock()
             match stream.Peek().Kind with
@@ -680,18 +708,19 @@ module Parser =
                 let isRec = stream.Match(Rec)
                 let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
                 let name = match nameTok.Kind with Ident n -> n | _ -> ""
-                let args = ResizeArray<string>()
+                let args = ResizeArray<Param>()
                 let mutable argsDone = false
                 while not argsDone do
                     stream.SkipNewlines()
                     match stream.Peek().Kind with
-                    | Ident n ->
-                        args.Add(n)
-                        stream.Next() |> ignore
+                    | Ident _ | LParen ->
+                        args.Add(parseParam())
                     | _ -> argsDone <- true
                 if isRec && args.Count = 0 then
                     raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
                 stream.SkipNewlines()
+                if stream.Peek().Kind = Colon then
+                    raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
                 stream.Expect(Equals, "Expected '=' in let binding") |> ignore
                 let value = parseExprOrBlock()
                 SLet(name, args |> Seq.toList, value, isRec, mkSpanFrom letTok.Span (Ast.spanOfExpr value))

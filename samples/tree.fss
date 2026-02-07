@@ -6,4 +6,7 @@ type rec Node =
 
 let n1 = { Value = 42; Left = None; Right = None }
 
-print $"{n1.Value}"
+let display_node (node: Node) =
+    print $"{node.Value}"
+
+display_node n1

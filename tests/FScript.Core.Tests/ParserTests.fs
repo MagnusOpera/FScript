@@ -111,8 +111,22 @@ type ParserTests () =
     member _.``Parses lambda expression`` () =
         let p = Helpers.parse "fun x -> x"
         match p.[0] with
-        | SExpr (ELambda ("x", _, _)) -> ()
+        | SExpr (ELambda ({ Name = "x"; Annotation = None }, _, _)) -> ()
         | _ -> Assert.Fail("Expected lambda")
+
+    [<Test>]
+    member _.``Parses annotated let parameter`` () =
+        let p = Helpers.parse "let show (node: Node) = node"
+        match p.[0] with
+        | SLet ("show", [ { Name = "node"; Annotation = Some (TRName "Node") } ], _, _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let parameter")
+
+    [<Test>]
+    member _.``Parses annotated lambda parameter with function type`` () =
+        let p = Helpers.parse "fun (f: int -> string) -> f 1"
+        match p.[0] with
+        | SExpr (ELambda ({ Name = "f"; Annotation = Some (TRFun (TRName "int", TRName "string")) }, _, _)) -> ()
+        | _ -> Assert.Fail("Expected annotated lambda parameter with function type")
 
     [<Test>]
     member _.``Parses if then else`` () =
@@ -253,4 +267,9 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects let rec without function argument`` () =
         let act () = Helpers.parse "let rec x = 1" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects bare parameter annotation syntax`` () =
+        let act () = Helpers.parse "let f x: int = x" |> ignore
         act |> should throw typeof<ParseException>

@@ -9,7 +9,13 @@ type TypeDef =
 and TypeRef =
     | TRName of string
     | TRTuple of TypeRef list
+    | TRFun of TypeRef * TypeRef
     | TRPostfix of TypeRef * string
+
+type Param =
+    { Name: string
+      Annotation: TypeRef option
+      Span: Span }
 
 type Literal =
     | LInt of int64
@@ -30,7 +36,7 @@ and Pattern =
 and Expr =
     | ELiteral of Literal * Span
     | EVar of string * Span
-    | ELambda of string * Expr * Span
+    | ELambda of Param * Expr * Span
     | EApply of Expr * Expr * Span
     | EIf of Expr * Expr * Expr * Span
     | ERaise of Expr * Span
@@ -57,7 +63,7 @@ and InterpolatedPart =
 
 and Stmt =
     | SType of TypeDef
-    | SLet of string * string list * Expr * bool * Span
+    | SLet of string * Param list * Expr * bool * Span
     | SExpr of Expr
 
 type Program = Stmt list

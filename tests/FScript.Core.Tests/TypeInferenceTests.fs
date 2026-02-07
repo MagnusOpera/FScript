@@ -28,6 +28,26 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected let")
 
     [<Test>]
+    member _.``Uses annotated record parameter for field access`` () =
+        let typed =
+            Helpers.infer
+                "type rec Node = { Value: int; Next: Node option }\nlet display_node (node: Node) = $\"{node.Value}\""
+        match typed.[1] with
+        | TypeInfer.TSLet (_, _, t, _, _) ->
+            match t with
+            | TFun (TRecord fields, TString) ->
+                fields.ContainsKey "Value" |> should equal true
+            | _ -> Assert.Fail("Expected Node -> string function type")
+        | _ -> Assert.Fail("Expected annotated function let")
+
+    [<Test>]
+    member _.``Infers annotated function parameter types`` () =
+        let typed = Helpers.infer "let apply (f: int -> int) x = f x\napply (fun n -> n + 1) 2"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers recursive function binding`` () =
         let typed = Helpers.infer "let rec sum n =\n    if n = 0 then 0 else n + sum (n - 1)\nsum 5"
         match typed |> List.last with
@@ -228,6 +248,11 @@ type TypeInferenceTests () =
     [<Test>]
     member _.``Reports occurs check failure for self application`` () =
         let act () = Helpers.infer "fun x -> x x" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for annotation mismatch`` () =
+        let act () = Helpers.infer "let f (x: int) = x + true" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

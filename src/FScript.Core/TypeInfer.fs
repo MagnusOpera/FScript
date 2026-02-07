@@ -129,6 +129,8 @@ module TypeInfer =
                 | None -> TNamed name
         | TRTuple ts ->
             ts |> List.map (typeFromRef decls stack) |> TTuple
+        | TRFun (a, b) ->
+            TFun(typeFromRef decls stack a, typeFromRef decls stack b)
         | TRPostfix (inner, suffix) ->
             let resolved = typeFromRef decls stack inner
             match suffix with
@@ -211,9 +213,29 @@ module TypeInfer =
                     let s1, _, _ = inferExpr typeDefs (applyEnv sAcc env) pexpr
                     sAcc <- compose s1 sAcc
             sAcc, TString, asTyped expr TString
-        | ELambda (arg, body, _) ->
-            let tv = Types.freshVar()
-            let env' = env |> Map.add arg (Forall([], tv))
+        | ELambda (param, body, _) ->
+            let tv =
+                match param.Annotation with
+                | Some tref ->
+                    let rec fromRef (tref: TypeRef) =
+                        match tref with
+                        | TRName "unit" -> TUnit
+                        | TRName "int" -> TInt
+                        | TRName "float" -> TFloat
+                        | TRName "bool" -> TBool
+                        | TRName "string" -> TString
+                        | TRName name ->
+                            typeDefs |> Map.tryFind name |> Option.defaultValue (TNamed name)
+                        | TRTuple ts -> ts |> List.map fromRef |> TTuple
+                        | TRFun (a, b) -> TFun(fromRef a, fromRef b)
+                        | TRPostfix (inner, "list") -> TList (fromRef inner)
+                        | TRPostfix (inner, "option") -> TOption (fromRef inner)
+                        | TRPostfix (inner, "map") -> TStringMap (fromRef inner)
+                        | TRPostfix (_, suffix) ->
+                            raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = param.Span })
+                    fromRef tref
+                | None -> Types.freshVar()
+            let env' = env |> Map.add param.Name (Forall([], tv))
             let s1, tBody, _ = inferExpr typeDefs env' body
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
