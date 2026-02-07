@@ -1,7 +1,11 @@
 # Function Parameter Annotations Specification
 
 ## Purpose
-This document specifies optional type annotations for function parameters in FScript.
+This document specifies type annotations for function parameters in FScript.
+
+## Annotation positions
+- Let-bound function parameters.
+- Lambda parameters.
 
 ## Supported forms
 
@@ -20,10 +24,7 @@ This document specifies optional type annotations for function parameters in FSc
   - `fun (x: int) -> x + 1`
 
 ## Syntax rule
-- Annotated parameters must be parenthesized:
-  - valid: `(x: T)`
-  - invalid: `x: T`
-- Bare parameter-annotation syntax is intentionally rejected.
+- Annotated parameters use parenthesized form `(name: Type)`.
 
 ## Supported annotation type syntax
 - Named/basic: `int`, `string`, `Node`
@@ -38,18 +39,11 @@ This document specifies optional type annotations for function parameters in FSc
   - `(int -> string) list`
 
 ## Type-checking semantics
-- An annotation constrains the parameter type.
-- Type inference must unify body usage with the declared annotation.
-- Mismatch produces a type error at compile/inference time.
+- An annotation constrains parameter type during inference.
+- Body usage unifies against the declared annotation.
+- Inferred function types include the annotated parameter type.
 
-## Why annotations matter
-- They enable cases where pure inference is not enough, especially record field access on function arguments.
+## Practical use
+- Annotations are useful for making function argument intent explicit.
 - Example:
   - `let display_node (node: Node) = $"{node.Value}"`
-
-## Current scope and limits
-- Supported only for function parameters (`let`/`fun`).
-- Not supported yet:
-  - variable binding annotations (`let x: int = ...`)
-  - return type annotations
-  - pattern-level type annotations

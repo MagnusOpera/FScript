@@ -1,7 +1,7 @@
 # FScript Syntax and Indentation Specification
 
 ## Purpose
-This document describes the concrete syntax accepted by the current interpreter and the layout (indentation/newline) rules enforced by the lexer/parser.
+This document describes the concrete syntax accepted by the interpreter and the layout (indentation/newline) rules used by the lexer/parser.
 
 ## File and program structure
 - A program is a sequence of top-level statements.
@@ -10,9 +10,7 @@ This document describes the concrete syntax accepted by the current interpreter 
   - `let` / `let rec` bindings
   - expressions
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
-- Comments:
-  - `//` single-line comments are supported.
-  - block comments `(* ... *)` are rejected.
+- Comments use `//` line-comment syntax.
 
 ## Core expression forms
 - Literals: `int`, `float`, `bool`, `string`, `()`
@@ -21,7 +19,7 @@ This document describes the concrete syntax accepted by the current interpreter 
 - Lambda:
   - `fun x -> expr`
   - `fun (x: int) -> expr`
-- Let expression (layout style, no `in` keyword):
+- Let expression (layout style):
   - `let x = expr`
   - nested via blocks
 - Conditionals:
@@ -31,7 +29,7 @@ This document describes the concrete syntax accepted by the current interpreter 
   - `for x in listExpr do bodyExprOrBlock`
 - Match:
   - `match expr with | ...`
-  - record patterns are supported in cases: `{ Field = pattern; ... }`
+  - record patterns in cases: `{ Field = pattern; ... }`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
   - field access `p.Name`
@@ -69,22 +67,15 @@ From highest to lowest:
 ### Match-case alignment
 - Multiline `match` case lines must all start at the same column.
 - First case column must be at or deeper than the `match` column.
-- Mixed/misaligned case columns are rejected.
 
 ### Type declaration field alignment
 - `type`/`type rec` record declarations support:
   - single-line `{ A: int; B: string }`
   - multiline with newline-separated fields
-- In multiline type declarations, field-start columns must align exactly.
+- In multiline type declarations, field-start columns align exactly.
 
 ## Type declaration forms
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`
 - Explicit recursive:
   - `type rec Node = { Value: int; Next: Node option }`
-- Mutual recursion (`and`) is not supported.
-
-## Known syntax limitations
-- `let ... in ...` is not supported.
-- Generic angle-bracket type syntax like `list<string>` is not supported.
-- Record patterns are currently supported in `match` cases only (not in `let` patterns).

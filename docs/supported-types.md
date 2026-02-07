@@ -1,7 +1,7 @@
 # FScript Supported Types Specification
 
 ## Purpose
-This document specifies the value and type system supported by the current interpreter.
+This document specifies the value and type system used by the interpreter.
 
 ## Primitive types
 - `unit`
@@ -20,22 +20,21 @@ This document specifies the value and type system supported by the current inter
 ## Function types
 - Functions use curried arrow types:
   - `t1 -> t2`
-  - `t1 -> t2 -> t3` is right-associative.
-- Function type syntax is currently used in parameter annotations.
+  - `t1 -> t2 -> t3` is right-associative
+- Function type syntax is available in parameter annotations.
 
-## Named types and declarations
+## Named record declarations
 - Top-level record declarations:
   - `type Name = { ... }`
   - `type rec Name = { ... }`
-- Recursive self-reference requires `type rec`.
-- Mutual recursive declarations are not supported.
+- Recursive record references use `type rec`.
+- Named record types and matching record shapes unify structurally.
 
 ## Type inference model
-- Hindley–Milner style inference is used.
-- Let-polymorphism is supported.
-- Inferred record types are structural.
-- Some operations require concrete constraints:
-  - field access requires the target to be inferred/constrained as a record type.
+- Hindley–Milner style inference.
+- Let-polymorphism.
+- Structural typing for record values.
+- Field access is typed when the target expression is inferred as a record.
 
 ## Runtime value representation (high level)
 - `VUnit`, `VInt`, `VFloat`, `VBool`, `VString`
@@ -49,10 +48,4 @@ This document specifies the value and type system supported by the current inter
 
 ## Reflection
 - `typeof Name` yields a type token.
-- Type tokens are used by host externs (for example JSON/XML decoding).
-
-## Current type-system limitations
-- No user-declared union/discriminated union types.
-- No mutual recursive type groups.
-- No higher-kinded type features.
-- No explicit return type annotations.
+- Type tokens are consumed by host externs (for example JSON/XML decoding).
