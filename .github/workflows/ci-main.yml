@@ -1,0 +1,50 @@
+name: CI Main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore FScript.sln
+
+      - name: Build
+        run: dotnet build FScript.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test FScript.sln --configuration Release --no-build --logger "trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-main
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+
+      - name: Publish test report
+        if: always()
+        continue-on-error: true
+        uses: dorny/test-reporter@v2
+        with:
+          name: Test Results (Main)
+          path: TestResults/**/*.trx
+          reporter: dotnet-trx

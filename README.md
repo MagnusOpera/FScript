@@ -1,4 +1,5 @@
 # FScript
+[![Build (main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml)
 
 FScript is a lightweight, embeddable interpreter with an F#/ML-style language.
 
