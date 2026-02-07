@@ -2,6 +2,10 @@ type Address =
     { City: string
       Zip: int }
 
+type OfficeAddress =
+    { City: string
+      Zip: int }
+
 type User =
     { Id: int
       Name: string
@@ -14,31 +18,48 @@ type Subscription =
     | Free
     | Premium of int
 
+
 let scores =
     Map.empty 0
     |> Map.add "math" 20
     |> Map.add "science" 18
 
+
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
 let subscription = Premium 12
 
+// Helper typed with OfficeAddress.
+let make_office_address (address: OfficeAddress) = address
+let officeAddress = make_office_address { City = "London"; Zip = 12345 }
+// Same shape as Address, inferred structurally from literal.
+let parisAddress = { City = "Paris"; Zip = 75000 }
+
+
 let updated = { user with Tags = user.Tags @ ["mathematician"] }
+
+// Expects Address, but any record with matching fields is accepted.
+let format_address (address: Address) = $"{address.City} ({address.Zip})"
+
 
 let city =
     match updated.Address with
     | Some address -> address.City
     | None -> "unknown"
 
+
 let mathScore =
     updated.Scores
     |> Map.tryFind "math"
     |> Option.defaultValue 0
 
+
 let hasScience = updated.Scores |> Map.containsKey "science"
+
 let monthlyPrice =
     match subscription with
     | Free -> 0
     | Premium amount -> amount
+
 
 print $"User: {updated.Name}"
 print $"City: {city}"
@@ -46,7 +67,15 @@ print $"Math score: {mathScore}"
 print $"Has 'science': {hasScience}"
 print $"Subscription price: {monthlyPrice}"
 
+// Structural record equivalence showcase:
+// - literal with matching fields
+// - value created through another named record type (OfficeAddress)
+print $"Structural address from literal: {format_address parisAddress}"
+print $"Structural address from OfficeAddress: {format_address officeAddress}"
+
+
 updated.Tags |> List.iter print
+
 
 match updated with
 | { Id = id; Pair = (left, right) } ->
