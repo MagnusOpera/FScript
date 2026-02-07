@@ -105,25 +105,32 @@ module TypeInfer =
         | "string" -> Some TString
         | _ -> None
 
-    let rec private typeFromRef (decls: Map<string, TypeDef>) (seen: Set<string>) (tref: TypeRef) : Type =
+    let rec private typeFromRef (decls: Map<string, TypeDef>) (stack: string list) (tref: TypeRef) : Type =
         match tref with
         | TRName name ->
             match builtinType name with
             | Some t -> t
             | None ->
-                if seen.Contains name then
-                    raise (TypeException { Message = $"Recursive type '{name}' is not supported"; Span = unknownSpan })
                 match decls.TryFind name with
                 | Some def ->
-                    def.Fields
-                    |> List.map (fun (field, t) -> field, typeFromRef decls (seen.Add name) t)
-                    |> Map.ofList
-                    |> TRecord
+                    match stack |> List.tryFindIndex ((=) name) with
+                    | Some 0 ->
+                        if def.IsRecursive then
+                            TNamed name
+                        else
+                            raise (TypeException { Message = $"Recursive type '{name}' requires 'type rec'"; Span = unknownSpan })
+                    | Some _ ->
+                        raise (TypeException { Message = "Mutual recursive types are not supported"; Span = unknownSpan })
+                    | None ->
+                        def.Fields
+                        |> List.map (fun (field, t) -> field, typeFromRef decls (name :: stack) t)
+                        |> Map.ofList
+                        |> TRecord
                 | None -> TNamed name
         | TRTuple ts ->
-            ts |> List.map (typeFromRef decls seen) |> TTuple
+            ts |> List.map (typeFromRef decls stack) |> TTuple
         | TRPostfix (inner, suffix) ->
-            let resolved = typeFromRef decls seen inner
+            let resolved = typeFromRef decls stack inner
             match suffix with
             | "list" -> TList resolved
             | "option" -> TOption resolved
@@ -463,7 +470,7 @@ module TypeInfer =
             decls
             |> Map.map (fun _ d ->
                 d.Fields
-                |> List.map (fun (name, t) -> name, typeFromRef decls Set.empty t)
+                |> List.map (fun (name, t) -> name, typeFromRef decls [ d.Name ] t)
                 |> Map.ofList
                 |> TRecord)
 

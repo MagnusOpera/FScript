@@ -24,6 +24,16 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected function let")
 
     [<Test>]
+    member _.``Parses recursive type declaration`` () =
+        let program = Helpers.parse "type rec Node = { Value: int; Left: Node option; Right: Node option }"
+        match program.Head with
+        | SType def ->
+            def.Name |> should equal "Node"
+            def.IsRecursive |> should equal true
+            def.Fields.Length |> should equal 3
+        | _ -> Assert.Fail("Expected recursive type declaration")
+
+    [<Test>]
     member _.``Parses list literals`` () =
         let p1 = Helpers.parse "[1; 2]"
         match p1.[0] with

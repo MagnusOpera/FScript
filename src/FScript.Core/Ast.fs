@@ -2,6 +2,7 @@ namespace FScript.Core
 
 type TypeDef =
     { Name: string
+      IsRecursive: bool
       Fields: (string * TypeRef) list
       Span: Span }
 

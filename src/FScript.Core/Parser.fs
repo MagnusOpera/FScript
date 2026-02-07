@@ -178,6 +178,7 @@ module Parser =
 
         and parseTypeDecl () : Stmt =
             let typeTok = stream.Expect(Type, "Expected 'type'")
+            let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'type'")
             let name =
                 match nameTok.Kind with
@@ -202,7 +203,7 @@ module Parser =
             while stream.Match(Semicolon) do
                 parseField()
             let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
-            SType { Name = name; Fields = fields |> Seq.toList; Span = mkSpanFrom typeTok.Span rb.Span }
+            SType { Name = name; IsRecursive = isRec; Fields = fields |> Seq.toList; Span = mkSpanFrom typeTok.Span rb.Span }
 
         and parsePattern () : Pattern =
             stream.SkipNewlines()

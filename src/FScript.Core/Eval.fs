@@ -440,7 +440,9 @@ module Eval =
             |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None)
             |> Map.ofList
 
-        let rec fromRef (seen: Set<string>) (tref: TypeRef) =
+        let unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+
+        let rec fromRef (stack: string list) (tref: TypeRef) =
             match tref with
             | TRName "unit" -> TUnit
             | TRName "int" -> TInt
@@ -448,26 +450,34 @@ module Eval =
             | TRName "bool" -> TBool
             | TRName "string" -> TString
             | TRName n ->
-                if seen.Contains n then TNamed n
-                else
-                    match decls.TryFind n with
-                    | Some d ->
+                match decls.TryFind n with
+                | Some d ->
+                    match stack |> List.tryFindIndex ((=) n) with
+                    | Some 0 ->
+                        if d.IsRecursive then
+                            TNamed n
+                        else
+                            raise (EvalException { Message = $"Recursive type '{n}' requires 'type rec'"; Span = unknownSpan })
+                    | Some _ ->
+                        raise (EvalException { Message = "Mutual recursive types are not supported"; Span = unknownSpan })
+                    | None ->
                         d.Fields
-                        |> List.map (fun (fname, ft) -> fname, fromRef (seen.Add n) ft)
+                        |> List.map (fun (fname, ft) -> fname, fromRef (n :: stack) ft)
                         |> Map.ofList
                         |> TRecord
-                    | None -> TNamed n
-            | TRTuple ts -> ts |> List.map (fromRef seen) |> TTuple
-            | TRPostfix (inner, "list") -> TList (fromRef seen inner)
-            | TRPostfix (inner, "option") -> TOption (fromRef seen inner)
-            | TRPostfix (inner, "map") -> TStringMap (fromRef seen inner)
-            | TRPostfix (_, suffix) -> failwith $"Unsupported type suffix {suffix}"
+                | None -> TNamed n
+            | TRTuple ts -> ts |> List.map (fromRef stack) |> TTuple
+            | TRPostfix (inner, "list") -> TList (fromRef stack inner)
+            | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
+            | TRPostfix (inner, "map") -> TStringMap (fromRef stack inner)
+            | TRPostfix (_, suffix) ->
+                raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
 
         let typeDefs =
             decls
             |> Map.map (fun name def ->
                 def.Fields
-                |> List.map (fun (fname, ft) -> fname, fromRef (Set.singleton name) ft)
+                |> List.map (fun (fname, ft) -> fname, fromRef [ name ] ft)
                 |> Map.ofList
                 |> TRecord)
 

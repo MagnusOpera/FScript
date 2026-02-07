@@ -1,0 +1,6 @@
+
+type rec Node = { Value: int; Left: Node option; Right: Node option }
+
+let n1 = { Value = 42; Left = None; Right = None }
+
+print $"{n1.Value}"

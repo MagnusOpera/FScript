@@ -238,6 +238,31 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers explicit recursive type declarations`` () =
+        let typed =
+            Helpers.infer
+                "type rec Node = { Value: int; Next: Node option; Children: Node list; Index: Node map; Pair: (int * Node option) }\n0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Requires rec keyword for recursive type declaration`` () =
+        let act () =
+            Helpers.infer
+                "type Node = { Value: int; Next: Node option }\n0"
+            |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Rejects mutual recursive type declarations`` () =
+        let act () =
+            Helpers.infer
+                "type rec A = { B: B option }\ntype rec B = { A: A option }\n0"
+            |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers string keyed map type suffix`` () =
         let typed = Helpers.infer "type Package = { Deps: int map }\n0"
         match typed.Head with

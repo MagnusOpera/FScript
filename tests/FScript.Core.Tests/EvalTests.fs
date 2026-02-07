@@ -183,3 +183,9 @@ type EvalTests () =
         match Helpers.eval "$\"value={1}\"" with
         | VString "value=1" -> ()
         | _ -> Assert.Fail("Expected interpolated string with int placeholder")
+
+    [<Test>]
+    member _.``Evaluates typeof for explicit recursive type`` () =
+        match Helpers.eval "type rec Node = { Value: int; Next: Node option }\ntypeof Node" with
+        | VTypeToken _ -> ()
+        | _ -> Assert.Fail("Expected type token")

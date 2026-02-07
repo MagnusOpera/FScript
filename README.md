@@ -51,7 +51,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `'a option`
 - `'a map` (string-keyed map)
 - structural record types inferred from record literals
-- top-level record type declarations: `type Name = { ... }`
+- top-level record type declarations: `type Name = { ... }` and `type rec Name = { ... }`
 - `unit` (for empty blocks or programs with only `let` bindings)
 
 ### Type Reflection and Decoding
@@ -72,9 +72,10 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `let rec` is only supported for function bindings
 - No mutually recursive `and` bindings for `let rec`
 - User-defined types are currently limited to top-level record declarations
+- Recursive record types require `type rec` and mutual recursive type declarations are not yet supported
 - `typeof` only accepts declared record type names
 - Discarding a non-`unit` expression is a type error unless explicitly piped to `ignore`
-- No `List.*` or `printfn`
+- No `printfn`
 - Range endpoints must be `int` in v1
 - Comments supported: `//` line comments only
 
