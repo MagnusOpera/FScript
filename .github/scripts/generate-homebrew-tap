@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+FSCRIPT_VERSION="${1}"
+TAP_TEMPLATE_FILE="$(realpath "${2}")"
+
+pat="([^-]*)-?([^-]*)"
+[[ $FSCRIPT_VERSION =~ $pat ]]
+FSCRIPT_SUFFIX_RAW="${BASH_REMATCH[2]}"
+if [[ -n "$FSCRIPT_SUFFIX_RAW" ]]; then
+  FSCRIPT_SUFFIX="$(echo "$FSCRIPT_SUFFIX_RAW" | sed -E 's/[^a-zA-Z0-9]+/ /g' | awk '{ for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2); gsub(" ", ""); print }')"
+else
+  FSCRIPT_SUFFIX=""
+fi
+
+export FSCRIPT_VERSION
+export FSCRIPT_SUFFIX
+
+cd "$(mktemp -d)"
+
+>&2 echo "::info Generating Homebrew formula for FScript ${FSCRIPT_VERSION}"
+>&2 echo "::group::Download release assets"
+>&2 gh release download --repo magnusopera/fscript "${FSCRIPT_VERSION}" \
+  -p "fscript-${FSCRIPT_VERSION}-darwin-x64.zip" \
+  -p "fscript-${FSCRIPT_VERSION}-darwin-arm64.zip" \
+  -p "fscript-${FSCRIPT_VERSION}-linux-x64.zip" \
+  -p "fscript-${FSCRIPT_VERSION}-linux-arm64.zip" \
+  --skip-existing
+>&2 echo "::endgroup::"
+
+for i in \
+  "darwin x64   FSCRIPT_DARWIN_X64" \
+  "darwin arm64 FSCRIPT_DARWIN_ARM64" \
+  "linux x64    FSCRIPT_LINUX_X64" \
+  "linux arm64  FSCRIPT_LINUX_ARM64" \
+  ; do
+  # shellcheck disable=SC2086
+  set -- $i
+  OS="$1"
+  ARCH="$2"
+  ENV_VAR="$3"
+  ASSET="fscript-${FSCRIPT_VERSION}-${OS}-${ARCH}.zip"
+  SHA256="$(sha256sum "$ASSET" | cut -f1 -d' ')"
+
+  SHA256_VAR="${ENV_VAR}_SHA256"
+  URL_VAR="${ENV_VAR}_URL"
+  printf -v "${SHA256_VAR}" "%s" "${SHA256}"
+  printf -v "${URL_VAR}" "%s" "https://github.com/magnusopera/fscript/releases/download/${FSCRIPT_VERSION}/${ASSET}"
+
+  export "${SHA256_VAR?}"
+  export "${URL_VAR?}"
+  >&2 echo "${OS}-${ARCH} SHA256: ${!SHA256_VAR}"
+  >&2 echo "${OS}-${ARCH} URL:    ${!URL_VAR}"
+done
+
+# shellcheck disable=SC2016
+envsubst '$FSCRIPT_VERSION,$FSCRIPT_SUFFIX,$FSCRIPT_DARWIN_X64_URL,$FSCRIPT_DARWIN_X64_SHA256,$FSCRIPT_DARWIN_ARM64_URL,$FSCRIPT_DARWIN_ARM64_SHA256,$FSCRIPT_LINUX_X64_URL,$FSCRIPT_LINUX_X64_SHA256,$FSCRIPT_LINUX_ARM64_URL,$FSCRIPT_LINUX_ARM64_SHA256' < "${TAP_TEMPLATE_FILE}"

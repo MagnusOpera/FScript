@@ -1,0 +1,123 @@
+name: 🌍 Release
+run-name: Release ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release-nuget:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.100
+
+      - name: Download GitHub release artifacts
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: '*.nupkg'
+
+      - name: Push packages to NuGet
+        run: |
+          shopt -s nullglob
+          for pkg in ./*.nupkg; do
+            dotnet nuget push "$pkg" --skip-duplicate --api-key "${{ secrets.NUGET_KEY }}" --source https://api.nuget.org/v3/index.json
+          done
+
+  sign-and-notarize:
+    runs-on: macos-latest
+    steps:
+      - name: Download unsigned macOS artifacts
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: 'fscript-*-darwin-unsigned.zip'
+
+      - name: Extract binaries
+        run: |
+          mkdir -p .out/darwin
+          unzip -d .out/darwin fscript-${{ github.ref_name }}-darwin-unsigned.zip
+
+      - name: Add cert to keychain
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MAC_CERT_BASE64 }}
+          p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      - name: Sign binaries
+        run: |
+          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
+          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/x64/fscript --options=runtime --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.x64"
+          (cd .out/darwin/arm64; zip ../fscript-${{ github.ref_name }}-darwin-arm64.zip ./*)
+          (cd .out/darwin/x64; zip ../fscript-${{ github.ref_name }}-darwin-x64.zip ./*)
+
+      - name: Notarize arm64
+        uses: GuillaumeFalourd/notary-tools@v1
+        timeout-minutes: 10
+        with:
+          product_path: '.out/darwin/fscript-${{ github.ref_name }}-darwin-arm64.zip'
+          apple_id: ${{ secrets.MAC_DEV_LOGIN }}
+          password: ${{ secrets.MAC_DEV_PASSWORD }}
+          team_id: ${{ secrets.MAC_DEV_TEAM_ID }}
+          xcode_path: '/Applications/Xcode_16.4.app'
+          staple: false
+
+      - name: Notarize x64
+        uses: GuillaumeFalourd/notary-tools@v1
+        timeout-minutes: 10
+        with:
+          product_path: '.out/darwin/fscript-${{ github.ref_name }}-darwin-x64.zip'
+          apple_id: ${{ secrets.MAC_DEV_LOGIN }}
+          password: ${{ secrets.MAC_DEV_PASSWORD }}
+          team_id: ${{ secrets.MAC_DEV_TEAM_ID }}
+          xcode_path: '/Applications/Xcode_16.4.app'
+          staple: false
+
+      - name: Upload signed macOS artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            .out/darwin/fscript-${{ github.ref_name }}-darwin-arm64.zip
+            .out/darwin/fscript-${{ github.ref_name }}-darwin-x64.zip
+
+      - name: Remove unsigned macOS artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const unsignedName = `fscript-${tag}-darwin-unsigned.zip`;
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag,
+            });
+            const asset = release.assets.find(a => a.name === unsignedName);
+            if (!asset) {
+              core.info(`Unsigned artifact not found: ${unsignedName}`);
+              return;
+            }
+            await github.rest.repos.deleteReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              asset_id: asset.id,
+            });
+            core.info(`Deleted unsigned artifact: ${unsignedName}`);
+
+  update-homebrew-tap:
+    uses: ./.github/workflows/release-homebrew-tap.yml
+    needs:
+      - release-nuget
+      - sign-and-notarize
+    with:
+      ref: ${{ github.ref }}
+      version: ${{ github.ref_name }}
+      dry-run: false
+    secrets: inherit

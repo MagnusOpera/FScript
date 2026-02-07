@@ -1,0 +1,104 @@
+name: 🦄 Update Homebrew Tap
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        description: GitHub ref to use
+        type: string
+      version:
+        required: true
+        description: Version to produce
+        type: string
+      dry-run:
+        required: false
+        default: true
+        description: Whether to skip pushing the tap commit
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      ref:
+        required: true
+        description: GitHub ref to use
+        type: string
+      version:
+        required: true
+        description: Version to produce
+        type: string
+      dry-run:
+        required: false
+        default: true
+        description: Whether to skip pushing the tap commit
+        type: boolean
+
+env:
+  FSCRIPT_VERSION: ${{ inputs.version }}
+  GITHUB_TOKEN: ${{ secrets.PAT_HOMEBREW_TAP }}
+
+jobs:
+  update-homebrew-tap:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FScript repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          path: fscript
+
+      - name: Prepare formula name
+        run: |
+          version=${{ inputs.version }}
+          pat="([^-]*)-?([^-]*)"
+          [[ $version =~ $pat ]]
+          suffix=${BASH_REMATCH[2]}
+
+          if [[ -z "$suffix" ]]; then
+            FORMULA_FILE="fscript"
+          else
+            FORMULA_FILE="fscript-${suffix}"
+          fi
+
+          echo "FSCRIPT_FORMULA_FILE=$FORMULA_FILE" >> $GITHUB_ENV
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: magnusopera/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.PAT_HOMEBREW_TAP }}
+
+      - name: Update Homebrew formula
+        run: |
+          set -euo pipefail
+          ./fscript/.github/scripts/generate-homebrew-tap \
+            "${FSCRIPT_VERSION}" \
+            ./fscript/.github/scripts/fscript-formula-template.rb \
+            > ./homebrew-tap/Formula/${FSCRIPT_FORMULA_FILE}.rb
+
+      - name: Commit updated tap
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+
+          git config user.name magnusopera-bot
+          git config user.email bot@magnusopera.io
+          git add Formula/${FSCRIPT_FORMULA_FILE}.rb
+
+          if git diff --cached --quiet; then
+            echo "No tap changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Brew formula update for fscript version ${FSCRIPT_VERSION}"
+
+      - name: Push tap
+        working-directory: homebrew-tap
+        if: ${{ !inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main

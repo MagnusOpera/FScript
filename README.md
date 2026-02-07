@@ -55,6 +55,18 @@ Useful samples:
 - `samples/tree.fss`
 - `samples/mutual-recursion.fss`
 
+## Distribution
+
+### Homebrew
+```bash
+brew tap magnusopera/tap
+brew install fscript
+```
+
+### NuGet
+- `MagnusOpera.FScript.Language`
+- `MagnusOpera.FScript.Runtime`
+
 ## Interpreter Architecture
 
 The core engine lives in `src/FScript.Language` and runs in four stages:

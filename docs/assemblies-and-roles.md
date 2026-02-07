@@ -35,6 +35,9 @@ Use this when:
 - You want to embed the language in another .NET application.
 - You need language processing independently from default runtime extern catalog.
 
+NuGet:
+- `MagnusOpera.FScript.Language`
+
 ### `FScript.Runtime`
 Role:
 - Runtime integration layer and extern catalog.
@@ -48,6 +51,9 @@ Responsibilities:
 Use this when:
 - You want the built-in extern ecosystem ready to use.
 - You want a baseline runtime integration layer to extend with custom externs.
+
+NuGet:
+- `MagnusOpera.FScript.Runtime`
 
 ## Typical composition
 

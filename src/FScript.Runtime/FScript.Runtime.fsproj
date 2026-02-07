@@ -3,6 +3,18 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <PackageId>MagnusOpera.FScript.Runtime</PackageId>
+    <Version Condition=" '$(Version)' == '' ">0.0.0</Version>
+    <Authors>Magnus Opera</Authors>
+    <Title>FScript Runtime</Title>
+    <Description>Runtime externs and host integration layer for FScript.</Description>
+    <PackageTags>fscript;runtime;externs;host;interpreter</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/MagnusOpera/FScript</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MagnusOpera/FScript.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +32,11 @@
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
   </ItemGroup>
 
   <ItemGroup>
