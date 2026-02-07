@@ -9,7 +9,10 @@ module internal HostDecode =
     let rec decodeJson (target: Type) (el: JsonElement) : Value option =
         match target with
         | TUnit -> Some VUnit
-        | TString when el.ValueKind = JsonValueKind.String -> Some (VString (el.GetString()))
+        | TString when el.ValueKind = JsonValueKind.String ->
+            match el.GetString() with
+            | null -> None
+            | value -> Some (VString value)
         | TInt -> HostCommon.jsonInt el |> Option.map VInt
         | TFloat when el.ValueKind = JsonValueKind.Number -> Some (VFloat (el.GetDouble()))
         | TBool when el.ValueKind = JsonValueKind.True || el.ValueKind = JsonValueKind.False -> Some (VBool (el.GetBoolean()))
