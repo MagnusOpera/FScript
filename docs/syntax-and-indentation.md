@@ -31,6 +31,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Match:
   - `match expr with | ...`
   - record patterns in cases: `{ Field = pattern; ... }`
+  - union case patterns in cases: `Case` and `Case pattern`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
   - field access `p.Name`
@@ -43,6 +44,8 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `(a, b, c)`
 - Options:
   - `Some x`, `None`
+- Discriminated unions:
+  - constructors in expressions: `Case`, `Case payload`
 - Other:
   - `raise "message"`
   - `typeof Name`
@@ -75,8 +78,20 @@ From highest to lowest:
   - multiline with newline-separated fields
 - In multiline type declarations, field-start columns align exactly.
 
+### Multiline union declaration layout
+- `type`/`type rec` union declarations support:
+  - single-line: `type Shape = | Point | Circle of int`
+  - multiline:
+    - `type Shape =`
+    - indented case lines starting with `|`
+- The multiline union block ends on dedent.
+
 ## Type declaration forms
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`
 - Explicit recursive:
   - `type rec Node = { Value: int; Next: Node option }`
+- Union:
+  - `type Shape = | Point | Circle of int`
+- Recursive union:
+  - `type rec Tree = | Empty | Node of (int * Tree list)`

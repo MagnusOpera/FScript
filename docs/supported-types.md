@@ -16,6 +16,7 @@ This document specifies the value and type system used by the interpreter.
 - Option: `'a option`
 - String-keyed map: `'a map`
 - Record: structural record types
+- Discriminated union: named union types with cases
 
 ## Function types
 - Functions use curried arrow types:
@@ -30,6 +31,25 @@ This document specifies the value and type system used by the interpreter.
 - Recursive record references use `type rec`.
 - Named record types and matching record shapes unify structurally.
 
+## Discriminated union declarations
+- Top-level union declarations are supported:
+  - `type Shape = | Point | Circle of int`
+  - `type rec Node = | Empty | Branch of (int * Node list)`
+- Union case names start with an uppercase identifier.
+- A case payload is optional:
+  - no payload: `| Point`
+  - payload: `| Circle of int`
+- Payloads are single-type payloads; tuple payloads are used for multi-value payloads.
+
+## Union constructors and matching
+- Union cases are constructors in expression position:
+  - `let x = Circle 3`
+  - `let p = Point`
+- `match` supports union-case patterns:
+  - `| Circle r -> ...`
+  - `| Point -> ...`
+- `option` values (`Some`/`None`) are also represented as union-style constructors and patterns.
+
 ## Type inference model
 - Hindley–Milner style inference.
 - Let-polymorphism.
@@ -42,6 +62,7 @@ This document specifies the value and type system used by the interpreter.
 - `VRecord`
 - `VStringMap`
 - `VOption`
+- `VUnionCase`, `VUnionCtor`
 - `VClosure`
 - `VExternal`
 - `VTypeToken`

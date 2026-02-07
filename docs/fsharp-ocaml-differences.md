@@ -5,8 +5,8 @@ This document is a quick comparison guide. It highlights intentional differences
 
 ## Scope of the language
 - FScript is a small interpreted subset, not a full compiler language.
-- FScript supports a focused core: `let`, `let rec` (functions), `if/elif/else`, `for`, `match`, lists, tuples, options, records, pipelines, and extern calls.
-- Many F#/OCaml features are intentionally absent today (modules, classes, custom ADTs/DU declarations, interfaces, computation expressions, etc.).
+- FScript supports a focused core: `let`, `let rec` (functions), `if/elif/else`, `for`, `match`, lists, tuples, options, records, discriminated unions, pipelines, and extern calls.
+- Many F#/OCaml features are intentionally absent today (modules, classes, interfaces, computation expressions, etc.).
 
 ## Syntax differences
 
@@ -61,12 +61,13 @@ let x =
 - Mutual recursive type groups are not supported (`and` declarations are not available).
 
 ### User-declared ADTs / discriminated unions
-- F#/OCaml allow rich custom sum types.
-- FScript currently does not support user-declared union/DU types.
-- Built-in option and list pattern forms are supported.
+- FScript supports top-level union declarations and union-case matching.
+- `type rec` is required for recursive union declarations, consistent with recursive records.
+- Constructor payloads are a single type; multiple payload values can be modeled with tuple payloads.
+- Mutual recursive type groups (`type ... and ...`) are not supported.
 
 ## Pattern matching differences
-- FScript supports wildcard, literal, tuple, list-cons, option patterns, and record patterns in `match`.
+- FScript supports wildcard, literal, tuple, list-cons, option, record, and union-case patterns in `match`.
 - Record patterns are supported in `match` cases, not in `let` patterns.
 - Pattern features are narrower than full F#/OCaml pattern systems.
 
@@ -88,5 +89,5 @@ let x =
 - Replace `let ... in` with indented block bindings.
 - Replace generic angle syntax with postfix syntax (`'a list`, `'a option`, `'a map`).
 - Keep annotations on parameters only.
-- Convert unsupported ADTs/modules/features into records + functions + `match` where possible.
+- Convert unsupported modules/features into records + functions + `match` where possible.
 - Check indentation alignment for `match` cases and multiline type fields.
