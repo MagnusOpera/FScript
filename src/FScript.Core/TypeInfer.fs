@@ -164,6 +164,11 @@ module TypeInfer =
             | "option" -> TOption resolved
             | "map" -> TStringMap resolved
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
+        | TRRecord fields ->
+            fields
+            |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
+            |> Map.ofList
+            |> TRecord
 
     let rec private inferPattern (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (pat: Pattern) : Map<string, Type> * Type =
         match pat with
@@ -285,6 +290,11 @@ module TypeInfer =
                         | TRPostfix (inner, "map") -> TStringMap (fromRef inner)
                         | TRPostfix (_, suffix) ->
                             raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = param.Span })
+                        | TRRecord fields ->
+                            fields
+                            |> List.map (fun (name, t) -> name, fromRef t)
+                            |> Map.ofList
+                            |> TRecord
                     fromRef tref
                 | None -> Types.freshVar()
             let env' = env |> Map.add param.Name (Forall([], tv))

@@ -151,6 +151,35 @@ module Parser =
             | Ident name ->
                 stream.Next() |> ignore
                 TRName name
+            | LBrace ->
+                stream.Next() |> ignore
+                let fields = ResizeArray<string * TypeRef>()
+                let seen = System.Collections.Generic.HashSet<string>()
+                let parseField () =
+                    let nameTok = stream.ExpectIdent("Expected field name in inline record type")
+                    let fieldName =
+                        match nameTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    if not (seen.Add fieldName) then
+                        raise (ParseException { Message = $"Duplicate field '{fieldName}' in inline record type"; Span = nameTok.Span })
+                    stream.Expect(Colon, "Expected ':' after inline record type field name") |> ignore
+                    let fieldType = parseTypeRef()
+                    fields.Add(fieldName, fieldType)
+                if stream.Peek().Kind = RBrace then
+                    raise (ParseException { Message = "Inline record type must define at least one field"; Span = stream.Peek().Span })
+                parseField()
+                let mutable doneFields = false
+                while not doneFields do
+                    if stream.Match(Semicolon) then
+                        if stream.Peek().Kind = RBrace then
+                            doneFields <- true
+                        else
+                            parseField()
+                    else
+                        doneFields <- true
+                stream.Expect(RBrace, "Expected '}' in inline record type") |> ignore
+                TRRecord (fields |> Seq.toList)
             | LParen ->
                 stream.Next() |> ignore
                 let first = parseTypeRef()

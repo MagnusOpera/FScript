@@ -172,6 +172,12 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected recursive Node annotation evaluation")
 
     [<Test>]
+    member _.``Evaluates inline structural record annotation`` () =
+        match Helpers.eval "let format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000 }" with
+        | VString "Paris (75000)" -> ()
+        | _ -> Assert.Fail("Expected inline structural record annotation evaluation")
+
+    [<Test>]
     member _.``Evaluates top-level function value as unit result`` () =
         let v = Helpers.eval "let f x = x"
         match v with

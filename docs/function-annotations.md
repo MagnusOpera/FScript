@@ -37,6 +37,9 @@ This document specifies type annotations for function parameters in FScript.
 - Function:
   - `int -> string`
   - `(int -> string) list`
+- Inline structural record (single-line):
+  - `{ City: string; Zip: int }`
+  - `{ Meta: string map; Next: Node option }`
 
 ## Type-checking semantics
 - An annotation constrains parameter type during inference.
@@ -47,3 +50,4 @@ This document specifies type annotations for function parameters in FScript.
 - Annotations are useful for making function argument intent explicit.
 - Example:
   - `let display_node (node: Node) = $"{node.Value}"`
+  - `let format_address (address: { City: string; Zip: int }) = $"{address.City} ({address.Zip})"`

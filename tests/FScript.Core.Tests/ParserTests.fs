@@ -155,6 +155,18 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated lambda parameter with function type")
 
     [<Test>]
+    member _.``Parses annotated parameter with inline record type`` () =
+        let p = Helpers.parse "let format_address (address: { City: string; Zip: int }) = address.City"
+        match p.[0] with
+        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let parameter with inline record type")
+
+    [<Test>]
+    member _.``Rejects malformed inline record type annotation`` () =
+        let act () = Helpers.parse "let format_address (address: { City string; Zip: int }) = address.City" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses if then else`` () =
         let p = Helpers.parse "if true then 1 else 2"
         match p.[0] with

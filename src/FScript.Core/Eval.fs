@@ -527,6 +527,11 @@ module Eval =
             | TRPostfix (inner, "map") -> TStringMap (fromRef stack inner)
             | TRPostfix (_, suffix) ->
                 raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
+            | TRRecord fields ->
+                fields
+                |> List.map (fun (name, t) -> name, fromRef stack t)
+                |> Map.ofList
+                |> TRecord
 
         let typeDefs =
             decls

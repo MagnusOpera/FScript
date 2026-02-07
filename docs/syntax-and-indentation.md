@@ -95,3 +95,9 @@ From highest to lowest:
   - `type Shape = | Point | Circle of int`
 - Recursive union:
   - `type rec Tree = | Empty | Node of (int * Tree list)`
+
+## Inline type annotations in parameters
+- Parameter annotations accept inline structural record types:
+  - `let format_address (address: { City: string; Zip: int }) = ...`
+  - `fun (x: { Name: string; Tags: string list }) -> ...`
+- Inline record annotation fields use `;` separators in a single-line brace form.

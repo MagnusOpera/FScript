@@ -57,6 +57,23 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers inline structural record parameter annotation`` () =
+        let typed =
+            Helpers.infer
+                "let format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000 }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for inline record annotation mismatch`` () =
+        let act () =
+            Helpers.infer
+                "let format_address (address: { City: string; Zip: int }) = address.City\nformat_address { City = \"Paris\"; Zip = \"75000\" }"
+            |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers recursive function binding`` () =
         let typed = Helpers.infer "let rec sum n =\n    if n = 0 then 0 else n + sum (n - 1)\nsum 5"
         match typed |> List.last with

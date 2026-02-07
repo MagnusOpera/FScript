@@ -12,6 +12,7 @@ and TypeRef =
     | TRTuple of TypeRef list
     | TRFun of TypeRef * TypeRef
     | TRPostfix of TypeRef * string
+    | TRRecord of (string * TypeRef) list
 
 type Param =
     { Name: string

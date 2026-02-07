@@ -37,8 +37,8 @@ let parisAddress = { City = "Paris"; Zip = 75000 }
 
 let updated = { user with Tags = user.Tags @ ["mathematician"] }
 
-// Expects Address, but any record with matching fields is accepted.
-let format_address (address: Address) = $"{address.City} ({address.Zip})"
+// Inline structural annotation: any record with matching fields is accepted.
+let format_address (address: { City: string; Zip: int }) = $"{address.City} ({address.Zip})"
 
 
 let city =
