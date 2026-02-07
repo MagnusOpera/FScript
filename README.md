@@ -109,6 +109,7 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 - [`docs/supported-types.md`](docs/supported-types.md)
 - [`docs/function-annotations.md`](docs/function-annotations.md)
 - [`docs/external-functions.md`](docs/external-functions.md)
+- [`docs/embedding-fscript-language.md`](docs/embedding-fscript-language.md)
 - [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md)
 - [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
 - [`docs/assemblies-and-roles.md`](docs/assemblies-and-roles.md)
