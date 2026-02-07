@@ -41,6 +41,7 @@ jobs:
           (cd .out/windows/arm64; zip ../../fscript-${BUILD_VERSION}-windows-arm64.zip ./*)
           (cd .out/linux/x64; zip ../../fscript-${BUILD_VERSION}-linux-x64.zip ./*)
           (cd .out/linux/arm64; zip ../../fscript-${BUILD_VERSION}-linux-arm64.zip ./*)
+          cp entitlements.plist .out/darwin/entitlements.plist
           (cd .out/darwin; zip -r ../fscript-${BUILD_VERSION}-darwin-unsigned.zip ./*)
 
       - name: Extract version suffix
