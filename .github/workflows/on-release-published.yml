@@ -53,8 +53,8 @@ jobs:
 
       - name: Sign binaries
         run: |
-          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
-          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/x64/fscript --options=runtime --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.x64"
+          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --no-strict --entitlements entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
+          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/x64/fscript --options=runtime --no-strict --entitlements entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.x64"
           (cd .out/darwin/arm64; zip ../fscript-${{ github.ref_name }}-darwin-arm64.zip ./*)
           (cd .out/darwin/x64; zip ../fscript-${{ github.ref_name }}-darwin-x64.zip ./*)
 
