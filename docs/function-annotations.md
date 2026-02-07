@@ -40,6 +40,7 @@ This document specifies type annotations for function parameters in FScript.
 - Inline structural record (single-line):
   - `{ City: string; Zip: int }`
   - `{ Meta: string map; Next: Node option }`
+- Inline structural record annotations are parsed as single-line, semicolon-separated field lists.
 
 ## Type-checking semantics
 - An annotation constrains parameter type during inference.

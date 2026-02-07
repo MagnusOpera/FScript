@@ -53,6 +53,8 @@ let x =
 - FScript supports optional parameter annotations using F#-style syntax:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
+- FScript also supports inline structural record parameter annotations:
+  - `let f (x: { Name: string; Zip: int }) = ...`
 - Return type annotations are not supported.
 - Pattern-level type annotations are not supported.
 

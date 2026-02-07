@@ -27,15 +27,22 @@ let x =
 - Top-level record declarations:
   - `type Name = { ... }`
   - `type rec Name = { ... }`
+- Top-level discriminated union declarations:
+  - `type Shape = | Point | Circle of int`
+  - `type rec Tree = | Empty | Node of (int * Tree list)`
 - Recursive records are declared explicitly with `type rec`.
+- Recursive unions are declared explicitly with `type rec`.
 
 ## Type annotation style
 - Parameter annotations use parenthesized form:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
+- Parameter annotations also support inline structural record shapes:
+  - `let f (x: { Name: string; Zip: int }) = ...`
+  - `fun (x: { Id: int; Tags: string list }) -> ...`
 
 ## Pattern-matching style
-- `match` supports wildcard, literal, tuple, list-cons, option, and record-case patterns.
+- `match` supports wildcard, literal, tuple, list-cons, option, record, and union-case patterns.
 - Record patterns are used in `match` case heads.
 
 ## Host integration style
@@ -46,4 +53,5 @@ let x =
 ## Formatting and layout choices
 - `match` case columns align.
 - Multiline record type fields align.
+- Multiline union case lines align in their block.
 - These layout rules keep parser behavior explicit and predictable.

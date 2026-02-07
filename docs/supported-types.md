@@ -25,6 +25,7 @@ This document specifies the value and type system used by the interpreter.
 - Function type syntax is available in parameter annotations.
 - Parameter annotations also support inline structural record type refs:
   - `let f (x: { A: int; B: string }) = ...`
+- Inline record annotation fields are semicolon-separated in single-line form.
 
 ## Named record declarations
 - Top-level record declarations:
