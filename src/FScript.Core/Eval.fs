@@ -39,8 +39,11 @@ module Eval =
             |> sprintf "map { %s }"
         | VOption None -> "None"
         | VOption (Some value) -> sprintf "Some %s" (valueToInterpolationString value)
+        | VUnionCase (_, caseName, None) -> caseName
+        | VUnionCase (_, caseName, Some value) -> sprintf "%s %s" caseName (valueToInterpolationString value)
         | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
         | VClosure _ -> "<fun>"
+        | VUnionCtor (_, caseName) -> sprintf "<ctor %s>" caseName
         | VExternal _ -> "<extern>"
 
     let rec private valueEquals a b =
@@ -64,6 +67,12 @@ module Eval =
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
         | VOption None, VOption None -> true
         | VOption (Some x), VOption (Some y) -> valueEquals x y
+        | VUnionCase (tx, cx, px), VUnionCase (ty, cy, py) ->
+            tx = ty && cx = cy &&
+            match px, py with
+            | None, None -> true
+            | Some xv, Some yv -> valueEquals xv yv
+            | _ -> false
         | VTypeToken tx, VTypeToken ty -> tx = ty
         | _ -> false
 
@@ -98,6 +107,11 @@ module Eval =
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty
+        | PUnionCase (caseName, payload, _), VUnionCase (_, valueCaseName, valuePayload) when caseName = valueCaseName ->
+            match payload, valuePayload with
+            | None, None -> Some Map.empty
+            | Some p, Some v -> patternMatch p v
+            | _ -> None
         | _ -> None
 
     let rec private applyFunctionValue
@@ -111,6 +125,8 @@ module Eval =
         | VClosure (argName, body, closureEnv) ->
             let env' = closureEnv.Value |> Map.add argName argValue
             eval typeDefs env' body
+        | VUnionCtor (typeName, caseName) ->
+            VUnionCase(typeName, caseName, Some argValue)
         | VExternal (ext, args) ->
             let args' = args @ [ argValue ]
             if args'.Length = ext.Arity then
@@ -491,10 +507,18 @@ module Eval =
                     | Some _ ->
                         raise (EvalException { Message = "Mutual recursive types are not supported"; Span = unknownSpan })
                     | None ->
-                        d.Fields
-                        |> List.map (fun (fname, ft) -> fname, fromRef (n :: stack) ft)
-                        |> Map.ofList
-                        |> TRecord
+                        if not d.Cases.IsEmpty then
+                            let cases =
+                                d.Cases
+                                |> List.map (fun (caseName, payload) ->
+                                    caseName, payload |> Option.map (fromRef (n :: stack)))
+                                |> Map.ofList
+                            TUnion(n, cases)
+                        else
+                            d.Fields
+                            |> List.map (fun (fname, ft) -> fname, fromRef (n :: stack) ft)
+                            |> Map.ofList
+                            |> TRecord
                 | None -> TNamed n
             | TRTuple ts -> ts |> List.map (fromRef stack) |> TTuple
             | TRFun (a, b) -> TFun(fromRef stack a, fromRef stack b)
@@ -507,14 +531,37 @@ module Eval =
         let typeDefs =
             decls
             |> Map.map (fun name def ->
-                def.Fields
-                |> List.map (fun (fname, ft) -> fname, fromRef [ name ] ft)
-                |> Map.ofList
-                |> TRecord)
+                if not def.Cases.IsEmpty then
+                    let cases =
+                        def.Cases
+                        |> List.map (fun (caseName, payload) ->
+                            caseName, payload |> Option.map (fromRef [ name ]))
+                        |> Map.ofList
+                    TUnion(name, cases)
+                else
+                    def.Fields
+                    |> List.map (fun (fname, ft) -> fname, fromRef [ name ] ft)
+                    |> Map.ofList
+                    |> TRecord)
+
+        let constructorValues =
+            decls
+            |> Map.toList
+            |> List.collect (fun (typeName, def) ->
+                def.Cases
+                |> List.map (fun (caseName, payload) ->
+                    let value =
+                        match payload with
+                        | None -> VUnionCase(typeName, caseName, None)
+                        | Some _ -> VUnionCtor(typeName, caseName)
+                    caseName, value))
 
         let mutable env : Env =
             (builtinIgnore :: externs)
             |> List.fold (fun acc ext -> acc.Add(ext.Name, VExternal (ext, []))) Map.empty
+        env <-
+            constructorValues
+            |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
         let mutable lastValue = VUnit
         for stmt in program do
             match stmt with

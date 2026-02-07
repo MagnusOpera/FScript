@@ -16,6 +16,7 @@ type Type =
     | TOption of Type
     | TFun of Type * Type
     | TNamed of string
+    | TUnion of string * Map<string, Type option>
     | TTypeToken
     | TVar of int
 
@@ -39,7 +40,7 @@ module Types =
         | TStringMap t1 -> ftvType t1
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
-        | TNamed _ | TTypeToken -> Set.empty
+        | TNamed _ | TUnion _ | TTypeToken -> Set.empty
         | TVar v -> Set.singleton v
 
     let ftvScheme (Forall (vars, t)) =
@@ -72,6 +73,7 @@ module Types =
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
+            | TUnion (name, _) -> name
             | TTypeToken -> "type"
             | TVar v ->
                 let letter = char (int 'a' + (v % 26))

@@ -10,12 +10,17 @@ type User =
       Scores: int map
       Pair: (int * string) }
 
+type Subscription =
+    | Free
+    | Premium of int
+
 let scores =
     Map.empty 0
     |> Map.add "math" 20
     |> Map.add "science" 18
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
+let subscription = Premium 12
 
 let updated = { user with Tags = user.Tags @ ["mathematician"] }
 
@@ -30,11 +35,16 @@ let mathScore =
     |> Option.defaultValue 0
 
 let hasScience = updated.Scores |> Map.containsKey "science"
+let monthlyPrice =
+    match subscription with
+    | Free -> 0
+    | Premium amount -> amount
 
 print $"User: {updated.Name}"
 print $"City: {city}"
 print $"Math score: {mathScore}"
 print $"Has 'science': {hasScience}"
+print $"Subscription price: {monthlyPrice}"
 
 updated.Tags |> List.iter print
 

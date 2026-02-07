@@ -28,6 +28,9 @@ module Pretty =
             |> sprintf "map { %s }"
         | VOption None -> "None"
         | VOption (Some v) -> sprintf "Some %s" (valueToString v)
+        | VUnionCase (_, caseName, None) -> caseName
+        | VUnionCase (_, caseName, Some v) -> sprintf "%s %s" caseName (valueToString v)
         | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
         | VClosure _ -> "<fun>"
+        | VUnionCtor (_, caseName) -> sprintf "<ctor %s>" caseName
         | VExternal _ -> "<extern>"

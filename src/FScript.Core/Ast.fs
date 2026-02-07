@@ -4,6 +4,7 @@ type TypeDef =
     { Name: string
       IsRecursive: bool
       Fields: (string * TypeRef) list
+      Cases: (string * TypeRef option) list
       Span: Span }
 
 and TypeRef =
@@ -33,6 +34,7 @@ and Pattern =
     | PRecord of (string * Pattern) list * Span
     | PSome of Pattern * Span
     | PNone of Span
+    | PUnionCase of string * Pattern option * Span
 
 and Expr =
     | EUnit of Span
@@ -84,6 +86,7 @@ module Ast =
         | PRecord (_, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
+        | PUnionCase (_, _, s) -> s
 
     let spanOfExpr expr =
         match expr with

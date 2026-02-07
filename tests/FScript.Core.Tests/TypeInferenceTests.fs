@@ -318,6 +318,20 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match on discriminated union`` () =
+        let src = "type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Point -> 0\n    | Circle r -> r\nradius (Circle 3)"
+        let typed = Helpers.infer src
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for union payload type mismatch`` () =
+        let act () =
+            Helpers.infer "type Shape = | Point | Circle of int\nCircle true" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers multiline explicit recursive type declaration`` () =
         let typed =
             Helpers.infer

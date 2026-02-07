@@ -42,6 +42,14 @@ module Parser =
         | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Raise | For | Match | Typeof -> true
         | _ -> false
 
+    let private isUpperIdent (name: string) =
+        not (System.String.IsNullOrEmpty name) && System.Char.IsUpper(name.[0])
+
+    let private isStartPatternAtom (k: TokenKind) =
+        match k with
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ | LBracket | LParen | LBrace -> true
+        | _ -> false
+
     let private parseLiteral (t: Token) =
         match t.Kind with
         | IntLit v -> LInt v
@@ -219,52 +227,98 @@ module Parser =
                 while stream.Match(Newline) do ()
                 if stream.Match(Indent) then
                     hasOuterIndent <- true
-            stream.Expect(LBrace, "Expected '{' in record type declaration") |> ignore
-            let fields = ResizeArray<string * TypeRef>()
-            let parseField () =
-                stream.SkipNewlines()
-                let fieldTok = stream.ExpectIdent("Expected field name in type declaration")
-                let fieldName =
-                    match fieldTok.Kind with
-                    | Ident n -> n
-                    | _ -> ""
-                stream.SkipNewlines()
-                stream.Expect(Colon, "Expected ':' after field name") |> ignore
-                let fieldType = parseTypeRef()
-                fields.Add(fieldName, fieldType)
-                fieldTok.Span.Start.Column
-            let firstFieldColumn = parseField()
-            let mutable doneFields = false
-            while not doneFields do
-                if stream.Match(Semicolon) then
-                    if stream.Peek().Kind <> RBrace then
-                        parseField() |> ignore
+
+            let parseRecordDecl () =
+                stream.Expect(LBrace, "Expected '{' in record type declaration") |> ignore
+                let fields = ResizeArray<string * TypeRef>()
+                let parseField () =
+                    stream.SkipNewlines()
+                    let fieldTok = stream.ExpectIdent("Expected field name in type declaration")
+                    let fieldName =
+                        match fieldTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    stream.SkipNewlines()
+                    stream.Expect(Colon, "Expected ':' after field name") |> ignore
+                    let fieldType = parseTypeRef()
+                    fields.Add(fieldName, fieldType)
+                    fieldTok.Span.Start.Column
+                let firstFieldColumn = parseField()
+                let mutable doneFields = false
+                while not doneFields do
+                    if stream.Match(Semicolon) then
+                        if stream.Peek().Kind <> RBrace then
+                            parseField() |> ignore
+                        else
+                            doneFields <- true
                     else
-                        doneFields <- true
-                else
+                        let mutable sawNewline = false
+                        while stream.Match(Newline) do
+                            sawNewline <- true
+                        while stream.Match(Indent) do ()
+                        while stream.Match(Dedent) do ()
+                        if sawNewline then
+                            match stream.Peek().Kind with
+                            | RBrace -> doneFields <- true
+                            | Ident _ ->
+                                let fieldColumn = parseField()
+                                if fieldColumn <> firstFieldColumn then
+                                    raise (ParseException { Message = "Type declaration fields must align"; Span = stream.Peek().Span })
+                            | _ ->
+                                raise (ParseException { Message = "Expected field or '}' in record type declaration"; Span = stream.Peek().Span })
+                        else
+                            doneFields <- true
+                let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
+                fields |> Seq.toList, [], rb.Span
+
+            let parseUnionDecl () =
+                let cases = ResizeArray<string * TypeRef option>()
+                let parseCase () =
+                    stream.SkipNewlines()
+                    stream.Match(Bar) |> ignore
+                    let caseTok = stream.ExpectIdent("Expected union case name")
+                    let caseName =
+                        match caseTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    if not (isUpperIdent caseName) then
+                        raise (ParseException { Message = "Union case name must start with uppercase letter"; Span = caseTok.Span })
+                    stream.SkipNewlines()
+                    let payload =
+                        if stream.Match(Of) then
+                            Some (parseTypeRef())
+                        else
+                            None
+                    cases.Add(caseName, payload)
+                    caseTok.Span
+                let mutable lastSpan = (parseCase()).End
+                let mutable doneCases = false
+                while not doneCases do
                     let mutable sawNewline = false
                     while stream.Match(Newline) do
                         sawNewline <- true
                     while stream.Match(Indent) do ()
-                    while stream.Match(Dedent) do ()
-                    if sawNewline then
-                        match stream.Peek().Kind with
-                        | RBrace -> doneFields <- true
-                        | Ident _ ->
-                            let fieldColumn = parseField()
-                            if fieldColumn <> firstFieldColumn then
-                                raise (ParseException { Message = "Type declaration fields must align"; Span = stream.Peek().Span })
-                        | _ ->
-                            raise (ParseException { Message = "Expected field or '}' in record type declaration"; Span = stream.Peek().Span })
+                    if stream.Peek().Kind = Bar then
+                        let s = parseCase()
+                        lastSpan <- s.End
+                    elif sawNewline then
+                        doneCases <- true
                     else
-                        doneFields <- true
-            let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
+                        doneCases <- true
+                [], (cases |> Seq.toList), { Start = lastSpan; End = lastSpan }
+
+            let fields, cases, endSpan =
+                match stream.Peek().Kind with
+                | LBrace -> parseRecordDecl()
+                | Bar | Ident _ -> parseUnionDecl()
+                | _ -> raise (ParseException { Message = "Expected record or union type declaration body"; Span = stream.Peek().Span })
+
             if hasOuterIndent then
                 stream.SkipNewlines()
                 if not (stream.Match(Dedent)) then
-                    raise (ParseException { Message = "Expected dedent after record type declaration"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "Expected dedent after type declaration"; Span = stream.Peek().Span })
                 while stream.Match(Dedent) do ()
-            SType { Name = name; IsRecursive = isRec; Fields = fields |> Seq.toList; Span = mkSpanFrom typeTok.Span rb.Span }
+            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Span = mkSpanFrom typeTok.Span endSpan }
 
         and parsePattern () : Pattern =
             stream.SkipNewlines()
@@ -280,6 +334,12 @@ module Parser =
                 | "Some" ->
                     let p = parsePattern()
                     PSome(p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                | _ when isUpperIdent name ->
+                    if isStartPatternAtom (stream.Peek().Kind) then
+                        let p = parsePattern()
+                        PUnionCase(name, Some p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                    else
+                        PUnionCase(name, None, t.Span)
                 | _ -> PVar(name, t.Span)
             | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ ->
                 let t = stream.Next()

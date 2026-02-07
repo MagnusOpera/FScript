@@ -56,6 +56,7 @@ module internal HostDecode =
                     ok <- false
             if ok then Some (VRecord map) else None
         | TNamed _
+        | TUnion _
         | TTypeToken
         | TFun _
         | TVar _ -> None
@@ -111,6 +112,7 @@ module internal HostDecode =
             if ok then Some (VRecord map) else None
         | TTuple _
         | TNamed _
+        | TUnion _
         | TTypeToken
         | TFun _
         | TVar _ -> None
