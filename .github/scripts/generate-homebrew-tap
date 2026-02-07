@@ -4,6 +4,7 @@ set -euo pipefail
 
 FSCRIPT_VERSION="${1}"
 TAP_TEMPLATE_FILE="$(realpath "${2}")"
+FSCRIPT_GH_REPO="${FSCRIPT_GH_REPO:-magnusopera/fscript}"
 
 pat="([^-]*)-?([^-]*)"
 [[ $FSCRIPT_VERSION =~ $pat ]]
@@ -21,7 +22,7 @@ cd "$(mktemp -d)"
 
 >&2 echo "::info Generating Homebrew formula for FScript ${FSCRIPT_VERSION}"
 >&2 echo "::group::Download release assets"
->&2 gh release download --repo magnusopera/fscript "${FSCRIPT_VERSION}" \
+>&2 gh release download --repo "${FSCRIPT_GH_REPO}" "${FSCRIPT_VERSION}" \
   -p "fscript-${FSCRIPT_VERSION}-darwin-x64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-darwin-arm64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-linux-x64.zip" \
@@ -46,7 +47,7 @@ for i in \
   SHA256_VAR="${ENV_VAR}_SHA256"
   URL_VAR="${ENV_VAR}_URL"
   printf -v "${SHA256_VAR}" "%s" "${SHA256}"
-  printf -v "${URL_VAR}" "%s" "https://github.com/magnusopera/fscript/releases/download/${FSCRIPT_VERSION}/${ASSET}"
+  printf -v "${URL_VAR}" "%s" "https://github.com/${FSCRIPT_GH_REPO}/releases/download/${FSCRIPT_VERSION}/${ASSET}"
 
   export "${SHA256_VAR?}"
   export "${URL_VAR?}"

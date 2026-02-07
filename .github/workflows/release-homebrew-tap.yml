@@ -73,6 +73,8 @@ jobs:
           token: ${{ secrets.PAT_HOMEBREW_TAP }}
 
       - name: Update Homebrew formula
+        env:
+          FSCRIPT_GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           ./fscript/.github/scripts/generate-homebrew-tap \
