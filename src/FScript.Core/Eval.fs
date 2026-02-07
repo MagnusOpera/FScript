@@ -86,6 +86,15 @@ module Eval =
                 | Some acc, Some next ->
                     Some (Map.fold (fun state k value -> Map.add k value state) acc next)
                 | _ -> None)
+        | PRecord (fields, _), VRecord values ->
+            (Some Map.empty, fields)
+            ||> List.fold (fun accOpt (name, p) ->
+                match accOpt, values.TryFind name with
+                | Some acc, Some value ->
+                    match patternMatch p value with
+                    | Some next -> Some (Map.fold (fun state k v -> Map.add k v state) acc next)
+                    | None -> None
+                | _ -> None)
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty
@@ -240,6 +249,7 @@ module Eval =
 
     let rec private evalExpr (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
         match expr with
+        | EUnit _ -> VUnit
         | ELiteral (lit, _) -> literalToValue lit
         | EVar (name, span) ->
             match env |> Map.tryFind name with

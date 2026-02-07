@@ -41,6 +41,15 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected annotated function let")
 
     [<Test>]
+    member _.``Allows structural recursive record value where Node is expected`` () =
+        let typed =
+            Helpers.infer
+                "type rec Node = { Value: int; Left: Node option; Right: Node option }\nlet leaf = { Value = 1; Left = None; Right = None }\nlet root = { Value = 0; Left = Some leaf; Right = None }\nlet display_node (node: Node) = $\"{node.Value}\"\ndisplay_node root"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers annotated function parameter types`` () =
         let typed = Helpers.infer "let apply (f: int -> int) x = f x\napply (fun n -> n + 1) 2"
         match typed |> List.last with
@@ -164,6 +173,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers unit literal`` () =
+        let typed = Helpers.infer "()"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TUnit
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers match on option`` () =
         let typed = Helpers.infer "match Some 1 with\n    | Some x -> x\n    | None -> 0"
         match typed |> List.last with
@@ -183,6 +199,28 @@ type TypeInferenceTests () =
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers match on record subset pattern`` () =
+        let typed =
+            Helpers.infer
+                "type rec Node = { Value: int; Next: Node option }\nlet n = { Value = 1; Next = None }\nmatch n with\n    | { Value = v } -> v\n    | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for unknown record field in pattern`` () =
+        let act () =
+            Helpers.infer
+                "type rec Node = { Value: int; Next: Node option }\nlet n = { Value = 1; Next = None }\nmatch n with\n    | { Missing = v } -> v\n    | _ -> 0"
+            |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for record pattern on non-record scrutinee`` () =
+        let act () = Helpers.infer "match 1 with | { Value = v } -> v | _ -> 0" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Infers comparison and logical operators`` () =

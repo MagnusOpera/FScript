@@ -93,6 +93,11 @@ type EvalTests () =
         Helpers.eval src |> assertInt 1L
 
     [<Test>]
+    member _.``Evaluates match on record subset pattern`` () =
+        let src = "let n = { Value = 1; Next = None }\nmatch n with\n    | { Value = v } -> v\n    | _ -> 0"
+        Helpers.eval src |> assertInt 1L
+
+    [<Test>]
     member _.``Evaluates if expressions`` () =
         Helpers.eval "if true then 1 else 2" |> assertInt 1L
         Helpers.eval "if false then 1 else 2" |> assertInt 2L
@@ -110,6 +115,12 @@ type EvalTests () =
     member _.``Evaluates for loop as unit`` () =
         let result = Helpers.eval "for x in [1;2;3] do x |> ignore"
         match result with
+        | VUnit -> ()
+        | _ -> Assert.Fail("Expected unit value")
+
+    [<Test>]
+    member _.``Evaluates unit literal`` () =
+        match Helpers.eval "()" with
         | VUnit -> ()
         | _ -> Assert.Fail("Expected unit value")
 
@@ -141,6 +152,12 @@ type EvalTests () =
         match Helpers.eval "type rec Node = { Value: int; Next: Node option }\nlet display_node (node: Node) = $\"{node.Value}\"\ndisplay_node { Value = 42; Next = None }" with
         | VString "42" -> ()
         | _ -> Assert.Fail("Expected annotated parameter evaluation")
+
+    [<Test>]
+    member _.``Evaluates recursive record argument with Node annotation`` () =
+        match Helpers.eval "type rec Node = { Value: int; Left: Node option; Right: Node option }\nlet leaf = { Value = 1; Left = None; Right = None }\nlet root = { Value = 0; Left = Some leaf; Right = None }\nlet display_node (node: Node) = $\"{node.Value}\"\ndisplay_node root" with
+        | VString "0" -> ()
+        | _ -> Assert.Fail("Expected recursive Node annotation evaluation")
 
     [<Test>]
     member _.``Evaluates top-level function value as unit result`` () =

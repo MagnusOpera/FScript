@@ -77,6 +77,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected tuple literal")
 
     [<Test>]
+    member _.``Parses unit literal`` () =
+        let p = Helpers.parse "()"
+        match p.[0] with
+        | SExpr (EUnit _) -> ()
+        | _ -> Assert.Fail("Expected unit literal")
+
+    [<Test>]
     member _.``Parses record literal and field access`` () =
         let p = Helpers.parse "{ Name = \"a\"; Age = 1 }.Age"
         match p.[0] with
@@ -190,6 +197,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected tuple pattern in match")
 
     [<Test>]
+    member _.``Parses match with record patterns`` () =
+        let src = "match { Value = 1; Next = None } with\n    | { Value = v } -> v\n    | _ -> 0"
+        let program = Helpers.parse src
+        match program.[0] with
+        | SExpr (EMatch (_, (PRecord (_, _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected record pattern in match")
+
+    [<Test>]
     member _.``Rejects misaligned multiline match cases`` () =
         let act () = Helpers.parse "match [1;2] with\n| x::xs -> x\n    | [] -> 0" |> ignore
         act |> should throw typeof<ParseException>
@@ -272,4 +287,9 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects bare parameter annotation syntax`` () =
         let act () = Helpers.parse "let f x: int = x" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects duplicate fields in record pattern`` () =
+        let act () = Helpers.parse "match { Value = 1 } with | { Value = a; Value = b } -> a | _ -> 0" |> ignore
         act |> should throw typeof<ParseException>

@@ -304,6 +304,29 @@ module Parser =
                 else
                     stream.Expect(RParen, "Expected ')' after parenthesized pattern") |> ignore
                     first
+            | LBrace ->
+                let lb = stream.Next()
+                let fields = ResizeArray<string * Pattern>()
+                let seen = System.Collections.Generic.HashSet<string>()
+                let parseField () =
+                    stream.SkipNewlines()
+                    let nameTok = stream.ExpectIdent("Expected field name in record pattern")
+                    let name =
+                        match nameTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    if not (seen.Add name) then
+                        raise (ParseException { Message = $"Duplicate field '{name}' in record pattern"; Span = nameTok.Span })
+                    stream.SkipNewlines()
+                    stream.Expect(Equals, "Expected '=' in record pattern field") |> ignore
+                    let p = parsePatternCons()
+                    fields.Add(name, p)
+                parseField()
+                while stream.Match(Semicolon) do
+                    if stream.Peek().Kind <> RBrace then
+                        parseField()
+                let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
+                PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
 
         and parsePatternCons () : Pattern =
@@ -334,18 +357,22 @@ module Parser =
                 | _ -> EVar(name, t.Span)
             | LParen ->
                 let lp = stream.Next()
-                let first = parseExpr()
-                if stream.Match(Comma) then
-                    let elements = ResizeArray<Expr>()
-                    elements.Add(first)
-                    elements.Add(parseExpr())
-                    while stream.Match(Comma) do
-                        elements.Add(parseExpr())
-                    let rp = stream.Expect(RParen, "Expected ')' after tuple expression")
-                    ETuple(elements |> Seq.toList, mkSpanFrom lp.Span rp.Span)
+                if stream.Peek().Kind = RParen then
+                    let rp = stream.Next()
+                    EUnit (mkSpanFrom lp.Span rp.Span)
                 else
-                    stream.Expect(RParen, "Expected ')' after expression") |> ignore
-                    first
+                    let first = parseExpr()
+                    if stream.Match(Comma) then
+                        let elements = ResizeArray<Expr>()
+                        elements.Add(first)
+                        elements.Add(parseExpr())
+                        while stream.Match(Comma) do
+                            elements.Add(parseExpr())
+                        let rp = stream.Expect(RParen, "Expected ')' after tuple expression")
+                        ETuple(elements |> Seq.toList, mkSpanFrom lp.Span rp.Span)
+                    else
+                        stream.Expect(RParen, "Expected ')' after expression") |> ignore
+                        first
             | LBracket ->
                 let lb = stream.Next()
                 if stream.Match(RBracket) then

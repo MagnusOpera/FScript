@@ -1,12 +1,29 @@
-
 type rec Node =
     { Value: int
       Left: Node option
       Right: Node option }
 
-let n1 = { Value = 42; Left = None; Right = None }
+let leaf1 = { Value = 4; Left = None; Right = None }
+let leaf2 = { Value = 5; Left = None; Right = None }
+let leaf3 = { Value = 6; Left = None; Right = None }
+let leaf4 = { Value = 7; Left = None; Right = None }
+
+let n2 = { Value = 2; Left = Some leaf1; Right = Some leaf2 }
+let n3 = { Value = 3; Left = Some leaf3; Right = Some leaf4 }
+let root = { Value = 1; Left = Some n2; Right = Some n3 }
+
+let rec explore visit (node: Node) =
+    visit node
+
+    let explore_child node =
+        match node with
+        | Some node -> explore visit node
+        | _ -> ()
+
+    explore_child node.Left
+    explore_child node.Right
 
 let display_node (node: Node) =
     print $"{node.Value}"
 
-display_node n1
+explore display_node root

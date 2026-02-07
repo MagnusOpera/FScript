@@ -30,10 +30,12 @@ and Pattern =
     | PNil of Span
     | PCons of Pattern * Pattern * Span
     | PTuple of Pattern list * Span
+    | PRecord of (string * Pattern) list * Span
     | PSome of Pattern * Span
     | PNone of Span
 
 and Expr =
+    | EUnit of Span
     | ELiteral of Literal * Span
     | EVar of string * Span
     | ELambda of Param * Expr * Span
@@ -77,11 +79,13 @@ module Ast =
         | PNil s -> s
         | PCons (_, _, s) -> s
         | PTuple (_, s) -> s
+        | PRecord (_, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
 
     let spanOfExpr expr =
         match expr with
+        | EUnit s -> s
         | ELiteral (_, s) -> s
         | EVar (_, s) -> s
         | ELambda (_, _, s) -> s

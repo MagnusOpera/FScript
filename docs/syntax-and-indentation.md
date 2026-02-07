@@ -15,7 +15,7 @@ This document describes the concrete syntax accepted by the current interpreter 
   - block comments `(* ... *)` are rejected.
 
 ## Core expression forms
-- Literals: `int`, `float`, `bool`, `string`
+- Literals: `int`, `float`, `bool`, `string`, `()`
 - Variables and function application by whitespace:
   - `f x y`
 - Lambda:
@@ -31,6 +31,7 @@ This document describes the concrete syntax accepted by the current interpreter 
   - `for x in listExpr do bodyExprOrBlock`
 - Match:
   - `match expr with | ...`
+  - record patterns are supported in cases: `{ Field = pattern; ... }`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
   - field access `p.Name`
@@ -86,4 +87,4 @@ From highest to lowest:
 ## Known syntax limitations
 - `let ... in ...` is not supported.
 - Generic angle-bracket type syntax like `list<string>` is not supported.
-- Pattern matching supports list/option/tuple patterns, but no record patterns.
+- Record patterns are currently supported in `match` cases only (not in `let` patterns).
