@@ -109,7 +109,7 @@ module Eval =
         : Value =
         match fnValue with
         | VClosure (argName, body, closureEnv) ->
-            let env' = closureEnv |> Map.add argName argValue
+            let env' = closureEnv.Value |> Map.add argName argValue
             eval typeDefs env' body
         | VExternal (ext, args) ->
             let args' = args @ [ argValue ]
@@ -255,7 +255,7 @@ module Eval =
             match env |> Map.tryFind name with
             | Some v -> v
             | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
-        | ELambda (param, body, _) -> VClosure (param.Name, body, env)
+        | ELambda (param, body, _) -> VClosure (param.Name, body, ref env)
         | EApply (fn, arg, span) ->
             let fVal = evalExpr typeDefs env fn
             let aVal = evalExpr typeDefs env arg
@@ -281,15 +281,35 @@ module Eval =
             if isRec then
                 match value with
                 | ELambda (param, lambdaBody, _) ->
-                    let rec selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
-                    and recEnv : Env = env |> Map.add name selfValue
-                    evalExpr typeDefs recEnv body
+                    let recEnv = ref env
+                    let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
+                    recEnv.Value <- env |> Map.add name selfValue
+                    evalExpr typeDefs recEnv.Value body
                 | _ ->
                     raise (EvalException { Message = "let rec requires a function binding"; Span = span })
             else
                 let v = evalExpr typeDefs env value
                 let env' = env |> Map.add name v
                 evalExpr typeDefs env' body
+        | ELetRecGroup (bindings, body, span) ->
+            if bindings.IsEmpty then
+                evalExpr typeDefs env body
+            else
+                let recEnv = ref env
+                let recEntries =
+                    bindings
+                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                        if args.IsEmpty then
+                            raise (EvalException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
+                        let folded = Seq.foldBack (fun arg accExpr -> ELambda(arg, accExpr, bindingSpan)) args valueExpr
+                        match folded with
+                        | ELambda (param, lambdaBody, _) ->
+                            name, VClosure (param.Name, lambdaBody, recEnv)
+                        | _ ->
+                            raise (EvalException { Message = "let rec requires a function binding"; Span = span }))
+                let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
+                recEnv.Value <- finalEnv
+                evalExpr typeDefs finalEnv body
         | EMatch (scrutinee, cases, span) ->
             let v = evalExpr typeDefs env scrutinee
             let rec tryCases cs =
@@ -504,14 +524,32 @@ module Eval =
                 if isRec then
                     match expr with
                     | ELambda (param, lambdaBody, _) ->
-                        let rec selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
-                        and recEnv : Env = env |> Map.add name selfValue
-                        env <- recEnv
+                        let recEnv = ref env
+                        let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
+                        let finalEnv = env |> Map.add name selfValue
+                        recEnv.Value <- finalEnv
+                        env <- finalEnv
                     | _ ->
                         raise (EvalException { Message = "let rec requires a function binding"; Span = span })
                 else
                     let v = evalExpr typeDefs env expr
                     env <- env |> Map.add name v
+            | TypeInfer.TSLetRecGroup(bindings, span) ->
+                if bindings.IsEmpty then
+                    ()
+                else
+                    let recEnv = ref env
+                    let recEntries =
+                        bindings
+                        |> List.map (fun (name, expr, _, bindingSpan) ->
+                            match expr with
+                            | ELambda (param, lambdaBody, _) ->
+                                name, VClosure (param.Name, lambdaBody, recEnv)
+                            | _ ->
+                                raise (EvalException { Message = "let rec requires a function binding"; Span = bindingSpan }))
+                    let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
+                    recEnv.Value <- finalEnv
+                    env <- finalEnv
             | TypeInfer.TSExpr texpr ->
                 lastValue <- evalExpr typeDefs env texpr.Expr
         lastValue

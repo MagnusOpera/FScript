@@ -13,6 +13,7 @@ type TokenKind =
     | BoolLit of bool
     | Let
     | Rec
+    | And
     | Fun
     | Match
     | With

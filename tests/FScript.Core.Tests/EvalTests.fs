@@ -144,6 +144,13 @@ type EvalTests () =
         Helpers.eval src |> assertInt 15L
 
     [<Test>]
+    member _.``Evaluates mutually recursive function bindings`` () =
+        let src = "let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 5"
+        match Helpers.eval src with
+        | VBool false -> ()
+        | _ -> Assert.Fail("Expected bool result from mutual recursion")
+
+    [<Test>]
     member _.``Evaluates function application`` () =
         Helpers.eval "(fun x -> fun y -> x + y) 2 3" |> assertInt 5L
 

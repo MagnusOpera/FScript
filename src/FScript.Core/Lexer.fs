@@ -15,6 +15,7 @@ module Lexer =
         match ident with
         | "let" -> Some Let
         | "rec" -> Some Rec
+        | "and" -> Some And
         | "type" -> Some TokenKind.Type
         | "typeof" -> Some TokenKind.Typeof
         | "of" -> Some TokenKind.Of

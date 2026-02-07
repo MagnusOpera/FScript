@@ -115,6 +115,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected recursive function let")
 
     [<Test>]
+    member _.``Parses top-level mutually recursive function bindings`` () =
+        let src = "let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
+        let program = Helpers.parse src
+        match program.Head with
+        | SLetRecGroup (bindings, _) -> bindings.Length |> should equal 2
+        | _ -> Assert.Fail("Expected recursive let group")
+
+    [<Test>]
     member _.``Parses lambda expression`` () =
         let p = Helpers.parse "fun x -> x"
         match p.[0] with
@@ -239,6 +247,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected interpolated string")
 
     [<Test>]
+    member _.``Parses mutually recursive let expression`` () =
+        let src = "(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 4\n)"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SExpr (ELetRecGroup (bindings, _, _)) -> bindings.Length |> should equal 2
+        | _ -> Assert.Fail("Expected recursive let-expression group")
+
+    [<Test>]
     member _.``Rejects in keyword in let expression`` () =
         let act () = Helpers.parse "(let x = 1 in x)" |> ignore
         act |> should throw typeof<ParseException>
@@ -282,6 +298,11 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects let rec without function argument`` () =
         let act () = Helpers.parse "let rec x = 1" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects and binding without function argument`` () =
+        let act () = Helpers.parse "let rec f x = x\nand g = 1" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]

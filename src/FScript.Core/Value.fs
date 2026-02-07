@@ -18,7 +18,7 @@ and Value =
     | VStringMap of Map<string, Value>
     | VOption of Value option
     | VTypeToken of Type
-    | VClosure of string * Expr * Env
+    | VClosure of string * Expr * Env ref
     | VExternal of ExternalFunction * Value list
 
 and Env = Map<string, Value>

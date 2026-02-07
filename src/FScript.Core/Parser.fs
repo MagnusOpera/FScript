@@ -484,7 +484,8 @@ module Parser =
             let mutable keepGoing = true
             while keepGoing do
                 let next = stream.Peek()
-                if isStartAtom next.Kind then
+                let sameLineAsExpr = next.Span.Start.Line = (Ast.spanOfExpr expr).End.Line
+                if sameLineAsExpr && isStartAtom next.Kind then
                     let arg = parsePostfix()
                     expr <- EApply(expr, arg, mkSpanFrom (Ast.spanOfExpr expr) (Ast.spanOfExpr arg))
                 else
@@ -667,19 +668,64 @@ module Parser =
                 raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
             stream.Expect(Equals, "Expected '=' in let binding") |> ignore
             let value = parseExprOrBlock()
-            match stream.Peek().Kind with
-            | Ident "in" ->
-                raise (ParseException { Message = "'in' keyword is not supported"; Span = stream.Peek().Span })
-            | _ ->
-                // parseExpr may already have consumed trailing newline before a block body.
-                let body =
-                    match stream.Peek().Kind with
-                    | Indent ->
-                        stream.Next() |> ignore
-                        parseBlock()
-                    | _ -> parseExprOrBlock()
-                let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                ELet(name, funValue, body, isRec, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+            if isRec then
+                let bindings = ResizeArray<string * Param list * Expr * Span>()
+                let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
+                bindings.Add(name, args |> Seq.toList, value, firstSpan)
+                let mutable doneBindings = false
+                while not doneBindings do
+                    stream.SkipNewlines()
+                    if stream.Match(And) then
+                        let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
+                        let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
+                        let nextArgs = ResizeArray<Param>()
+                        let mutable nextArgsDone = false
+                        while not nextArgsDone do
+                            stream.SkipNewlines()
+                            match stream.Peek().Kind with
+                            | Ident _ | LParen ->
+                                nextArgs.Add(parseParam())
+                            | _ -> nextArgsDone <- true
+                        if nextArgs.Count = 0 then
+                            raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
+                        stream.SkipNewlines()
+                        if stream.Peek().Kind = Colon then
+                            raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
+                        stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+                        let nextValue = parseExprOrBlock()
+                        let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
+                        bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
+                    else
+                        doneBindings <- true
+                match stream.Peek().Kind with
+                | Ident "in" ->
+                    raise (ParseException { Message = "'in' keyword is not supported"; Span = stream.Peek().Span })
+                | _ ->
+                    let body =
+                        match stream.Peek().Kind with
+                        | Indent ->
+                            stream.Next() |> ignore
+                            parseBlock()
+                        | _ -> parseExprOrBlock()
+                    if bindings.Count = 1 then
+                        let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
+                        ELet(name, funValue, body, true, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                    else
+                        ELetRecGroup(bindings |> Seq.toList, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+            else
+                match stream.Peek().Kind with
+                | Ident "in" ->
+                    raise (ParseException { Message = "'in' keyword is not supported"; Span = stream.Peek().Span })
+                | _ ->
+                    // parseExpr may already have consumed trailing newline before a block body.
+                    let body =
+                        match stream.Peek().Kind with
+                        | Indent ->
+                            stream.Next() |> ignore
+                            parseBlock()
+                        | _ -> parseExprOrBlock()
+                    let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
+                    ELet(name, funValue, body, false, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
 
         and parseExprOrBlock () : Expr =
             let mutable sawNewline = false
@@ -718,6 +764,9 @@ module Parser =
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
                     ELet(name, valExpr, body, isRec, mkSpanFrom span (Ast.spanOfExpr body))
+                | SLetRecGroup(bindings, span) :: rest ->
+                    let body = desugar rest
+                    ELetRecGroup(bindings, body, mkSpanFrom span (Ast.spanOfExpr body))
                 | SExpr e :: rest ->
                     let body = desugar rest
                     ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
@@ -750,7 +799,42 @@ module Parser =
                     raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
                 stream.Expect(Equals, "Expected '=' in let binding") |> ignore
                 let value = parseExprOrBlock()
-                SLet(name, args |> Seq.toList, value, isRec, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                if isRec then
+                    let bindings = ResizeArray<string * Param list * Expr * Span>()
+                    let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
+                    bindings.Add(name, args |> Seq.toList, value, firstSpan)
+                    let mutable doneBindings = false
+                    while not doneBindings do
+                        stream.SkipNewlines()
+                        if stream.Match(And) then
+                            let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
+                            let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
+                            let nextArgs = ResizeArray<Param>()
+                            let mutable nextArgsDone = false
+                            while not nextArgsDone do
+                                stream.SkipNewlines()
+                                match stream.Peek().Kind with
+                                | Ident _ | LParen ->
+                                    nextArgs.Add(parseParam())
+                                | _ -> nextArgsDone <- true
+                            if nextArgs.Count = 0 then
+                                raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
+                            stream.SkipNewlines()
+                            if stream.Peek().Kind = Colon then
+                                raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
+                            stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+                            let nextValue = parseExprOrBlock()
+                            let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
+                            bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
+                        else
+                            doneBindings <- true
+                    if bindings.Count = 1 then
+                        SLet(name, args |> Seq.toList, value, true, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                    else
+                        let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
+                        SLetRecGroup(bindings |> Seq.toList, mkSpanFrom letTok.Span lastSpan)
+                else
+                    SLet(name, args |> Seq.toList, value, false, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
             | _ ->
                 let expr = parseExpr()
                 SExpr expr

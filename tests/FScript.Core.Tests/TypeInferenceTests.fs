@@ -64,6 +64,14 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers mutually recursive function bindings`` () =
+        let src = "let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 4"
+        let typed = Helpers.infer src
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TBool
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers let-polymorphism in nested let expressions`` () =
         let typed = Helpers.infer "(let id = fun x -> x\n    let a = id 1\n    id true\n)"
         match typed |> List.last with

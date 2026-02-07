@@ -21,6 +21,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `fun (x: int) -> expr`
 - Let expression (layout style):
   - `let x = expr`
+  - `let rec f x = ... and g y = ...`
   - nested via blocks
 - Conditionals:
   - `if cond then a else b`

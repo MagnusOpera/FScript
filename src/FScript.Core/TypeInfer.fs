@@ -105,6 +105,7 @@ module TypeInfer =
     type TypedStmt =
         | TSType of TypeDef
         | TSLet of string * Expr * Type * bool * Span
+        | TSLetRecGroup of (string * Expr * Type * Span) list * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
@@ -330,6 +331,46 @@ module TypeInfer =
                 let s2, t2, _ = inferExpr typeDefs env2 body
                 let s = compose s2 sValue
                 s, t2, asTyped expr t2
+        | ELetRecGroup (bindings, body, span) ->
+            let foldedBindings =
+                bindings
+                |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                    if args.IsEmpty then
+                        raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
+                    let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
+                    name, folded, bindingSpan)
+
+            let freshByName =
+                foldedBindings
+                |> List.map (fun (name, _, _) -> name, Types.freshVar())
+                |> Map.ofList
+
+            let envRec =
+                freshByName
+                |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
+
+            let mutable sRec = emptySubst
+            for (name, exprVal, bindingSpan) in foldedBindings do
+                let envForBinding = applyEnv sRec envRec
+                let s1, t1, _ = inferExpr typeDefs envForBinding exprVal
+                let expected = applyType s1 (applyType sRec freshByName.[name])
+                let s2 = unify typeDefs expected t1 bindingSpan
+                sRec <- compose s2 (compose s1 sRec)
+
+            let envGeneralize = applyEnv sRec env
+            let schemes =
+                foldedBindings
+                |> List.map (fun (name, _, _) ->
+                    let inferred = applyType sRec freshByName.[name]
+                    name, Types.generalize envGeneralize inferred)
+
+            let envBody =
+                schemes
+                |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
+
+            let sBody, tBody, _ = inferExpr typeDefs envBody body
+            let s = compose sBody sRec
+            s, tBody, asTyped expr tBody
         | EMatch (scrutinee, cases, span) ->
             let s1, tScrut, _ = inferExpr typeDefs env scrutinee
             let mutable sAcc = s1
@@ -558,6 +599,48 @@ module TypeInfer =
                     let scheme = Types.generalize env' t1
                     env <- env' |> Map.add name scheme
                     typed.Add(TSLet(name, exprVal, t1, false, span))
+            | SLetRecGroup(bindings, span) ->
+                let foldedBindings =
+                    bindings
+                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                        if args.IsEmpty then
+                            raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
+                        let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
+                        name, folded, bindingSpan)
+
+                let freshByName =
+                    foldedBindings
+                    |> List.map (fun (name, _, _) -> name, Types.freshVar())
+                    |> Map.ofList
+
+                let envRec =
+                    freshByName
+                    |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
+
+                let mutable sRec = emptySubst
+                for (name, exprVal, bindingSpan) in foldedBindings do
+                    let envForBinding = applyEnv sRec envRec
+                    let s1, t1, _ = inferExpr typeDefs envForBinding exprVal
+                    let expected = applyType s1 (applyType sRec freshByName.[name])
+                    let s2 = unify typeDefs expected t1 bindingSpan
+                    sRec <- compose s2 (compose s1 sRec)
+
+                let envGeneralize = applyEnv sRec env
+                let schemes =
+                    foldedBindings
+                    |> List.map (fun (name, _, _) ->
+                        let inferred = applyType sRec freshByName.[name]
+                        name, Types.generalize envGeneralize inferred)
+
+                let typedBindings =
+                    foldedBindings
+                    |> List.map (fun (name, exprVal, bindingSpan) ->
+                        name, exprVal, applyType sRec freshByName.[name], bindingSpan)
+
+                env <-
+                    schemes
+                    |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
+                typed.Add(TSLetRecGroup(typedBindings, span))
             | SExpr expr ->
                 let s1, t1, typedExpr = inferExpr typeDefs env expr
                 let sDiscard =
