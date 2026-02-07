@@ -34,6 +34,23 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected recursive type declaration")
 
     [<Test>]
+    member _.``Parses multiline type declaration`` () =
+        let src = "type rec Node =\n    { Value: int\n      Left: Node option\n      Right: Node option }"
+        let program = Helpers.parse src
+        match program.Head with
+        | SType def ->
+            def.Name |> should equal "Node"
+            def.IsRecursive |> should equal true
+            def.Fields.Length |> should equal 3
+        | _ -> Assert.Fail("Expected multiline type declaration")
+
+    [<Test>]
+    member _.``Rejects misaligned multiline type declaration fields`` () =
+        let act () =
+            Helpers.parse "type Person =\n    { Name: string\n       Age: int }" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses list literals`` () =
         let p1 = Helpers.parse "[1; 2]"
         match p1.[0] with

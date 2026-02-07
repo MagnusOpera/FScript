@@ -51,7 +51,7 @@ FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses 
 - `'a option`
 - `'a map` (string-keyed map)
 - structural record types inferred from record literals
-- top-level record type declarations: `type Name = { ... }` and `type rec Name = { ... }`
+- top-level record type declarations: `type Name = { ... }` and `type rec Name = { ... }` (single-line or multiline with aligned fields)
 - `unit` (for empty blocks or programs with only `let` bindings)
 
 ### Type Reflection and Decoding

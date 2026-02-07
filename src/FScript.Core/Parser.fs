@@ -186,10 +186,15 @@ module Parser =
                 | _ -> ""
             stream.SkipNewlines()
             stream.Expect(Equals, "Expected '=' in type declaration") |> ignore
-            stream.SkipNewlines()
+            let mutable hasOuterIndent = false
+            if stream.Match(Newline) then
+                while stream.Match(Newline) do ()
+                if stream.Match(Indent) then
+                    hasOuterIndent <- true
             stream.Expect(LBrace, "Expected '{' in record type declaration") |> ignore
             let fields = ResizeArray<string * TypeRef>()
             let parseField () =
+                stream.SkipNewlines()
                 let fieldTok = stream.ExpectIdent("Expected field name in type declaration")
                 let fieldName =
                     match fieldTok.Kind with
@@ -199,10 +204,38 @@ module Parser =
                 stream.Expect(Colon, "Expected ':' after field name") |> ignore
                 let fieldType = parseTypeRef()
                 fields.Add(fieldName, fieldType)
-            parseField()
-            while stream.Match(Semicolon) do
-                parseField()
+                fieldTok.Span.Start.Column
+            let firstFieldColumn = parseField()
+            let mutable doneFields = false
+            while not doneFields do
+                if stream.Match(Semicolon) then
+                    if stream.Peek().Kind <> RBrace then
+                        parseField() |> ignore
+                    else
+                        doneFields <- true
+                else
+                    let mutable sawNewline = false
+                    while stream.Match(Newline) do
+                        sawNewline <- true
+                    while stream.Match(Indent) do ()
+                    while stream.Match(Dedent) do ()
+                    if sawNewline then
+                        match stream.Peek().Kind with
+                        | RBrace -> doneFields <- true
+                        | Ident _ ->
+                            let fieldColumn = parseField()
+                            if fieldColumn <> firstFieldColumn then
+                                raise (ParseException { Message = "Type declaration fields must align"; Span = stream.Peek().Span })
+                        | _ ->
+                            raise (ParseException { Message = "Expected field or '}' in record type declaration"; Span = stream.Peek().Span })
+                    else
+                        doneFields <- true
             let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
+            if hasOuterIndent then
+                stream.SkipNewlines()
+                if not (stream.Match(Dedent)) then
+                    raise (ParseException { Message = "Expected dedent after record type declaration"; Span = stream.Peek().Span })
+                while stream.Match(Dedent) do ()
             SType { Name = name; IsRecursive = isRec; Fields = fields |> Seq.toList; Span = mkSpanFrom typeTok.Span rb.Span }
 
         and parsePattern () : Pattern =

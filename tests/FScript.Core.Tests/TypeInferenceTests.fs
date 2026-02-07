@@ -247,6 +247,15 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers multiline explicit recursive type declaration`` () =
+        let typed =
+            Helpers.infer
+                "type rec Node =\n    { Value: int\n      Next: Node option\n      Children: Node list }\n0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Requires rec keyword for recursive type declaration`` () =
         let act () =
             Helpers.infer
