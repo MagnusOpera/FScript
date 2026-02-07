@@ -1,89 +1,32 @@
 # FScript
 
-FScript is a minimal F#/ML-subset interpreter implemented in F#/.NET. It parses a single file, performs Hindley–Milner type inference, annotates the AST with types, and then evaluates the program.
+FScript is a lightweight, embeddable interpreter with an F#/ML-style language.
 
-## Supported Syntax and Features
+It is designed for host applications that need:
+- a concise functional scripting language,
+- strong static checks (Hindley-Milner type inference),
+- controlled host extensibility,
+- and a clear sandbox/security boundary.
 
-### Bindings and Functions
-- `let` bindings (top-level and nested)
-- `let rec` for recursive function bindings (top-level and inside expressions)
-- grouped mutual recursion for functions: `let rec ... and ...`
-- Function definitions via `let f x = ...`
-- Lambdas via `fun x -> ...`
-- Optional parameter type annotations: `let f (x: int) = ...`, `fun (x: int) -> ...`
-- Function application by whitespace: `f x`
+## Why FScript
 
-### Expressions
-- Literals: `int`, `float`, `bool`, `string`
-- Unit literal: `()`
-- `if ... then ... else ...`
-- `if ... then ... elif ... then ... else ...` (`elif` is sugar for nested `else if`)
-- `for x in <list> do <expr-or-block>`
-- `match ... with` using list/option patterns
-- Lists: `[a; b; c]`, `::` (cons), `@` (append)
-- Integer ranges: `[a..b]` (inclusive, auto-descending when `a > b`)
-- Tuples: `(a, b, c)`
-- Records: literals `{ First = "a"; Last = "b" }`, field access `p.First`, copy-update `{ p with Age = 2 }`
-- Option values and matching: `Some x`, `None`, and pattern matching with `Some p` / `None`
-- String interpolation: `$"hello {name}"`
-- `raise <stringExpr>` to abort execution with an eval error
-- `typeof <TypeName>` to produce a type token value
-- Pipeline operator: `x |> f` (equivalent to `f x`)
-- Built-in discard function: `ignore` (`'a -> unit`)
-- Operators with precedence:
-  - `* / %`
-  - `+ -`
-  - `@`
-  - `::`
-  - `= < > <= >=`
-  - `&& ||`
-  - `|>`
+- **F#/ML lineage**: immutable data, expressions-first style, pattern matching, `let`/`fun`, algebraic modeling.
+- **Interpreter pipeline**: lexer -> parser -> type inference -> evaluator.
+- **Host-first extensibility**: add external functions with explicit type schemes and runtime implementations.
+- **Security-aware embedding**: script capabilities are defined by what the host exposes.
 
-### Patterns
-- `_` wildcard
-- Identifier bindings
-- Literals
-- `[]`
-- `p1 :: p2`
-- record patterns in `match`: `{ Field = pat; ... }` (subset field matching)
-- `Some p` / `None`
+## Language Snapshot
 
-### Types
-- `int`, `float`, `bool`, `string`
-- `'a list`
-- tuples `(t1 * t2 * ...)`
-- functions `(t1 -> t2)` in type annotations
-- `'a option`
-- `'a map` (string-keyed map)
-- structural record types inferred from record literals
-- top-level record type declarations: `type Name = { ... }` and `type rec Name = { ... }` (single-line or multiline with aligned fields)
-- `unit` (for empty blocks or programs with only `let` bindings)
+FScript currently includes:
+- bindings and functions: `let`, `let rec`, `and` mutual recursion, lambdas,
+- control flow: `if/elif/else`, `match`, `for ... in ... do`,
+- data: list, option, tuple, map, record, discriminated unions,
+- pattern matching: list, option, tuple, record, union cases,
+- optional type annotations on parameters,
+- type declarations: records and unions (including recursive forms),
+- interpolation, pipeline operator, and `typeof` type tokens for host workflows.
 
-### Type Reflection and Decoding
-- `typeof Name` produces a type token.
-- `Json.deserialize (typeof Name) jsonText` can decode JSON into an `option` record value.
-
-### Host Externals
-- `print : string -> unit`
-- `Map.empty`, `Map.add`, `Map.try`, `Map.tryFind`, `Map.containsKey`, `Map.remove`
-- `List.map`, `List.choose`, `List.collect`, `List.contains`, `List.distinct`, `List.exists`, `List.fold`, `List.filter`, `List.iter`, `List.rev`, `List.length`, `List.tryFind`, `List.tryFindIndex`, `List.tryHead`, `List.tail`, `List.append`
-- `Option.get`, `Option.defaultValue`, `Option.defaultWith`, `Option.isNone`, `Option.isSome`, `Option.map`
-- `Hash.md5`, `Guid.new`, `Regex.matchGroups`, `Xml.values`, `Fs.glob`, `Fs.readText`, `Json.deserialize`
-
-### Immutability
-- Lists, tuples, and records are immutable values in FScript.
-
-### Notes and Limitations
-- `let rec` is only supported for function bindings
-- User-defined types are currently limited to top-level record declarations
-- Recursive record types require `type rec` and mutual recursive type declarations are not yet supported
-- `typeof` only accepts declared record type names
-- Discarding a non-`unit` expression is a type error unless explicitly piped to `ignore`
-- No `printfn`
-- Range endpoints must be `int` in v1
-- Comments supported: `//` line comments only
-
-## Usage
+## Quick Start
 
 ### Build
 ```bash
@@ -95,17 +38,57 @@ make build
 make test
 ```
 
-### Run
+### Run a script
 ```bash
-# Example
-cat > /tmp/sample.fss <<'EOF'
-let add x = fun y -> x + y
-add 2 3
-EOF
-
-dotnet run --project /Users/pct/src/MagnusOpera/FScript/src/FScript -- /tmp/sample.fss
+dotnet run --project src/FScript -- samples/types-showcase.fss
 ```
 
-## Output
-- The program result is the last top-level expression.
-- If a program contains only `let` bindings, the result is `unit` and prints as `()`.
+Useful samples:
+- `samples/types-showcase.fss`
+- `samples/patterns-and-collections.fss`
+- `samples/tree.fss`
+- `samples/mutual-recursion.fss`
+
+## Interpreter Architecture
+
+The core engine lives in `src/FScript.Core` and runs in four stages:
+1. **Lexing**: indentation-aware tokenization.
+2. **Parsing**: AST construction with expression/layout rules.
+3. **Type inference**: Hindley-Milner inference + unification + optional annotations.
+4. **Evaluation**: typed AST evaluation with immutable values and pattern matching.
+
+Host integration lives in `src/FScript.Host`.
+
+## Extensibility Model
+
+FScript is extended through host-provided externs.
+
+Each extern declares:
+- a public name (for script calls),
+- a type scheme,
+- arity,
+- implementation.
+
+Built-in extern families include `List.*`, `Map.*`, `Option.*`, `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
+
+For details and extension workflow, see `docs/external-functions.md`.
+
+## Sandbox and Security
+
+FScript runs in-process. Security is capability-based:
+- scripts can only do what exposed externs allow,
+- core language evaluation is deterministic over in-memory values,
+- side effects and external I/O are controlled at host extern boundaries.
+
+Operational controls (timeouts, cancellation, resource limits, process/container isolation) are host responsibilities.
+
+See `docs/sandbox-and-security.md` for the full model and checklist.
+
+## Documentation
+
+- `docs/syntax-and-indentation.md`
+- `docs/supported-types.md`
+- `docs/function-annotations.md`
+- `docs/external-functions.md`
+- `docs/sandbox-and-security.md`
+- `docs/fsharp-ocaml-differences.md`
