@@ -37,7 +37,6 @@ on:
 
 env:
   FSCRIPT_VERSION: ${{ inputs.version }}
-  GITHUB_TOKEN: ${{ secrets.PAT_HOMEBREW_TAP }}
 
 jobs:
   update-homebrew-tap:
@@ -75,6 +74,8 @@ jobs:
       - name: Update Homebrew formula
         env:
           FSCRIPT_GH_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ./fscript/.github/scripts/generate-homebrew-tap \
