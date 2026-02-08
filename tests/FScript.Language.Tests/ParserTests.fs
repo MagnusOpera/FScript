@@ -292,6 +292,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected interpolated string")
 
     [<Test>]
+    member _.``Parses interpolated placeholder containing string literal`` () =
+        let p = Helpers.parse "$\"{if true then \"missing\" else \"none\"}\""
+        match p.[0] with
+        | SExpr (EInterpolatedString ([ IPExpr _ ], _)) -> ()
+        | _ -> Assert.Fail("Expected interpolated placeholder expression")
+
+    [<Test>]
     member _.``Parses mutually recursive let expression`` () =
         let src = "(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 4\n)"
         let p = Helpers.parse src

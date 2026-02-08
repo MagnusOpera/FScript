@@ -230,6 +230,12 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected interpolated string with int placeholder")
 
     [<Test>]
+    member _.``Evaluates interpolation placeholder containing string literal`` () =
+        match Helpers.eval "$\"{if true then \"missing\" else \"none\"}\"" with
+        | VString "missing" -> ()
+        | _ -> Assert.Fail("Expected interpolation with string-literal placeholder expression")
+
+    [<Test>]
     member _.``Evaluates typeof for explicit recursive type`` () =
         match Helpers.eval "type rec Node = { Value: int; Next: Node option }\ntypeof Node" with
         | VTypeToken _ -> ()

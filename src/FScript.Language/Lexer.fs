@@ -78,10 +78,38 @@ module Lexer =
         let mutable cCol = col + 2
         let mutable doneFlag = false
         let mutable escaped = false
+        let mutable placeholderDepth = 0
+        let mutable inPlaceholderString = false
+        let mutable placeholderEscaped = false
 
         while idx < src.Length && not doneFlag do
             let ch = src.[idx]
-            if escaped then
+            if placeholderDepth > 0 then
+                if inPlaceholderString then
+                    if placeholderEscaped then
+                        placeholderEscaped <- false
+                    else
+                        match ch with
+                        | '\\' -> placeholderEscaped <- true
+                        | '"' -> inPlaceholderString <- false
+                        | _ -> ()
+                else
+                    match ch with
+                    | '"' ->
+                        inPlaceholderString <- true
+                    | '{' ->
+                        placeholderDepth <- placeholderDepth + 1
+                    | '}' ->
+                        placeholderDepth <- placeholderDepth - 1
+                    | _ -> ()
+
+                if ch = '\n' then
+                    cLine <- cLine + 1
+                    cCol <- 1
+                else
+                    cCol <- cCol + 1
+                idx <- idx + 1
+            elif escaped then
                 escaped <- false
                 if ch = '\n' then
                     cLine <- cLine + 1
@@ -93,6 +121,13 @@ module Lexer =
                 match ch with
                 | '\\' ->
                     escaped <- true
+                    idx <- idx + 1
+                    cCol <- cCol + 1
+                | '{' when idx + 1 < src.Length && src.[idx + 1] = '{' ->
+                    idx <- idx + 2
+                    cCol <- cCol + 2
+                | '{' ->
+                    placeholderDepth <- 1
                     idx <- idx + 1
                     cCol <- cCol + 1
                 | '"' ->

@@ -50,7 +50,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `raise "message"`
   - `typeof Name`
   - `nameof identifier`
-  - interpolated strings `$"hello {name}"`
+  - interpolated strings `$"hello {name}"` (placeholders accept regular expressions, including string literals)
 
 ## Operator precedence
 From highest to lowest:
