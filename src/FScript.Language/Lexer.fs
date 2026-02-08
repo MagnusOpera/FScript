@@ -18,6 +18,7 @@ module Lexer =
         | "and" -> Some And
         | "type" -> Some TokenKind.Type
         | "typeof" -> Some TokenKind.Typeof
+        | "nameof" -> Some TokenKind.Nameof
         | "of" -> Some TokenKind.Of
         | "fun" -> Some Fun
         | "match" -> Some Match

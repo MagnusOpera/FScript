@@ -230,3 +230,13 @@ type EvalTests () =
         match Helpers.eval "type rec Node = { Value: int; Next: Node option }\ntypeof Node" with
         | VTypeToken _ -> ()
         | _ -> Assert.Fail("Expected type token")
+
+    [<Test>]
+    member _.``Evaluates nameof for bound identifiers`` () =
+        match Helpers.eval "let x = 1\nnameof x" with
+        | VString "x" -> ()
+        | _ -> Assert.Fail("Expected identifier name")
+
+        match Helpers.eval "let display x = x\nnameof display" with
+        | VString "display" -> ()
+        | _ -> Assert.Fail("Expected function name")

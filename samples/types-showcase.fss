@@ -40,6 +40,12 @@ let updated = { user with Tags = user.Tags @ ["mathematician"] }
 // Inline structural annotation: any record with matching fields is accepted.
 let format_address (address: { City: string; Zip: int }) = $"{address.City} ({address.Zip})"
 
+// Name exposure for host capability maps.
+let capabilities =
+    Map.empty ""
+    |> Map.add (nameof format_address) "address formatting"
+    |> Map.add (nameof make_office_address) "office address constructor"
+
 
 let city =
     match updated.Address with
@@ -60,6 +66,7 @@ let monthlyPrice =
     | Free -> 0
     | Premium amount -> amount
 
+let missing = "missing"
 
 print $"User: {updated.Name}"
 print $"City: {city}"
@@ -72,6 +79,7 @@ print $"Subscription price: {monthlyPrice}"
 // - value created through another named record type (OfficeAddress)
 print $"Structural address from literal: {format_address parisAddress}"
 print $"Structural address from OfficeAddress: {format_address officeAddress}"
+print $"Capability for format_address: {Map.tryFind (nameof format_address) capabilities |> Option.defaultValue missing}"
 
 
 updated.Tags |> List.iter print

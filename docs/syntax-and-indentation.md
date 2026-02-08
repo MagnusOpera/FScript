@@ -49,6 +49,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Other:
   - `raise "message"`
   - `typeof Name`
+  - `nameof identifier`
   - interpolated strings `$"hello {name}"`
 
 ## Operator precedence

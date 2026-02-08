@@ -261,6 +261,11 @@ module TypeInfer =
                 emptySubst, TTypeToken, asTyped expr TTypeToken
             else
                 raise (TypeException { Message = sprintf "Unknown type '%s'" name; Span = span })
+        | ENameOf (name, span) ->
+            if env.ContainsKey name then
+                emptySubst, TString, asTyped expr TString
+            else
+                raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EInterpolatedString (parts, span) ->
             let mutable sAcc = emptySubst
             for part in parts do

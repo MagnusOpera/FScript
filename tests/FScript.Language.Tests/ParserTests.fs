@@ -162,6 +162,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated let parameter with inline record type")
 
     [<Test>]
+    member _.``Parses nameof expression`` () =
+        let p = Helpers.parse "let x = 1\nnameof x"
+        match p.[1] with
+        | SExpr (ENameOf ("x", _)) -> ()
+        | _ -> Assert.Fail("Expected nameof expression")
+
+    [<Test>]
     member _.``Rejects malformed inline record type annotation`` () =
         let act () = Helpers.parse "let format_address (address: { City string; Zip: int }) = address.City" |> ignore
         act |> should throw typeof<ParseException>

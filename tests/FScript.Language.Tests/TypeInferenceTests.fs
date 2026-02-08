@@ -74,6 +74,18 @@ type TypeInferenceTests () =
         act |> should throw typeof<TypeException>
 
     [<Test>]
+    member _.``Infers nameof result as string`` () =
+        let typed = Helpers.infer "let x = 1\nnameof x"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports error for nameof unbound identifier`` () =
+        let act () = Helpers.infer "nameof missing" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers recursive function binding`` () =
         let typed = Helpers.infer "let rec sum n =\n    if n = 0 then 0 else n + sum (n - 1)\nsum 5"
         match typed |> List.last with

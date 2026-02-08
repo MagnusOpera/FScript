@@ -61,6 +61,7 @@ and Expr =
     | ESome of Expr * Span
     | ENone of Span
     | ETypeOf of string * Span
+    | ENameOf of string * Span
     | EInterpolatedString of InterpolatedPart list * Span
 
 and InterpolatedPart =
@@ -114,4 +115,5 @@ module Ast =
         | ESome (_, s) -> s
         | ENone s -> s
         | ETypeOf (_, s) -> s
+        | ENameOf (_, s) -> s
         | EInterpolatedString (_, s) -> s

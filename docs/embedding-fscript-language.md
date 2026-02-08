@@ -103,6 +103,18 @@ match value with
 | _ -> printfn "Not a function"
 ```
 
+## Using `nameof` for exported capability keys
+
+`nameof` returns the bound identifier name as a string and type-checks that the identifier exists.
+
+```fsharp
+open FScript.Language
+
+let src = "let run_step x = x\nnameof run_step"
+let value = FScript.run src
+// value = VString "run_step"
+```
+
 ## Supported types
 
 Host-visible static types are represented by `Type`:

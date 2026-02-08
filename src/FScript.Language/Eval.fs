@@ -470,6 +470,11 @@ module Eval =
             match typeDefs.TryFind name with
             | Some t -> VTypeToken t
             | None -> raise (EvalException { Message = $"Unknown type '{name}'"; Span = span })
+        | ENameOf (name, span) ->
+            if env.ContainsKey name then
+                VString name
+            else
+                raise (EvalException { Message = $"Unbound variable '{name}'"; Span = span })
         | EInterpolatedString (parts, span) ->
             let sb = System.Text.StringBuilder()
             for part in parts do

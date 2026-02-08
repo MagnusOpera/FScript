@@ -49,6 +49,7 @@ let x =
 - Language core stays minimal.
 - Host capabilities are exposed through explicit extern functions.
 - Typed decoding workflows use `typeof Name` tokens with host externs.
+- Capability maps can use `nameof identifier` for stable script-side function keys.
 
 ## Formatting and layout choices
 - `match` case columns align.

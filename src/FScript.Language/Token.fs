@@ -42,6 +42,7 @@ type TokenKind =
     | RBrace
     | Type
     | Typeof
+    | Nameof
     | Of
     | Plus
     | Minus

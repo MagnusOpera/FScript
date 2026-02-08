@@ -33,7 +33,12 @@ Current runtime-handled groups include:
 
 ### Filesystem
 - `Fs.readText : string -> string option`
+- `Fs.combinePath : string -> string -> string`
+- `Fs.parentDirectory : string -> string option`
+- `Fs.extension : string -> string option`
+- `Fs.fileNameWithoutExtension : string -> string`
 - `Fs.glob : string -> string list option`
+- `Fs.enumerateFiles : string -> string -> string list option`
 
 ### Regex
 - `Regex.matchGroups : string -> string -> string list option`

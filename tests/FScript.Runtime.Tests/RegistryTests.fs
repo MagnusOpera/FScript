@@ -12,7 +12,12 @@ type RegistryTests () =
         let host = { RootDirectory = Directory.GetCurrentDirectory() }
         let names = Registry.all host |> List.map (fun e -> e.Name) |> Set.ofList
         names.Contains "Fs.readText" |> should equal true
+        names.Contains "Fs.combinePath" |> should equal true
+        names.Contains "Fs.parentDirectory" |> should equal true
+        names.Contains "Fs.extension" |> should equal true
+        names.Contains "Fs.fileNameWithoutExtension" |> should equal true
         names.Contains "Fs.glob" |> should equal true
+        names.Contains "Fs.enumerateFiles" |> should equal true
         names.Contains "Regex.matchGroups" |> should equal true
         names.Contains "Hash.md5" |> should equal true
         names.Contains "Guid.new" |> should equal true

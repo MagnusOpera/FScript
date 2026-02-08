@@ -15,7 +15,8 @@ This document defines the security model for running FScript programs with host 
 - The CLI allows overriding root with `--root <path>` (or `-r <path>`).
 
 Filesystem extern behavior:
-- `Fs.readText` and `Fs.glob` resolve candidate paths through `HostCommon.tryResolvePath`.
+- `Fs.readText` and `Fs.enumerateFiles` resolve candidate paths through `HostCommon.tryResolvePath`.
+- `Fs.glob` evaluates patterns under `RootDirectory`.
 - Access is granted for paths within `RootDirectory` (or exactly equal to it).
 - Out-of-bound paths return `None`.
 

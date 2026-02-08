@@ -72,4 +72,5 @@ This document specifies the value and type system used by the interpreter.
 
 ## Reflection
 - `typeof Name` yields a type token.
+- `nameof identifier` yields the bound identifier name as `string`.
 - Type tokens are consumed by host externs (for example JSON/XML decoding).

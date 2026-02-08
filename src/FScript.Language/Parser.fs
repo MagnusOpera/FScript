@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Raise | For | Match | Typeof -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Raise | For | Match | Typeof | Nameof -> true
         | _ -> false
 
     let private isUpperIdent (name: string) =
@@ -551,6 +551,14 @@ module Parser =
                     | Ident n -> n
                     | _ -> ""
                 ETypeOf(name, mkSpanFrom t.Span nameTok.Span)
+            | Nameof ->
+                let t = stream.Next()
+                let nameTok = stream.ExpectIdent("Expected identifier after 'nameof'")
+                let name =
+                    match nameTok.Kind with
+                    | Ident n -> n
+                    | _ -> ""
+                ENameOf(name, mkSpanFrom t.Span nameTok.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in expression"; Span = t.Span })
 
         and parsePostfix () : Expr =

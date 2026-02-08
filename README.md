@@ -27,7 +27,7 @@ FScript currently includes:
 - pattern matching: list, option, tuple, record, union cases,
 - optional type annotations on parameters,
 - type declarations: records and unions (including recursive forms),
-- interpolation, pipeline operator, and `typeof` type tokens for host workflows.
+- interpolation, pipeline operator, `typeof` type tokens, and `nameof` identifier tokens for host workflows.
 
 ## Quick Start
 
