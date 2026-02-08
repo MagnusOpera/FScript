@@ -39,6 +39,7 @@ type TokenKind =
     | Colon
     | Dot
     | RangeDots
+    | Hash
     | LBrace
     | RBrace
     | Type

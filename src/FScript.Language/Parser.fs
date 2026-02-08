@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Raise | For | Match | Typeof | Nameof -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Hash | Let | Fun | If | Raise | For | Match | Typeof | Nameof -> true
         | _ -> false
 
     let private isUpperIdent (name: string) =
@@ -529,6 +529,60 @@ module Parser =
                             parseField()
                         let rb = stream.Expect(RBrace, "Expected '}' in record literal")
                         ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+            | Hash ->
+                let hashTok = stream.Next()
+                let lb = stream.Expect(LBrace, "Expected '{' after '#' for map literal")
+                let mapStart = mkSpanFrom hashTok.Span lb.Span
+                stream.SkipNewlines()
+                let hasIndent = stream.Match(Indent)
+
+                let parseMapEntry () =
+                    let key = parsePostfix()
+                    stream.SkipNewlines()
+                    stream.Expect(Equals, "Expected '=' in map entry") |> ignore
+                    let value = parseExpr()
+                    key, value, (Ast.spanOfExpr value).End.Line
+
+                stream.SkipNewlines()
+                if hasIndent && stream.Peek().Kind = Dedent then
+                    stream.Next() |> ignore
+
+                if stream.Peek().Kind = RBrace then
+                    let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                    EMap([], mkSpanFrom mapStart rb.Span)
+                else
+                    let entries = ResizeArray<Expr * Expr>()
+                    let firstKey, firstValue, firstLine = parseMapEntry()
+                    entries.Add(firstKey, firstValue)
+
+                    let rec parseTail (lastEntryEndLine: int) =
+                        stream.SkipNewlines()
+                        if hasIndent && stream.Peek().Kind = Dedent then
+                            stream.Next() |> ignore
+                        if stream.Peek().Kind = RBrace then
+                            ()
+                        elif stream.Match(Semicolon) then
+                            stream.SkipNewlines()
+                            if hasIndent && stream.Peek().Kind = Dedent then
+                                stream.Next() |> ignore
+                            if stream.Peek().Kind = RBrace then
+                                ()
+                            else
+                                let key, value, valueLine = parseMapEntry()
+                                entries.Add(key, value)
+                                parseTail valueLine
+                        else
+                            let next = stream.Peek()
+                            if next.Span.Start.Line > lastEntryEndLine then
+                                let key, value, valueLine = parseMapEntry()
+                                entries.Add(key, value)
+                                parseTail valueLine
+                            else
+                                raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = next.Span })
+
+                    parseTail firstLine
+                    let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                    EMap(entries |> Seq.toList, mkSpanFrom mapStart rb.Span)
             | Let ->
                 parseLetExpr()
             | Fun ->

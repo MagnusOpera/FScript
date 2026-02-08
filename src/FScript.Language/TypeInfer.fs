@@ -484,6 +484,24 @@ module TypeInfer =
                 inferred <- inferred.Add(name, applyType sAcc t1)
             let tRes = TRecord inferred
             sAcc, tRes, asTyped expr tRes
+        | EMap (entries, span) ->
+            let valueType = Types.freshVar()
+            let mutable sAcc = emptySubst
+            for (keyExpr, valueExpr) in entries do
+                let envForKey = applyEnv sAcc env
+                let sKey, tKey, _ = inferExpr typeDefs constructors envForKey keyExpr
+                let sKeyString = unify typeDefs (applyType sKey tKey) TString span
+                let sAfterKey = compose sKeyString (compose sKey sAcc)
+
+                let envForValue = applyEnv sAfterKey env
+                let sValue, tValue, _ = inferExpr typeDefs constructors envForValue valueExpr
+                let expectedValueType = applyType sValue (applyType sAfterKey valueType)
+                let sValueType = unify typeDefs expectedValueType tValue span
+
+                sAcc <- compose sValueType (compose sValue sAfterKey)
+
+            let tRes = TStringMap (applyType sAcc valueType)
+            sAcc, tRes, asTyped expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
             let sBase, tBase, _ = inferExpr typeDefs constructors env baseExpr
             let baseFields =

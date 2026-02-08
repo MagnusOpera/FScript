@@ -50,6 +50,16 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected last duplicate value")
 
     [<Test>]
+    member _.``Native map literal composes with Map externs`` () =
+        match Helpers.evalWithExterns externs "#{ \"a\" = 1; \"b\" = 2 } |> Map.count" with
+        | VInt 2L -> ()
+        | _ -> Assert.Fail("Expected map count 2")
+
+        match Helpers.evalWithExterns externs "#{ \"a\" = 1; \"b\" = 2 } |> Map.tryGet \"b\"" with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected Some 2")
+
+    [<Test>]
     member _.``Map externs support count filter fold and choose`` () =
         match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2); (\"c\", 3)] |> Map.count" with
         | VInt 3L -> ()

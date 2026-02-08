@@ -335,6 +335,7 @@ module Lexer =
                     i <- i + 2
                     col <- col + 2
                 | '.' -> addToken Dot (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '#' -> addToken Hash (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '{' -> addToken LBrace (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '}' -> addToken RBrace (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | _ ->

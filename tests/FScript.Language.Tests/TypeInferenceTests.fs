@@ -395,6 +395,23 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected type declaration")
 
     [<Test>]
+    member _.``Infers map literal type`` () =
+        let typed = Helpers.infer "#{ \"a\" = 1; \"b\" = 2 }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for non-string map literal key`` () =
+        let act () = Helpers.infer "#{ 1 = 2 }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for mixed map literal values`` () =
+        let act () = Helpers.infer "#{ \"a\" = 1; \"b\" = \"x\" }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers interpolated string as string`` () =
         let typed = Helpers.infer "let name = \"world\"\n$\"hello {name}\""
         match typed |> List.last with

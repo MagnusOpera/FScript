@@ -111,6 +111,23 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected record update expression")
 
     [<Test>]
+    member _.``Parses map literal`` () =
+        let p = Helpers.parse "#{ \"a\" = 1; \"b\" = 2 }"
+        match p.[0] with
+        | SExpr (EMap (entries, _)) ->
+            entries.Length |> should equal 2
+        | _ -> Assert.Fail("Expected map literal")
+
+    [<Test>]
+    member _.``Parses multiline map literal`` () =
+        let src = "#{\n    \"a\" = 1\n    \"b\" = 2\n}"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SExpr (EMap (entries, _)) ->
+            entries.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline map literal")
+
+    [<Test>]
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with

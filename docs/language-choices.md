@@ -19,8 +19,9 @@ let x =
   - `'a list`
   - `'a option`
   - `'a map`
-- Map values can be built from tuple lists with `Map.ofList`:
-  - `Map.ofList [("a", 1); ("b", 2)]`
+- Map values use native literals:
+  - `#{ "a" = 1; "b" = 2 }`
+- Runtime helpers are also available for map construction/updates (for example `Map.ofList`, `Map.add`).
 - Function types use arrow syntax:
   - `int -> string`
   - `int -> int -> int`

@@ -92,3 +92,8 @@ type LexerTests () =
 
         let fieldTokens = Lexer.tokenize "p.Name"
         fieldTokens |> List.exists (fun t -> t.Kind = Dot) |> should equal true
+
+    [<Test>]
+    member _.``Tokenizes map literal prefix`` () =
+        let tokens = Lexer.tokenize "#{ \"a\" = 1 }"
+        tokens |> List.exists (fun t -> t.Kind = Hash) |> should equal true

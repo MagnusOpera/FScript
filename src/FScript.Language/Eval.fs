@@ -239,6 +239,17 @@ module Eval =
             |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
             |> Map.ofList
             |> VRecord
+        | EMap (entries, _) ->
+            entries
+            |> List.fold (fun (acc: Map<string, Value>) (keyExpr, valueExpr) ->
+                match evalExpr typeDefs env keyExpr with
+                | VString key ->
+                    let value = evalExpr typeDefs env valueExpr
+                    acc.Add(key, value)
+                | _ ->
+                    // Type checker guarantees string keys for map literals.
+                    raise (EvalException { Message = "Map literal keys must be strings"; Span = Ast.spanOfExpr keyExpr })) (Map.empty<string, Value>)
+            |> VStringMap
         | ERecordUpdate (target, updates, span) ->
             match evalExpr typeDefs env target with
             | VRecord fields ->

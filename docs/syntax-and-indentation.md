@@ -38,6 +38,14 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - literal `{ Name = "a"; Age = 1 }`
   - field access `p.Name`
   - copy-update `{ p with Age = 2 }`
+- Maps:
+  - empty `#{}`
+  - literal `#{ "a" = 1; "b" = 2 }`
+  - multiline:
+    - `#{`
+    - `    "a" = 1`
+    - `    "b" = 2`
+    - `}`
 - Lists:
   - `[a; b; c]`
   - range `[a..b]`

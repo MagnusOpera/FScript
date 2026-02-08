@@ -53,6 +53,7 @@ and Expr =
     | ERange of Expr * Expr * Span
     | ETuple of Expr list * Span
     | ERecord of (string * Expr) list * Span
+    | EMap of (Expr * Expr) list * Span
     | ERecordUpdate of Expr * (string * Expr) list * Span
     | EFieldGet of Expr * string * Span
     | ECons of Expr * Expr * Span
@@ -107,6 +108,7 @@ module Ast =
         | ERange (_, _, s) -> s
         | ETuple (_, s) -> s
         | ERecord (_, s) -> s
+        | EMap (_, s) -> s
         | ERecordUpdate (_, _, s) -> s
         | EFieldGet (_, _, s) -> s
         | ECons (_, _, s) -> s

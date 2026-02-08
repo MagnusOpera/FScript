@@ -64,6 +64,29 @@ type EvalTests () =
         Helpers.eval "{ Name = \"a\"; Age = 42 }.Age" |> assertInt 42L
 
     [<Test>]
+    member _.``Evaluates map literals`` () =
+        match Helpers.eval "#{ \"a\" = 1; \"b\" = 2 }" with
+        | VStringMap m ->
+            m.Count |> should equal 2
+            match m.["a"] with
+            | VInt 1L -> ()
+            | _ -> Assert.Fail("Expected key a to map to 1")
+            match m.["b"] with
+            | VInt 2L -> ()
+            | _ -> Assert.Fail("Expected key b to map to 2")
+        | _ -> Assert.Fail("Expected map value")
+
+    [<Test>]
+    member _.``Evaluates map literals with duplicate keys as last-wins`` () =
+        match Helpers.eval "#{ \"a\" = 1; \"a\" = 2 }" with
+        | VStringMap m ->
+            m.Count |> should equal 1
+            match m.["a"] with
+            | VInt 2L -> ()
+            | _ -> Assert.Fail("Expected key a to map to 2")
+        | _ -> Assert.Fail("Expected map value")
+
+    [<Test>]
     member _.``Evaluates record copy-update immutably`` () =
         Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np.Age" |> assertInt 1L
         Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age" |> assertInt 2L

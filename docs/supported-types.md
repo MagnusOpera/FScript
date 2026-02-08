@@ -18,6 +18,14 @@ This document specifies the value and type system used by the interpreter.
 - Record: structural record types
 - Discriminated union: named union types with cases
 
+## Map literals
+- Native map literal syntax:
+  - empty: `#{}`
+  - populated: `#{ "a" = 1; "b" = 2 }`
+  - multiline entries are supported in an indented block.
+- Keys are `string`.
+- Values are inferred and unified to a single value type.
+
 ## Function types
 - Functions use curried arrow types:
   - `t1 -> t2`

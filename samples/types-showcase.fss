@@ -20,9 +20,7 @@ type Subscription =
 
 
 let scores =
-    Map.empty
-    |> Map.add "math" 20
-    |> Map.add "science" 18
+    #{ "math" = 20; "science" = 18 }
 
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
@@ -42,8 +40,10 @@ let format_address (address: { City: string; Zip: int }) = $"{address.City} ({ad
 
 // Name exposure for host capability maps.
 let capabilities =
-    Map.ofList
-        [(nameof format_address, "address formatting"); (nameof make_office_address, "office address constructor")]
+    #{
+        (nameof format_address) = "address formatting"
+        (nameof make_office_address) = "office address constructor"
+    }
 
 
 let city =
