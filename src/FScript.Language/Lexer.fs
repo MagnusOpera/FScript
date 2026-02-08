@@ -14,6 +14,7 @@ module Lexer =
     let private keywordToken ident =
         match ident with
         | "let" -> Some Let
+        | "export" -> Some Export
         | "rec" -> Some Rec
         | "and" -> Some And
         | "type" -> Some TokenKind.Type

@@ -586,7 +586,7 @@ module Eval =
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
-            | TypeInfer.TSLet(name, expr, _, isRec, span) ->
+            | TypeInfer.TSLet(name, expr, _, isRec, _, span) ->
                 if isRec then
                     match expr with
                     | ELambda (param, lambdaBody, _) ->
@@ -600,7 +600,7 @@ module Eval =
                 else
                     let v = evalExpr typeDefs env expr
                     env <- env |> Map.add name v
-            | TypeInfer.TSLetRecGroup(bindings, span) ->
+            | TypeInfer.TSLetRecGroup(bindings, _, span) ->
                 if bindings.IsEmpty then
                     ()
                 else

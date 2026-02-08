@@ -19,7 +19,7 @@ module Descriptor =
     let describeFunctions (program: TypedProgram) (symbols: Map<string, Scheme>) : FunctionDescriptor list =
         program
         |> List.choose (function
-            | TSLet (name, _, expr, isRec, span) ->
+            | TSLet (name, _, expr, isRec, _, span) ->
                 let t = TypedAst.typeOf expr
                 match flattenFunctionType t with
                 | [], _ -> None

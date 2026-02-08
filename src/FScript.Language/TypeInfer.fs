@@ -108,8 +108,8 @@ module TypeInfer =
     type TypedExpr = { Expr: Expr; Type: Type; Span: Span }
     type TypedStmt =
         | TSType of TypeDef
-        | TSLet of string * Expr * Type * bool * Span
-        | TSLetRecGroup of (string * Expr * Type * Span) list * Span
+        | TSLet of string * Expr * Type * bool * bool * Span
+        | TSLetRecGroup of (string * Expr * Type * Span) list * bool * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
@@ -654,7 +654,7 @@ module TypeInfer =
             match stmt with
             | SType def ->
                 typed.Add(TSType def)
-            | SLet(name, args, expr, isRec, span) ->
+            | SLet(name, args, expr, isRec, isExported, span) ->
                 let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                 if isRec then
                     let tv = Types.freshVar()
@@ -665,14 +665,14 @@ module TypeInfer =
                     let env' = applyEnv s env
                     let scheme = Types.generalize env' (applyType s t1)
                     env <- env' |> Map.add name scheme
-                    typed.Add(TSLet(name, exprVal, applyType s t1, true, span))
+                    typed.Add(TSLet(name, exprVal, applyType s t1, true, isExported, span))
                 else
                     let s1, t1, _ = inferExpr typeDefs constructors env exprVal
                     let env' = applyEnv s1 env
                     let scheme = Types.generalize env' t1
                     env <- env' |> Map.add name scheme
-                    typed.Add(TSLet(name, exprVal, t1, false, span))
-            | SLetRecGroup(bindings, span) ->
+                    typed.Add(TSLet(name, exprVal, t1, false, isExported, span))
+            | SLetRecGroup(bindings, isExported, span) ->
                 let foldedBindings =
                     bindings
                     |> List.map (fun (name, args, valueExpr, bindingSpan) ->
@@ -713,7 +713,7 @@ module TypeInfer =
                 env <-
                     schemes
                     |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
-                typed.Add(TSLetRecGroup(typedBindings, span))
+                typed.Add(TSLetRecGroup(typedBindings, isExported, span))
             | SExpr expr ->
                 let s1, t1, typedExpr = inferExpr typeDefs constructors env expr
                 let sDiscard =

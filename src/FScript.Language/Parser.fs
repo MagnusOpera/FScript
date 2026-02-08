@@ -871,6 +871,8 @@ module Parser =
                 | EOF -> doneBlock <- true
                 | Let ->
                     statements.Add(parseStmt())
+                | Export ->
+                    raise (ParseException { Message = "'export let' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
                     let expr = parseExpr()
                     statements.Add(SExpr expr)
@@ -880,11 +882,11 @@ module Parser =
                 match stmts with
                 | [] -> ELiteral(LBool true, stream.Peek().Span)
                 | [SExpr e] -> e
-                | SLet(name, args, value, isRec, span) :: rest ->
+                | SLet(name, args, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
                     ELet(name, valExpr, body, isRec, mkSpanFrom span (Ast.spanOfExpr body))
-                | SLetRecGroup(bindings, span) :: rest ->
+                | SLetRecGroup(bindings, _, span) :: rest ->
                     let body = desugar rest
                     ELetRecGroup(bindings, body, mkSpanFrom span (Ast.spanOfExpr body))
                 | SExpr e :: rest ->
@@ -896,8 +898,15 @@ module Parser =
 
         and parseStmt () : Stmt =
             stream.SkipNewlines()
+            let isExported =
+                if stream.Match(Export) then
+                    true
+                else
+                    false
             match stream.Peek().Kind with
             | Type ->
+                if isExported then
+                    raise (ParseException { Message = "'export' is only valid for top-level let bindings"; Span = stream.Peek().Span })
                 parseTypeDecl()
             | Let ->
                 let letTok = stream.Next()
@@ -949,12 +958,14 @@ module Parser =
                         else
                             doneBindings <- true
                     if bindings.Count = 1 then
-                        SLet(name, args |> Seq.toList, value, true, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                        SLet(name, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
                     else
                         let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
-                        SLetRecGroup(bindings |> Seq.toList, mkSpanFrom letTok.Span lastSpan)
+                        SLetRecGroup(bindings |> Seq.toList, isExported, mkSpanFrom letTok.Span lastSpan)
                 else
-                    SLet(name, args |> Seq.toList, value, false, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                    SLet(name, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+            | _ when isExported ->
+                raise (ParseException { Message = "'export' must be followed by a top-level let binding"; Span = stream.Peek().Span })
             | _ ->
                 let expr = parseExpr()
                 SExpr expr

@@ -12,6 +12,7 @@ type TokenKind =
     | InterpString of string
     | BoolLit of bool
     | Let
+    | Export
     | Rec
     | And
     | Fun

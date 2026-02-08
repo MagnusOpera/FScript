@@ -21,7 +21,7 @@ type TypeInferenceTests () =
     member _.``Infers polymorphic identity function`` () =
         let typed = Helpers.infer "let id x = x"
         match typed.[0] with
-        | TypeInfer.TSLet (_, _, t, _, _) ->
+        | TypeInfer.TSLet (_, _, t, _, _, _) ->
             match t with
             | TFun (TVar a, TVar b) when a = b -> ()
             | _ -> Assert.Fail("Expected a -> a")
@@ -33,7 +33,7 @@ type TypeInferenceTests () =
             Helpers.infer
                 "type rec Node = { Value: int; Next: Node option }\nlet display_node (node: Node) = $\"{node.Value}\""
         match typed.[1] with
-        | TypeInfer.TSLet (_, _, t, _, _) ->
+        | TypeInfer.TSLet (_, _, t, _, _, _) ->
             match t with
             | TFun (TRecord fields, TString) ->
                 fields.ContainsKey "Value" |> should equal true
