@@ -12,7 +12,7 @@ module FsExterns =
         { Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full when File.Exists(full) -> HostCommon.some (VString (File.ReadAllText(full)))
@@ -23,7 +23,7 @@ module FsExterns =
         { Name = "Fs.exists"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full -> VBool (File.Exists(full) || Directory.Exists(full))
@@ -34,7 +34,7 @@ module FsExterns =
         { Name = "Fs.isFile"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full -> VBool (File.Exists(full))
@@ -45,7 +45,7 @@ module FsExterns =
         { Name = "Fs.isDirectory"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full -> VBool (Directory.Exists(full))
@@ -56,7 +56,7 @@ module FsExterns =
         { Name = "Fs.createDirectory"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full ->
@@ -71,7 +71,7 @@ module FsExterns =
         { Name = "Fs.writeText"
           Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
           Arity = 2
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path; VString content ] ->
                   match HostCommon.tryResolvePath ctx path with
                   | Some full ->
@@ -90,7 +90,7 @@ module FsExterns =
         { Name = "Fs.combinePath"
           Scheme = Forall([], TFun(TString, TFun(TString, TString)))
           Arity = 2
-          Impl = function
+          Impl = fun _ -> function
               | [ VString left; VString right ] ->
                   Path.Combine(left, right)
                   |> normalizeSeparators
@@ -101,7 +101,7 @@ module FsExterns =
         { Name = "Fs.parentDirectory"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match Path.GetDirectoryName(path) with
                   | null -> HostCommon.none
@@ -113,7 +113,7 @@ module FsExterns =
         { Name = "Fs.extension"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match Path.GetExtension(path) with
                   | null -> HostCommon.none
@@ -125,7 +125,7 @@ module FsExterns =
         { Name = "Fs.fileNameWithoutExtension"
           Scheme = Forall([], TFun(TString, TString))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString path ] ->
                   match Path.GetFileNameWithoutExtension(path) with
                   | null -> VString ""
@@ -136,7 +136,7 @@ module FsExterns =
         { Name = "Fs.glob"
           Scheme = Forall([], TFun(TString, TOption (TList TString)))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString pattern ] ->
                   let root = HostCommon.normalizeRoot ctx
                   let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
@@ -155,7 +155,7 @@ module FsExterns =
         { Name = "Fs.enumerateFiles"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
-          Impl = function
+          Impl = fun _ -> function
               | [ VString directory; VString pattern ] ->
                   match HostCommon.tryResolvePath ctx directory with
                   | Some fullDirectory when Directory.Exists(fullDirectory) ->

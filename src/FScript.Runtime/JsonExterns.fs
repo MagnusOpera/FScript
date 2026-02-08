@@ -8,7 +8,7 @@ module JsonExterns =
         { Name = "Json.deserialize"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption (TVar 0))))
           Arity = 2
-          Impl = function
+          Impl = fun _ -> function
               | [ VTypeToken t; VString json ] ->
                   try
                       use doc = JsonDocument.Parse(json)

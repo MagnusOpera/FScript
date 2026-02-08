@@ -9,7 +9,7 @@ An external function is represented by:
 - `Name: string`
 - `Scheme: Scheme` (polymorphic type scheme)
 - `Arity: int`
-- `Impl: Value list -> Value`
+- `Impl: ExternalCallContext -> Value list -> Value`
 
 Registry entrypoint:
 - `FScript.Runtime.Registry.all : HostContext -> ExternalFunction list`
@@ -18,14 +18,10 @@ Interpreter integration:
 - Extern schemes are injected into type inference environment.
 - Extern values are injected into runtime environment as curried `VExternal`.
 
-## Runtime-handled externs
-Some externs declare a scheme in host code but are executed in evaluator runtime logic (for closure/function callbacks).  
-These are currently dispatched by `ext.Name` in `Eval.applyFunctionValue`.
+## Higher-order extern execution
+Higher-order externs (for example `List.map`, `Map.fold`, `Option.map`) are implemented in runtime extern modules and receive an `ExternalCallContext`.
 
-Current runtime-handled groups include:
-- `List.map`, `List.iter`, `List.choose`, `List.collect`, `List.contains`, `List.distinct`, `List.exists`, `List.fold`, `List.filter`, `List.tryFind`, `List.tryGet`
-- `Map.filter`, `Map.fold`, `Map.choose`
-- `Option.map`, `Option.defaultWith`
+`ExternalCallContext.Apply` is a function pointer provided by the evaluator so extern code can apply script closures and curried functions without re-implementing evaluation.
 
 ## Built-in extern catalog
 
@@ -102,7 +98,7 @@ Current runtime-handled groups include:
 Recommended steps:
 1. Add extern in a host module (`src/FScript.Runtime/*Externs.fs`) with `Name/Scheme/Arity/Impl`.
 2. Register in `Registry.all`.
-3. If extern requires host callback/function argument behavior, add runtime branch in `Eval.applyFunctionValue`.
+3. For higher-order externs, use `ExternalCallContext.Apply` from `Impl` to invoke script functions.
 4. Add tests in:
    - `tests/FScript.Runtime.Tests` for direct module behavior.
    - `tests/FScript.Language.Tests/HostExternTests.fs` for interpreter integration.

@@ -8,7 +8,7 @@ module PrintExterns =
         { Name = "print"
           Scheme = Forall([], TFun(TString, TUnit))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString text ] ->
                   Console.WriteLine(text)
                   VUnit

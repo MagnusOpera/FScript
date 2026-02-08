@@ -1,12 +1,6 @@
 namespace FScript.Language
 
-type ExternalFunction =
-    { Name: string
-      Scheme: Scheme
-      Impl: Value list -> Value
-      Arity: int }
-
-and Value =
+type Value =
     | VUnit
     | VInt of int64
     | VFloat of float
@@ -22,5 +16,14 @@ and Value =
     | VTypeToken of Type
     | VClosure of string * Expr * Env ref
     | VExternal of ExternalFunction * Value list
+
+and ExternalCallContext =
+    { Apply: Value -> Value -> Value }
+
+and ExternalFunction =
+    { Name: string
+      Scheme: Scheme
+      Impl: ExternalCallContext -> Value list -> Value
+      Arity: int }
 
 and Env = Map<string, Value>

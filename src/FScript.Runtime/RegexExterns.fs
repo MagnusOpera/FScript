@@ -8,7 +8,7 @@ module RegexExterns =
         { Name = "Regex.matchGroups"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
-          Impl = function
+          Impl = fun _ -> function
               | [ VString pattern; VString input ] ->
                   try
                       let m = Regex.Match(input, pattern)

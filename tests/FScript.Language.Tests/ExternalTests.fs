@@ -10,13 +10,13 @@ type ExternalTests () =
         [ { Name = "toUpper"
             Scheme = Forall([], TFun(TString, TString))
             Arity = 1
-            Impl = function
+            Impl = fun _ -> function
                 | [ VString s ] -> VString (s.ToUpperInvariant())
                 | _ -> failwith "bad args" }
           { Name = "add"
             Scheme = Forall([], TFun(TInt, TFun(TInt, TInt)))
             Arity = 2
-            Impl = function
+            Impl = fun _ -> function
                 | [ VInt a; VInt b ] -> VInt (a + b)
                 | _ -> failwith "bad args" } ]
 

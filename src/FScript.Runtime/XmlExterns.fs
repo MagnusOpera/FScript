@@ -9,7 +9,7 @@ module XmlExterns =
         { Name = "Xml.values"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TFun(TString, TOption (TList (TVar 0))))))
           Arity = 3
-          Impl = function
+          Impl = fun _ -> function
               | [ VTypeToken t; VString xml; VString query ] ->
                   try
                       let doc = XDocument.Parse(xml)

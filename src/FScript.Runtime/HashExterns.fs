@@ -10,7 +10,7 @@ module HashExterns =
         { Name = "Hash.md5"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
-          Impl = function
+          Impl = fun _ -> function
               | [ VString input ] ->
                   try
                       use h = MD5.Create()
