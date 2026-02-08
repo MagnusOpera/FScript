@@ -16,7 +16,7 @@ module HashExterns =
                       use h = MD5.Create()
                       let bytes = Encoding.UTF8.GetBytes(input)
                       let hash = h.ComputeHash(bytes)
-                      let hex = Convert.ToHexString(hash).ToLowerInvariant()
+                      let hex = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant()
                       HostCommon.some (VString hex)
                   with _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Hash.md5 expects (string)") }
