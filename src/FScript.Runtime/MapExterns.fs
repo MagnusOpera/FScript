@@ -3,6 +3,12 @@ namespace FScript.Runtime
 open FScript.Language
 
 module MapExterns =
+    let private asStringMap value =
+        match value with
+        | VStringMap m -> m
+        | VRecord m -> m
+        | _ -> raise (HostCommon.evalError "Map function expects a map value")
+
     let empty : ExternalFunction =
         { Name = "Map.empty"
           Scheme = Forall([ 0 ], TStringMap (TVar 0))
@@ -16,7 +22,9 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TString, TFun(TVar 0, TFun(TStringMap (TVar 0), TStringMap (TVar 0)))))
           Arity = 3
           Impl = fun _ -> function
-              | [ VString key; value; VStringMap m ] -> VStringMap (m.Add(key, value))
+              | [ VString key; value; mapValue ] ->
+                  let m = asStringMap mapValue
+                  VStringMap (m.Add(key, value))
               | _ -> raise (HostCommon.evalError "Map.add expects (string, value, map)") }
 
     let ofList : ExternalFunction =
@@ -37,7 +45,9 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TOption (TVar 0))))
           Arity = 2
           Impl = fun _ -> function
-              | [ VString key; VStringMap m ] -> m.TryFind(key) |> VOption
+              | [ VString key; mapValue ] ->
+                  let m = asStringMap mapValue
+                  m.TryFind(key) |> VOption
               | _ -> raise (HostCommon.evalError "Map.tryGet expects (string, map)") }
 
     let count : ExternalFunction =
@@ -45,7 +55,9 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TStringMap (TVar 0), TInt))
           Arity = 1
           Impl = fun _ -> function
-              | [ VStringMap m ] -> VInt (int64 m.Count)
+              | [ mapValue ] ->
+                  let m = asStringMap mapValue
+                  VInt (int64 m.Count)
               | _ -> raise (HostCommon.evalError "Map.count expects (map)") }
 
     let filter : ExternalFunction =
@@ -53,7 +65,8 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TFun(TString, TFun(TVar 0, TBool)), TFun(TStringMap (TVar 0), TStringMap (TVar 0))))
           Arity = 2
           Impl = fun ctx -> function
-              | [ predicate; VStringMap m ] ->
+              | [ predicate; mapValue ] ->
+                  let m = asStringMap mapValue
                   let filtered =
                       m
                       |> Map.toList
@@ -72,7 +85,8 @@ module MapExterns =
           Scheme = Forall([ 0; 1 ], TFun(TFun(TVar 0, TFun(TString, TFun(TVar 1, TVar 0))), TFun(TVar 0, TFun(TStringMap (TVar 1), TVar 0))))
           Arity = 3
           Impl = fun ctx -> function
-              | [ folder; state; VStringMap m ] ->
+              | [ folder; state; mapValue ] ->
+                  let m = asStringMap mapValue
                   m
                   |> Map.fold (fun acc key value ->
                       let step = ctx.Apply folder acc
@@ -85,7 +99,8 @@ module MapExterns =
           Scheme = Forall([ 0; 1 ], TFun(TFun(TString, TFun(TVar 0, TOption (TVar 1))), TFun(TStringMap (TVar 0), TStringMap (TVar 1))))
           Arity = 2
           Impl = fun ctx -> function
-              | [ chooser; VStringMap m ] ->
+              | [ chooser; mapValue ] ->
+                  let m = asStringMap mapValue
                   let chosen =
                       m
                       |> Map.fold (fun acc key value ->
@@ -102,7 +117,9 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TBool)))
           Arity = 2
           Impl = fun _ -> function
-              | [ VString key; VStringMap m ] -> VBool (m.ContainsKey key)
+              | [ VString key; mapValue ] ->
+                  let m = asStringMap mapValue
+                  VBool (m.ContainsKey key)
               | _ -> raise (HostCommon.evalError "Map.containsKey expects (string, map)") }
 
     let remove : ExternalFunction =
@@ -110,5 +127,7 @@ module MapExterns =
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TStringMap (TVar 0))))
           Arity = 2
           Impl = fun _ -> function
-              | [ VString key; VStringMap m ] -> VStringMap (m.Remove key)
+              | [ VString key; mapValue ] ->
+                  let m = asStringMap mapValue
+                  VStringMap (m.Remove key)
               | _ -> raise (HostCommon.evalError "Map.remove expects (string, map)") }
