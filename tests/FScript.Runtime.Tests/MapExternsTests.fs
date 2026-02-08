@@ -9,7 +9,7 @@ open FScript.Runtime.Tests.HostTestHelpers
 type MapExternsTests () =
     [<Test>]
     member _.``map externs perform CRUD`` () =
-        let m0 = invoke MapExterns.empty [ VUnit ]
+        let m0 = invoke MapExterns.empty []
         let m1 = invoke MapExterns.add [ VString "a"; VInt 1L; m0 ]
         let found = invoke MapExterns.tryGet [ VString "a"; m1 ]
         let count = invoke MapExterns.count [ m1 ]

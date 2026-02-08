@@ -20,7 +20,7 @@ type Subscription =
 
 
 let scores =
-    Map.empty 0
+    Map.empty
     |> Map.add "math" 20
     |> Map.add "science" 18
 

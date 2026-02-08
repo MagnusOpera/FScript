@@ -5,11 +5,11 @@ open FScript.Language
 module MapExterns =
     let empty : ExternalFunction =
         { Name = "Map.empty"
-          Scheme = Forall([ 0 ], TFun(TVar 0, TStringMap (TVar 0)))
-          Arity = 1
+          Scheme = Forall([ 0 ], TStringMap (TVar 0))
+          Arity = 0
           Impl = fun _ -> function
-              | [ _ ] -> VStringMap Map.empty
-              | _ -> raise (HostCommon.evalError "Map.empty expects one argument") }
+              | [] -> VStringMap Map.empty
+              | _ -> raise (HostCommon.evalError "Map.empty expects no arguments") }
 
     let add : ExternalFunction =
         { Name = "Map.add"

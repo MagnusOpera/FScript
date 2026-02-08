@@ -8,6 +8,7 @@ module ScriptHost =
         { TypeDefs: Map<string, Type>
           Env: Env
           ExportedFunctionNames: string list
+          ExportedValueNames: string list
           LastValue: Value }
 
     let private isCallable value =
@@ -28,17 +29,29 @@ module ScriptHost =
         let program = FScript.parse source
         let typed = FScript.inferWithExterns externs program
         let state = Eval.evalProgramWithExternsState externs typed
-        let functionNames =
+        let exportedNames =
             declaredExportedNames typed
+            |> List.distinct
+            |> List.sort
+
+        let functionNames =
+            exportedNames
             |> List.filter (fun name ->
                 match state.Env.TryFind name with
                 | Some value -> isCallable value
                 | None -> false)
-            |> List.distinct
-            |> List.sort
+
+        let valueNames =
+            exportedNames
+            |> List.filter (fun name ->
+                match state.Env.TryFind name with
+                | Some value -> not (isCallable value)
+                | None -> false)
+
         { TypeDefs = state.TypeDefs
           Env = state.Env
           ExportedFunctionNames = functionNames
+          ExportedValueNames = valueNames
           LastValue = state.LastValue }
 
     let loadFile (externs: ExternalFunction list) (path: string) : LoadedScript =
@@ -47,9 +60,23 @@ module ScriptHost =
     let listFunctions (loaded: LoadedScript) : string list =
         loaded.ExportedFunctionNames
 
+    let listValues (loaded: LoadedScript) : string list =
+        loaded.ExportedValueNames
+
+    let getValue (loaded: LoadedScript) (valueName: string) : Value =
+        if not (loaded.ExportedValueNames |> List.contains valueName) then
+            raise (HostCommon.evalError $"Unknown exported value '{valueName}'")
+        else
+            match loaded.Env.TryFind valueName with
+            | Some value -> value
+            | None -> raise (HostCommon.evalError $"Unknown exported value '{valueName}'")
+
     let invoke (loaded: LoadedScript) (functionName: string) (args: Value list) : Value =
         if not (loaded.ExportedFunctionNames |> List.contains functionName) then
-            raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
+            if loaded.ExportedValueNames |> List.contains functionName then
+                raise (HostCommon.evalError $"'{functionName}' is a value and cannot be invoked")
+            else
+                raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
         else
             match loaded.Env.TryFind functionName with
             | Some fnValue when isCallable fnValue ->

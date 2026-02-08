@@ -26,6 +26,25 @@ type ScriptHostTests () =
         | _ -> Assert.Fail("Expected closure invocation result 7")
 
     [<Test>]
+    member _.``script_host exposes exported values separately from functions`` () =
+        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
+        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\"\nexport let add x y = x + y"
+
+        Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
+        Assert.That(ScriptHost.listValues loaded, Does.Contain("version"))
+
+        match ScriptHost.getValue loaded "version" with
+        | VString "1.0" -> ()
+        | _ -> Assert.Fail("Expected exported value")
+
+    [<Test>]
+    member _.``script_host rejects invocation of exported value`` () =
+        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
+        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\""
+        let act () = ScriptHost.invoke loaded "version" [ VUnit ] |> ignore
+        Assert.Throws<EvalException>(TestDelegate act) |> ignore
+
+    [<Test>]
     member _.``script_host hides non-exported functions`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
         let loaded = ScriptHost.loadSource externs "let private_fn x = x + 1\nlet value = 1"

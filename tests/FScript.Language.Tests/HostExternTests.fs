@@ -14,10 +14,19 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Map externs support CRUD`` () =
-        let script = "Map.empty 0 |> Map.add \"a\" 1 |> Map.tryGet \"a\""
+        let script = "Map.empty |> Map.add \"a\" 1 |> Map.tryGet \"a\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 1L)) -> ()
         | _ -> Assert.Fail("Expected Some 1")
+
+    [<Test>]
+    member _.``Map.empty behaves as a value and cannot be invoked`` () =
+        match Helpers.evalWithExterns externs "Map.empty |> Map.count" with
+        | VInt 0L -> ()
+        | _ -> Assert.Fail("Expected empty map count 0")
+
+        let act () = Helpers.evalWithExterns externs "Map.empty ()" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Map.ofList builds map from tuple list`` () =

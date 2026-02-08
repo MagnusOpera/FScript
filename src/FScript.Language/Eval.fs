@@ -449,9 +449,17 @@ module Eval =
                         | Some _ -> VUnionCtor(typeName, caseName)
                     caseName, value))
 
+        let externContext =
+            { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }
+
         let mutable env : Env =
             (builtinIgnore :: externs)
-            |> List.fold (fun acc ext -> acc.Add(ext.Name, VExternal (ext, []))) Map.empty
+            |> List.fold (fun acc ext ->
+                if ext.Arity = 0 then
+                    let value = ext.Impl externContext []
+                    acc.Add(ext.Name, value)
+                else
+                    acc.Add(ext.Name, VExternal (ext, []))) Map.empty
         env <-
             constructorValues
             |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
