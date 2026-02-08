@@ -41,6 +41,9 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Maps:
   - empty `{}`
   - literal `{ ["a"] = 1; ["b"] = 2 }`
+  - map entries always use bracketed keys (`[expr] = value`)
+  - record entries use field assignments (`Field = value`)
+  - when braces are empty (`{}`), the literal is a map
   - keys are bracketed expressions (`[expr]`) and must infer to `string`
   - multiline:
     - `{`

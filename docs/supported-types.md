@@ -23,7 +23,11 @@ This document specifies the value and type system used by the interpreter.
   - empty: `{}`
   - populated: `{ ["a"] = 1; ["b"] = 2 }`
   - multiline entries are supported in an indented block.
-- Keys are bracketed expressions and must have type `string`.
+- Keys are bracketed expressions and must have type `string` (for example `{ [keyExpr] = value }`).
+- Record literals and map literals share `{ ... }` braces:
+  - map entries use `[expr] = value`
+  - record entries use `Field = value`
+  - `{}` denotes an empty map.
 - Values are inferred and unified to a single value type.
 
 ## Function types

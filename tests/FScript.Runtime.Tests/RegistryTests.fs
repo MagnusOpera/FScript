@@ -35,7 +35,10 @@ type RegistryTests () =
         names.Contains "Map.filter" |> should equal true
         names.Contains "Map.fold" |> should equal true
         names.Contains "Map.choose" |> should equal true
+        names.Contains "Map.map" |> should equal true
+        names.Contains "Map.iter" |> should equal true
         names.Contains "Map.remove" |> should equal true
+        names.Contains "List.empty" |> should equal true
         names.Contains "List.map" |> should equal true
         names.Contains "List.choose" |> should equal true
         names.Contains "List.collect" |> should equal true

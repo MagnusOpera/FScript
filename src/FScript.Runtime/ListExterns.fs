@@ -3,6 +3,14 @@ namespace FScript.Runtime
 open FScript.Language
 
 module ListExterns =
+    let empty : ExternalFunction =
+        { Name = "List.empty"
+          Scheme = Forall([ 0 ], TList (TVar 0))
+          Arity = 0
+          Impl = fun _ -> function
+              | [] -> VList []
+              | _ -> raise (HostCommon.evalError "List.empty expects no arguments") }
+
     let rec private valueEquals a b =
         match a, b with
         | VUnit, VUnit -> true

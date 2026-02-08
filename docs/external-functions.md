@@ -58,10 +58,15 @@ Higher-order externs (for example `List.map`, `Map.fold`, `Option.map`) are impl
 - `Map.filter`
 - `Map.fold`
 - `Map.choose`
+- `Map.map`
+- `Map.iter`
 - `Map.containsKey`
 - `Map.remove`
 
+`Map.empty` is an arity-0 value (`'a map`), not an invokable function.
+
 ### List
+- `List.empty`
 - `List.map`
 - `List.choose`
 - `List.collect`

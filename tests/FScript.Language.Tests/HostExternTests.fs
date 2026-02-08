@@ -78,6 +78,26 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected chosen map value 20 for key b")
 
     [<Test>]
+    member _.``Map.map maps values and Map.iter applies key-value iterator`` () =
+        match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.map (fun v -> v + 10) |> Map.tryGet \"b\"" with
+        | VOption (Some (VInt 12L)) -> ()
+        | _ -> Assert.Fail("Expected mapped map value 12 for key b")
+
+        let original = Console.Out
+        use writer = new StringWriter()
+        Console.SetOut(writer)
+        try
+            let result =
+                Helpers.evalWithExterns externs
+                    "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.iter (fun key -> fun value -> print $\"{key}:{value}\")"
+            match result with
+            | VUnit -> ()
+            | _ -> Assert.Fail("Expected unit")
+            writer.ToString().Replace("\r\n", "\n").TrimEnd() |> should equal "a:1\nb:2"
+        finally
+            Console.SetOut(original)
+
+    [<Test>]
     member _.``Fs write-side externs operate under root confinement`` () =
         let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(root) |> ignore
@@ -104,6 +124,15 @@ type HostExternTests () =
         match Helpers.evalWithExterns externs script with
         | VList [ VInt 1L; VInt 2L; VInt 3L; VInt 4L ] -> ()
         | _ -> Assert.Fail("Expected mapped int list")
+
+    [<Test>]
+    member _.``List.empty behaves as a value and cannot be invoked`` () =
+        match Helpers.evalWithExterns externs "List.empty |> List.length" with
+        | VInt 0L -> ()
+        | _ -> Assert.Fail("Expected empty list length 0")
+
+        let act () = Helpers.evalWithExterns externs "List.empty ()" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``List.iter external applies function and returns unit`` () =

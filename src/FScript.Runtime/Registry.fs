@@ -28,8 +28,11 @@ module Registry =
           MapExterns.filter
           MapExterns.fold
           MapExterns.choose
+          MapExterns.map
+          MapExterns.iter
           MapExterns.containsKey
           MapExterns.remove
+          ListExterns.empty
           ListExterns.map
           ListExterns.choose
           ListExterns.collect

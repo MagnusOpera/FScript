@@ -112,6 +112,33 @@ module MapExterns =
                   VStringMap chosen
               | _ -> raise (HostCommon.evalError "Map.choose expects (function, map)") }
 
+    let map : ExternalFunction =
+        { Name = "Map.map"
+          Scheme = Forall([ 0; 1 ], TFun(TFun(TVar 0, TVar 1), TFun(TStringMap (TVar 0), TStringMap (TVar 1))))
+          Arity = 2
+          Impl = fun ctx -> function
+              | [ mapper; mapValue ] ->
+                  let m = asStringMap mapValue
+                  let mapped =
+                      m
+                      |> Map.map (fun _ value -> ctx.Apply mapper value)
+                  VStringMap mapped
+              | _ -> raise (HostCommon.evalError "Map.map expects (function, map)") }
+
+    let iter : ExternalFunction =
+        { Name = "Map.iter"
+          Scheme = Forall([ 0 ], TFun(TFun(TString, TFun(TVar 0, TUnit)), TFun(TStringMap (TVar 0), TUnit)))
+          Arity = 2
+          Impl = fun ctx -> function
+              | [ iterator; mapValue ] ->
+                  let m = asStringMap mapValue
+                  m
+                  |> Map.iter (fun key value ->
+                      let iteratorWithKey = ctx.Apply iterator (VString key)
+                      ctx.Apply iteratorWithKey value |> ignore)
+                  VUnit
+              | _ -> raise (HostCommon.evalError "Map.iter expects (function, map)") }
+
     let containsKey : ExternalFunction =
         { Name = "Map.containsKey"
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TBool)))
