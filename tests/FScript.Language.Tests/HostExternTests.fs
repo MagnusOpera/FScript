@@ -48,6 +48,27 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected last duplicate value")
 
     [<Test>]
+    member _.``Fs write-side externs operate under root confinement`` () =
+        let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(root) |> ignore
+        try
+            let localExterns = Registry.all { RootDirectory = root }
+            let script =
+                "let created = Fs.createDirectory \"tmp\"\n" +
+                "let written = Fs.writeText \"tmp/file.txt\" \"hello\"\n" +
+                "let exists = Fs.exists \"tmp/file.txt\"\n" +
+                "let file = Fs.isFile \"tmp/file.txt\"\n" +
+                "let dir = Fs.isDirectory \"tmp\"\n" +
+                "(created, written, exists, file, dir)"
+
+            match Helpers.evalWithExterns localExterns script with
+            | VTuple [ VBool true; VBool true; VBool true; VBool true; VBool true ] -> ()
+            | _ -> Assert.Fail("Expected Fs write-side externs to succeed")
+        finally
+            if Directory.Exists(root) then
+                Directory.Delete(root, true)
+
+    [<Test>]
     member _.``List.map external maps values`` () =
         let script = "[0..3] |> List.map (fun n -> n + 1)"
         match Helpers.evalWithExterns externs script with

@@ -19,6 +19,73 @@ module FsExterns =
                   | _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.readText expects (string)") }
 
+    let exists (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.exists"
+          Scheme = Forall([], TFun(TString, TBool))
+          Arity = 1
+          Impl = function
+              | [ VString path ] ->
+                  match HostCommon.tryResolvePath ctx path with
+                  | Some full -> VBool (File.Exists(full) || Directory.Exists(full))
+                  | None -> VBool false
+              | _ -> raise (HostCommon.evalError "Fs.exists expects (string)") }
+
+    let is_file (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.isFile"
+          Scheme = Forall([], TFun(TString, TBool))
+          Arity = 1
+          Impl = function
+              | [ VString path ] ->
+                  match HostCommon.tryResolvePath ctx path with
+                  | Some full -> VBool (File.Exists(full))
+                  | None -> VBool false
+              | _ -> raise (HostCommon.evalError "Fs.isFile expects (string)") }
+
+    let is_directory (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.isDirectory"
+          Scheme = Forall([], TFun(TString, TBool))
+          Arity = 1
+          Impl = function
+              | [ VString path ] ->
+                  match HostCommon.tryResolvePath ctx path with
+                  | Some full -> VBool (Directory.Exists(full))
+                  | None -> VBool false
+              | _ -> raise (HostCommon.evalError "Fs.isDirectory expects (string)") }
+
+    let create_directory (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.createDirectory"
+          Scheme = Forall([], TFun(TString, TBool))
+          Arity = 1
+          Impl = function
+              | [ VString path ] ->
+                  match HostCommon.tryResolvePath ctx path with
+                  | Some full ->
+                      try
+                          Directory.CreateDirectory(full) |> ignore
+                          VBool (Directory.Exists(full))
+                      with _ -> VBool false
+                  | None -> VBool false
+              | _ -> raise (HostCommon.evalError "Fs.createDirectory expects (string)") }
+
+    let write_text (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.writeText"
+          Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
+          Arity = 2
+          Impl = function
+              | [ VString path; VString content ] ->
+                  match HostCommon.tryResolvePath ctx path with
+                  | Some full ->
+                      try
+                          match Path.GetDirectoryName(full) with
+                          | null
+                          | "" -> ()
+                          | directory -> Directory.CreateDirectory(directory) |> ignore
+                          File.WriteAllText(full, content)
+                          VBool true
+                      with _ -> VBool false
+                  | None -> VBool false
+              | _ -> raise (HostCommon.evalError "Fs.writeText expects (string, string)") }
+
     let combine_path : ExternalFunction =
         { Name = "Fs.combinePath"
           Scheme = Forall([], TFun(TString, TFun(TString, TString)))

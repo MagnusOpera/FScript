@@ -5,6 +5,11 @@ open FScript.Language
 module Registry =
     let all (ctx: HostContext) : ExternalFunction list =
         [ FsExterns.read_text ctx
+          FsExterns.exists ctx
+          FsExterns.is_file ctx
+          FsExterns.is_directory ctx
+          FsExterns.create_directory ctx
+          FsExterns.write_text ctx
           FsExterns.combine_path
           FsExterns.parent_directory
           FsExterns.extension

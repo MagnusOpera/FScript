@@ -27,6 +27,53 @@ type FsExternsTests () =
             | _ -> Assert.Fail("Expected None for escaped path"))
 
     [<Test>]
+    member _.``fs_exists is_file and is_directory respect root boundary`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let dir = Path.Combine(root, "sub")
+            let file = Path.Combine(dir, "a.txt")
+            Directory.CreateDirectory(dir) |> ignore
+            File.WriteAllText(file, "a")
+            let exists = FsExterns.exists { RootDirectory = root }
+            let isFile = FsExterns.is_file { RootDirectory = root }
+            let isDirectory = FsExterns.is_directory { RootDirectory = root }
+
+            match invoke exists [ VString "sub/a.txt" ] with
+            | VBool true -> ()
+            | _ -> Assert.Fail("Expected Fs.exists true")
+            match invoke isFile [ VString "sub/a.txt" ] with
+            | VBool true -> ()
+            | _ -> Assert.Fail("Expected Fs.isFile true")
+            match invoke isDirectory [ VString "sub" ] with
+            | VBool true -> ()
+            | _ -> Assert.Fail("Expected Fs.isDirectory true")
+            match invoke exists [ VString "../outside.txt" ] with
+            | VBool false -> ()
+            | _ -> Assert.Fail("Expected Fs.exists false for escaped path"))
+
+    [<Test>]
+    member _.``fs_create_directory and fs_write_text create files in root only`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let createDirectory = FsExterns.create_directory { RootDirectory = root }
+            let writeText = FsExterns.write_text { RootDirectory = root }
+            let readText = FsExterns.read_text { RootDirectory = root }
+
+            match invoke createDirectory [ VString "new/sub" ] with
+            | VBool true -> ()
+            | _ -> Assert.Fail("Expected Fs.createDirectory true")
+
+            match invoke writeText [ VString "new/sub/file.txt"; VString "hello" ] with
+            | VBool true -> ()
+            | _ -> Assert.Fail("Expected Fs.writeText true")
+
+            match invoke readText [ VString "new/sub/file.txt" ] with
+            | VOption (Some (VString "hello")) -> ()
+            | _ -> Assert.Fail("Expected written file content")
+
+            match invoke writeText [ VString "../outside.txt"; VString "nope" ] with
+            | VBool false -> ()
+            | _ -> Assert.Fail("Expected Fs.writeText false for escaped path"))
+
+    [<Test>]
     member _.``fs_glob filters by pattern`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             Directory.CreateDirectory(Path.Combine(root, "sub")) |> ignore

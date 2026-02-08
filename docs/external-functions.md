@@ -33,6 +33,11 @@ Current runtime-handled groups include:
 
 ### Filesystem
 - `Fs.readText : string -> string option`
+- `Fs.exists : string -> bool`
+- `Fs.isFile : string -> bool`
+- `Fs.isDirectory : string -> bool`
+- `Fs.createDirectory : string -> bool`
+- `Fs.writeText : string -> string -> bool`
 - `Fs.combinePath : string -> string -> string`
 - `Fs.parentDirectory : string -> string option`
 - `Fs.extension : string -> string option`
