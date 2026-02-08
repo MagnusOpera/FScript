@@ -378,7 +378,17 @@ module Parser =
                 if stream.Match(RBracket) then
                     PNil (mkSpanFrom lb.Span lb.Span)
                 else
-                    raise (ParseException { Message = "Only empty list pattern [] supported"; Span = lb.Span })
+                    let first = parsePatternCons()
+                    let elements = ResizeArray<Pattern>()
+                    elements.Add(first)
+                    while stream.Match(Semicolon) do
+                        if stream.Peek().Kind <> RBracket then
+                            elements.Add(parsePatternCons())
+                    let rb = stream.Expect(RBracket, "Expected ']' in list pattern")
+                    let listPattern =
+                        (elements |> Seq.toList, PNil (mkSpanFrom rb.Span rb.Span))
+                        ||> List.foldBack (fun head tail -> PCons(head, tail, mkSpanFrom (Ast.spanOfPattern head) (Ast.spanOfPattern tail)))
+                    listPattern
             | LParen ->
                 let lp = stream.Next()
                 let first = parsePatternCons()
@@ -460,8 +470,8 @@ module Parser =
                         let rp = stream.Expect(RParen, "Expected ')' after tuple expression")
                         ETuple(elements |> Seq.toList, mkSpanFrom lp.Span rp.Span)
                     else
-                        stream.Expect(RParen, "Expected ')' after expression") |> ignore
-                        first
+                        let rp = stream.Expect(RParen, "Expected ')' after expression")
+                        EParen(first, mkSpanFrom lp.Span rp.Span)
             | LBracket ->
                 let lb = stream.Next()
                 if stream.Match(RBracket) then
@@ -935,6 +945,10 @@ module Parser =
                 | Dedent ->
                     stream.Next() |> ignore
                     doneBlock <- true
+                | RParen
+                | RBracket
+                | RBrace ->
+                    doneBlock <- true
                 | EOF -> doneBlock <- true
                 | Let ->
                     statements.Add(parseStmt())
@@ -1042,7 +1056,7 @@ module Parser =
         while not stream.AtEnd do
             match stream.Peek().Kind with
             | EOF -> stream.Next() |> ignore
-            | Dedent -> raise (ParseException { Message = "Unexpected dedent at top level"; Span = stream.Peek().Span })
+            | Dedent -> stream.Next() |> ignore
             | _ ->
                 let stmt = parseStmt()
                 program.Add(stmt)

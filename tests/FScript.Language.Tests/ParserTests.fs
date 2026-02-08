@@ -131,7 +131,7 @@ type ParserTests () =
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
-        | SLet (_, _, ELet ("y", _, _, _, _), _, _, _) -> ()
+        | SLet (_, _, EParen (ELet ("y", _, _, _, _), _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected nested let expression")
 
     [<Test>]
@@ -250,6 +250,22 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected match")
 
     [<Test>]
+    member _.``Parses match with non-empty list literal pattern`` () =
+        let src = "match [1] with\n| [x] -> x\n| _ -> 0"
+        let program = Helpers.parse src
+        match program.[0] with
+        | SExpr (EMatch (_, (PCons (_, PNil _, _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected non-empty list pattern")
+
+    [<Test>]
+    member _.``Parses Some with non-empty list literal pattern`` () =
+        let src = "match Some [1] with\n| Some [x] -> x\n| _ -> 0"
+        let program = Helpers.parse src
+        match program.[0] with
+        | SExpr (EMatch (_, (PSome (PCons (_, PNil _, _), _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected Some with non-empty list pattern")
+
+    [<Test>]
     member _.``Parses match with option patterns`` () =
         let src = "match Some 1 with\n    | Some x -> x\n    | None -> 0"
         let program = Helpers.parse src
@@ -314,6 +330,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected block-desugared let")
 
     [<Test>]
+    member _.``Parses multiline lambda argument closed by parenthesis on same line`` () =
+        let src = "Map.fold (fun acc key value ->\n    match value with\n    | \"workspace:*\" -> key :: acc\n    | _ -> acc) [] #{ \"a\" = \"workspace:*\" }"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SExpr (EApply (EApply (EApply (EFieldGet (EVar ("Map", _), "fold", _), _, _), _, _), _, _)) -> ()
+        | _ -> Assert.Fail("Expected multiline lambda argument application")
+
+    [<Test>]
     member _.``Parses exported top-level let binding`` () =
         let p = Helpers.parse "export let cosine x = x"
         match p.[0] with
@@ -346,7 +370,7 @@ type ParserTests () =
         let src = "(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 4\n)"
         let p = Helpers.parse src
         match p.[0] with
-        | SExpr (ELetRecGroup (bindings, _, _)) -> bindings.Length |> should equal 2
+        | SExpr (EParen (ELetRecGroup (bindings, _, _), _)) -> bindings.Length |> should equal 2
         | _ -> Assert.Fail("Expected recursive let-expression group")
 
     [<Test>]

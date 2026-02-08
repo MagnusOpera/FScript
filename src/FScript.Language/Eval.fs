@@ -150,6 +150,8 @@ module Eval =
             match env |> Map.tryFind name with
             | Some v -> v
             | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
+        | EParen (inner, _) ->
+            evalExpr typeDefs env inner
         | ELambda (param, body, _) -> VClosure (param.Name, body, ref env)
         | EApply (fn, arg, span) ->
             let fVal = evalExpr typeDefs env fn

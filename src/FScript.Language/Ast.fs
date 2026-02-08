@@ -41,6 +41,7 @@ and Expr =
     | EUnit of Span
     | ELiteral of Literal * Span
     | EVar of string * Span
+    | EParen of Expr * Span
     | ELambda of Param * Expr * Span
     | EApply of Expr * Expr * Span
     | EIf of Expr * Expr * Expr * Span
@@ -96,6 +97,7 @@ module Ast =
         | EUnit s -> s
         | ELiteral (_, s) -> s
         | EVar (_, s) -> s
+        | EParen (_, s) -> s
         | ELambda (_, _, s) -> s
         | EApply (_, _, s) -> s
         | EIf (_, _, _, s) -> s

@@ -97,6 +97,29 @@ type EvalTests () =
         Helpers.eval src |> assertInt 1L
 
     [<Test>]
+    member _.``Evaluates match on non-empty list literal pattern`` () =
+        let src = "match [1] with\n    | [x] -> x\n    | _ -> 0"
+        Helpers.eval src |> assertInt 1L
+
+    [<Test>]
+    member _.``Evaluates match on Some with non-empty list literal pattern`` () =
+        let src = "match Some [1] with\n    | Some [x] -> x\n    | _ -> 0"
+        Helpers.eval src |> assertInt 1L
+
+    [<Test>]
+    member _.``Evaluates multiline map fold with match and cons`` () =
+        let src =
+            "let apply f x = f x\n" +
+            "let f value = apply (fun item ->\n" +
+            "    match item with\n" +
+            "    | \"workspace:*\" -> value :: []\n" +
+            "    | _ -> []) value\n" +
+            "f \"workspace:*\""
+        match Helpers.eval src with
+        | VList [ VString "workspace:*" ] -> ()
+        | _ -> Assert.Fail("Expected [\"workspace:*\"]")
+
+    [<Test>]
     member _.``Evaluates option values`` () =
         match Helpers.eval "Some 4" with
         | VOption (Some (VInt 4L)) -> ()

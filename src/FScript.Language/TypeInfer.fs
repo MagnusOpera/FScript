@@ -256,6 +256,9 @@ module TypeInfer =
                 let t = instantiate scheme
                 emptySubst, t, asTyped expr t
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
+        | EParen (inner, _) ->
+            let s, t, _ = inferExpr typeDefs constructors env inner
+            s, t, asTyped expr t
         | ETypeOf (name, span) ->
             if typeDefs.ContainsKey name then
                 emptySubst, TTypeToken, asTyped expr TTypeToken

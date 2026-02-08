@@ -231,6 +231,20 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match on non-empty list literal pattern`` () =
+        let typed = Helpers.infer "match [1] with\n    | [x] -> x\n    | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers match on Some with non-empty list literal pattern`` () =
+        let typed = Helpers.infer "match Some [1] with\n    | Some [x] -> x\n    | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers match on tuple`` () =
         let typed = Helpers.infer "match (1, true) with\n    | (x, true) -> x\n    | _ -> 0"
         match typed |> List.last with
@@ -329,6 +343,27 @@ type TypeInferenceTests () =
     member _.``Reports type error for annotation mismatch`` () =
         let act () = Helpers.infer "let f (x: int) = x + true" |> ignore
         act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Infers multiline map fold with match and cons`` () =
+        let typed =
+            Helpers.infer
+                "let apply f x = f x\nlet f value = apply (fun item ->\n    match item with\n    | \"workspace:*\" -> value :: []\n    | _ -> []) value\nf"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te ->
+            match te.Type with
+            | TFun (TString, TList TString) -> ()
+            | _ -> Assert.Fail($"Expected string -> string list, got {Types.typeToString te.Type}")
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers annotated lambda field access inside Option.map`` () =
+        let typed =
+            Helpers.infer
+                "type Package = { name: string }\nlet get_name = fun (value: Package) -> value.name\nget_name"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TFun (TRecord (Map.ofList [ "name", TString ]), TString))
+        | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers typeof as type token`` () =
