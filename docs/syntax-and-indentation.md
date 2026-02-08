@@ -8,6 +8,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Top-level statements are:
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
+  - `export let` / `export let rec` bindings
   - expressions
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
 - Comments use `//` line-comment syntax.
@@ -23,6 +24,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `let x = expr`
   - `let rec f x = ... and g y = ...`
   - nested via blocks
+  - `export` is only valid on top-level `let` bindings
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`
