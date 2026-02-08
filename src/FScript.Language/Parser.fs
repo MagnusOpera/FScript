@@ -758,11 +758,24 @@ module Parser =
 
         and parseLambda () : Expr =
             let funTok = stream.Expect(Fun, "Expected 'fun'")
-            let param = parseParam()
+            let parameters = ResizeArray<Param>()
+            let mutable doneParams = false
+            while not doneParams do
+                stream.SkipNewlines()
+                match stream.Peek().Kind with
+                | Ident _ | LParen ->
+                    parameters.Add(parseParam())
+                | _ ->
+                    doneParams <- true
+            if parameters.Count = 0 then
+                raise (ParseException { Message = "Expected at least one lambda parameter"; Span = stream.Peek().Span })
             stream.SkipNewlines()
             stream.Expect(Arrow, "Expected '->' in lambda") |> ignore
             let body = parseExprOrBlock()
-            ELambda(param, body, mkSpanFrom funTok.Span (Ast.spanOfExpr body))
+            Seq.foldBack
+                (fun param acc -> ELambda(param, acc, mkSpanFrom funTok.Span (Ast.spanOfExpr acc)))
+                parameters
+                body
 
         and parseMatch () : Expr =
             let matchTok = stream.Expect(Match, "Expected 'match'")

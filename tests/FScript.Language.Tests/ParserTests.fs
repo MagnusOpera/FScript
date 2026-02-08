@@ -158,6 +158,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected lambda")
 
     [<Test>]
+    member _.``Parses multi-parameter lambda expression`` () =
+        let p = Helpers.parse "fun x y -> x + y"
+        match p.[0] with
+        | SExpr (ELambda ({ Name = "x"; Annotation = None }, ELambda ({ Name = "y"; Annotation = None }, _, _), _)) -> ()
+        | _ -> Assert.Fail("Expected curried lambda")
+
+    [<Test>]
     member _.``Parses function application with indented next-line argument`` () =
         let p = Helpers.parse "Map.ofList\n    [(\"a\", 1)]"
         match p.[0] with

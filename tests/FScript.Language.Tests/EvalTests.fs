@@ -183,6 +183,10 @@ type EvalTests () =
         Helpers.eval "(fun x -> fun y -> x + y) 2 3" |> assertInt 5L
 
     [<Test>]
+    member _.``Evaluates multi-parameter lambda expression`` () =
+        Helpers.eval "(fun x y -> x + y) 2 3" |> assertInt 5L
+
+    [<Test>]
     member _.``Evaluates function application with indented next-line arguments`` () =
         Helpers.eval "let add x y = x + y\nadd\n    1\n    2" |> assertInt 3L
 
