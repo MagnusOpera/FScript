@@ -17,6 +17,7 @@ module Registry =
           PrintExterns.print
           MapExterns.empty
           MapExterns.add
+          MapExterns.ofList
           MapExterns.tryGet
           MapExterns.tryFind
           MapExterns.containsKey

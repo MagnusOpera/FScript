@@ -160,6 +160,10 @@ type EvalTests () =
         Helpers.eval "(fun x -> fun y -> x + y) 2 3" |> assertInt 5L
 
     [<Test>]
+    member _.``Evaluates function application with indented next-line arguments`` () =
+        Helpers.eval "let add x y = x + y\nadd\n    1\n    2" |> assertInt 3L
+
+    [<Test>]
     member _.``Evaluates annotated function parameters`` () =
         match Helpers.eval "type rec Node = { Value: int; Next: Node option }\nlet display_node (node: Node) = $\"{node.Value}\"\ndisplay_node { Value = 42; Next = None }" with
         | VString "42" -> ()

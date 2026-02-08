@@ -24,6 +24,7 @@ type RegistryTests () =
         names.Contains "print" |> should equal true
         names.Contains "Map.empty" |> should equal true
         names.Contains "Map.add" |> should equal true
+        names.Contains "Map.ofList" |> should equal true
         names.Contains "Map.try" |> should equal true
         names.Contains "Map.tryFind" |> should equal true
         names.Contains "Map.remove" |> should equal true

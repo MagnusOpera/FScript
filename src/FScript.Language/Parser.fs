@@ -579,6 +579,7 @@ module Parser =
         and parseApplication () : Expr =
             let mutable expr = parsePostfix()
             let mutable keepGoing = true
+            let mutable hasMultilineArgBlock = false
             while keepGoing do
                 let next = stream.Peek()
                 let sameLineAsExpr = next.Span.Start.Line = (Ast.spanOfExpr expr).End.Line
@@ -586,7 +587,29 @@ module Parser =
                     let arg = parsePostfix()
                     expr <- EApply(expr, arg, mkSpanFrom (Ast.spanOfExpr expr) (Ast.spanOfExpr arg))
                 else
-                    keepGoing <- false
+                    let mark = stream.Mark()
+                    let mutable sawNewline = false
+                    while stream.Match(Newline) do
+                        sawNewline <- true
+                    if sawNewline then
+                        let consumedIndent = stream.Match(Indent)
+                        if consumedIndent then
+                            hasMultilineArgBlock <- true
+                        let candidate = stream.Peek()
+                        let calleeColumn = (Ast.spanOfExpr expr).Start.Column
+                        let isIndentedContinuation = candidate.Span.Start.Column > calleeColumn
+                        if isIndentedContinuation && isStartAtom candidate.Kind then
+                            let arg = parsePostfix()
+                            expr <- EApply(expr, arg, mkSpanFrom (Ast.spanOfExpr expr) (Ast.spanOfExpr arg))
+                        elif hasMultilineArgBlock && candidate.Kind = Dedent then
+                            stream.Next() |> ignore
+                            hasMultilineArgBlock <- false
+                            keepGoing <- false
+                        else
+                            stream.Restore(mark)
+                            keepGoing <- false
+                    else
+                        keepGoing <- false
             expr
 
         and parseBinary (minPrec: int) : Expr =

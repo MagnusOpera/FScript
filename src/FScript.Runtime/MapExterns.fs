@@ -19,6 +19,19 @@ module MapExterns =
               | [ VString key; value; VStringMap m ] -> VStringMap (m.Add(key, value))
               | _ -> raise (HostCommon.evalError "Map.add expects (string, value, map)") }
 
+    let ofList : ExternalFunction =
+        { Name = "Map.ofList"
+          Scheme = Forall([ 0 ], TFun(TList (TTuple [ TString; TVar 0 ]), TStringMap (TVar 0)))
+          Arity = 1
+          Impl = function
+              | [ VList items ] ->
+                  let folder (state: Map<string, Value>) (item: Value) =
+                      match item with
+                      | VTuple [ VString key; value ] -> state.Add(key, value)
+                      | _ -> raise (HostCommon.evalError "Map.ofList expects a list of (string * value) tuples")
+                  VStringMap (List.fold folder Map.empty items)
+              | _ -> raise (HostCommon.evalError "Map.ofList expects ((string * value) list)") }
+
     let tryFind : ExternalFunction =
         { Name = "Map.tryFind"
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TOption (TVar 0))))

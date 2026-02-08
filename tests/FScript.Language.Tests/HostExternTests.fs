@@ -27,6 +27,27 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some 1")
 
     [<Test>]
+    member _.``Map.ofList builds map from tuple list`` () =
+        let script = "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.tryFind \"b\""
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected Some 2")
+
+    [<Test>]
+    member _.``Map.ofList supports indented next-line argument`` () =
+        let script = "Map.ofList\n    [(\"a\", 1); (\"b\", 2)]\n|> Map.tryFind \"b\""
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected Some 2 from multiline call")
+
+    [<Test>]
+    member _.``Map.ofList keeps last duplicate key`` () =
+        let script = "Map.ofList [(\"a\", 1); (\"a\", 2)] |> Map.tryFind \"a\""
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected last duplicate value")
+
+    [<Test>]
     member _.``List.map external maps values`` () =
         let script = "[0..3] |> List.map (fun n -> n + 1)"
         match Helpers.evalWithExterns externs script with

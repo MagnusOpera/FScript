@@ -50,6 +50,7 @@ Current runtime-handled groups include:
 ### Map (`'a map`)
 - `Map.empty`
 - `Map.add`
+- `Map.ofList`
 - `Map.try` (alias of `Map.tryFind`)
 - `Map.tryFind`
 - `Map.containsKey`

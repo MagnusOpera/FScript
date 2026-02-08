@@ -141,6 +141,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected lambda")
 
     [<Test>]
+    member _.``Parses function application with indented next-line argument`` () =
+        let p = Helpers.parse "Map.ofList\n    [(\"a\", 1)]"
+        match p.[0] with
+        | SExpr (EApply (EFieldGet (EVar ("Map", _), "ofList", _), EList _, _)) -> ()
+        | _ -> Assert.Fail("Expected multiline function application")
+
+    [<Test>]
     member _.``Parses annotated let parameter`` () =
         let p = Helpers.parse "let show (node: Node) = node"
         match p.[0] with
