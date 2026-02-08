@@ -266,6 +266,11 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected tuple pattern in match")
 
     [<Test>]
+    member _.``Rejects tuple match case without parentheses`` () =
+        let act () = Helpers.parse "match (1, true) with\n    | x, true -> x\n    | _ -> 0" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses match with record patterns`` () =
         let src = "match { Value = 1; Next = None } with\n    | { Value = v } -> v\n    | _ -> 0"
         let program = Helpers.parse src
