@@ -226,6 +226,16 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected None unchanged")
 
     [<Test>]
+    member _.``Option.map infers unannotated lambda record field access`` () =
+        let script =
+            "type Package = { name: string; version: string }\n" +
+            "let package = Some { name = \"fscript\"; version = \"0.7.0\" }\n" +
+            "package |> Option.map (fun value -> value.name)"
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VString "fscript")) -> ()
+        | _ -> Assert.Fail("Expected Some \"fscript\"")
+
+    [<Test>]
     member _.``Json deserialize uses typeof record`` () =
         let script =
             "type Package = { Name: string; Version: string option; Deps: int map }\n" +

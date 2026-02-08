@@ -54,12 +54,18 @@ module TypeInfer =
                         let s1 = uni seen' (applyType sAcc x) (applyType sAcc y)
                         compose s1 sAcc) emptySubst
                 | TRecord xf, TRecord yf ->
-                    if xf.Count <> yf.Count || (Set.ofSeq xf.Keys <> Set.ofSeq yf.Keys) then
-                        raise (TypeException { Message = "Record field set mismatch"; Span = span })
-                    xf
+                    let xKeys = Set.ofSeq xf.Keys
+                    let yKeys = Set.ofSeq yf.Keys
+                    let fieldsToCheck, otherFields =
+                        if Set.isSubset xKeys yKeys then xf, yf
+                        elif Set.isSubset yKeys xKeys then yf, xf
+                        else
+                            raise (TypeException { Message = "Record field set mismatch"; Span = span })
+
+                    fieldsToCheck
                     |> Map.toList
                     |> List.fold (fun sAcc (name, xt) ->
-                        let yt = yf.[name]
+                        let yt = otherFields.[name]
                         let s1 = uni seen' (applyType sAcc xt) (applyType sAcc yt)
                         compose s1 sAcc) emptySubst
                 | TStringMap x, TStringMap y -> uni seen' x y
@@ -526,6 +532,19 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
         | EFieldGet (target, fieldName, span) ->
+            let inferRecordField s1 tTarget =
+                match applyType s1 tTarget with
+                | TRecord fields ->
+                    match fields.TryFind fieldName with
+                    | Some tField -> s1, tField
+                    | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                | TVar _ as tv ->
+                    let tField = Types.freshVar()
+                    let sField = unify typeDefs tv (TRecord (Map.ofList [ fieldName, tField ])) span
+                    let s = compose sField s1
+                    s, applyType s tField
+                | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
+
             match target with
             | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
                 let qualifiedName = $"{moduleName}.{fieldName}"
@@ -535,20 +554,12 @@ module TypeInfer =
                     emptySubst, t, asTyped expr t
                 | None ->
                     let s1, tTarget, _ = inferExpr typeDefs constructors env target
-                    match applyType s1 tTarget with
-                    | TRecord fields ->
-                        match fields.TryFind fieldName with
-                        | Some tField -> s1, tField, asTyped expr tField
-                        | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-                    | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
+                    let sField, tField = inferRecordField s1 tTarget
+                    sField, tField, asTyped expr tField
             | _ ->
                 let s1, tTarget, _ = inferExpr typeDefs constructors env target
-                match applyType s1 tTarget with
-                | TRecord fields ->
-                    match fields.TryFind fieldName with
-                    | Some tField -> s1, tField, asTyped expr tField
-                    | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-                | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
+                let sField, tField = inferRecordField s1 tTarget
+                sField, tField, asTyped expr tField
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->
