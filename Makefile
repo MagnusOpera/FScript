@@ -1,10 +1,18 @@
-.PHONY: build test clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
+.PHONY: build test smoke-tests clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
 
 build:
 	dotnet build FScript.sln -c Release
 
 test:
 	dotnet test FScript.sln -c Release
+
+smoke-tests:
+	@set -e; \
+	for script in samples/*.fss; do \
+		echo "Running $$script"; \
+		dotnet run --project src/FScript -- "$$script" > /dev/null; \
+	done; \
+	echo "All smoke tests passed."
 
 clean:
 	dotnet clean FScript.sln -c Release
