@@ -1,6 +1,11 @@
 namespace FScript.Language
 
 module Eval =
+    type ProgramState =
+        { TypeDefs: Map<string, Type>
+          Env: Env
+          LastValue: Value }
+
     let private builtinIgnore : ExternalFunction =
         { Name = "ignore"
           Scheme = Forall([ 0 ], TFun (TVar 0, TUnit))
@@ -485,7 +490,11 @@ module Eval =
                     sb.Append(rendered) |> ignore
             VString (sb.ToString())
 
-    let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
+    let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
+        let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+        args |> List.fold (fun state arg -> applyFunctionValue evalExpr typeDefs span state arg) fnValue
+
+    let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
         let decls =
             program
             |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None)
@@ -609,7 +618,12 @@ module Eval =
                     env <- finalEnv
             | TypeInfer.TSExpr texpr ->
                 lastValue <- evalExpr typeDefs env texpr.Expr
-        lastValue
+        { TypeDefs = typeDefs
+          Env = env
+          LastValue = lastValue }
+
+    let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
+        (evalProgramWithExternsState externs program).LastValue
 
     let evalProgram (program: TypeInfer.TypedProgram) : Value =
         evalProgramWithExterns [] program

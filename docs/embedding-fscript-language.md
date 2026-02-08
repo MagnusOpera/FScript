@@ -54,6 +54,19 @@ let typed = FScript.inferWithExterns [ toUpperExtern ] program
 let result = FScript.evalWithExterns [ toUpperExtern ] typed
 ```
 
+## Loading once and invoking by name
+
+Use `FScript.Runtime.ScriptHost` when a host needs reusable loading and direct function invocation.
+
+```fsharp
+open FScript.Language
+open FScript.Runtime
+
+let externs = Registry.all { RootDirectory = "." }
+let loaded = ScriptHost.loadSource externs "let add x y = x + y"
+let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
+```
+
 ## Getting function metadata
 
 After inference, function descriptors can be produced with `Descriptor.describeFunctions`.
