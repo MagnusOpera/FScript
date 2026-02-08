@@ -431,19 +431,26 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Infers map literal type`` () =
-        let typed = Helpers.infer "#{ \"a\" = 1; \"b\" = 2 }"
+        let typed = Helpers.infer "{ [\"a\"] = 1; [\"b\"] = 2 }"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Reports type error for non-string map literal key`` () =
-        let act () = Helpers.infer "#{ 1 = 2 }" |> ignore
+    member _.``Reports type error for non-string map key`` () =
+        let act () = Helpers.infer "{ [1] = 2 }" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]
+    member _.``Infers map literal with string key expression`` () =
+        let typed = Helpers.infer "let key = \"a\"\n{ [key] = 1 }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Reports type error for mixed map literal values`` () =
-        let act () = Helpers.infer "#{ \"a\" = 1; \"b\" = \"x\" }" |> ignore
+        let act () = Helpers.infer "{ [\"a\"] = 1; [\"b\"] = \"x\" }" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

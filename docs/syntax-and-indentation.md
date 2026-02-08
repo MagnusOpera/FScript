@@ -39,12 +39,13 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - field access `p.Name`
   - copy-update `{ p with Age = 2 }`
 - Maps:
-  - empty `#{}`
-  - literal `#{ "a" = 1; "b" = 2 }`
+  - empty `{}`
+  - literal `{ ["a"] = 1; ["b"] = 2 }`
+  - keys are bracketed expressions (`[expr]`) and must infer to `string`
   - multiline:
-    - `#{`
-    - `    "a" = 1`
-    - `    "b" = 2`
+    - `{`
+    - `    ["a"] = 1`
+    - `    ["b"] = 2`
     - `}`
 - Lists:
   - `[a; b; c]`

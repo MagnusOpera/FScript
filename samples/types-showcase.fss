@@ -20,7 +20,7 @@ type Subscription =
 
 
 let scores =
-    #{ "math" = 20; "science" = 18 }
+    { ["math"] = 20; ["science"] = 18 }
 
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
@@ -40,9 +40,9 @@ let format_address (address: { City: string; Zip: int }) = $"{address.City} ({ad
 
 // Name exposure for host capability maps.
 let capabilities =
-    #{
-        (nameof format_address) = "address formatting"
-        (nameof make_office_address) = "office address constructor"
+    {
+        ["format_address"] = "address formatting"
+        ["make_office_address"] = "office address constructor"
     }
 
 
@@ -59,6 +59,7 @@ let mathScore =
 
 
 let hasScience = updated.Scores |> Map.containsKey "science"
+let formatAddressKey = "format_address"
 
 let monthlyPrice =
     match subscription with
@@ -78,7 +79,7 @@ print $"Subscription price: {monthlyPrice}"
 // - value created through another named record type (OfficeAddress)
 print $"Structural address from literal: {format_address parisAddress}"
 print $"Structural address from OfficeAddress: {format_address officeAddress}"
-print $"Capability for format_address: {Map.tryGet (nameof format_address) capabilities |> Option.defaultValue missing}"
+print $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
 
 
 updated.Tags |> List.iter print

@@ -65,7 +65,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates map literals`` () =
-        match Helpers.eval "#{ \"a\" = 1; \"b\" = 2 }" with
+        match Helpers.eval "{ [\"a\"] = 1; [\"b\"] = 2 }" with
         | VStringMap m ->
             m.Count |> should equal 2
             match m.["a"] with
@@ -78,13 +78,19 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates map literals with duplicate keys as last-wins`` () =
-        match Helpers.eval "#{ \"a\" = 1; \"a\" = 2 }" with
+        match Helpers.eval "{ [\"a\"] = 1; [\"a\"] = 2 }" with
         | VStringMap m ->
             m.Count |> should equal 1
             match m.["a"] with
             | VInt 2L -> ()
             | _ -> Assert.Fail("Expected key a to map to 2")
         | _ -> Assert.Fail("Expected map value")
+
+    [<Test>]
+    member _.``Evaluates empty map literal`` () =
+        match Helpers.eval "{}" with
+        | VStringMap m -> m.Count |> should equal 0
+        | _ -> Assert.Fail("Expected empty map value")
 
     [<Test>]
     member _.``Evaluates record copy-update immutably`` () =

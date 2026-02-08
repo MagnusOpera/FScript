@@ -20,7 +20,7 @@ let x =
   - `'a option`
   - `'a map`
 - Map values use native literals:
-  - `#{ "a" = 1; "b" = 2 }`
+  - `{ ["a"] = 1; ["b"] = 2 }`
 - Runtime helpers are also available for map construction/updates (for example `Map.ofList`, `Map.add`).
 - Function types use arrow syntax:
   - `int -> string`
@@ -53,6 +53,7 @@ let x =
 - Host capabilities are exposed through explicit extern functions.
 - Typed decoding workflows use `typeof Name` tokens with host externs.
 - Capability maps can use `nameof identifier` for stable script-side function keys.
+- Capability maps use string keys in map literals (`[expr]` where `expr : string`).
 
 ## Formatting and layout choices
 - `match` case columns align.

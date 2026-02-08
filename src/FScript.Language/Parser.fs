@@ -39,7 +39,7 @@ module Parser =
 
     let private isStartAtom (k: TokenKind) =
         match k with
-        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Hash | Let | Fun | If | Raise | For | Match | Typeof | Nameof -> true
+        | Ident _ | IntLit _ | FloatLit _ | StringLit _ | InterpString _ | BoolLit _ | LParen | LBracket | LBrace | Let | Fun | If | Raise | For | Match | Typeof | Nameof -> true
         | _ -> false
 
     let private isUpperIdent (name: string) =
@@ -494,105 +494,107 @@ module Parser =
             | LBrace ->
                 let lb = stream.Next()
                 if stream.Match(RBrace) then
-                    ERecord([], mkSpanFrom lb.Span lb.Span)
+                    EMap([], mkSpanFrom lb.Span lb.Span)
                 else
-                    let mark = stream.Mark()
-                    let tryRecordUpdate () =
-                        let baseExpr = parseExpr()
+                    let mapMark = stream.Mark()
+                    stream.SkipNewlines()
+                    let hasMapIndent = stream.Match(Indent)
+                    stream.SkipNewlines()
+                    if stream.Peek().Kind = LBracket then
+                        let parseMapEntry () =
+                            stream.Expect(LBracket, "Expected '[' in map entry key") |> ignore
+                            let keyExpr = parseExpr()
+                            stream.Expect(RBracket, "Expected ']' after map entry key") |> ignore
+                            stream.SkipNewlines()
+                            stream.Expect(Equals, "Expected '=' in map entry") |> ignore
+                            let value = parseExpr()
+                            keyExpr, value, (Ast.spanOfExpr value).End.Line
+
                         stream.SkipNewlines()
-                        if not (stream.Match(With)) then
-                            stream.Restore(mark)
-                            None
+                        if hasMapIndent && stream.Peek().Kind = Dedent then
+                            stream.Next() |> ignore
+
+                        if stream.Peek().Kind = RBrace then
+                            let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                            EMap([], mkSpanFrom lb.Span rb.Span)
                         else
-                            let updates = ResizeArray<string * Expr>()
-                            let parseUpdateField () =
-                                let nameTok = stream.ExpectIdent("Expected field name in record update")
+                            let entries = ResizeArray<Expr * Expr>()
+                            let firstKey, firstValue, firstLine = parseMapEntry()
+                            entries.Add(firstKey, firstValue)
+
+                            let rec parseTail (lastEntryEndLine: int) =
+                                stream.SkipNewlines()
+                                if hasMapIndent && stream.Peek().Kind = Dedent then
+                                    stream.Next() |> ignore
+                                if stream.Peek().Kind = RBrace then
+                                    ()
+                                elif stream.Match(Semicolon) then
+                                    stream.SkipNewlines()
+                                    if hasMapIndent && stream.Peek().Kind = Dedent then
+                                        stream.Next() |> ignore
+                                    if stream.Peek().Kind = RBrace then
+                                        ()
+                                    else
+                                        let key, value, valueLine = parseMapEntry()
+                                        entries.Add(key, value)
+                                        parseTail valueLine
+                                else
+                                    let next = stream.Peek()
+                                    if next.Span.Start.Line > lastEntryEndLine then
+                                        let key, value, valueLine = parseMapEntry()
+                                        entries.Add(key, value)
+                                        parseTail valueLine
+                                    else
+                                        raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = next.Span })
+
+                            parseTail firstLine
+                            let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                            EMap(entries |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                    else
+                        stream.Restore(mapMark)
+                        let mark = stream.Mark()
+                        let tryRecordUpdate () =
+                            let baseExpr = parseExpr()
+                            stream.SkipNewlines()
+                            if not (stream.Match(With)) then
+                                stream.Restore(mark)
+                                None
+                            else
+                                let updates = ResizeArray<string * Expr>()
+                                let parseUpdateField () =
+                                    let nameTok = stream.ExpectIdent("Expected field name in record update")
+                                    let name =
+                                        match nameTok.Kind with
+                                        | Ident n -> n
+                                        | _ -> ""
+                                    stream.SkipNewlines()
+                                    stream.Expect(Equals, "Expected '=' in record update field") |> ignore
+                                    let value = parseExpr()
+                                    updates.Add(name, value)
+                                parseUpdateField()
+                                while stream.Match(Semicolon) do
+                                    parseUpdateField()
+                                let rb = stream.Expect(RBrace, "Expected '}' in record update")
+                                Some (ERecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
+                        match tryRecordUpdate() with
+                        | Some updateExpr -> updateExpr
+                        | None ->
+                            let fields = ResizeArray<string * Expr>()
+                            let parseField () =
+                                let nameTok = stream.ExpectIdent("Expected field name in record literal")
                                 let name =
                                     match nameTok.Kind with
                                     | Ident n -> n
                                     | _ -> ""
                                 stream.SkipNewlines()
-                                stream.Expect(Equals, "Expected '=' in record update field") |> ignore
+                                stream.Expect(Equals, "Expected '=' in record field") |> ignore
                                 let value = parseExpr()
-                                updates.Add(name, value)
-                            parseUpdateField()
-                            while stream.Match(Semicolon) do
-                                parseUpdateField()
-                            let rb = stream.Expect(RBrace, "Expected '}' in record update")
-                            Some (ERecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
-                    match tryRecordUpdate() with
-                    | Some updateExpr -> updateExpr
-                    | None ->
-                        let fields = ResizeArray<string * Expr>()
-                        let parseField () =
-                            let nameTok = stream.ExpectIdent("Expected field name in record literal")
-                            let name =
-                                match nameTok.Kind with
-                                | Ident n -> n
-                                | _ -> ""
-                            stream.SkipNewlines()
-                            stream.Expect(Equals, "Expected '=' in record field") |> ignore
-                            let value = parseExpr()
-                            fields.Add(name, value)
-                        parseField()
-                        while stream.Match(Semicolon) do
+                                fields.Add(name, value)
                             parseField()
-                        let rb = stream.Expect(RBrace, "Expected '}' in record literal")
-                        ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
-            | Hash ->
-                let hashTok = stream.Next()
-                let lb = stream.Expect(LBrace, "Expected '{' after '#' for map literal")
-                let mapStart = mkSpanFrom hashTok.Span lb.Span
-                stream.SkipNewlines()
-                let hasIndent = stream.Match(Indent)
-
-                let parseMapEntry () =
-                    let key = parsePostfix()
-                    stream.SkipNewlines()
-                    stream.Expect(Equals, "Expected '=' in map entry") |> ignore
-                    let value = parseExpr()
-                    key, value, (Ast.spanOfExpr value).End.Line
-
-                stream.SkipNewlines()
-                if hasIndent && stream.Peek().Kind = Dedent then
-                    stream.Next() |> ignore
-
-                if stream.Peek().Kind = RBrace then
-                    let rb = stream.Expect(RBrace, "Expected '}' in map literal")
-                    EMap([], mkSpanFrom mapStart rb.Span)
-                else
-                    let entries = ResizeArray<Expr * Expr>()
-                    let firstKey, firstValue, firstLine = parseMapEntry()
-                    entries.Add(firstKey, firstValue)
-
-                    let rec parseTail (lastEntryEndLine: int) =
-                        stream.SkipNewlines()
-                        if hasIndent && stream.Peek().Kind = Dedent then
-                            stream.Next() |> ignore
-                        if stream.Peek().Kind = RBrace then
-                            ()
-                        elif stream.Match(Semicolon) then
-                            stream.SkipNewlines()
-                            if hasIndent && stream.Peek().Kind = Dedent then
-                                stream.Next() |> ignore
-                            if stream.Peek().Kind = RBrace then
-                                ()
-                            else
-                                let key, value, valueLine = parseMapEntry()
-                                entries.Add(key, value)
-                                parseTail valueLine
-                        else
-                            let next = stream.Peek()
-                            if next.Span.Start.Line > lastEntryEndLine then
-                                let key, value, valueLine = parseMapEntry()
-                                entries.Add(key, value)
-                                parseTail valueLine
-                            else
-                                raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = next.Span })
-
-                    parseTail firstLine
-                    let rb = stream.Expect(RBrace, "Expected '}' in map literal")
-                    EMap(entries |> Seq.toList, mkSpanFrom mapStart rb.Span)
+                            while stream.Match(Semicolon) do
+                                parseField()
+                            let rb = stream.Expect(RBrace, "Expected '}' in record literal")
+                            ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | Let ->
                 parseLetExpr()
             | Fun ->

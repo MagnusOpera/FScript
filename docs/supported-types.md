@@ -20,10 +20,10 @@ This document specifies the value and type system used by the interpreter.
 
 ## Map literals
 - Native map literal syntax:
-  - empty: `#{}`
-  - populated: `#{ "a" = 1; "b" = 2 }`
+  - empty: `{}`
+  - populated: `{ ["a"] = 1; ["b"] = 2 }`
   - multiline entries are supported in an indented block.
-- Keys are `string`.
+- Keys are bracketed expressions and must have type `string`.
 - Values are inferred and unified to a single value type.
 
 ## Function types

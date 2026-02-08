@@ -112,7 +112,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses map literal`` () =
-        let p = Helpers.parse "#{ \"a\" = 1; \"b\" = 2 }"
+        let p = Helpers.parse "{ [\"a\"] = 1; [\"b\"] = 2 }"
         match p.[0] with
         | SExpr (EMap (entries, _)) ->
             entries.Length |> should equal 2
@@ -120,12 +120,26 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses multiline map literal`` () =
-        let src = "#{\n    \"a\" = 1\n    \"b\" = 2\n}"
+        let src = "{\n    [\"a\"] = 1\n    [\"b\"] = 2\n}"
         let p = Helpers.parse src
         match p.[0] with
         | SExpr (EMap (entries, _)) ->
             entries.Length |> should equal 2
         | _ -> Assert.Fail("Expected multiline map literal")
+
+    [<Test>]
+    member _.``Parses empty map literal`` () =
+        let p = Helpers.parse "{}"
+        match p.[0] with
+        | SExpr (EMap (entries, _)) -> entries.Length |> should equal 0
+        | _ -> Assert.Fail("Expected empty map literal")
+
+    [<Test>]
+    member _.``Parses map literal with key expression`` () =
+        let p = Helpers.parse "let a = \"x\"\n{ [a] = 1 }"
+        match p.[1] with
+        | SExpr (EMap (entries, _)) -> entries.Length |> should equal 1
+        | _ -> Assert.Fail("Expected map literal with expression key")
 
     [<Test>]
     member _.``Parses let expression without in`` () =
@@ -331,7 +345,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses multiline lambda argument closed by parenthesis on same line`` () =
-        let src = "Map.fold (fun acc key value ->\n    match value with\n    | \"workspace:*\" -> key :: acc\n    | _ -> acc) [] #{ \"a\" = \"workspace:*\" }"
+        let src = "Map.fold (fun acc key value ->\n    match value with\n    | \"workspace:*\" -> key :: acc\n    | _ -> acc) [] { [\"a\"] = \"workspace:*\" }"
         let p = Helpers.parse src
         match p.[0] with
         | SExpr (EApply (EApply (EApply (EFieldGet (EVar ("Map", _), "fold", _), _, _), _, _), _, _)) -> ()

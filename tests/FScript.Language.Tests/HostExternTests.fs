@@ -51,11 +51,11 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Native map literal composes with Map externs`` () =
-        match Helpers.evalWithExterns externs "#{ \"a\" = 1; \"b\" = 2 } |> Map.count" with
+        match Helpers.evalWithExterns externs "{ [\"a\"] = 1; [\"b\"] = 2 } |> Map.count" with
         | VInt 2L -> ()
         | _ -> Assert.Fail("Expected map count 2")
 
-        match Helpers.evalWithExterns externs "#{ \"a\" = 1; \"b\" = 2 } |> Map.tryGet \"b\"" with
+        match Helpers.evalWithExterns externs "{ [\"a\"] = 1; [\"b\"] = 2 } |> Map.tryGet \"b\"" with
         | VOption (Some (VInt 2L)) -> ()
         | _ -> Assert.Fail("Expected Some 2")
 
