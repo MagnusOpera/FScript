@@ -234,7 +234,7 @@ module Eval =
                                 | _ -> raise (EvalException { Message = "List.tryFind predicate must return bool"; Span = span })
                         loop items
                     | _ -> raise (EvalException { Message = "List.tryFind expects (function, list)"; Span = span })
-                elif ext.Name = "List.tryFindIndex" then
+                elif ext.Name = "List.tryGet" then
                     match args' with
                     | [ predicate; VList items ] ->
                         let rec loop index xs =
@@ -244,9 +244,48 @@ module Eval =
                                 match applyFunctionValue eval typeDefs span predicate x with
                                 | VBool true -> VOption (Some (VInt index))
                                 | VBool false -> loop (index + 1L) rest
-                                | _ -> raise (EvalException { Message = "List.tryFindIndex predicate must return bool"; Span = span })
+                                | _ -> raise (EvalException { Message = "List.tryGet predicate must return bool"; Span = span })
                         loop 0L items
-                    | _ -> raise (EvalException { Message = "List.tryFindIndex expects (function, list)"; Span = span })
+                    | _ -> raise (EvalException { Message = "List.tryGet expects (function, list)"; Span = span })
+                elif ext.Name = "Map.filter" then
+                    match args' with
+                    | [ predicate; VStringMap m ] ->
+                        let filtered =
+                            m
+                            |> Map.toList
+                            |> List.choose (fun (key, value) ->
+                                let predicateWithKey = applyFunctionValue eval typeDefs span predicate (VString key)
+                                match applyFunctionValue eval typeDefs span predicateWithKey value with
+                                | VBool true -> Some (key, value)
+                                | VBool false -> None
+                                | _ -> raise (EvalException { Message = "Map.filter predicate must return bool"; Span = span }))
+                            |> Map.ofList
+                        VStringMap filtered
+                    | _ -> raise (EvalException { Message = "Map.filter expects (function, map)"; Span = span })
+                elif ext.Name = "Map.fold" then
+                    match args' with
+                    | [ folder; state; VStringMap m ] ->
+                        let foldedState =
+                            m
+                            |> Map.fold (fun acc key value ->
+                                let step = applyFunctionValue eval typeDefs span folder acc
+                                let stepWithKey = applyFunctionValue eval typeDefs span step (VString key)
+                                applyFunctionValue eval typeDefs span stepWithKey value) state
+                        foldedState
+                    | _ -> raise (EvalException { Message = "Map.fold expects (function, state, map)"; Span = span })
+                elif ext.Name = "Map.choose" then
+                    match args' with
+                    | [ chooser; VStringMap m ] ->
+                        let chosen =
+                            m
+                            |> Map.fold (fun acc key value ->
+                                let chooserWithKey = applyFunctionValue eval typeDefs span chooser (VString key)
+                                match applyFunctionValue eval typeDefs span chooserWithKey value with
+                                | VOption (Some chosenValue) -> Map.add key chosenValue acc
+                                | VOption None -> acc
+                                | _ -> raise (EvalException { Message = "Map.choose chooser must return option"; Span = span })) Map.empty
+                        VStringMap chosen
+                    | _ -> raise (EvalException { Message = "Map.choose expects (function, map)"; Span = span })
                 elif ext.Name = "Option.map" then
                     match args' with
                     | [ mapper; VOption (Some value) ] ->

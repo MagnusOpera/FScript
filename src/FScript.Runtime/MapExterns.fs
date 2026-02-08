@@ -32,21 +32,39 @@ module MapExterns =
                   VStringMap (List.fold folder Map.empty items)
               | _ -> raise (HostCommon.evalError "Map.ofList expects ((string * value) list)") }
 
-    let tryFind : ExternalFunction =
-        { Name = "Map.tryFind"
-          Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TOption (TVar 0))))
-          Arity = 2
-          Impl = function
-              | [ VString key; VStringMap m ] -> m.TryFind(key) |> VOption
-              | _ -> raise (HostCommon.evalError "Map.tryFind expects (string, map)") }
-
     let tryGet : ExternalFunction =
-        { Name = "Map.try"
+        { Name = "Map.tryGet"
           Scheme = Forall([ 0 ], TFun(TString, TFun(TStringMap (TVar 0), TOption (TVar 0))))
           Arity = 2
           Impl = function
               | [ VString key; VStringMap m ] -> m.TryFind(key) |> VOption
-              | _ -> raise (HostCommon.evalError "Map.try expects (string, map)") }
+              | _ -> raise (HostCommon.evalError "Map.tryGet expects (string, map)") }
+
+    let count : ExternalFunction =
+        { Name = "Map.count"
+          Scheme = Forall([ 0 ], TFun(TStringMap (TVar 0), TInt))
+          Arity = 1
+          Impl = function
+              | [ VStringMap m ] -> VInt (int64 m.Count)
+              | _ -> raise (HostCommon.evalError "Map.count expects (map)") }
+
+    let filter : ExternalFunction =
+        { Name = "Map.filter"
+          Scheme = Forall([ 0 ], TFun(TFun(TString, TFun(TVar 0, TBool)), TFun(TStringMap (TVar 0), TStringMap (TVar 0))))
+          Arity = 2
+          Impl = fun _ -> raise (HostCommon.evalError "Map.filter is handled by the evaluator runtime") }
+
+    let fold : ExternalFunction =
+        { Name = "Map.fold"
+          Scheme = Forall([ 0; 1 ], TFun(TFun(TVar 0, TFun(TString, TFun(TVar 1, TVar 0))), TFun(TVar 0, TFun(TStringMap (TVar 1), TVar 0))))
+          Arity = 3
+          Impl = fun _ -> raise (HostCommon.evalError "Map.fold is handled by the evaluator runtime") }
+
+    let choose : ExternalFunction =
+        { Name = "Map.choose"
+          Scheme = Forall([ 0; 1 ], TFun(TFun(TString, TFun(TVar 0, TOption (TVar 1))), TFun(TStringMap (TVar 0), TStringMap (TVar 1))))
+          Arity = 2
+          Impl = fun _ -> raise (HostCommon.evalError "Map.choose is handled by the evaluator runtime") }
 
     let containsKey : ExternalFunction =
         { Name = "Map.containsKey"

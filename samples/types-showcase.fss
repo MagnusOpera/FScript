@@ -54,7 +54,7 @@ let city =
 
 let mathScore =
     updated.Scores
-    |> Map.tryFind "math"
+    |> Map.tryGet "math"
     |> Option.defaultValue 0
 
 
@@ -78,7 +78,7 @@ print $"Subscription price: {monthlyPrice}"
 // - value created through another named record type (OfficeAddress)
 print $"Structural address from literal: {format_address parisAddress}"
 print $"Structural address from OfficeAddress: {format_address officeAddress}"
-print $"Capability for format_address: {Map.tryFind (nameof format_address) capabilities |> Option.defaultValue missing}"
+print $"Capability for format_address: {Map.tryGet (nameof format_address) capabilities |> Option.defaultValue missing}"
 
 
 updated.Tags |> List.iter print

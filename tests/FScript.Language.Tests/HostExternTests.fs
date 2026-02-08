@@ -14,38 +14,49 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Map externs support CRUD`` () =
-        let script = "Map.empty 0 |> Map.add \"a\" 1 |> Map.tryFind \"a\""
-        match Helpers.evalWithExterns externs script with
-        | VOption (Some (VInt 1L)) -> ()
-        | _ -> Assert.Fail("Expected Some 1")
-
-    [<Test>]
-    member _.``Map.try aliases Map.tryFind`` () =
-        let script = "Map.empty 0 |> Map.add \"a\" 1 |> Map.try \"a\""
+        let script = "Map.empty 0 |> Map.add \"a\" 1 |> Map.tryGet \"a\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 1L)) -> ()
         | _ -> Assert.Fail("Expected Some 1")
 
     [<Test>]
     member _.``Map.ofList builds map from tuple list`` () =
-        let script = "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.tryFind \"b\""
+        let script = "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.tryGet \"b\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 2L)) -> ()
         | _ -> Assert.Fail("Expected Some 2")
 
     [<Test>]
     member _.``Map.ofList supports indented next-line argument`` () =
-        let script = "Map.ofList\n    [(\"a\", 1); (\"b\", 2)]\n|> Map.tryFind \"b\""
+        let script = "Map.ofList\n    [(\"a\", 1); (\"b\", 2)]\n|> Map.tryGet \"b\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 2L)) -> ()
         | _ -> Assert.Fail("Expected Some 2 from multiline call")
 
     [<Test>]
     member _.``Map.ofList keeps last duplicate key`` () =
-        let script = "Map.ofList [(\"a\", 1); (\"a\", 2)] |> Map.tryFind \"a\""
+        let script = "Map.ofList [(\"a\", 1); (\"a\", 2)] |> Map.tryGet \"a\""
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VInt 2L)) -> ()
         | _ -> Assert.Fail("Expected last duplicate value")
+
+    [<Test>]
+    member _.``Map externs support count filter fold and choose`` () =
+        match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2); (\"c\", 3)] |> Map.count" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected map count 3")
+
+        match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2); (\"c\", 3)] |> Map.filter (fun k -> fun v -> v % 2 = 1) |> Map.count" with
+        | VInt 2L -> ()
+        | _ -> Assert.Fail("Expected filtered map count 2")
+
+        match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2); (\"c\", 3)] |> Map.fold (fun s -> fun _ -> fun v -> s + v) 0" with
+        | VInt 6L -> ()
+        | _ -> Assert.Fail("Expected folded sum 6")
+
+        match Helpers.evalWithExterns externs "Map.ofList [(\"a\", 1); (\"b\", 2); (\"c\", 3)] |> Map.choose (fun _ -> fun v -> if v % 2 = 0 then Some (v * 10) else None) |> Map.tryGet \"b\"" with
+        | VOption (Some (VInt 20L)) -> ()
+        | _ -> Assert.Fail("Expected chosen map value 20 for key b")
 
     [<Test>]
     member _.``Fs write-side externs operate under root confinement`` () =
@@ -116,7 +127,7 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected concatenated list")
 
     [<Test>]
-    member _.``List externs support choose collect contains distinct exists fold rev tryFind tryFindIndex and filter`` () =
+    member _.``List externs support choose collect contains distinct exists fold rev tryFind tryGet and filter`` () =
         match Helpers.evalWithExterns externs "[1;2;3;4] |> List.choose (fun x -> if x % 2 = 0 then Some x else None)" with
         | VList [ VInt 2L; VInt 4L ] -> ()
         | _ -> Assert.Fail("Expected choose of even elements")
@@ -153,9 +164,9 @@ type HostExternTests () =
         | VOption (Some (VInt 3L)) -> ()
         | _ -> Assert.Fail("Expected tryFind Some 3")
 
-        match Helpers.evalWithExterns externs "List.tryFindIndex (fun x -> x = 2) [1;2;3]" with
+        match Helpers.evalWithExterns externs "List.tryGet (fun x -> x = 2) [1;2;3]" with
         | VOption (Some (VInt 1L)) -> ()
-        | _ -> Assert.Fail("Expected tryFindIndex Some 1")
+        | _ -> Assert.Fail("Expected tryGet Some 1")
 
         match Helpers.evalWithExterns externs "List.filter (fun x -> x % 2 = 1) [1;2;3;4]" with
         | VList [ VInt 1L; VInt 3L ] -> ()
@@ -163,10 +174,6 @@ type HostExternTests () =
 
     [<Test>]
     member _.``Option externs support mapping and defaults`` () =
-        match Helpers.evalWithExterns externs "Option.get (Some 3)" with
-        | VInt 3L -> ()
-        | _ -> Assert.Fail("Expected Option.get Some value")
-
         match Helpers.evalWithExterns externs "Option.defaultValue 9 None" with
         | VInt 9L -> ()
         | _ -> Assert.Fail("Expected default on None")
@@ -198,11 +205,6 @@ type HostExternTests () =
         match Helpers.evalWithExterns externs "Option.map (fun x -> x + 1) None" with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected None unchanged")
-
-    [<Test>]
-    member _.``Option.get throws on None`` () =
-        let act () = Helpers.evalWithExterns externs "Option.get None" |> ignore
-        act |> should throw typeof<EvalException>
 
     [<Test>]
     member _.``Json deserialize uses typeof record`` () =

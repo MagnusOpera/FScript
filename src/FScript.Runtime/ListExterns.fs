@@ -73,11 +73,11 @@ module ListExterns =
           Arity = 2
           Impl = fun _ -> raise (HostCommon.evalError "List.tryFind is handled by the evaluator runtime") }
 
-    let tryFindIndex : ExternalFunction =
-        { Name = "List.tryFindIndex"
+    let tryGet : ExternalFunction =
+        { Name = "List.tryGet"
           Scheme = Forall([ 0 ], TFun(TFun(TVar 0, TBool), TFun(TList (TVar 0), TOption TInt)))
           Arity = 2
-          Impl = fun _ -> raise (HostCommon.evalError "List.tryFindIndex is handled by the evaluator runtime") }
+          Impl = fun _ -> raise (HostCommon.evalError "List.tryGet is handled by the evaluator runtime") }
 
     let filter : ExternalFunction =
         { Name = "List.filter"

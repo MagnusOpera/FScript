@@ -23,7 +23,8 @@ Some externs declare a scheme in host code but are executed in evaluator runtime
 These are currently dispatched by `ext.Name` in `Eval.applyFunctionValue`.
 
 Current runtime-handled groups include:
-- `List.map`, `List.iter`, `List.choose`, `List.collect`, `List.contains`, `List.distinct`, `List.exists`, `List.fold`, `List.filter`, `List.tryFind`, `List.tryFindIndex`
+- `List.map`, `List.iter`, `List.choose`, `List.collect`, `List.contains`, `List.distinct`, `List.exists`, `List.fold`, `List.filter`, `List.tryFind`, `List.tryGet`
+- `Map.filter`, `Map.fold`, `Map.choose`
 - `Option.map`, `Option.defaultWith`
 
 ## Built-in extern catalog
@@ -56,8 +57,11 @@ Current runtime-handled groups include:
 - `Map.empty`
 - `Map.add`
 - `Map.ofList`
-- `Map.try` (alias of `Map.tryFind`)
-- `Map.tryFind`
+- `Map.tryGet`
+- `Map.count`
+- `Map.filter`
+- `Map.fold`
+- `Map.choose`
 - `Map.containsKey`
 - `Map.remove`
 
@@ -74,13 +78,12 @@ Current runtime-handled groups include:
 - `List.rev`
 - `List.length`
 - `List.tryFind`
-- `List.tryFindIndex`
+- `List.tryGet`
 - `List.tryHead`
 - `List.tail`
 - `List.append`
 
 ### Option
-- `Option.get`
 - `Option.defaultValue`
 - `Option.defaultWith`
 - `Option.isNone`
@@ -106,4 +109,3 @@ Recommended steps:
 
 ## Compatibility guidance
 - External names are part of source-level API; renaming is breaking.
-- Maintain explicit aliases only when needed for compatibility (example: `Map.try` / `Map.tryFind`).

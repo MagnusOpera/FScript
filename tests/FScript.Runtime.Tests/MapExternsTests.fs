@@ -11,7 +11,8 @@ type MapExternsTests () =
     member _.``map externs perform CRUD`` () =
         let m0 = invoke MapExterns.empty [ VUnit ]
         let m1 = invoke MapExterns.add [ VString "a"; VInt 1L; m0 ]
-        let found = invoke MapExterns.tryFind [ VString "a"; m1 ]
+        let found = invoke MapExterns.tryGet [ VString "a"; m1 ]
+        let count = invoke MapExterns.count [ m1 ]
         let exists = invoke MapExterns.containsKey [ VString "a"; m1 ]
         let m2 = invoke MapExterns.remove [ VString "a"; m1 ]
 
@@ -23,7 +24,11 @@ type MapExternsTests () =
         | VBool true -> ()
         | _ -> Assert.Fail("Expected containsKey true")
 
-        match invoke MapExterns.tryFind [ VString "a"; m2 ] with
+        match count with
+        | VInt 1L -> ()
+        | _ -> Assert.Fail("Expected count 1")
+
+        match invoke MapExterns.tryGet [ VString "a"; m2 ] with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected removed key")
 
@@ -36,7 +41,7 @@ type MapExternsTests () =
                   VTuple [ VString "a"; VInt 3L ] ]
         let m = invoke MapExterns.ofList [ source ]
 
-        match invoke MapExterns.tryFind [ VString "a"; m ] with
+        match invoke MapExterns.tryGet [ VString "a"; m ] with
         | VOption (Some (VInt 3L)) -> ()
         | _ -> Assert.Fail("Expected duplicate key to keep last value")
 

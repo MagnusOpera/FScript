@@ -3,15 +3,6 @@ namespace FScript.Runtime
 open FScript.Language
 
 module OptionExterns =
-    let get : ExternalFunction =
-        { Name = "Option.get"
-          Scheme = Forall([ 0 ], TFun(TOption (TVar 0), TVar 0))
-          Arity = 1
-          Impl = function
-              | [ VOption (Some value) ] -> value
-              | [ VOption None ] -> raise (HostCommon.evalError "Option.get expects Some value")
-              | _ -> raise (HostCommon.evalError "Option.get expects (option)") }
-
     let defaultValue : ExternalFunction =
         { Name = "Option.defaultValue"
           Scheme = Forall([ 0 ], TFun(TVar 0, TFun(TOption (TVar 0), TVar 0)))

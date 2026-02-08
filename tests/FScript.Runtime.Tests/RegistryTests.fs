@@ -30,8 +30,11 @@ type RegistryTests () =
         names.Contains "Map.empty" |> should equal true
         names.Contains "Map.add" |> should equal true
         names.Contains "Map.ofList" |> should equal true
-        names.Contains "Map.try" |> should equal true
-        names.Contains "Map.tryFind" |> should equal true
+        names.Contains "Map.tryGet" |> should equal true
+        names.Contains "Map.count" |> should equal true
+        names.Contains "Map.filter" |> should equal true
+        names.Contains "Map.fold" |> should equal true
+        names.Contains "Map.choose" |> should equal true
         names.Contains "Map.remove" |> should equal true
         names.Contains "List.map" |> should equal true
         names.Contains "List.choose" |> should equal true
@@ -45,11 +48,10 @@ type RegistryTests () =
         names.Contains "List.rev" |> should equal true
         names.Contains "List.length" |> should equal true
         names.Contains "List.tryFind" |> should equal true
-        names.Contains "List.tryFindIndex" |> should equal true
+        names.Contains "List.tryGet" |> should equal true
         names.Contains "List.tryHead" |> should equal true
         names.Contains "List.tail" |> should equal true
         names.Contains "List.append" |> should equal true
-        names.Contains "Option.get" |> should equal true
         names.Contains "Option.defaultValue" |> should equal true
         names.Contains "Option.defaultWith" |> should equal true
         names.Contains "Option.isNone" |> should equal true

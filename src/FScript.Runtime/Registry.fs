@@ -24,7 +24,10 @@ module Registry =
           MapExterns.add
           MapExterns.ofList
           MapExterns.tryGet
-          MapExterns.tryFind
+          MapExterns.count
+          MapExterns.filter
+          MapExterns.fold
+          MapExterns.choose
           MapExterns.containsKey
           MapExterns.remove
           ListExterns.map
@@ -39,11 +42,10 @@ module Registry =
           ListExterns.rev
           ListExterns.length
           ListExterns.tryFind
-          ListExterns.tryFindIndex
+          ListExterns.tryGet
           ListExterns.tryHead
           ListExterns.tail
           ListExterns.append
-          OptionExterns.get
           OptionExterns.defaultValue
           OptionExterns.defaultWith
           OptionExterns.isNone
