@@ -5,6 +5,8 @@ module Parser =
         let mutable index = 0
         member _.Peek() = tokens.[index]
         member _.PeekAt(offset: int) = tokens.[index + offset]
+        member _.TokenAt(i: int) = tokens.[i]
+        member _.Index = index
         member _.Mark() = index
         member _.Restore(mark: int) = index <- mark
         member _.Next() =
@@ -161,6 +163,23 @@ module Parser =
                     progress <- true
             consumed
 
+        let hasNonLayoutTokenBeforeOnSameLine (tokenIndex: int) (line: int) =
+            let mutable i = tokenIndex - 1
+            let mutable keepSearching = true
+            let mutable foundSameLine = false
+            while keepSearching && i >= 0 do
+                let tok = stream.TokenAt(i)
+                match tok.Kind with
+                | Newline ->
+                    keepSearching <- false
+                | Indent
+                | Dedent ->
+                    i <- i - 1
+                | _ ->
+                    foundSameLine <- tok.Span.Start.Line = line
+                    keepSearching <- false
+            foundSameLine
+
         let mutable allowIndentedApplication = true
         let mutable allowBinaryNewlineSkipping = true
 
@@ -185,22 +204,12 @@ module Parser =
                     stream.Expect(Colon, "Expected ':' after inline record type field name") |> ignore
                     let fieldType = parseTypeRef()
                     fields.Add(fieldName, fieldType)
-                consumeLayoutSeparators() |> ignore
                 if stream.Peek().Kind = RBrace then
                     raise (ParseException { Message = "Inline record type must define at least one field"; Span = stream.Peek().Span })
                 parseField()
-                let mutable keepParsing = true
-                while keepParsing do
-                    let hasSeparator =
-                        if stream.Match(Semicolon) then
-                            consumeLayoutSeparators() |> ignore
-                            true
-                        else
-                            consumeLayoutSeparators()
-                    if hasSeparator && stream.Peek().Kind <> RBrace then
+                while stream.Match(Semicolon) do
+                    if stream.Peek().Kind <> RBrace then
                         parseField()
-                    else
-                        keepParsing <- false
                 stream.Expect(RBrace, "Expected '}' in inline record type") |> ignore
                 TRRecord (fields |> Seq.toList)
             | LParen ->
@@ -507,7 +516,12 @@ module Parser =
                         let rp = stream.Expect(RParen, "Expected ')' after expression")
                         EParen(first, mkSpanFrom lp.Span rp.Span)
             | LBracket ->
+                let lbIndex = stream.Index
                 let lb = stream.Next()
+                let immediateMultiline = stream.Peek().Kind = Newline
+                let hasSameLinePrefix = hasNonLayoutTokenBeforeOnSameLine lbIndex lb.Span.Start.Line
+                if immediateMultiline && hasSameLinePrefix then
+                    raise (ParseException { Message = "For multiline list literals, '[' must be on its own line"; Span = lb.Span })
                 consumeLayoutSeparators() |> ignore
                 if stream.Match(RBracket) then
                     EList([], mkSpanFrom lb.Span lb.Span)
@@ -537,7 +551,12 @@ module Parser =
                         let rb = stream.Expect(RBracket, "Expected ']' in list literal")
                         EList(elements |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | LBrace ->
+                let lbIndex = stream.Index
                 let lb = stream.Next()
+                let immediateMultiline = stream.Peek().Kind = Newline
+                let hasSameLinePrefix = hasNonLayoutTokenBeforeOnSameLine lbIndex lb.Span.Start.Line
+                if immediateMultiline && hasSameLinePrefix then
+                    raise (ParseException { Message = "For multiline record/map literals, '{' must be on its own line"; Span = lb.Span })
                 consumeLayoutSeparators() |> ignore
                 if stream.Match(RBrace) then
                     EMap([], mkSpanFrom lb.Span lb.Span)

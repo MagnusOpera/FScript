@@ -36,6 +36,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - union case patterns in cases: `Case` and `Case pattern`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
+  - if fields start on the next line, `{` must be on its own line
   - multiline example:
   ```fsharp
   {
@@ -52,6 +53,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
   - keys are bracketed expressions (`[expr]`) and must infer to `string`
+  - if entries start on the next line, `{` must be on its own line
   - multiline example:
   ```fsharp
   {
@@ -76,6 +78,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   ```
   - range `[a..b]`
   - `::`, `@`
+  - if elements start on the next line, `[` must be on its own line
 - Tuples:
   - `(a, b, c)`
 - Options:
@@ -157,5 +160,4 @@ All of the following map literal layouts are valid:
 - Parameter annotations accept inline structural record types:
   - `let format_address (address: { City: string; Zip: int }) = ...`
   - `fun (x: { Name: string; Tags: string list }) -> ...`
-  - `let f (x: { Name: string\n    Zip: int }) = ...`
-- Inline record annotation fields can be separated by `;` or by newline in multiline form.
+- Inline record annotation fields are `;`-separated in single-line form.

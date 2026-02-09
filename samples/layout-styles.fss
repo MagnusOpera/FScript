@@ -2,10 +2,7 @@ type Address =
     { City: string
       Zip: int }
 
-let format_address (address: {
-    City: string
-    Zip: int
-}) =
+let format_address (address: { City: string; Zip: int }) =
     $"{address.City} ({address.Zip})"
 
 let names_compact =
