@@ -145,6 +145,25 @@ module Parser =
                 if parts.Count = 0 then [ IPText "" ] else parts |> Seq.toList
             EInterpolatedString(finalParts, span)
 
+        let consumeLayoutSeparators () =
+            let mutable consumed = false
+            let mutable progress = true
+            while progress do
+                progress <- false
+                while stream.Match(Newline) do
+                    consumed <- true
+                    progress <- true
+                while stream.Match(Indent) do
+                    consumed <- true
+                    progress <- true
+                while stream.Match(Dedent) do
+                    consumed <- true
+                    progress <- true
+            consumed
+
+        let mutable allowIndentedApplication = true
+        let mutable allowBinaryNewlineSkipping = true
+
         let rec parseTypeRefAtom () : TypeRef =
             stream.SkipNewlines()
             match stream.Peek().Kind with
@@ -166,18 +185,22 @@ module Parser =
                     stream.Expect(Colon, "Expected ':' after inline record type field name") |> ignore
                     let fieldType = parseTypeRef()
                     fields.Add(fieldName, fieldType)
+                consumeLayoutSeparators() |> ignore
                 if stream.Peek().Kind = RBrace then
                     raise (ParseException { Message = "Inline record type must define at least one field"; Span = stream.Peek().Span })
                 parseField()
-                let mutable doneFields = false
-                while not doneFields do
-                    if stream.Match(Semicolon) then
-                        if stream.Peek().Kind = RBrace then
-                            doneFields <- true
+                let mutable keepParsing = true
+                while keepParsing do
+                    let hasSeparator =
+                        if stream.Match(Semicolon) then
+                            consumeLayoutSeparators() |> ignore
+                            true
                         else
-                            parseField()
+                            consumeLayoutSeparators()
+                    if hasSeparator && stream.Peek().Kind <> RBrace then
+                        parseField()
                     else
-                        doneFields <- true
+                        keepParsing <- false
                 stream.Expect(RBrace, "Expected '}' in inline record type") |> ignore
                 TRRecord (fields |> Seq.toList)
             | LParen ->
@@ -436,6 +459,17 @@ module Parser =
             else
                 left
 
+        and parseEntryExpr () : Expr =
+            let previousIndentedApplication = allowIndentedApplication
+            let previousBinaryNewlineSkipping = allowBinaryNewlineSkipping
+            allowIndentedApplication <- false
+            allowBinaryNewlineSkipping <- false
+            try
+                parseExpr()
+            finally
+                allowIndentedApplication <- previousIndentedApplication
+                allowBinaryNewlineSkipping <- previousBinaryNewlineSkipping
+
         and parsePrimary () : Expr =
             stream.SkipNewlines()
             let t = stream.Peek()
@@ -474,12 +508,13 @@ module Parser =
                         EParen(first, mkSpanFrom lp.Span rp.Span)
             | LBracket ->
                 let lb = stream.Next()
+                consumeLayoutSeparators() |> ignore
                 if stream.Match(RBracket) then
                     EList([], mkSpanFrom lb.Span lb.Span)
                 else
-                    let first = parseExpr()
+                    let first = parseEntryExpr()
                     if stream.Match(RangeDots) then
-                        let second = parseExpr()
+                        let second = parseEntryExpr()
                         if stream.Match(Semicolon) || stream.Match(RangeDots) then
                             raise (ParseException { Message = "Invalid range syntax"; Span = stream.Peek().Span })
                         let rb = stream.Expect(RBracket, "Expected ']' in range expression")
@@ -487,19 +522,26 @@ module Parser =
                     else
                         let elements = ResizeArray<Expr>()
                         elements.Add(first)
-                        while stream.Match(Semicolon) do
-                            elements.Add(parseExpr())
+                        let mutable keepParsing = true
+                        while keepParsing do
+                            let hasSeparator =
+                                if stream.Match(Semicolon) then
+                                    consumeLayoutSeparators() |> ignore
+                                    true
+                                else
+                                    consumeLayoutSeparators()
+                            if hasSeparator && stream.Peek().Kind <> RBracket then
+                                elements.Add(parseEntryExpr())
+                            else
+                                keepParsing <- false
                         let rb = stream.Expect(RBracket, "Expected ']' in list literal")
                         EList(elements |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | LBrace ->
                 let lb = stream.Next()
+                consumeLayoutSeparators() |> ignore
                 if stream.Match(RBrace) then
                     EMap([], mkSpanFrom lb.Span lb.Span)
                 else
-                    let mapMark = stream.Mark()
-                    stream.SkipNewlines()
-                    let hasMapIndent = stream.Match(Indent)
-                    stream.SkipNewlines()
                     if stream.Peek().Kind = LBracket then
                         let parseMapEntry () =
                             stream.Expect(LBracket, "Expected '[' in map entry key") |> ignore
@@ -507,51 +549,36 @@ module Parser =
                             stream.Expect(RBracket, "Expected ']' after map entry key") |> ignore
                             stream.SkipNewlines()
                             stream.Expect(Equals, "Expected '=' in map entry") |> ignore
-                            let value = parseExpr()
-                            keyExpr, value, (Ast.spanOfExpr value).End.Line
+                            let value = parseEntryExpr()
+                            keyExpr, value
 
-                        stream.SkipNewlines()
-                        if hasMapIndent && stream.Peek().Kind = Dedent then
-                            stream.Next() |> ignore
+                        let entries = ResizeArray<Expr * Expr>()
+                        let firstKey, firstValue = parseMapEntry()
+                        entries.Add(firstKey, firstValue)
 
-                        if stream.Peek().Kind = RBrace then
-                            let rb = stream.Expect(RBrace, "Expected '}' in map literal")
-                            EMap([], mkSpanFrom lb.Span rb.Span)
-                        else
-                            let entries = ResizeArray<Expr * Expr>()
-                            let firstKey, firstValue, firstLine = parseMapEntry()
-                            entries.Add(firstKey, firstValue)
-
-                            let rec parseTail (lastEntryEndLine: int) =
-                                stream.SkipNewlines()
-                                if hasMapIndent && stream.Peek().Kind = Dedent then
-                                    stream.Next() |> ignore
-                                if stream.Peek().Kind = RBrace then
-                                    ()
-                                elif stream.Match(Semicolon) then
-                                    stream.SkipNewlines()
-                                    if hasMapIndent && stream.Peek().Kind = Dedent then
-                                        stream.Next() |> ignore
-                                    if stream.Peek().Kind = RBrace then
-                                        ()
-                                    else
-                                        let key, value, valueLine = parseMapEntry()
-                                        entries.Add(key, value)
-                                        parseTail valueLine
+                        let mutable keepParsing = true
+                        while keepParsing do
+                            let hasSeparator =
+                                if stream.Match(Semicolon) then
+                                    consumeLayoutSeparators() |> ignore
+                                    true
                                 else
-                                    let next = stream.Peek()
-                                    if next.Span.Start.Line > lastEntryEndLine then
-                                        let key, value, valueLine = parseMapEntry()
-                                        entries.Add(key, value)
-                                        parseTail valueLine
-                                    else
-                                        raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = next.Span })
+                                    consumeLayoutSeparators()
+                            if hasSeparator then
+                                if stream.Peek().Kind = RBrace then
+                                    keepParsing <- false
+                                else
+                                    let key, value = parseMapEntry()
+                                    entries.Add(key, value)
+                            else
+                                if stream.Peek().Kind = RBrace then
+                                    keepParsing <- false
+                                else
+                                    raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = stream.Peek().Span })
 
-                            parseTail firstLine
-                            let rb = stream.Expect(RBrace, "Expected '}' in map literal")
-                            EMap(entries |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                        let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                        EMap(entries |> Seq.toList, mkSpanFrom lb.Span rb.Span)
                     else
-                        stream.Restore(mapMark)
                         let mark = stream.Mark()
                         let tryRecordUpdate () =
                             let baseExpr = parseExpr()
@@ -569,11 +596,21 @@ module Parser =
                                         | _ -> ""
                                     stream.SkipNewlines()
                                     stream.Expect(Equals, "Expected '=' in record update field") |> ignore
-                                    let value = parseExpr()
+                                    let value = parseEntryExpr()
                                     updates.Add(name, value)
                                 parseUpdateField()
-                                while stream.Match(Semicolon) do
-                                    parseUpdateField()
+                                let mutable keepParsing = true
+                                while keepParsing do
+                                    let hasSeparator =
+                                        if stream.Match(Semicolon) then
+                                            consumeLayoutSeparators() |> ignore
+                                            true
+                                        else
+                                            consumeLayoutSeparators()
+                                    if hasSeparator && stream.Peek().Kind <> RBrace then
+                                        parseUpdateField()
+                                    else
+                                        keepParsing <- false
                                 let rb = stream.Expect(RBrace, "Expected '}' in record update")
                                 Some (ERecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
                         match tryRecordUpdate() with
@@ -588,11 +625,21 @@ module Parser =
                                     | _ -> ""
                                 stream.SkipNewlines()
                                 stream.Expect(Equals, "Expected '=' in record field") |> ignore
-                                let value = parseExpr()
+                                let value = parseEntryExpr()
                                 fields.Add(name, value)
                             parseField()
-                            while stream.Match(Semicolon) do
-                                parseField()
+                            let mutable keepParsing = true
+                            while keepParsing do
+                                let hasSeparator =
+                                    if stream.Match(Semicolon) then
+                                        consumeLayoutSeparators() |> ignore
+                                        true
+                                    else
+                                        consumeLayoutSeparators()
+                                if hasSeparator && stream.Peek().Kind <> RBrace then
+                                    parseField()
+                                else
+                                    keepParsing <- false
                             let rb = stream.Expect(RBrace, "Expected '}' in record literal")
                             ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | Let ->
@@ -657,7 +704,7 @@ module Parser =
                     let mutable sawNewline = false
                     while stream.Match(Newline) do
                         sawNewline <- true
-                    if sawNewline then
+                    if sawNewline && allowIndentedApplication then
                         let consumedIndent = stream.Match(Indent)
                         if consumedIndent then
                             hasMultilineArgBlock <- true
@@ -675,6 +722,7 @@ module Parser =
                             stream.Restore(mark)
                             keepGoing <- false
                     else
+                        stream.Restore(mark)
                         keepGoing <- false
             expr
 
@@ -712,7 +760,8 @@ module Parser =
 
             let mutable looping = true
             while looping do
-                stream.SkipNewlines()
+                if allowBinaryNewlineSkipping then
+                    stream.SkipNewlines()
                 let next = stream.Peek()
                 let prec = precedence next.Kind
                 if prec >= minPrec then

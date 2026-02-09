@@ -69,6 +69,20 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected list literal")
 
     [<Test>]
+    member _.``Parses compact multiline list literal`` () =
+        let p = Helpers.parse "[1\n 2\n 3]"
+        match p.[0] with
+        | SExpr (EList (items, _)) -> items.Length |> should equal 3
+        | _ -> Assert.Fail("Expected compact multiline list literal")
+
+    [<Test>]
+    member _.``Parses block multiline list literal`` () =
+        let p = Helpers.parse "[\n 1\n 2\n 3\n]"
+        match p.[0] with
+        | SExpr (EList (items, _)) -> items.Length |> should equal 3
+        | _ -> Assert.Fail("Expected block multiline list literal")
+
+    [<Test>]
     member _.``Parses range expressions`` () =
         let p1 = Helpers.parse "[1..5]"
         match p1.[0] with
@@ -103,12 +117,33 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected record field access")
 
     [<Test>]
+    member _.``Parses multiline record literal compact braces`` () =
+        let p = Helpers.parse "{ Name = \"a\"\n  Age = 1 }"
+        match p.[0] with
+        | SExpr (ERecord (fields, _)) -> fields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline record literal")
+
+    [<Test>]
+    member _.``Parses multiline record literal block braces`` () =
+        let p = Helpers.parse "{\n  Name = \"a\"\n  Age = 1\n}"
+        match p.[0] with
+        | SExpr (ERecord (fields, _)) -> fields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline block record literal")
+
+    [<Test>]
     member _.``Parses record copy-update expression`` () =
         let p = Helpers.parse "{ p with Age = 2 }"
         match p.[0] with
         | SExpr (ERecordUpdate (EVar ("p", _), updates, _)) ->
             updates.Length |> should equal 1
         | _ -> Assert.Fail("Expected record update expression")
+
+    [<Test>]
+    member _.``Parses multiline record copy-update expression`` () =
+        let p = Helpers.parse "{ p with Age = 2\n  Name = \"n\" }"
+        match p.[0] with
+        | SExpr (ERecordUpdate (EVar ("p", _), updates, _)) -> updates.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline record update expression")
 
     [<Test>]
     member _.``Parses map literal`` () =
@@ -126,6 +161,14 @@ type ParserTests () =
         | SExpr (EMap (entries, _)) ->
             entries.Length |> should equal 2
         | _ -> Assert.Fail("Expected multiline map literal")
+
+    [<Test>]
+    member _.``Parses compact multiline map literal`` () =
+        let src = "{ [\"a\"] = 1\n  [\"b\"] = 2 }"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SExpr (EMap (entries, _)) -> entries.Length |> should equal 2
+        | _ -> Assert.Fail("Expected compact multiline map literal")
 
     [<Test>]
     member _.``Parses empty map literal`` () =
@@ -205,6 +248,13 @@ type ParserTests () =
         match p.[0] with
         | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter with inline record type")
+
+    [<Test>]
+    member _.``Parses annotated parameter with multiline inline record type`` () =
+        let p = Helpers.parse "let format_address (address: { City: string\n    Zip: int }) = address.City"
+        match p.[0] with
+        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let parameter with multiline inline record type")
 
     [<Test>]
     member _.``Parses nameof expression`` () =

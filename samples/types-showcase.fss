@@ -40,10 +40,9 @@ let format_address (address: { City: string; Zip: int }) = $"{address.City} ({ad
 
 // Name exposure for host capability maps.
 let capabilities =
-    {
-        ["format_address"] = "address formatting"
-        ["make_office_address"] = "office address constructor"
-    }
+    // Compact multiline map layout.
+    { ["format_address"] = "address formatting"
+      ["make_office_address"] = "office address constructor" }
 
 
 let city =

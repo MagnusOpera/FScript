@@ -36,6 +36,13 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - union case patterns in cases: `Case` and `Case pattern`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
+  - multiline example:
+  ```fsharp
+  {
+      Name = "a"
+      Age = 1
+  }
+  ```
   - field access `p.Name`
   - copy-update `{ p with Age = 2 }`
 - Maps:
@@ -45,13 +52,28 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
   - keys are bracketed expressions (`[expr]`) and must infer to `string`
-  - multiline:
-    - `{`
-    - `    ["a"] = 1`
-    - `    ["b"] = 2`
-    - `}`
+  - multiline example:
+  ```fsharp
+  {
+      ["a"] = 1
+      ["b"] = 2
+  }
+  ```
 - Lists:
   - `[a; b; c]`
+  - multiline examples:
+  ```fsharp
+  [1
+   2
+   3]
+  ```
+  ```fsharp
+  [
+    1
+    2
+    3
+  ]
+  ```
   - range `[a..b]`
   - `::`, `@`
 - Tuples:
@@ -93,6 +115,26 @@ From highest to lowest:
   - multiline with newline-separated fields
 - In multiline type declarations, field-start columns align exactly.
 
+### Map layout examples
+All of the following map literal layouts are valid:
+
+```fsharp
+{ ["format_address"] = "address formatting"; ["make_office_address"] = "office address constructor" }
+```
+
+```fsharp
+{ ["format_address"] = "address formatting"
+  ["make_office_address"] = "office address constructor" }
+```
+
+```fsharp
+{
+  ["format_address"] = "address formatting"
+  ["make_office_address"] = "office address constructor"
+}
+```
+
+
 ### Multiline union declaration layout
 - `type`/`type rec` union declarations support:
   - single-line: `type Shape = | Point | Circle of int`
@@ -115,4 +157,5 @@ From highest to lowest:
 - Parameter annotations accept inline structural record types:
   - `let format_address (address: { City: string; Zip: int }) = ...`
   - `fun (x: { Name: string; Tags: string list }) -> ...`
-- Inline record annotation fields use `;` separators in a single-line brace form.
+  - `let f (x: { Name: string\n    Zip: int }) = ...`
+- Inline record annotation fields can be separated by `;` or by newline in multiline form.
