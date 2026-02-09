@@ -251,6 +251,28 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated let parameter")
 
     [<Test>]
+    member _.``Parses multiline let parameters with aligned columns and inline body`` () =
+        let src = "let format_address (address: { City: string; Zip: int })\n                   (name: string) = $\"{address.City} ({name})\""
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("format_address", args, _, _, _, _) -> args.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline let parameters")
+
+    [<Test>]
+    member _.``Parses multiline let parameters with aligned columns and block body`` () =
+        let src = "let format_address (address: { City: string; Zip: int })\n                   (name: string) =\n    $\"{address.City} ({name})\""
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("format_address", args, _, _, _, _) -> args.Length |> should equal 2
+        | _ -> Assert.Fail("Expected multiline let parameters with block body")
+
+    [<Test>]
+    member _.``Rejects multiline let parameters when columns do not align`` () =
+        let act () =
+            Helpers.parse "let format_address (address: { City: string; Zip: int })\n                  (name: string) = $\"{address.City} ({name})\"" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses annotated lambda parameter with function type`` () =
         let p = Helpers.parse "fun (f: int -> string) -> f 1"
         match p.[0] with

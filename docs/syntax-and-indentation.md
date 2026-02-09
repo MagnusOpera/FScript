@@ -108,6 +108,21 @@ From highest to lowest:
 - After constructs that accept block bodies (`let`, `fun`, `if/else`, `for`, etc.), a newline followed by increased indent opens a block.
 - A block ends on matching dedent.
 
+### Let parameter alignment
+- Single-line function declarations remain valid:
+  - `let f x y = expr`
+- Multiline parameter declarations are valid when all continuation parameter lines are aligned to the same column:
+```fsharp
+let format_address (address: { City: string; Zip: int })
+                   (name: string) = $"{address.City} ({name})"
+```
+```fsharp
+let format_address (address: { City: string; Zip: int })
+                   (name: string) =
+    $"{address.City} ({name})"
+```
+- If a continuation parameter starts at a different column, parsing fails.
+
 ### Match-case alignment
 - Multiline `match` case lines must all start at the same column.
 - First case column must be at or deeper than the `match` column.

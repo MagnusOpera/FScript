@@ -160,6 +160,7 @@ module Lexer =
         let mutable line = 1
         let mutable col = 1
         let mutable atLineStart = true
+        let mutable inLetBindingHead = false
 
         let emitIndentChanges newIndent span =
             let current = indentStack.[indentStack.Count - 1]
@@ -204,7 +205,12 @@ module Lexer =
                     atLineStart <- true
                 else
                     let span = mkSpan line col 1
-                    emitIndentChanges indent span
+                    let startsWithParameterHead =
+                        idx < src.Length && (src.[idx] = '(' || isIdentStart src.[idx])
+                    if inLetBindingHead && startsWithParameterHead then
+                        ()
+                    else
+                        emitIndentChanges indent span
                     i <- idx
                     col <- cCol
                     atLineStart <- false
@@ -273,7 +279,12 @@ module Lexer =
                     let ident = src.Substring(start, idx - start)
                     let span = mkSpan line startCol (idx - start)
                     match keywordToken ident with
-                    | Some k -> addToken k span tokens
+                    | Some k ->
+                        addToken k span tokens
+                        match k with
+                        | Let
+                        | And -> inLetBindingHead <- true
+                        | _ -> ()
                     | None -> addToken (Ident ident) span tokens
                     i <- idx
                     col <- startCol + (idx - start)
@@ -314,7 +325,11 @@ module Lexer =
                 | '*' -> addToken Star (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '/' -> addToken Slash (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '%' -> addToken Percent (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '=' -> addToken Equals (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '=' ->
+                    addToken Equals (mkSpan line col 1) tokens
+                    inLetBindingHead <- false
+                    i <- i + 1
+                    col <- col + 1
                 | '<' -> addToken Less (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '>' -> addToken Greater (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
                 | '|' -> addToken Bar (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1

@@ -273,6 +273,30 @@ module Parser =
                 { Name = name; Annotation = Some anno; Span = mkSpanFrom lp.Span rp.Span }
             | _ -> raise (ParseException { Message = "Expected parameter"; Span = stream.Peek().Span })
 
+        and parseParamsAligned () : ResizeArray<Param> =
+            let args = ResizeArray<Param>()
+            let mutable argsDone = false
+            let mutable firstParamColumn: int option = None
+            while not argsDone do
+                let mutable sawNewline = false
+                while stream.Match(Newline) do
+                    sawNewline <- true
+                while stream.Match(Indent) do ()
+                while stream.Match(Dedent) do ()
+                match stream.Peek().Kind with
+                | Ident _
+                | LParen ->
+                    let param = parseParam()
+                    match firstParamColumn with
+                    | None -> firstParamColumn <- Some param.Span.Start.Column
+                    | Some firstCol ->
+                        if sawNewline && param.Span.Start.Column <> firstCol then
+                            raise (ParseException { Message = "Multiline let parameter columns must align"; Span = param.Span })
+                    args.Add(param)
+                | _ ->
+                    argsDone <- true
+            args
+
         and parseTypeDecl () : Stmt =
             let typeTok = stream.Expect(Type, "Expected 'type'")
             let isRec = stream.Match(Rec)
@@ -920,14 +944,7 @@ module Parser =
             let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
             let name = match nameTok.Kind with Ident n -> n | _ -> ""
-            let args = ResizeArray<Param>()
-            let mutable argsDone = false
-            while not argsDone do
-                stream.SkipNewlines()
-                match stream.Peek().Kind with
-                | Ident _ | LParen ->
-                    args.Add(parseParam())
-                | _ -> argsDone <- true
+            let args = parseParamsAligned()
             if isRec && args.Count = 0 then
                 raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
             stream.SkipNewlines()
@@ -945,14 +962,7 @@ module Parser =
                     if stream.Match(And) then
                         let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
                         let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
-                        let nextArgs = ResizeArray<Param>()
-                        let mutable nextArgsDone = false
-                        while not nextArgsDone do
-                            stream.SkipNewlines()
-                            match stream.Peek().Kind with
-                            | Ident _ | LParen ->
-                                nextArgs.Add(parseParam())
-                            | _ -> nextArgsDone <- true
+                        let nextArgs = parseParamsAligned()
                         if nextArgs.Count = 0 then
                             raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
                         stream.SkipNewlines()
@@ -1064,14 +1074,7 @@ module Parser =
                 let isRec = stream.Match(Rec)
                 let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
                 let name = match nameTok.Kind with Ident n -> n | _ -> ""
-                let args = ResizeArray<Param>()
-                let mutable argsDone = false
-                while not argsDone do
-                    stream.SkipNewlines()
-                    match stream.Peek().Kind with
-                    | Ident _ | LParen ->
-                        args.Add(parseParam())
-                    | _ -> argsDone <- true
+                let args = parseParamsAligned()
                 if isRec && args.Count = 0 then
                     raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
                 stream.SkipNewlines()
@@ -1089,14 +1092,7 @@ module Parser =
                         if stream.Match(And) then
                             let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
                             let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
-                            let nextArgs = ResizeArray<Param>()
-                            let mutable nextArgsDone = false
-                            while not nextArgsDone do
-                                stream.SkipNewlines()
-                                match stream.Peek().Kind with
-                                | Ident _ | LParen ->
-                                    nextArgs.Add(parseParam())
-                                | _ -> nextArgsDone <- true
+                            let nextArgs = parseParamsAligned()
                             if nextArgs.Count = 0 then
                                 raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
                             stream.SkipNewlines()
