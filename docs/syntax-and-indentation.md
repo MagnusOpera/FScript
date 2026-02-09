@@ -123,6 +123,24 @@ let format_address (address: { City: string; Zip: int })
 ```
 - If a continuation parameter starts at a different column, parsing fails.
 
+### Multiline lambda arguments in call chains
+- Lambda bodies can be written on the next indented line inside parenthesized function arguments.
+- After the closing `)`, pipeline continuation (for example `|>`) remains valid.
+```fsharp
+let main =
+    [0..9]
+    |> List.map (fun i ->
+        i)
+    |> List.iter print
+```
+```fsharp
+let main =
+    [0..9]
+    |> List.map (fun i ->
+        i |> fib |> fun x -> $"{x}")
+    |> List.iter print
+```
+
 ### Match-case alignment
 - Multiline `match` case lines must all start at the same column.
 - First case column must be at or deeper than the `match` column.

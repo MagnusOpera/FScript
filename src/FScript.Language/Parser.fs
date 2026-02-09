@@ -801,10 +801,26 @@ module Parser =
                 | Append -> "@"
                 | _ -> "?"
 
+            let skipContinuationDedents () =
+                if allowBinaryNewlineSkipping then
+                    let mutable continueLoop = true
+                    while continueLoop do
+                        stream.SkipNewlines()
+                        let mark = stream.Mark()
+                        if stream.Match(Dedent) then
+                            let nextPrec = precedence (stream.Peek().Kind)
+                            if nextPrec >= minPrec then
+                                ()
+                            else
+                                stream.Restore(mark)
+                                continueLoop <- false
+                        else
+                            stream.Restore(mark)
+                            continueLoop <- false
+
             let mutable looping = true
             while looping do
-                if allowBinaryNewlineSkipping then
-                    stream.SkipNewlines()
+                skipContinuationDedents()
                 let next = stream.Peek()
                 let prec = precedence next.Kind
                 if prec >= minPrec then

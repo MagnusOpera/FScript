@@ -6,7 +6,8 @@ let rec fib n =
 
 let main =
     [0..9]
-    |> List.map (fun i -> i |> fib |> fun x -> $"{x}")
+    |> List.map (fun i ->
+        i |> fib |> fun x -> $"{x}")
     |> List.iter print
 
 main

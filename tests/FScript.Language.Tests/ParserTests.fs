@@ -437,6 +437,22 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected multiline lambda argument application")
 
     [<Test>]
+    member _.``Parses pipeline continuation after multiline lambda argument`` () =
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i)\n    |> List.iter print"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("main", [], EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
+        | _ -> Assert.Fail("Expected pipeline continuation after multiline lambda argument")
+
+    [<Test>]
+    member _.``Parses pipeline continuation after multiline lambda with nested lambda`` () =
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i |> fib |> fun x -> $\"{x}\")\n    |> List.iter print"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("main", [], EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
+        | _ -> Assert.Fail("Expected pipeline continuation after multiline nested lambda")
+
+    [<Test>]
     member _.``Parses exported top-level let binding`` () =
         let p = Helpers.parse "export let cosine x = x"
         match p.[0] with
