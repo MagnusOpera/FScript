@@ -390,6 +390,14 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers qualified discriminated union constructor and match`` () =
+        let src = "type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Shape.Point -> 0\n    | Shape.Circle r -> r\nradius (Shape.Circle 3)"
+        let typed = Helpers.infer src
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Reports type error for union payload type mismatch`` () =
         let act () =
             Helpers.infer "type Shape = | Point | Circle of int\nCircle true" |> ignore

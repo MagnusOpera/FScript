@@ -414,18 +414,32 @@ module Parser =
                 PWildcard t.Span
             | Ident name ->
                 let t = stream.Next()
-                match name with
-                | "None" -> PNone t.Span
-                | "Some" ->
-                    let p = parsePattern()
-                    PSome(p, mkSpanFrom t.Span (Ast.spanOfPattern p))
-                | _ when isUpperIdent name ->
+                if isUpperIdent name && stream.Match(Dot) then
+                    let caseTok = stream.ExpectIdent("Expected union case name after '.'")
+                    let caseName =
+                        match caseTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    if not (isUpperIdent caseName) then
+                        raise (ParseException { Message = "Union case name must start with uppercase letter"; Span = caseTok.Span })
                     if isStartPatternAtom (stream.Peek().Kind) then
                         let p = parsePattern()
-                        PUnionCase(name, Some p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                        PUnionCase(Some name, caseName, Some p, mkSpanFrom t.Span (Ast.spanOfPattern p))
                     else
-                        PUnionCase(name, None, t.Span)
-                | _ -> PVar(name, t.Span)
+                        PUnionCase(Some name, caseName, None, mkSpanFrom t.Span caseTok.Span)
+                else
+                    match name with
+                    | "None" -> PNone t.Span
+                    | "Some" ->
+                        let p = parsePattern()
+                        PSome(p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                    | _ when isUpperIdent name ->
+                        if isStartPatternAtom (stream.Peek().Kind) then
+                            let p = parsePattern()
+                            PUnionCase(None, name, Some p, mkSpanFrom t.Span (Ast.spanOfPattern p))
+                        else
+                            PUnionCase(None, name, None, t.Span)
+                    | _ -> PVar(name, t.Span)
             | IntLit _ | FloatLit _ | StringLit _ | BoolLit _ ->
                 let t = stream.Next()
                 PLiteral(parseLiteral t, t.Span)

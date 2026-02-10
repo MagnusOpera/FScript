@@ -35,7 +35,7 @@ and Pattern =
     | PRecord of (string * Pattern) list * Span
     | PSome of Pattern * Span
     | PNone of Span
-    | PUnionCase of string * Pattern option * Span
+    | PUnionCase of string option * string * Pattern option * Span
 
 and Expr =
     | EUnit of Span
@@ -90,7 +90,7 @@ module Ast =
         | PRecord (_, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
-        | PUnionCase (_, _, s) -> s
+        | PUnionCase (_, _, _, s) -> s
 
     let spanOfExpr expr =
         match expr with

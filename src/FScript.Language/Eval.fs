@@ -112,11 +112,19 @@ module Eval =
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty
-        | PUnionCase (caseName, payload, _), VUnionCase (_, valueCaseName, valuePayload) when caseName = valueCaseName ->
-            match payload, valuePayload with
-            | None, None -> Some Map.empty
-            | Some p, Some v -> patternMatch p v
-            | _ -> None
+        | PUnionCase (qualifier, caseName, payload, _), VUnionCase (valueTypeName, valueCaseName, valuePayload) ->
+            let caseMatches = caseName = valueCaseName
+            let qualifierMatches =
+                match qualifier with
+                | Some qualifiedType -> qualifiedType = valueTypeName
+                | None -> true
+            if caseMatches && qualifierMatches then
+                match payload, valuePayload with
+                | None, None -> Some Map.empty
+                | Some p, Some v -> patternMatch p v
+                | _ -> None
+            else
+                None
         | _ -> None
 
     let rec private applyFunctionValue
@@ -455,12 +463,13 @@ module Eval =
             |> Map.toList
             |> List.collect (fun (typeName, def) ->
                 def.Cases
-                |> List.map (fun (caseName, payload) ->
+                |> List.collect (fun (caseName, payload) ->
                     let value =
                         match payload with
                         | None -> VUnionCase(typeName, caseName, None)
                         | Some _ -> VUnionCtor(typeName, caseName)
-                    caseName, value))
+                    [ caseName, value
+                      $"{typeName}.{caseName}", value ]))
 
         let externContext =
             { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }

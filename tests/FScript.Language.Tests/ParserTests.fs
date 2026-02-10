@@ -398,8 +398,24 @@ type ParserTests () =
         let src = "type Result = | Ok of int | Error\nmatch Ok 1 with\n    | Ok x -> x\n    | Error -> 0"
         let program = Helpers.parse src
         match program.[1] with
-        | SExpr (EMatch (_, (PUnionCase ("Ok", Some (PVar ("x", _)), _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PUnionCase (None, "Ok", Some (PVar ("x", _)), _), _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected union case pattern in match")
+
+    [<Test>]
+    member _.``Parses qualified union constructor expression`` () =
+        let src = "type Result = | Ok of int | Error\nResult.Ok 1"
+        let program = Helpers.parse src
+        match program.[1] with
+        | SExpr (EApply (EFieldGet (EVar ("Result", _), "Ok", _), ELiteral (LInt 1L, _), _)) -> ()
+        | _ -> Assert.Fail("Expected qualified union constructor expression")
+
+    [<Test>]
+    member _.``Parses match with qualified union patterns`` () =
+        let src = "type Result = | Ok of int | Error\nmatch Result.Ok 1 with\n    | Result.Ok x -> x\n    | Result.Error -> 0"
+        let program = Helpers.parse src
+        match program.[1] with
+        | SExpr (EMatch (_, (PUnionCase (Some "Result", "Ok", Some (PVar ("x", _)), _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected qualified union case pattern in match")
 
     [<Test>]
     member _.``Rejects misaligned multiline match cases`` () =

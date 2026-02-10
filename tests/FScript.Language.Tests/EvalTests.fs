@@ -155,6 +155,11 @@ type EvalTests () =
         Helpers.eval src |> assertInt 3L
 
     [<Test>]
+    member _.``Evaluates qualified match on discriminated union`` () =
+        let src = "type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Shape.Point -> 0\n    | Shape.Circle r -> r\nradius (Shape.Circle 3)"
+        Helpers.eval src |> assertInt 3L
+
+    [<Test>]
     member _.``Evaluates if expressions`` () =
         Helpers.eval "if true then 1 else 2" |> assertInt 1L
         Helpers.eval "if false then 1 else 2" |> assertInt 2L

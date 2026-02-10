@@ -221,10 +221,14 @@ module TypeInfer =
         | PNone _ ->
             let tv = Types.freshVar()
             Map.empty, TOption tv
-        | PUnionCase (name, payload, span) ->
-            match constructors.TryFind name with
+        | PUnionCase (qualifier, caseName, payload, span) ->
+            let constructorName =
+                match qualifier with
+                | Some typeName -> $"{typeName}.{caseName}"
+                | None -> caseName
+            match constructors.TryFind constructorName with
             | None ->
-                raise (TypeException { Message = sprintf "Unknown union case '%s'" name; Span = span })
+                raise (TypeException { Message = sprintf "Unknown union case '%s'" constructorName; Span = span })
             | Some sigInfo ->
                 let unionType = TNamed sigInfo.UnionName
                 match sigInfo.Payload, payload with
@@ -234,9 +238,9 @@ module TypeInfer =
                     let s = unify typeDefs tP expectedPayload span
                     envP |> Map.map (fun _ t -> applyType s t), unionType
                 | None, Some _ ->
-                    raise (TypeException { Message = sprintf "Union case '%s' does not take a payload" name; Span = span })
+                    raise (TypeException { Message = sprintf "Union case '%s' does not take a payload" constructorName; Span = span })
                 | Some _, None ->
-                    raise (TypeException { Message = sprintf "Union case '%s' requires a payload" name; Span = span })
+                    raise (TypeException { Message = sprintf "Union case '%s' requires a payload" constructorName; Span = span })
 
     let private numericResult (t: Type) (span: Span) =
         match t with
@@ -662,9 +666,11 @@ module TypeInfer =
             |> Map.toList
             |> List.collect (fun (typeName, def) ->
                 def.Cases
-                |> List.map (fun (caseName, payload) ->
+                |> List.collect (fun (caseName, payload) ->
                     let payloadType = payload |> Option.map (typeFromRef decls [ typeName ])
-                    caseName, { UnionName = typeName; Payload = payloadType }))
+                    let sigInfo = { UnionName = typeName; Payload = payloadType }
+                    [ caseName, sigInfo
+                      $"{typeName}.{caseName}", sigInfo ]))
             |> Map.ofList
 
         let constructorSchemes =
