@@ -453,6 +453,16 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected pipeline continuation after multiline nested lambda")
 
     [<Test>]
+    member _.``Reports indentation error for misindented multiline lambda pipeline`` () =
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i\n         |> fib |> fun x -> $\"{x}\")\n    |> List.iter print"
+        try
+            Helpers.parse src |> ignore
+            Assert.Fail("Expected parse exception")
+        with
+        | ParseException err ->
+            Assert.That(err.Message, Does.StartWith("Indentation error"))
+
+    [<Test>]
     member _.``Parses exported top-level let binding`` () =
         let p = Helpers.parse "export let cosine x = x"
         match p.[0] with

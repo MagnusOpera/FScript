@@ -715,6 +715,10 @@ module Parser =
                     | Ident n -> n
                     | _ -> ""
                 ENameOf(name, mkSpanFrom t.Span nameTok.Span)
+            | Indent ->
+                raise (ParseException { Message = "Indentation error: unexpected indent in expression"; Span = t.Span })
+            | Dedent ->
+                raise (ParseException { Message = "Indentation error: unexpected dedent in expression"; Span = t.Span })
             | _ -> raise (ParseException { Message = "Unexpected token in expression"; Span = t.Span })
 
         and parsePostfix () : Expr =
