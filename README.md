@@ -55,10 +55,10 @@ dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.f
 ```
 
 Useful samples:
-- `samples/types-showcase.fss`
-- `samples/patterns-and-collections.fss`
-- `samples/tree.fss`
-- `samples/mutual-recursion.fss`
+- [`samples/types-showcase.fss`](samples/types-showcase.fss)
+- [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
+- [`samples/tree.fss`](samples/tree.fss)
+- [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
 
 ## Installation
 
