@@ -12,6 +12,7 @@
     <PackageTags>fscript;runtime;externs;host;interpreter</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>FScriptIcon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/MagnusOpera/FScript</PackageProjectUrl>
     <RepositoryUrl>https://github.com/MagnusOpera/FScript.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -38,6 +39,8 @@
   <ItemGroup>
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
+    <None Include="..\..\FScript.png" Pack="true" PackagePath="\" Link="FScript.png" />
   </ItemGroup>
 
   <ItemGroup>
