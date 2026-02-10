@@ -1,4 +1,4 @@
-![FScript logo](FScript.png)
+![FScript logo](https://raw.githubusercontent.com/MagnusOpera/FScript/refs/heads/main/FScript.png)
 
 # FScript
 [![Build (main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml)
