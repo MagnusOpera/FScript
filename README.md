@@ -1,3 +1,5 @@
+![FScript logo](FScript.png)
+
 # FScript
 [![Build (main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml)
 [![NuGet Language](https://img.shields.io/nuget/v/MagnusOpera.FScript.Language?label=NuGet%20Language)](https://www.nuget.org/packages/MagnusOpera.FScript.Language)
