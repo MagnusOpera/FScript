@@ -64,7 +64,7 @@ open FScript.Language
 open FScript.Runtime
 
 let externs = Registry.all { RootDirectory = "." }
-let loaded = ScriptHost.loadSource externs "export let add x y = x + y"
+let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y"
 let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
 ```
 

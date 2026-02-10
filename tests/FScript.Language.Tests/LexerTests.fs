@@ -31,9 +31,9 @@ type LexerTests () =
         tokens |> List.exists (fun t -> t.Kind = And) |> should equal true
 
     [<Test>]
-    member _.``Tokenizes export keyword`` () =
+    member _.``Tokenizes export as identifier`` () =
         let tokens = Lexer.tokenize "export let f x = x"
-        tokens |> List.exists (fun t -> t.Kind = Export) |> should equal true
+        tokens |> List.exists (fun t -> t.Kind = Ident "export") |> should equal true
 
     [<Test>]
     member _.``Tokenizes elif keyword`` () =

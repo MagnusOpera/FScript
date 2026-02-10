@@ -1051,9 +1051,9 @@ module Parser =
                     doneBlock <- true
                 | EOF -> doneBlock <- true
                 | Let ->
-                    statements.Add(parseStmt())
-                | Export ->
-                    raise (ParseException { Message = "'export let' is only supported at top level"; Span = stream.Peek().Span })
+                    statements.Add(parseLetStmt false)
+                | LBracket when stream.PeekAt(1).Kind = Less ->
+                    raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
                     let expr = parseExpr()
                     statements.Add(SExpr expr)
@@ -1077,62 +1077,94 @@ module Parser =
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
             desugar (statements |> Seq.toList)
 
+        and parseLetStmt (isExported: bool) : Stmt =
+            let letTok = stream.Next()
+            let isRec = stream.Match(Rec)
+            let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+            let name = match nameTok.Kind with Ident n -> n | _ -> ""
+            let args = parseParamsAligned()
+            if isRec && args.Count = 0 then
+                raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
+            stream.SkipNewlines()
+            if stream.Peek().Kind = Colon then
+                raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
+            stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+            let value = parseExprOrBlock()
+            if isRec then
+                let bindings = ResizeArray<string * Param list * Expr * Span>()
+                let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
+                bindings.Add(name, args |> Seq.toList, value, firstSpan)
+                let mutable doneBindings = false
+                while not doneBindings do
+                    stream.SkipNewlines()
+                    if stream.Match(And) then
+                        let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
+                        let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
+                        let nextArgs = parseParamsAligned()
+                        if nextArgs.Count = 0 then
+                            raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
+                        stream.SkipNewlines()
+                        if stream.Peek().Kind = Colon then
+                            raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
+                        stream.Expect(Equals, "Expected '=' in let binding") |> ignore
+                        let nextValue = parseExprOrBlock()
+                        let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
+                        bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
+                    else
+                        doneBindings <- true
+                if bindings.Count = 1 then
+                    SLet(name, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                else
+                    let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
+                    SLetRecGroup(bindings |> Seq.toList, isExported, mkSpanFrom letTok.Span lastSpan)
+            else
+                SLet(name, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+
+        and parseAttributeName () =
+            stream.Expect(LBracket, "Expected '[' in attribute") |> ignore
+            stream.Expect(Less, "Expected '<' in attribute") |> ignore
+            let nameTok = stream.ExpectIdent("Expected attribute name")
+            let name =
+                match nameTok.Kind with
+                | Ident n -> n
+                | _ -> ""
+            stream.Expect(Greater, "Expected '>' in attribute") |> ignore
+            stream.Expect(RBracket, "Expected ']' in attribute") |> ignore
+            name, nameTok.Span
+
         and parseStmt () : Stmt =
             stream.SkipNewlines()
-            let isExported =
-                if stream.Match(Export) then
-                    true
+
+            if stream.Peek().Kind = Ident "export" && stream.PeekAt(1).Kind = Let then
+                raise (ParseException { Message = "'export let' is no longer supported; use '[<export>] let ...'"; Span = stream.Peek().Span })
+
+            let mutable isExported = false
+            let mutable hasAttributes = false
+            let mutable parsingAttributes = true
+            while parsingAttributes do
+                if stream.Peek().Kind = LBracket && stream.PeekAt(1).Kind = Less then
+                    hasAttributes <- true
+                    let name, span = parseAttributeName()
+                    match name with
+                    | "export" ->
+                        if isExported then
+                            raise (ParseException { Message = "Duplicate attribute 'export'"; Span = span })
+                        isExported <- true
+                    | _ ->
+                        raise (ParseException { Message = $"Unknown attribute '{name}'"; Span = span })
+                    stream.SkipNewlines()
                 else
-                    false
+                    parsingAttributes <- false
+
             match stream.Peek().Kind with
             | Type ->
                 if isExported then
-                    raise (ParseException { Message = "'export' is only valid for top-level let bindings"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
                 parseTypeDecl()
             | Let ->
-                let letTok = stream.Next()
-                let isRec = stream.Match(Rec)
-                let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
-                let name = match nameTok.Kind with Ident n -> n | _ -> ""
-                let args = parseParamsAligned()
-                if isRec && args.Count = 0 then
-                    raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
-                stream.SkipNewlines()
-                if stream.Peek().Kind = Colon then
-                    raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
-                stream.Expect(Equals, "Expected '=' in let binding") |> ignore
-                let value = parseExprOrBlock()
-                if isRec then
-                    let bindings = ResizeArray<string * Param list * Expr * Span>()
-                    let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
-                    bindings.Add(name, args |> Seq.toList, value, firstSpan)
-                    let mutable doneBindings = false
-                    while not doneBindings do
-                        stream.SkipNewlines()
-                        if stream.Match(And) then
-                            let nextNameTok = stream.ExpectIdent("Expected identifier after 'and'")
-                            let nextName = match nextNameTok.Kind with Ident n -> n | _ -> ""
-                            let nextArgs = parseParamsAligned()
-                            if nextArgs.Count = 0 then
-                                raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
-                            stream.SkipNewlines()
-                            if stream.Peek().Kind = Colon then
-                                raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
-                            stream.Expect(Equals, "Expected '=' in let binding") |> ignore
-                            let nextValue = parseExprOrBlock()
-                            let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
-                            bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
-                        else
-                            doneBindings <- true
-                    if bindings.Count = 1 then
-                        SLet(name, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
-                    else
-                        let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
-                        SLetRecGroup(bindings |> Seq.toList, isExported, mkSpanFrom letTok.Span lastSpan)
-                else
-                    SLet(name, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
-            | _ when isExported ->
-                raise (ParseException { Message = "'export' must be followed by a top-level let binding"; Span = stream.Peek().Span })
+                parseLetStmt isExported
+            | _ when hasAttributes ->
+                raise (ParseException { Message = "'[<export>]' must be followed by a top-level let binding"; Span = stream.Peek().Span })
             | _ ->
                 let expr = parseExpr()
                 SExpr expr

@@ -463,15 +463,15 @@ type ParserTests () =
             Assert.That(err.Message, Does.StartWith("Indentation error"))
 
     [<Test>]
-    member _.``Parses exported top-level let binding`` () =
-        let p = Helpers.parse "export let cosine x = x"
+    member _.``Parses exported top-level let binding with attribute`` () =
+        let p = Helpers.parse "[<export>] let cosine x = x"
         match p.[0] with
         | SLet ("cosine", [_], _, false, true, _) -> ()
         | _ -> Assert.Fail("Expected exported top-level let binding")
 
     [<Test>]
-    member _.``Parses exported top-level recursive let group`` () =
-        let p = Helpers.parse "export let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
+    member _.``Parses exported top-level recursive let group with attribute`` () =
+        let p = Helpers.parse "[<export>] let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
         match p.[0] with
         | SLetRecGroup (bindings, true, _) -> bindings.Length |> should equal 2
         | _ -> Assert.Fail("Expected exported recursive let group")
@@ -560,6 +560,16 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects export let in nested expression block`` () =
-        let act () = Helpers.parse "(let x =\n    export let y = 1\n    y\n)" |> ignore
+    member _.``Rejects export let syntax`` () =
+        let act () = Helpers.parse "export let y = 1" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects wrong attribute casing`` () =
+        let act () = Helpers.parse "[<Export>] let y = 1" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects export attribute in nested expression block`` () =
+        let act () = Helpers.parse "(let x =\n    [<export>] let y = 1\n    y\n)" |> ignore
         act |> should throw typeof<ParseException>

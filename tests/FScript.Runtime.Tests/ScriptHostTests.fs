@@ -10,7 +10,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host lists and invokes exported function`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let loaded = ScriptHost.loadSource externs "export let add x y = x + y\nlet value = 42"
+        let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y\nlet value = 42"
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
 
         match ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ] with
@@ -20,7 +20,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host invokes exported closure function`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let loaded = ScriptHost.loadSource externs "let makeAdder x = fun y -> x + y\nexport let add2 = makeAdder 2"
+        let loaded = ScriptHost.loadSource externs "let makeAdder x = fun y -> x + y\n[<export>] let add2 = makeAdder 2"
         match ScriptHost.invoke loaded "add2" [ VInt 5L ] with
         | VInt 7L -> ()
         | _ -> Assert.Fail("Expected closure invocation result 7")
@@ -28,7 +28,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host exposes exported values separately from functions`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\"\nexport let add x y = x + y"
+        let loaded = ScriptHost.loadSource externs "[<export>] let version = \"1.0\"\n[<export>] let add x y = x + y"
 
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
         Assert.That(ScriptHost.listValues loaded, Does.Contain("version"))
@@ -40,7 +40,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host rejects invocation of exported value`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\""
+        let loaded = ScriptHost.loadSource externs "[<export>] let version = \"1.0\""
         let act () = ScriptHost.invoke loaded "version" [ VUnit ] |> ignore
         Assert.Throws<EvalException>(TestDelegate act) |> ignore
 
@@ -56,7 +56,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host exports recursive groups when marked exported`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let source = "export let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
+        let source = "[<export>] let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
         let loaded = ScriptHost.loadSource externs source
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("even"))
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("odd"))
