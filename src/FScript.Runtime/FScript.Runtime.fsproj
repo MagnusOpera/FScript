@@ -40,7 +40,6 @@
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
     <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
-    <None Include="..\..\FScript.png" Pack="true" PackagePath="\" Link="FScript.png" />
   </ItemGroup>
 
   <ItemGroup>
