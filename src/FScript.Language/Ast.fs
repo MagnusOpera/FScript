@@ -49,7 +49,7 @@ and Expr =
     | EIf of Expr * Expr * Expr * Span
     | ERaise of Expr * Span
     | EFor of string * Expr * Expr * Span
-    | EMatch of Expr * (Pattern * Expr * Span) list * Span
+    | EMatch of Expr * (Pattern * Expr option * Expr * Span) list * Span
     | ELet of string * Expr * Expr * bool * Span
     | ELetRecGroup of (string * Param list * Expr * Span) list * Expr * Span
     | EList of Expr list * Span

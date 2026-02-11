@@ -192,6 +192,22 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected map cons pattern to expose head and tail")
 
     [<Test>]
+    member _.``Evaluates match with map guard for removal`` () =
+        let src =
+            "let remove k m =\n" +
+            "    match m with\n" +
+            "    | { [key] = _; ..rest } when key = k -> rest\n" +
+            "    | _ -> m\n" +
+            "let m = { [\"a\"] = 1; [\"b\"] = 2 }\n" +
+            "remove \"z\" m |> Map.count"
+        Helpers.eval src |> assertInt 2L
+
+    [<Test>]
+    member _.``Skips guarded case when guard is false`` () =
+        let src = "match [1] with\n    | x::xs when x < 0 -> x\n    | _ -> 42"
+        Helpers.eval src |> assertInt 42L
+
+    [<Test>]
     member _.``Evaluates match on discriminated union`` () =
         let src = "type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Point -> 0\n    | Circle r -> r\nradius (Circle 3)"
         Helpers.eval src |> assertInt 3L

@@ -34,6 +34,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `for x in listExpr do bodyExprOrBlock`
 - Match:
   - `match expr with | ...`
+  - case guards: `| pattern when condition -> expr`
   - record patterns in cases: `{ Field = pattern; ... }`
   - union case patterns in cases: `Case` and `Case pattern`
 - Records:

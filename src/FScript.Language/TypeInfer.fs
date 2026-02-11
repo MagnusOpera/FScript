@@ -447,7 +447,7 @@ module TypeInfer =
             let s1, tScrut, _ = inferExpr typeDefs constructors env scrutinee
             let mutable sAcc = s1
             let mutable resultTypeOpt : Type option = None
-            for (pat, body, caseSpan) in cases do
+            for (pat, guard, body, caseSpan) in cases do
                 let envPat, tPat = inferPattern typeDefs constructors pat
                 let sPat =
                     match pat, applyType sAcc tScrut, tPat with
@@ -466,6 +466,12 @@ module TypeInfer =
                         unify typeDefs (applyType sAcc tScrut) tPat caseSpan
                 let envCase = applyEnv (compose sPat sAcc) env
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
+                match guard with
+                | Some guardExpr ->
+                    let sGuard, tGuard, _ = inferExpr typeDefs constructors envCase' guardExpr
+                    let sGuardBool = unify typeDefs (applyType sGuard tGuard) TBool caseSpan
+                    sAcc <- compose sGuardBool (compose sGuard sAcc)
+                | None -> ()
                 let sBody, tBody, _ = inferExpr typeDefs constructors envCase' body
                 let tBody' = applyType sBody tBody
                 resultTypeOpt <-

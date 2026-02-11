@@ -6,7 +6,7 @@ type TypedExpr =
     | TELambda of string * TypedExpr * Type * Span
     | TEApply of TypedExpr * TypedExpr * Type * Span
     | TEIf of TypedExpr * TypedExpr * TypedExpr * Type * Span
-    | TEMatch of TypedExpr * (Pattern * TypedExpr * Span) list * Type * Span
+    | TEMatch of TypedExpr * (Pattern * TypedExpr option * TypedExpr * Span) list * Type * Span
     | TELet of string * TypedExpr * TypedExpr * bool * Type * Span
     | TEList of TypedExpr list * Type * Span
     | TETuple of TypedExpr list * Type * Span

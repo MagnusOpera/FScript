@@ -98,9 +98,9 @@ module IncludeResolver =
             | EMatch (scrutinee, cases, span) ->
                 let rewrittenCases =
                     cases
-                    |> List.map (fun (pattern, body, caseSpan) ->
+                    |> List.map (fun (pattern, guard, body, caseSpan) ->
                         let boundWithPattern = Set.union boundNames (collectPatternBindings pattern)
-                        pattern, rewriteExpr boundWithPattern body, caseSpan)
+                        pattern, guard |> Option.map (rewriteExpr boundWithPattern), rewriteExpr boundWithPattern body, caseSpan)
                 EMatch(rewriteExpr boundNames scrutinee, rewrittenCases, span)
             | ELet (name, valueExpr, bodyExpr, isRec, span) ->
                 if isRec then

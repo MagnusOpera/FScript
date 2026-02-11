@@ -17,6 +17,7 @@ type TokenKind =
     | Fun
     | Match
     | With
+    | When
     | If
     | Then
     | Else

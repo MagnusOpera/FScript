@@ -955,16 +955,23 @@ module Parser =
             let expr = parseExpr()
             stream.SkipNewlines()
             stream.Expect(With, "Expected 'with' in match") |> ignore
-            let cases = ResizeArray<Pattern * Expr * Span>()
+            let cases = ResizeArray<Pattern * Expr option * Expr * Span>()
             let rec parseCase () =
                 stream.SkipNewlines()
                 if stream.Match(Bar) then ()
                 let pat = parsePatternCons()
                 stream.SkipNewlines()
+                let guard =
+                    if stream.Match(When) then
+                        let g = parseExpr()
+                        stream.SkipNewlines()
+                        Some g
+                    else
+                        None
                 stream.Expect(Arrow, "Expected '->' in match case") |> ignore
                 let body = parseExprOrBlock()
                 let span = mkSpanFrom (Ast.spanOfPattern pat) (Ast.spanOfExpr body)
-                cases.Add(pat, body, span)
+                cases.Add(pat, guard, body, span)
             if stream.Match(Newline) then
                 while stream.Match(Newline) do ()
                 let hasIndentedCaseBlock = stream.Match(Indent)

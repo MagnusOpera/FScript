@@ -279,6 +279,23 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match case guard`` () =
+        let typed =
+            Helpers.infer
+                "let m = { [\"a\"] = 1 }\nmatch m with\n    | { [k] = v; ..tail } when k = \"a\" -> v\n    | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for non-bool guard`` () =
+        let act () =
+            Helpers.infer
+                "match [1] with\n    | x::xs when x -> x\n    | _ -> 0"
+            |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Reports type error for unknown record field in pattern`` () =
         let act () =
             Helpers.infer

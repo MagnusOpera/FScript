@@ -330,15 +330,22 @@ type ParserTests () =
     member _.``Parses match with empty map pattern`` () =
         let p = Helpers.parse "match {} with\n    | {} -> 0\n    | _ -> 1"
         match p.[0] with
-        | SExpr (EMatch (_, (PMapEmpty _, _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PMapEmpty _, _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected empty map pattern")
 
     [<Test>]
     member _.``Parses match with map cons pattern`` () =
         let p = Helpers.parse "match { [\"a\"] = 1 } with\n    | { [k] = v; ..tail } -> v\n    | {} -> 0"
         match p.[0] with
-        | SExpr (EMatch (_, (PMapCons (_, _, _, _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PMapCons (_, _, _, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected map cons pattern")
+
+    [<Test>]
+    member _.``Parses match case guard`` () =
+        let p = Helpers.parse "match [1] with\n    | x::xs when x > 0 -> x\n    | _ -> 0"
+        match p.[0] with
+        | SExpr (EMatch (_, (_, Some _, _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected guarded match case")
 
     [<Test>]
     member _.``Rejects multiline inline record type annotation`` () =
@@ -407,7 +414,7 @@ type ParserTests () =
         let src = "match [1] with\n| [x] -> x\n| _ -> 0"
         let program = Helpers.parse src
         match program.[0] with
-        | SExpr (EMatch (_, (PCons (_, PNil _, _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PCons (_, PNil _, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected non-empty list pattern")
 
     [<Test>]
@@ -415,7 +422,7 @@ type ParserTests () =
         let src = "match Some [1] with\n| Some [x] -> x\n| _ -> 0"
         let program = Helpers.parse src
         match program.[0] with
-        | SExpr (EMatch (_, (PSome (PCons (_, PNil _, _), _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PSome (PCons (_, PNil _, _), _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected Some with non-empty list pattern")
 
     [<Test>]
@@ -431,7 +438,7 @@ type ParserTests () =
         let src = "match (1, true) with\n    | (x, true) -> x\n    | _ -> 0"
         let program = Helpers.parse src
         match program.[0] with
-        | SExpr (EMatch (_, (PTuple (_, _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PTuple (_, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected tuple pattern in match")
 
     [<Test>]
@@ -444,7 +451,7 @@ type ParserTests () =
         let src = "match { Value = 1; Next = None } with\n    | { Value = v } -> v\n    | _ -> 0"
         let program = Helpers.parse src
         match program.[0] with
-        | SExpr (EMatch (_, (PRecord (_, _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PRecord (_, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected record pattern in match")
 
     [<Test>]
@@ -452,7 +459,7 @@ type ParserTests () =
         let src = "type Result = | Ok of int | Error\nmatch Ok 1 with\n    | Ok x -> x\n    | Error -> 0"
         let program = Helpers.parse src
         match program.[1] with
-        | SExpr (EMatch (_, (PUnionCase (None, "Ok", Some (PVar ("x", _)), _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PUnionCase (None, "Ok", Some (PVar ("x", _)), _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected union case pattern in match")
 
     [<Test>]
@@ -468,7 +475,7 @@ type ParserTests () =
         let src = "type Result = | Ok of int | Error\nmatch Result.Ok 1 with\n    | Result.Ok x -> x\n    | Result.Error -> 0"
         let program = Helpers.parse src
         match program.[1] with
-        | SExpr (EMatch (_, (PUnionCase (Some "Result", "Ok", Some (PVar ("x", _)), _), _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PUnionCase (Some "Result", "Ok", Some (PVar ("x", _)), _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected qualified union case pattern in match")
 
     [<Test>]

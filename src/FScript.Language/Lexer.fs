@@ -23,6 +23,7 @@ module Lexer =
         | "fun" -> Some Fun
         | "match" -> Some Match
         | "with" -> Some With
+        | "when" -> Some When
         | "if" -> Some If
         | "then" -> Some Then
         | "else" -> Some Else

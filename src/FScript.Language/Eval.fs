@@ -236,11 +236,18 @@ module Eval =
             let rec tryCases cs =
                 match cs with
                 | [] -> raise (EvalException { Message = "No match cases matched"; Span = span })
-                | (pat, body, _) :: rest ->
+                | (pat, guard, body, _) :: rest ->
                     match patternMatch pat v with
                     | Some bindings ->
                         let env' = Map.fold (fun acc k v -> Map.add k v acc) env bindings
-                        evalExpr typeDefs env' body
+                        match guard with
+                        | Some guardExpr ->
+                            match evalExpr typeDefs env' guardExpr with
+                            | VBool true -> evalExpr typeDefs env' body
+                            | VBool false -> tryCases rest
+                            | _ -> raise (EvalException { Message = "Match guard must evaluate to bool"; Span = span })
+                        | None ->
+                            evalExpr typeDefs env' body
                     | None -> tryCases rest
             tryCases cases
         | EList (items, _) ->

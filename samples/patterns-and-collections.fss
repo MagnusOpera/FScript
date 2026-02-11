@@ -16,3 +16,12 @@ match firstEven with
 match doubled with
 | head :: tail -> print $"head={head} tail={tail}"
 | [] -> print "empty"
+
+let scores = { ["a"] = 1; ["b"] = 2 }
+let remove k m =
+    match m with
+    | { [key] = _; ..rest } when key = k -> rest
+    | _ -> m
+
+let removedB = remove "b" scores
+print $"scores without b = {removedB}"
