@@ -27,6 +27,7 @@
     <Compile Include="Value.fs" />
     <Compile Include="Lexer.fs" />
     <Compile Include="Parser.fs" />
+    <Compile Include="IncludeResolver.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Pretty.fs" />

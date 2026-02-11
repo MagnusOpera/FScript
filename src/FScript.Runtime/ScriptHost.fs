@@ -75,6 +75,8 @@ module ScriptHost =
 
     let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
         let program = FScript.parse source
+        if program |> List.exists (function SInclude _ -> true | _ -> false) then
+            raise (HostCommon.evalError "'#include' is only supported when loading scripts from files")
         let typed = FScript.inferWithExterns externs program
         let state = Eval.evalProgramWithExternsState externs typed
         let exportedNames =
@@ -108,7 +110,44 @@ module ScriptHost =
           LastValue = state.LastValue }
 
     let loadFile (externs: ExternalFunction list) (path: string) : LoadedScript =
-        File.ReadAllText(path) |> loadSource externs
+        let fullPath = Path.GetFullPath(path)
+        let rootDirectory =
+            match Path.GetDirectoryName(fullPath) with
+            | null
+            | "" -> Directory.GetCurrentDirectory()
+            | dir -> dir
+        let program = FScript.parseFileWithIncludes rootDirectory fullPath
+        let typed = FScript.inferWithExterns externs program
+        let state = Eval.evalProgramWithExternsState externs typed
+        let exportedNames =
+            declaredExportedNames typed
+            |> List.distinct
+            |> List.sort
+
+        let functionNames =
+            exportedNames
+            |> List.filter (fun name ->
+                match state.Env.TryFind name with
+                | Some value -> isCallable value
+                | None -> false)
+
+        let functionSignatures =
+            collectFunctionSignatures typed
+            |> Map.filter (fun name _ -> functionNames |> List.contains name)
+
+        let valueNames =
+            exportedNames
+            |> List.filter (fun name ->
+                match state.Env.TryFind name with
+                | Some value -> not (isCallable value)
+                | None -> false)
+
+        { TypeDefs = state.TypeDefs
+          Env = state.Env
+          ExportedFunctionNames = functionNames
+          ExportedFunctionSignatures = functionSignatures
+          ExportedValueNames = valueNames
+          LastValue = state.LastValue }
 
     let listFunctions (loaded: LoadedScript) : string list =
         loaded.ExportedFunctionNames

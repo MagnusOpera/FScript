@@ -251,6 +251,18 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated let parameter")
 
     [<Test>]
+    member _.``Parses top-level include directive`` () =
+        let p = Helpers.parse "#include \"shared.fss\"\nlet x = 1"
+        match p.[0] with
+        | SInclude ("shared.fss", _) -> ()
+        | _ -> Assert.Fail("Expected top-level include directive")
+
+    [<Test>]
+    member _.``Rejects include directive in nested block`` () =
+        let act () = Helpers.parse "let x = (\n    #include \"shared.fss\"\n    1\n)" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses multiline let parameters with aligned columns and inline body`` () =
         let src = "let format_address (address: { City: string; Zip: int })\n                   (name: string) = $\"{address.City} ({name})\""
         let p = Helpers.parse src

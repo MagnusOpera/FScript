@@ -60,12 +60,12 @@ module Parser =
         | BoolLit v -> LBool v
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
-    let rec parseProgram (src: string) : Program =
-        let tokens = Lexer.tokenize src
+    let rec parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
+        let tokens = Lexer.tokenizeWithSourceName sourceName src
         let stream = TokenStream(tokens)
 
         let parseSingleExpression (exprText: string) =
-            let parsed = parseProgram exprText
+            let parsed = parseProgramWithSourceName None exprText
             match parsed with
             | [ SExpr expr ] -> expr
             | _ ->
@@ -1066,6 +1066,8 @@ module Parser =
                 | EOF -> doneBlock <- true
                 | Let ->
                     statements.Add(parseLetStmt false)
+                | Hash when stream.PeekAt(1).Kind = Include ->
+                    raise (ParseException { Message = "'#include' is only supported at top level"; Span = stream.Peek().Span })
                 | LBracket when stream.PeekAt(1).Kind = Less ->
                     raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
@@ -1089,6 +1091,8 @@ module Parser =
                     ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
                 | SType def :: _ ->
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
+                | SInclude (_, span) :: _ ->
+                    raise (ParseException { Message = "'#include' is only supported at top level"; Span = span })
             desugar (statements |> Seq.toList)
 
         and parseLetStmt (isExported: bool) : Stmt =
@@ -1171,6 +1175,19 @@ module Parser =
                     parsingAttributes <- false
 
             match stream.Peek().Kind with
+            | Hash ->
+                if hasAttributes || isExported then
+                    raise (ParseException { Message = "Attributes are not supported on '#include'"; Span = stream.Peek().Span })
+                let hashTok = stream.Next()
+                stream.Expect(Include, "Expected '#include'") |> ignore
+                let pathTok = stream.Next()
+                match pathTok.Kind with
+                | StringLit path when not (System.String.IsNullOrWhiteSpace path) ->
+                    SInclude(path, mkSpanFrom hashTok.Span pathTok.Span)
+                | StringLit _ ->
+                    raise (ParseException { Message = "Include path cannot be empty"; Span = pathTok.Span })
+                | _ ->
+                    raise (ParseException { Message = "Expected string literal include path after '#include'"; Span = pathTok.Span })
             | Type ->
                 if isExported then
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
@@ -1194,3 +1211,6 @@ module Parser =
                 program.Add(stmt)
                 stream.SkipNewlines()
         program |> Seq.toList
+
+    let parseProgram (src: string) : Program =
+        parseProgramWithSourceName None src

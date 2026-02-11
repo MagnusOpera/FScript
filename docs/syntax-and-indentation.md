@@ -6,6 +6,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 ## File and program structure
 - A program is a sequence of top-level statements.
 - Top-level statements are:
+  - `#include "relative/path/file.fss"` directives
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
   - `[<export>] let` / `[<export>] let rec` bindings
@@ -195,3 +196,12 @@ All of the following map literal layouts are valid:
   - `let format_address (address: { City: string; Zip: int }) = ...`
   - `fun (x: { Name: string; Tags: string list }) -> ...`
 - Inline record annotation fields are `;`-separated in single-line form.
+
+## Include directive
+- Include uses preprocessor-style syntax:
+  - `#include "shared/helpers.fss"`
+- Includes are top-level only.
+- Included files are merged into the same global namespace as the current script.
+- Include loading is recursive.
+- Cycles are fatal and reported as parse errors.
+- File paths in includes must be `.fss`.

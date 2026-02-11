@@ -13,6 +13,9 @@ This document defines the security model for running FScript programs with host 
   - `RootDirectory : string`
 - The CLI defaults `RootDirectory` to the script file directory.
 - The CLI allows overriding root with `--root <path>` (or `-r <path>`).
+- `#include` file resolution is constrained to `RootDirectory`.
+- Include paths are resolved relative to the current script file.
+- Include cycles are rejected.
 
 Filesystem extern behavior:
 - `Fs.readText` and `Fs.enumerateFiles` resolve candidate paths through `HostCommon.tryResolvePath`.

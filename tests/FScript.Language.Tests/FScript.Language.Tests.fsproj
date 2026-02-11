@@ -11,6 +11,7 @@
   <ItemGroup>
     <Compile Include="Helpers.fs" />
     <Compile Include="LexerTests.fs" />
+    <Compile Include="IncludeResolverTests.fs" />
     <Compile Include="ParserTests.fs" />
     <Compile Include="TypeInferenceTests.fs" />
     <Compile Include="EvalTests.fs" />

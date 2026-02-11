@@ -39,6 +39,7 @@ type TokenKind =
     | Dot
     | RangeDots
     | Hash
+    | Include
     | LBrace
     | RBrace
     | Type

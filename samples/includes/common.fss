@@ -1,0 +1,19 @@
+type ProjectInfo = { Name: string; Language: string }
+
+let describe_command command =
+    match command with
+    | "build" -> "compile sources"
+    | "test" -> "run tests"
+    | "publish" -> "create release artifacts"
+    | _ -> "custom step"
+
+let rec join_with_comma items =
+    match items with
+    | [] -> ""
+    | head :: tail ->
+        match tail with
+        | [] -> head
+        | _ -> $"{head}, {join_with_comma tail}"
+
+let describe_project (project: ProjectInfo) =
+    $"{project.Name} ({project.Language})"

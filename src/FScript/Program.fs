@@ -6,7 +6,9 @@ open FScript.Language
 open FScript.Runtime
 
 let formatSpan (span: Span) =
-    sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
+    match span.Start.File with
+    | Some file -> sprintf "(%s:%d:%d)" file span.Start.Line span.Start.Column
+    | None -> sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
 
 [<EntryPoint>]
 let main argv =
@@ -33,8 +35,7 @@ let main argv =
             try
                 let context : HostContext = { RootDirectory = rootDirectory }
                 let externs : ExternalFunction list = Registry.all context
-                let source = File.ReadAllText(scriptPath)
-                let program = Parser.parseProgram source
+                let program = FScript.parseFileWithIncludes rootDirectory scriptPath
                 let typed = TypeInfer.inferProgramWithExterns externs program
                 let result = Eval.evalProgramWithExterns externs typed
                 Console.WriteLine(Pretty.valueToString result)

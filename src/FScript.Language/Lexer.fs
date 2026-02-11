@@ -6,9 +6,9 @@ module Lexer =
     let private isIdentStart c = Char.IsLetter c || c = '_'
     let private isIdentPart c = Char.IsLetterOrDigit c || c = '_' || c = '\''
 
-    let private mkSpan line col length =
-        let startPos = { Line = line; Column = col }
-        let endPos = { Line = line; Column = col + length }
+    let private mkSpan sourceName line col length =
+        let startPos = { File = sourceName; Line = line; Column = col }
+        let endPos = { File = sourceName; Line = line; Column = col + length }
         { Start = startPos; End = endPos }
 
     let private keywordToken ident =
@@ -29,6 +29,7 @@ module Lexer =
         | "elif" -> Some Elif
         | "raise" -> Some Raise
         | "for" -> Some For
+        | "include" -> Some Include
         // 'in' is intentionally not a keyword in FScript layout-style let expressions.
         | "true" -> Some (BoolLit true)
         | "false" -> Some (BoolLit false)
@@ -37,7 +38,7 @@ module Lexer =
     let private addToken kind span (tokens: ResizeArray<Token>) =
         tokens.Add({ Kind = kind; Span = span })
 
-    let private readString (src: string) (i: int) (line: int) (col: int) =
+    let private readString (sourceName: string option) (src: string) (i: int) (line: int) (col: int) =
         let sb = System.Text.StringBuilder()
         let mutable idx = i + 1
         let mutable cLine = line
@@ -69,10 +70,10 @@ module Lexer =
                         cCol <- cCol + 1
                     idx <- idx + 1
         if not doneFlag then
-            raise (ParseException { Message = "Unterminated string literal"; Span = mkSpan line col 1 })
+            raise (ParseException { Message = "Unterminated string literal"; Span = mkSpan sourceName line col 1 })
         sb.ToString(), idx, cLine, cCol
 
-    let private readInterpolatedRaw (src: string) (i: int) (line: int) (col: int) =
+    let private readInterpolatedRaw (sourceName: string option) (src: string) (i: int) (line: int) (col: int) =
         let mutable idx = i + 2 // skip $"
         let mutable cLine = line
         let mutable cCol = col + 2
@@ -143,14 +144,14 @@ module Lexer =
                     cCol <- cCol + 1
 
         if not doneFlag then
-            raise (ParseException { Message = "Unterminated interpolated string literal"; Span = mkSpan line col 2 })
+            raise (ParseException { Message = "Unterminated interpolated string literal"; Span = mkSpan sourceName line col 2 })
 
         let start = i + 2
         let contentLen = (idx - 1) - start
         let raw = if contentLen <= 0 then "" else src.Substring(start, contentLen)
         raw, idx, cLine, cCol
 
-    let tokenize (src: string) : Token list =
+    let tokenizeWithSourceName (sourceName: string option) (src: string) : Token list =
         let tokens = ResizeArray<Token>()
         let indentStack = ResizeArray<int>()
         indentStack.Add(0)
@@ -189,21 +190,21 @@ module Lexer =
                     idx <- idx + 1
                     cCol <- cCol + 1
                 if idx < src.Length && src.[idx] = '\n' then
-                    addToken Newline (mkSpan line col 1) tokens
+                    addToken Newline (mkSpan sourceName line col 1) tokens
                     i <- idx + 1
                     line <- line + 1
                     col <- 1
                     atLineStart <- true
                 elif idx < src.Length && src.[idx] = '/' && idx + 1 < src.Length && src.[idx + 1] = '/' then
                     while i < src.Length && src.[i] <> '\n' do i <- i + 1
-                    addToken Newline (mkSpan line col 1) tokens
+                    addToken Newline (mkSpan sourceName line col 1) tokens
                     if i < src.Length && src.[i] = '\n' then
                         i <- i + 1
                         line <- line + 1
                         col <- 1
                     atLineStart <- true
                 else
-                    let span = mkSpan line col 1
+                    let span = mkSpan sourceName line col 1
                     let startsWithParameterHead =
                         idx < src.Length && (src.[idx] = '(' || isIdentStart src.[idx])
                     if inLetBindingHead && startsWithParameterHead then
@@ -222,7 +223,7 @@ module Lexer =
                 | '\r' ->
                     i <- i + 1
                 | '\n' ->
-                    addToken Newline (mkSpan line col 1) tokens
+                    addToken Newline (mkSpan sourceName line col 1) tokens
                     i <- i + 1
                     line <- line + 1
                     col <- 1
@@ -230,17 +231,17 @@ module Lexer =
                 | '/' when i + 1 < src.Length && src.[i + 1] = '/' ->
                     while i < src.Length && src.[i] <> '\n' do i <- i + 1
                 | '(' when i + 1 < src.Length && src.[i + 1] = '*' ->
-                    raise (ParseException { Message = "Block comments are not supported"; Span = mkSpan line col 2 })
+                    raise (ParseException { Message = "Block comments are not supported"; Span = mkSpan sourceName line col 2 })
                 | '"' ->
-                    let str, idx, nline, ncol = readString src i line col
-                    let span = mkSpan line col (idx - i)
+                    let str, idx, nline, ncol = readString sourceName src i line col
+                    let span = mkSpan sourceName line col (idx - i)
                     addToken (StringLit str) span tokens
                     i <- idx
                     line <- nline
                     col <- ncol
                 | '$' when i + 1 < src.Length && src.[i + 1] = '"' ->
-                    let raw, idx, nline, ncol = readInterpolatedRaw src i line col
-                    let span = mkSpan line col (idx - i)
+                    let raw, idx, nline, ncol = readInterpolatedRaw sourceName src i line col
+                    let span = mkSpan sourceName line col (idx - i)
                     addToken (InterpString raw) span tokens
                     i <- idx
                     line <- nline
@@ -263,7 +264,7 @@ module Lexer =
                         else
                             idx <- idx + 1
                     let text = src.Substring(start, idx - start)
-                    let span = mkSpan line startCol (idx - start)
+                    let span = mkSpan sourceName line startCol (idx - start)
                     if hasDot then
                         addToken (FloatLit (Double.Parse(text, Globalization.CultureInfo.InvariantCulture))) span tokens
                     else
@@ -276,7 +277,7 @@ module Lexer =
                     let mutable idx = i + 1
                     while idx < src.Length && isIdentPart src.[idx] do idx <- idx + 1
                     let ident = src.Substring(start, idx - start)
-                    let span = mkSpan line startCol (idx - start)
+                    let span = mkSpan sourceName line startCol (idx - start)
                     match keywordToken ident with
                     | Some k ->
                         addToken k span tokens
@@ -288,76 +289,79 @@ module Lexer =
                     i <- idx
                     col <- startCol + (idx - start)
                 | '-' when i + 1 < src.Length && src.[i + 1] = '>' ->
-                    addToken Arrow (mkSpan line col 2) tokens
+                    addToken Arrow (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | ':' when i + 1 < src.Length && src.[i + 1] = ':' ->
-                    addToken Cons (mkSpan line col 2) tokens
+                    addToken Cons (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '<' when i + 1 < src.Length && src.[i + 1] = '=' ->
-                    addToken LessEqual (mkSpan line col 2) tokens
+                    addToken LessEqual (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '>' when i + 1 < src.Length && src.[i + 1] = '=' ->
-                    addToken GreaterEqual (mkSpan line col 2) tokens
+                    addToken GreaterEqual (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '&' when i + 1 < src.Length && src.[i + 1] = '&' ->
-                    addToken AndAnd (mkSpan line col 2) tokens
+                    addToken AndAnd (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '|' when i + 1 < src.Length && src.[i + 1] = ']' ->
-                    addToken BarRBracket (mkSpan line col 2) tokens
+                    addToken BarRBracket (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '|' when i + 1 < src.Length && src.[i + 1] = '|' ->
-                    addToken OrOr (mkSpan line col 2) tokens
+                    addToken OrOr (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
                 | '|' when i + 1 < src.Length && src.[i + 1] = '>' ->
-                    addToken PipeForward (mkSpan line col 2) tokens
+                    addToken PipeForward (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
-                | '+' -> addToken Plus (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '-' -> addToken Minus (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '*' -> addToken Star (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '/' -> addToken Slash (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '%' -> addToken Percent (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '+' -> addToken Plus (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '-' -> addToken Minus (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '*' -> addToken Star (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '/' -> addToken Slash (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '%' -> addToken Percent (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '=' ->
-                    addToken Equals (mkSpan line col 1) tokens
+                    addToken Equals (mkSpan sourceName line col 1) tokens
                     inLetBindingHead <- false
                     i <- i + 1
                     col <- col + 1
-                | '<' -> addToken Less (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '>' -> addToken Greater (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '|' -> addToken Bar (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '@' -> addToken Append (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '(' -> addToken LParen (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | ')' -> addToken RParen (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '<' -> addToken Less (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '>' -> addToken Greater (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '|' -> addToken Bar (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '@' -> addToken Append (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '(' -> addToken LParen (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | ')' -> addToken RParen (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '[' when i + 1 < src.Length && src.[i + 1] = '|' ->
-                    addToken LBracketBar (mkSpan line col 2) tokens
+                    addToken LBracketBar (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
-                | '[' -> addToken LBracket (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | ']' -> addToken RBracket (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | ';' -> addToken Semicolon (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | ',' -> addToken Comma (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | ':' -> addToken Colon (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '[' -> addToken LBracket (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | ']' -> addToken RBracket (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | ';' -> addToken Semicolon (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | ',' -> addToken Comma (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | ':' -> addToken Colon (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '.' when i + 1 < src.Length && src.[i + 1] = '.' ->
-                    addToken RangeDots (mkSpan line col 2) tokens
+                    addToken RangeDots (mkSpan sourceName line col 2) tokens
                     i <- i + 2
                     col <- col + 2
-                | '.' -> addToken Dot (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '#' -> addToken Hash (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '{' -> addToken LBrace (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
-                | '}' -> addToken RBrace (mkSpan line col 1) tokens; i <- i + 1; col <- col + 1
+                | '.' -> addToken Dot (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '#' -> addToken Hash (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '{' -> addToken LBrace (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '}' -> addToken RBrace (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | _ ->
-                    raise (ParseException { Message = sprintf "Unexpected character '%c'" ch; Span = mkSpan line col 1 })
+                    raise (ParseException { Message = sprintf "Unexpected character '%c'" ch; Span = mkSpan sourceName line col 1 })
 
-        addToken Newline (mkSpan line col 1) tokens
+        addToken Newline (mkSpan sourceName line col 1) tokens
         while indentStack.Count > 1 do
             indentStack.RemoveAt(indentStack.Count - 1)
-            addToken Dedent (mkSpan line col 1) tokens
-        addToken EOF (mkSpan line col 1) tokens
+            addToken Dedent (mkSpan sourceName line col 1) tokens
+        addToken EOF (mkSpan sourceName line col 1) tokens
         tokens |> Seq.toList
+
+    let tokenize (src: string) : Token list =
+        tokenizeWithSourceName None src
