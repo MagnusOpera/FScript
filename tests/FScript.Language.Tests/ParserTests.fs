@@ -258,6 +258,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected top-level include directive")
 
     [<Test>]
+    member _.``Parses top-level module declaration`` () =
+        let p = Helpers.parse "module Helpers\nlet x = 1"
+        match p.[0] with
+        | SModuleDecl ("Helpers", _) -> ()
+        | _ -> Assert.Fail("Expected top-level module declaration")
+
+    [<Test>]
     member _.``Rejects include directive in nested block`` () =
         let act () = Helpers.parse "let x = (\n    #include \"shared.fss\"\n    1\n)" |> ignore
         act |> should throw typeof<ParseException>

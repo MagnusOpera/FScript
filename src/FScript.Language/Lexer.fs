@@ -30,6 +30,7 @@ module Lexer =
         | "raise" -> Some Raise
         | "for" -> Some For
         | "include" -> Some Include
+        | "module" -> Some Module
         // 'in' is intentionally not a keyword in FScript layout-style let expressions.
         | "true" -> Some (BoolLit true)
         | "false" -> Some (BoolLit false)

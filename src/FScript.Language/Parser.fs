@@ -1068,6 +1068,8 @@ module Parser =
                     statements.Add(parseLetStmt false)
                 | Hash when stream.PeekAt(1).Kind = Include ->
                     raise (ParseException { Message = "'#include' is only supported at top level"; Span = stream.Peek().Span })
+                | Module ->
+                    raise (ParseException { Message = "'module' is only supported at top level"; Span = stream.Peek().Span })
                 | LBracket when stream.PeekAt(1).Kind = Less ->
                     raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
@@ -1093,6 +1095,8 @@ module Parser =
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
                 | SInclude (_, span) :: _ ->
                     raise (ParseException { Message = "'#include' is only supported at top level"; Span = span })
+                | SModuleDecl (_, span) :: _ ->
+                    raise (ParseException { Message = "'module' is only supported at top level"; Span = span })
             desugar (statements |> Seq.toList)
 
         and parseLetStmt (isExported: bool) : Stmt =
@@ -1188,6 +1192,16 @@ module Parser =
                     raise (ParseException { Message = "Include path cannot be empty"; Span = pathTok.Span })
                 | _ ->
                     raise (ParseException { Message = "Expected string literal include path after '#include'"; Span = pathTok.Span })
+            | Module ->
+                if hasAttributes || isExported then
+                    raise (ParseException { Message = "Attributes are not supported on 'module'"; Span = stream.Peek().Span })
+                let moduleTok = stream.Next()
+                let nameTok = stream.ExpectIdent("Expected module name after 'module'")
+                let name =
+                    match nameTok.Kind with
+                    | Ident n -> n
+                    | _ -> ""
+                SModuleDecl(name, mkSpanFrom moduleTok.Span nameTok.Span)
             | Type ->
                 if isExported then
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })

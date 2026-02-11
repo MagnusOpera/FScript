@@ -38,6 +38,131 @@ module IncludeResolver =
 
         ensureWithinRoot rootDirectoryWithSeparator candidate span
 
+    let private collectPatternBindings (pattern: Pattern) : Set<string> =
+        let rec loop acc pat =
+            match pat with
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _ -> acc
+            | PVar (name, _) -> acc |> Set.add name
+            | PCons (head, tail, _) -> loop (loop acc head) tail
+            | PTuple (patterns, _) -> patterns |> List.fold loop acc
+            | PRecord (fields, _) -> fields |> List.fold (fun s (_, p) -> loop s p) acc
+            | PSome (inner, _) -> loop acc inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some inner -> loop acc inner
+                | None -> acc
+        loop Set.empty pattern
+
+    let private qualifyName (moduleName: string) (name: string) = $"{moduleName}.{name}"
+
+    let private rewriteModuleScopedStatements (moduleName: string) (statements: Stmt list) : Stmt list =
+        let topLevelNames =
+            statements
+            |> List.collect (function
+                | SLet(name, _, _, _, _, _) -> [ name ]
+                | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
+                | _ -> [])
+            |> Set.ofList
+
+        let maybeQualify (boundNames: Set<string>) (name: string) =
+            if Set.contains name topLevelNames && not (Set.contains name boundNames) then
+                qualifyName moduleName name
+            else
+                name
+
+        let rec rewriteExpr (boundNames: Set<string>) (expr: Expr) : Expr =
+            match expr with
+            | EUnit _
+            | ELiteral _
+            | ENone _
+            | ETypeOf _ -> expr
+            | EVar (name, span) -> EVar(maybeQualify boundNames name, span)
+            | ENameOf (name, span) -> ENameOf(maybeQualify boundNames name, span)
+            | EParen (inner, span) -> EParen(rewriteExpr boundNames inner, span)
+            | ELambda (param, body, span) ->
+                ELambda(param, rewriteExpr (Set.add param.Name boundNames) body, span)
+            | EApply (fn, arg, span) ->
+                EApply(rewriteExpr boundNames fn, rewriteExpr boundNames arg, span)
+            | EIf (cond, thenExpr, elseExpr, span) ->
+                EIf(rewriteExpr boundNames cond, rewriteExpr boundNames thenExpr, rewriteExpr boundNames elseExpr, span)
+            | ERaise (valueExpr, span) ->
+                ERaise(rewriteExpr boundNames valueExpr, span)
+            | EFor (name, source, body, span) ->
+                EFor(name, rewriteExpr boundNames source, rewriteExpr (Set.add name boundNames) body, span)
+            | EMatch (scrutinee, cases, span) ->
+                let rewrittenCases =
+                    cases
+                    |> List.map (fun (pattern, body, caseSpan) ->
+                        let boundWithPattern = Set.union boundNames (collectPatternBindings pattern)
+                        pattern, rewriteExpr boundWithPattern body, caseSpan)
+                EMatch(rewriteExpr boundNames scrutinee, rewrittenCases, span)
+            | ELet (name, valueExpr, bodyExpr, isRec, span) ->
+                if isRec then
+                    let boundWithName = Set.add name boundNames
+                    ELet(name, rewriteExpr boundWithName valueExpr, rewriteExpr boundWithName bodyExpr, true, span)
+                else
+                    ELet(name, rewriteExpr boundNames valueExpr, rewriteExpr (Set.add name boundNames) bodyExpr, false, span)
+            | ELetRecGroup (bindings, body, span) ->
+                let names = bindings |> List.map (fun (name, _, _, _) -> name) |> Set.ofList
+                let recursiveBound = Set.union boundNames names
+                let rewrittenBindings =
+                    bindings
+                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                        let boundWithArgs = args |> List.fold (fun s p -> Set.add p.Name s) recursiveBound
+                        name, args, rewriteExpr boundWithArgs valueExpr, bindingSpan)
+                ELetRecGroup(rewrittenBindings, rewriteExpr recursiveBound body, span)
+            | EList (items, span) ->
+                EList(items |> List.map (rewriteExpr boundNames), span)
+            | ERange (a, b, span) ->
+                ERange(rewriteExpr boundNames a, rewriteExpr boundNames b, span)
+            | ETuple (items, span) ->
+                ETuple(items |> List.map (rewriteExpr boundNames), span)
+            | ERecord (fields, span) ->
+                ERecord(fields |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
+            | EMap (entries, span) ->
+                EMap(entries |> List.map (fun (k, v) -> rewriteExpr boundNames k, rewriteExpr boundNames v), span)
+            | ERecordUpdate (target, updates, span) ->
+                ERecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
+            | EFieldGet (target, fieldName, span) ->
+                EFieldGet(rewriteExpr boundNames target, fieldName, span)
+            | ECons (head, tail, span) ->
+                ECons(rewriteExpr boundNames head, rewriteExpr boundNames tail, span)
+            | EAppend (left, right, span) ->
+                EAppend(rewriteExpr boundNames left, rewriteExpr boundNames right, span)
+            | EBinOp (op, left, right, span) ->
+                EBinOp(op, rewriteExpr boundNames left, rewriteExpr boundNames right, span)
+            | ESome (valueExpr, span) ->
+                ESome(rewriteExpr boundNames valueExpr, span)
+            | EInterpolatedString (parts, span) ->
+                let rewrittenParts =
+                    parts
+                    |> List.map (function
+                        | IPText text -> IPText text
+                        | IPExpr valueExpr -> IPExpr (rewriteExpr boundNames valueExpr))
+                EInterpolatedString(rewrittenParts, span)
+
+        statements
+        |> List.map (function
+            | SLet(name, args, valueExpr, isRec, isExported, span) ->
+                let qualifiedName = qualifyName moduleName name
+                let bound = args |> List.fold (fun s p -> Set.add p.Name s) Set.empty
+                let bodyBound = if isRec then Set.add name bound else bound
+                SLet(qualifiedName, args, rewriteExpr bodyBound valueExpr, isRec, isExported, span)
+            | SLetRecGroup(bindings, isExported, span) ->
+                let names = bindings |> List.map (fun (name, _, _, _) -> name) |> Set.ofList
+                let rewrittenBindings =
+                    bindings
+                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                        let qualifiedName = qualifyName moduleName name
+                        let bound = args |> List.fold (fun s p -> Set.add p.Name s) names
+                        qualifiedName, args, rewriteExpr bound valueExpr, bindingSpan)
+                SLetRecGroup(rewrittenBindings, isExported, span)
+            | SExpr expr -> SExpr (rewriteExpr Set.empty expr)
+            | stmt -> stmt)
+
     let parseProgramFromFile (rootDirectory: string) (entryFile: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -45,7 +170,7 @@ module IncludeResolver =
             let p = Span.posInFile path 1 1
             Span.mk p p
 
-        let rec loadFile (stack: string list) (filePath: string) : Program =
+        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) : Program =
             let fullFilePath = Path.GetFullPath(filePath)
             let initialSpan = fileSpan fullFilePath
             ensureFssPath fullFilePath initialSpan
@@ -62,14 +187,47 @@ module IncludeResolver =
                 visited.Add(sandboxedPath) |> ignore
                 let source = File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
-                expandProgram (sandboxedPath :: stack) sandboxedPath program
+                expandProgram (sandboxedPath :: stack) isMainFile sandboxedPath program
 
-        and expandProgram (stack: string list) (currentFile: string) (program: Program) : Program =
-            program
-            |> List.collect (function
+        and expandProgram (stack: string list) (isMainFile: bool) (currentFile: string) (program: Program) : Program =
+            let mutable seenCode = false
+            let mutable moduleDecl: (string * Span) option = None
+            let includes = ResizeArray<string * Span>()
+            let localCode = ResizeArray<Stmt>()
+
+            for stmt in program do
+                match stmt with
                 | SInclude(includePath, span) ->
-                    let resolvedPath = resolveIncludePath currentFile includePath rootDirectoryWithSeparator span
-                    loadFile stack resolvedPath
-                | stmt -> [ stmt ])
+                    if seenCode || moduleDecl.IsSome then
+                        raise (ParseException { Message = "'#include' directives must appear before module declaration and code"; Span = span })
+                    includes.Add(includePath, span)
+                | SModuleDecl(moduleName, span) ->
+                    if isMainFile then
+                        raise (ParseException { Message = "'module' is not allowed in the main script"; Span = span })
+                    if seenCode then
+                        raise (ParseException { Message = "'module' declaration must appear before code"; Span = span })
+                    match moduleDecl with
+                    | Some (_, previousSpan) ->
+                        raise (ParseException { Message = "Only one 'module' declaration is allowed per file"; Span = previousSpan })
+                    | None ->
+                        moduleDecl <- Some(moduleName, span)
+                | _ ->
+                    seenCode <- true
+                    localCode.Add(stmt)
 
-        loadFile [] entryFile
+            let includedStatements =
+                includes
+                |> Seq.toList
+                |> List.collect (fun (includePath, span) ->
+                    let resolvedPath = resolveIncludePath currentFile includePath rootDirectoryWithSeparator span
+                    loadFile stack false resolvedPath)
+
+            let localStatements = localCode |> Seq.toList
+            let rewrittenLocalStatements =
+                match moduleDecl with
+                | Some (moduleName, _) -> rewriteModuleScopedStatements moduleName localStatements
+                | None -> localStatements
+
+            includedStatements @ rewrittenLocalStatements
+
+        loadFile [] true entryFile

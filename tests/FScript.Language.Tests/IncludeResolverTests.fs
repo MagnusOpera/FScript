@@ -101,3 +101,37 @@ type IncludeResolverTests () =
             | Some parseError ->
                 parseError.Span.Start.File |> should equal (Some (Path.GetFullPath badPath))
             | None -> Assert.Fail("Expected ParseException"))
+
+    [<Test>]
+    member _.``Include resolver rejects module declaration in main script`` () =
+        withTempDir (fun dir ->
+            let mainPath = Path.Combine(dir, "main.fss")
+            File.WriteAllText(mainPath, "module Root\nlet x = 1")
+            let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
+            act |> should throw typeof<ParseException>)
+
+    [<Test>]
+    member _.``Include resolver allows module declaration in included script and qualifies bindings`` () =
+        withTempDir (fun dir ->
+            let helperPath = Path.Combine(dir, "helper.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+            File.WriteAllText(helperPath, "module Helper\nlet add1 x = x + 1")
+            File.WriteAllText(mainPath, "#include \"helper.fss\"\nlet value = Helper.add1 41")
+            let program = IncludeResolver.parseProgramFromFile dir mainPath
+            let names =
+                program
+                |> List.choose (function
+                    | SLet(name, _, _, _, _, _) -> Some name
+                    | _ -> None)
+            names |> should contain "Helper.add1"
+            names |> should contain "value")
+
+    [<Test>]
+    member _.``Include resolver enforces include then module then code ordering`` () =
+        withTempDir (fun dir ->
+            let helperPath = Path.Combine(dir, "helper.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+            File.WriteAllText(helperPath, "let x = 1\n#include \"other.fss\"")
+            File.WriteAllText(mainPath, "#include \"helper.fss\"\nlet ok = 1")
+            let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
+            act |> should throw typeof<ParseException>)

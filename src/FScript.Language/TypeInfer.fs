@@ -694,6 +694,8 @@ module TypeInfer =
                 typed.Add(TSType def)
             | SInclude (_, span) ->
                 raise (TypeException { Message = "'#include' must be resolved before type inference"; Span = span })
+            | SModuleDecl (_, span) ->
+                raise (TypeException { Message = "'module' must be resolved before type inference"; Span = span })
             | SLet(name, args, expr, isRec, isExported, span) ->
                 let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                 if isRec then
