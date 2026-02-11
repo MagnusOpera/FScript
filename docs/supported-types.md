@@ -14,7 +14,7 @@ This document specifies the value and type system used by the interpreter.
 - List: `'a list`
 - Tuple: `(t1 * t2 * ...)`
 - Option: `'a option`
-- String-keyed map: `'a map`
+- Map (string-keyed alias): `'a map`
 - Record: structural record types
 - Discriminated union: named union types with cases
 
@@ -22,9 +22,10 @@ This document specifies the value and type system used by the interpreter.
 - Native map literal syntax:
   - empty: `{}`
   - populated: `{ ["a"] = 1; ["b"] = 2 }`
+  - int keys: `{ [1] = "one"; [2] = "two" }`
   - spread update: `{ ["a"] = 1; ..tail }`
   - multiline entries are supported in an indented block.
-- Keys are bracketed expressions and must have type `string` (for example `{ [keyExpr] = value }`).
+- Keys are bracketed expressions and must have type `string` or `int` (for example `{ [keyExpr] = value }`).
 - Record literals and map literals share `{ ... }` braces:
   - map entries use `[expr] = value`
   - record entries use `Field = value`
@@ -76,7 +77,7 @@ This document specifies the value and type system used by the interpreter.
 - `VUnit`, `VInt`, `VFloat`, `VBool`, `VString`
 - `VList`, `VTuple`
 - `VRecord`
-- `VStringMap`
+- `VMap`
 - `VOption`
 - `VUnionCase`, `VUnionCtor`
 - `VClosure`

@@ -4,6 +4,11 @@ let values =
       ["beta"] = 20
       ["gamma"] = 30 }
 
+let indexed =
+    { [1] = "one"
+      [2] = "two"
+      [3] = "three" }
+
 match values with
 | { ["alpha"] = v1; ..tail } ->
     print $"alpha={v1}; tail={tail}"
@@ -18,3 +23,8 @@ match values with
 | { [k] = v; ..tail } ->
     print $"dynamic extraction: {k} = {v}, tail={tail}"
 | _ -> print "no dynamic match"
+
+match indexed with
+| { [1] = first; [2] = second; ..tail } ->
+    print $"int-key match: first={first}, second={second}, tail={tail}"
+| _ -> print "no int-key match"

@@ -22,6 +22,9 @@ type Subscription =
 let scores =
     { ["math"] = 20; ["science"] = 18 }
 
+let statusByCode =
+    { [200] = "ok"; [404] = "not-found" }
+
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
 let subscription = Premium 12
@@ -75,6 +78,7 @@ let monthlyPrice =
     | Premium amount -> amount
 
 let missing = "missing"
+let unknown = "unknown"
 
 print $"User: {updated.Name}"
 print $"City: {city}"
@@ -90,6 +94,7 @@ print $"Subscription price: {monthlyPrice}"
 print $"Structural address from literal: {format_address parisAddress}"
 print $"Structural address from OfficeAddress: {format_address officeAddress}"
 print $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
+print $"HTTP 200: {statusByCode[200] |> Option.defaultValue unknown}"
 
 
 updated.Tags |> List.iter print

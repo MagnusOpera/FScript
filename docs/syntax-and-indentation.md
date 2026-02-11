@@ -38,6 +38,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - record patterns in cases: `{ Field = pattern; ... }`
   - map patterns in cases support keyed lookup and extraction:
     - keyed lookup: `{ ["key"] = v }`
+    - int-key lookup: `{ [1] = v }`
     - multiple keys: `{ ["a"] = x; ["b"] = y }`
     - optional tail capture: `{ ["a"] = x; ..tail }`
     - dynamic extraction (preserved): `{ [k] = v; ..tail }`
@@ -57,11 +58,12 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Maps:
   - empty `{}`
   - literal `{ ["a"] = 1; ["b"] = 2 }`
+  - int-key literal `{ [1] = "one"; [2] = "two" }`
   - update/merge with spread `{ ["a"] = 1; ..tail }`
   - map entries always use bracketed keys (`[expr] = value`)
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
-  - keys are bracketed expressions (`[expr]`) and must infer to `string`
+  - keys are bracketed expressions (`[expr]`) and must infer to `string` or `int`
   - if entries start on the next line, `{` must be on its own line
   - multiline example:
   ```fsharp

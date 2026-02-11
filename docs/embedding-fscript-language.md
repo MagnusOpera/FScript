@@ -141,7 +141,7 @@ Host-visible static types are represented by `Type`:
 - `TList of Type`
 - `TTuple of Type list`
 - `TRecord of Map<string, Type>`
-- `TStringMap of Type`
+- `TMap of Type * Type`
 - `TOption of Type`
 - `TFun of Type * Type`
 - `TNamed of string`
@@ -150,6 +150,7 @@ Host-visible static types are represented by `Type`:
 - `TVar of int`
 
 Use `Types.typeToString` for display/diagnostics.
+The postfix script type syntax `'a map` corresponds to `TMap(TString, 'a)`.
 
 ## Runtime values
 
@@ -163,7 +164,7 @@ Evaluation returns `Value`:
 - `VList of Value list`
 - `VTuple of Value list`
 - `VRecord of Map<string, Value>`
-- `VStringMap of Map<string, Value>`
+- `VMap of Map<MapKey, Value>`
 - `VOption of Value option`
 - `VUnionCase of string * string * Value option`
 - `VUnionCtor of string * string`

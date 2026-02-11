@@ -21,6 +21,7 @@ let x =
   - `'a map`
 - Map values use native literals:
   - `{ ["a"] = 1; ["b"] = 2 }`
+  - `{ [1] = "one"; [2] = "two" }`
 - Map update/merge is available directly in literals:
   - `{ ["a"] = 1; ..tail }`
 - Function types use arrow syntax:
@@ -55,6 +56,7 @@ let x =
 - Typed decoding workflows use `typeof Name` tokens with host externs.
 - Capability maps can use `nameof identifier` for stable script-side function keys.
 - Capability maps use string keys in map literals (`[expr]` where `expr : string`).
+- Maps also support integer keys (`[expr]` where `expr : int`) for numeric indexing scenarios.
 
 ## Formatting and layout choices
 - `match` case columns align.
