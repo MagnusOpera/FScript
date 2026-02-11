@@ -20,17 +20,5 @@ module Registry =
           HashExterns.md5
           GuidExterns.new_guid
           PrintExterns.print
-          MapExterns.empty
-          MapExterns.add
-          MapExterns.ofList
-          MapExterns.tryGet
-          MapExterns.count
-          MapExterns.filter
-          MapExterns.fold
-          MapExterns.choose
-          MapExterns.map
-          MapExterns.iter
-          MapExterns.containsKey
-          MapExterns.remove
           JsonExterns.deserialize
           XmlExterns.values ]

@@ -6,7 +6,7 @@ This document is a quick comparison guide. It highlights intentional differences
 ## Scope of the language
 - FScript is a small interpreted subset, not a full compiler language.
 - FScript supports a focused core: `let`, `let rec` (functions), `if/elif/else`, `for`, `match`, lists, tuples, options, records, discriminated unions, pipelines, and extern calls.
-- Many F#/OCaml features are intentionally absent today (modules, classes, interfaces, computation expressions, etc.).
+- Many F#/OCaml features are intentionally absent today (classes, interfaces, computation expressions, etc.). `module` declarations are supported only in included files.
 
 ## Syntax differences
 
@@ -81,7 +81,7 @@ let x =
 
 ### Standard library model
 - F#/OCaml ship large standard libraries.
-- FScript has a smaller built-in surface and relies on host-provided externs (for example `List.*`, `Map.*`, `Option.*`, `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`).
+- FScript has a smaller built-in surface and relies on host-provided externs for host/system capabilities (for example `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`), while collection helpers are provided by the embedded prelude.
 
 ### Reflection-style type tokens
 - FScript provides `typeof Name` tokens for host extern workflows (for example JSON/XML decode helpers).

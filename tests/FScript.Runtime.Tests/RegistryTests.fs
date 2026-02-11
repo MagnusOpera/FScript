@@ -27,16 +27,5 @@ type RegistryTests () =
         names.Contains "Hash.md5" |> should equal true
         names.Contains "Guid.new" |> should equal true
         names.Contains "print" |> should equal true
-        names.Contains "Map.empty" |> should equal true
-        names.Contains "Map.add" |> should equal true
-        names.Contains "Map.ofList" |> should equal true
-        names.Contains "Map.tryGet" |> should equal true
-        names.Contains "Map.count" |> should equal true
-        names.Contains "Map.filter" |> should equal true
-        names.Contains "Map.fold" |> should equal true
-        names.Contains "Map.choose" |> should equal true
-        names.Contains "Map.map" |> should equal true
-        names.Contains "Map.iter" |> should equal true
-        names.Contains "Map.remove" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Xml.values" |> should equal true

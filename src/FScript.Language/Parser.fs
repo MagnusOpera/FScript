@@ -475,27 +475,47 @@ module Parser =
                     first
             | LBrace ->
                 let lb = stream.Next()
-                let fields = ResizeArray<string * Pattern>()
-                let seen = System.Collections.Generic.HashSet<string>()
-                let parseField () =
+                stream.SkipNewlines()
+                if stream.Match(RBrace) then
+                    PMapEmpty (mkSpanFrom lb.Span lb.Span)
+                elif stream.Peek().Kind = LBracket then
+                    stream.Next() |> ignore // '['
+                    let keyPattern = parsePatternCons()
+                    stream.Expect(RBracket, "Expected ']' in map pattern") |> ignore
                     stream.SkipNewlines()
-                    let nameTok = stream.ExpectIdent("Expected field name in record pattern")
-                    let name =
-                        match nameTok.Kind with
-                        | Ident n -> n
-                        | _ -> ""
-                    if not (seen.Add name) then
-                        raise (ParseException { Message = $"Duplicate field '{name}' in record pattern"; Span = nameTok.Span })
+                    stream.Expect(Equals, "Expected '=' after map key pattern") |> ignore
+                    let valuePattern = parsePatternCons()
                     stream.SkipNewlines()
-                    stream.Expect(Equals, "Expected '=' in record pattern field") |> ignore
-                    let p = parsePatternCons()
-                    fields.Add(name, p)
-                parseField()
-                while stream.Match(Semicolon) do
-                    if stream.Peek().Kind <> RBrace then
-                        parseField()
-                let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
-                PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                    if not (stream.Match(Semicolon)) then
+                        raise (ParseException { Message = "Expected ';' before '..' in map pattern"; Span = stream.Peek().Span })
+                    stream.SkipNewlines()
+                    stream.Expect(RangeDots, "Expected '..' in map pattern tail") |> ignore
+                    let tailPattern = parsePatternCons()
+                    stream.SkipNewlines()
+                    let rb = stream.Expect(RBrace, "Expected '}' in map pattern")
+                    PMapCons(keyPattern, valuePattern, tailPattern, mkSpanFrom lb.Span rb.Span)
+                else
+                    let fields = ResizeArray<string * Pattern>()
+                    let seen = System.Collections.Generic.HashSet<string>()
+                    let parseField () =
+                        stream.SkipNewlines()
+                        let nameTok = stream.ExpectIdent("Expected field name in record pattern")
+                        let name =
+                            match nameTok.Kind with
+                            | Ident n -> n
+                            | _ -> ""
+                        if not (seen.Add name) then
+                            raise (ParseException { Message = $"Duplicate field '{name}' in record pattern"; Span = nameTok.Span })
+                        stream.SkipNewlines()
+                        stream.Expect(Equals, "Expected '=' in record pattern field") |> ignore
+                        let p = parsePatternCons()
+                        fields.Add(name, p)
+                    parseField()
+                    while stream.Match(Semicolon) do
+                        if stream.Peek().Kind <> RBrace then
+                            parseField()
+                    let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
+                    PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
 
         and parsePatternCons () : Pattern =
@@ -746,6 +766,20 @@ module Parser =
                         | Ident n -> n
                         | _ -> ""
                     expr <- EFieldGet(expr, fieldName, mkSpanFrom (Ast.spanOfExpr expr) fieldTok.Span)
+                elif stream.Peek().Kind = LBracket then
+                    let lb = stream.Peek()
+                    let targetSpan = Ast.spanOfExpr expr
+                    let isAdjacent =
+                        lb.Span.Start.Line = targetSpan.End.Line
+                        && lb.Span.Start.Column = targetSpan.End.Column
+                    let hasIndexerPayload = stream.PeekAt(1).Kind <> RBracket
+                    if isAdjacent && hasIndexerPayload then
+                        stream.Next() |> ignore
+                        let keyExpr = parseExpr()
+                        let rb = stream.Expect(RBracket, "Expected ']' after index expression")
+                        expr <- EIndexGet(expr, keyExpr, mkSpanFrom targetSpan rb.Span)
+                    else
+                        keepGoing <- false
                 else
                     keepGoing <- false
             expr

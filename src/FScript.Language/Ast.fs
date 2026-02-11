@@ -33,6 +33,8 @@ and Pattern =
     | PCons of Pattern * Pattern * Span
     | PTuple of Pattern list * Span
     | PRecord of (string * Pattern) list * Span
+    | PMapEmpty of Span
+    | PMapCons of Pattern * Pattern * Pattern * Span
     | PSome of Pattern * Span
     | PNone of Span
     | PUnionCase of string option * string * Pattern option * Span
@@ -57,6 +59,7 @@ and Expr =
     | EMap of (Expr * Expr) list * Span
     | ERecordUpdate of Expr * (string * Expr) list * Span
     | EFieldGet of Expr * string * Span
+    | EIndexGet of Expr * Expr * Span
     | ECons of Expr * Expr * Span
     | EAppend of Expr * Expr * Span
     | EBinOp of string * Expr * Expr * Span
@@ -90,6 +93,8 @@ module Ast =
         | PCons (_, _, s) -> s
         | PTuple (_, s) -> s
         | PRecord (_, s) -> s
+        | PMapEmpty s -> s
+        | PMapCons (_, _, _, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
         | PUnionCase (_, _, _, s) -> s
@@ -115,6 +120,7 @@ module Ast =
         | EMap (_, s) -> s
         | ERecordUpdate (_, _, s) -> s
         | EFieldGet (_, _, s) -> s
+        | EIndexGet (_, _, s) -> s
         | ECons (_, _, s) -> s
         | EAppend (_, _, s) -> s
         | EBinOp (_, _, _, s) -> s

@@ -49,6 +49,9 @@ module IncludeResolver =
             | PCons (head, tail, _) -> loop (loop acc head) tail
             | PTuple (patterns, _) -> patterns |> List.fold loop acc
             | PRecord (fields, _) -> fields |> List.fold (fun s (_, p) -> loop s p) acc
+            | PMapEmpty _ -> acc
+            | PMapCons (keyPattern, valuePattern, tailPattern, _) ->
+                loop (loop (loop acc keyPattern) valuePattern) tailPattern
             | PSome (inner, _) -> loop acc inner
             | PUnionCase (_, _, payload, _) ->
                 match payload with
@@ -128,6 +131,8 @@ module IncludeResolver =
                 ERecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EFieldGet (target, fieldName, span) ->
                 EFieldGet(rewriteExpr boundNames target, fieldName, span)
+            | EIndexGet (target, keyExpr, span) ->
+                EIndexGet(rewriteExpr boundNames target, rewriteExpr boundNames keyExpr, span)
             | ECons (head, tail, span) ->
                 ECons(rewriteExpr boundNames head, rewriteExpr boundNames tail, span)
             | EAppend (left, right, span) ->
@@ -149,10 +154,10 @@ module IncludeResolver =
             | SLet(name, args, valueExpr, isRec, isExported, span) ->
                 let qualifiedName = qualifyName moduleName name
                 let bound = args |> List.fold (fun s p -> Set.add p.Name s) Set.empty
-                let bodyBound = if isRec then Set.add name bound else bound
+                let bodyBound = if isRec then Set.add qualifiedName bound else bound
                 SLet(qualifiedName, args, rewriteExpr bodyBound valueExpr, isRec, isExported, span)
             | SLetRecGroup(bindings, isExported, span) ->
-                let names = bindings |> List.map (fun (name, _, _, _) -> name) |> Set.ofList
+                let names = bindings |> List.map (fun (name, _, _, _) -> qualifyName moduleName name) |> Set.ofList
                 let rewrittenBindings =
                     bindings
                     |> List.map (fun (name, args, valueExpr, bindingSpan) ->

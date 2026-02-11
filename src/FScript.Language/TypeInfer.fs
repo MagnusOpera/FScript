@@ -215,6 +215,23 @@ module TypeInfer =
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
             env, TRecord fieldTypes
+        | PMapEmpty _ ->
+            let tv = Types.freshVar()
+            Map.empty, TStringMap tv
+        | PMapCons (keyPattern, valuePattern, tailPattern, span) ->
+            let keyEnv, keyType = inferPattern typeDefs constructors keyPattern
+            let valueEnv, valueType = inferPattern typeDefs constructors valuePattern
+            let tailEnv, tailType = inferPattern typeDefs constructors tailPattern
+            let keySubst = unify typeDefs keyType TString span
+            let tailExpected = TStringMap (applyType keySubst valueType)
+            let tailSubst = unify typeDefs (applyType keySubst tailType) tailExpected span
+            let s = compose tailSubst keySubst
+            let mergedEnv =
+                keyEnv
+                |> Map.fold (fun acc k v -> Map.add k v acc) valueEnv
+                |> Map.fold (fun acc k v -> Map.add k v acc) tailEnv
+                |> Map.map (fun _ t -> applyType s t)
+            mergedEnv, applyType s tailExpected
         | PSome (p, _) ->
             let env, t = inferPattern typeDefs constructors p
             env, TOption t
@@ -564,6 +581,16 @@ module TypeInfer =
                 let s1, tTarget, _ = inferExpr typeDefs constructors env target
                 let sField, tField = inferRecordField s1 tTarget
                 sField, tField, asTyped expr tField
+        | EIndexGet (target, keyExpr, span) ->
+            let s1, tTarget, _ = inferExpr typeDefs constructors env target
+            let env2 = applyEnv s1 env
+            let s2, tKey, _ = inferExpr typeDefs constructors env2 keyExpr
+            let s3 = unify typeDefs (applyType s2 tKey) TString span
+            let valueType = Types.freshVar()
+            let s4 = unify typeDefs (applyType s3 (applyType s2 tTarget)) (TStringMap valueType) span
+            let s = compose s4 (compose s3 (compose s2 s1))
+            let tRes = TOption (applyType s valueType)
+            s, tRes, asTyped expr tRes
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->

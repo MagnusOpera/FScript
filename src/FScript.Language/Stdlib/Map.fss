@@ -1,0 +1,73 @@
+module Map
+
+let empty = {}
+
+let tryGet key values =
+    values[key]
+
+let containsKey key values =
+    match values[key] with
+    | Some _ -> true
+    | None -> false
+
+let rec add key value values =
+    match values with
+    | {} -> { [key] = value }
+    | { [currentKey] = currentValue; ..tail } ->
+        if currentKey = key then
+            { [key] = value } @ tail
+        else
+            { [currentKey] = currentValue } @ add key value tail
+
+let ofList pairs =
+    let rec loop remaining acc =
+        match remaining with
+        | [] -> acc
+        | (key, value) :: tail -> loop tail (add key value acc)
+    loop pairs {}
+
+let fold folder state values =
+    let rec loop acc remaining =
+        match remaining with
+        | {} -> acc
+        | { [key] = value; ..tail } -> loop (folder acc key value) tail
+    loop state values
+
+let count values =
+    let folder total _ _ =
+        total + 1
+    fold folder 0 values
+
+let filter predicate values =
+    let folder acc key value =
+        if predicate key value then
+            add key value acc
+        else
+            acc
+    fold folder {} values
+
+let choose chooser values =
+    let folder acc key value =
+        match chooser key value with
+        | Some chosen -> add key chosen acc
+        | None -> acc
+    fold folder {} values
+
+let map mapper values =
+    let folder acc key value =
+        add key (mapper value) acc
+    fold folder {} values
+
+let iter iterator values =
+    let folder _ key value =
+        iterator key value
+        ()
+    fold folder () values
+
+let remove key values =
+    let folder acc currentKey value =
+        if currentKey = key then
+            acc
+        else
+            add currentKey value acc
+    fold folder {} values

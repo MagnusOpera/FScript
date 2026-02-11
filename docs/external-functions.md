@@ -19,7 +19,7 @@ Interpreter integration:
 - Extern values are injected into runtime environment as curried `VExternal`.
 
 ## Higher-order extern execution
-Higher-order externs (for example `List.map`, `Map.fold`, `Option.map`) are implemented in runtime extern modules and receive an `ExternalCallContext`.
+Higher-order externs are implemented in runtime extern modules and receive an `ExternalCallContext`.
 
 `ExternalCallContext.Apply` is a function pointer provided by the evaluator so extern code can apply script closures and curried functions without re-implementing evaluation.
 
@@ -49,47 +49,9 @@ Higher-order externs (for example `List.map`, `Map.fold`, `Option.map`) are impl
 - `Hash.md5 : string -> string option`
 - `Guid.new : 'a -> string option` (dummy argument to preserve call shape)
 
-### Map (`'a map`)
-- `Map.empty`
-- `Map.add`
-- `Map.ofList`
-- `Map.tryGet`
-- `Map.count`
-- `Map.filter`
-- `Map.fold`
-- `Map.choose`
-- `Map.map`
-- `Map.iter`
-- `Map.containsKey`
-- `Map.remove`
-
-`Map.empty` is an arity-0 value (`'a map`), not an invokable function.
-
-### List
-- `List.empty`
-- `List.map`
-- `List.choose`
-- `List.collect`
-- `List.contains`
-- `List.distinct`
-- `List.exists`
-- `List.fold`
-- `List.filter`
-- `List.iter`
-- `List.rev`
-- `List.length`
-- `List.tryFind`
-- `List.tryGet`
-- `List.tryHead`
-- `List.tail`
-- `List.append`
-
-### Option
-- `Option.defaultValue`
-- `Option.defaultWith`
-- `Option.isNone`
-- `Option.isSome`
-- `Option.map`
+### Collections and prelude
+- `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
+- Runtime externs focus on host/system capabilities.
 
 ### Typed decoders
 - `Json.deserialize : type -> string -> 'a option`

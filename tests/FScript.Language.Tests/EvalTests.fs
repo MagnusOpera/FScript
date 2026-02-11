@@ -93,6 +93,16 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected empty map value")
 
     [<Test>]
+    member _.``Evaluates map indexer lookup as option`` () =
+        match Helpers.eval "let m = { [\"a\"] = 1 }\nm[\"a\"]" with
+        | VOption (Some (VInt 1L)) -> ()
+        | _ -> Assert.Fail("Expected Some 1 from map indexer")
+
+        match Helpers.eval "let m = { [\"a\"] = 1 }\nm[\"b\"]" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for missing map key")
+
+    [<Test>]
     member _.``Evaluates record copy-update immutably`` () =
         Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np.Age" |> assertInt 1L
         Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age" |> assertInt 2L
@@ -148,6 +158,20 @@ type EvalTests () =
     member _.``Evaluates match on record subset pattern`` () =
         let src = "let n = { Value = 1; Next = None }\nmatch n with\n    | { Value = v } -> v\n    | _ -> 0"
         Helpers.eval src |> assertInt 1L
+
+    [<Test>]
+    member _.``Evaluates match on empty map pattern`` () =
+        let src = "match {} with\n    | {} -> 0\n    | _ -> 1"
+        Helpers.eval src |> assertInt 0L
+
+    [<Test>]
+    member _.``Evaluates match on map cons pattern`` () =
+        let src = "let m = { [\"b\"] = 2; [\"a\"] = 1 }\nmatch m with\n    | { [k] = v; ..tail } -> (k, v, tail)\n    | {} -> (\"\", 0, {})"
+        match Helpers.eval src with
+        | VTuple [ VString "a"; VInt 1L; VStringMap tail ] ->
+            tail.Count |> should equal 1
+            tail.ContainsKey "b" |> should equal true
+        | _ -> Assert.Fail("Expected map cons pattern to expose head and tail")
 
     [<Test>]
     member _.``Evaluates match on discriminated union`` () =

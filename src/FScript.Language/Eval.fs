@@ -109,6 +109,22 @@ module Eval =
                     | Some next -> Some (Map.fold (fun state k v -> Map.add k v state) acc next)
                     | None -> None
                 | _ -> None)
+        | PMapEmpty _, VStringMap values when values.IsEmpty ->
+            Some Map.empty
+        | PMapCons (keyPattern, valuePattern, tailPattern, _), VStringMap values when not values.IsEmpty ->
+            let key, value =
+                values
+                |> Seq.head
+                |> fun kv -> kv.Key, kv.Value
+            let tail = VStringMap (values.Remove key)
+            match patternMatch keyPattern (VString key), patternMatch valuePattern value, patternMatch tailPattern tail with
+            | Some keyEnv, Some valueEnv, Some tailEnv ->
+                Some
+                    (Map.empty
+                     |> Map.fold (fun acc k v -> Map.add k v acc) keyEnv
+                     |> Map.fold (fun acc k v -> Map.add k v acc) valueEnv
+                     |> Map.fold (fun acc k v -> Map.add k v acc) tailEnv)
+            | _ -> None
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty
@@ -292,6 +308,16 @@ module Eval =
                     | Some value -> value
                     | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                 | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
+        | EIndexGet (target, keyExpr, span) ->
+            let targetValue = evalExpr typeDefs env target
+            let keyValue = evalExpr typeDefs env keyExpr
+            match targetValue, keyValue with
+            | VStringMap mapValue, VString key ->
+                VOption (mapValue.TryFind key)
+            | VStringMap _, _ ->
+                raise (EvalException { Message = "Map index key must be string"; Span = span })
+            | _ ->
+                raise (EvalException { Message = "Index access requires a map value"; Span = span })
         | ECons (head, tail, span) ->
             let h = evalExpr typeDefs env head
             let t = evalExpr typeDefs env tail
@@ -303,7 +329,10 @@ module Eval =
             let bv = evalExpr typeDefs env b
             match av, bv with
             | VList xs, VList ys -> VList (xs @ ys)
-            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
+            | VStringMap left, VStringMap right ->
+                let merged = Map.fold (fun acc key value -> Map.add key value acc) right left
+                VStringMap merged
+            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists or maps"; Span = span })
         | EBinOp (op, a, b, span) ->
             let av = evalExpr typeDefs env a
             let bv = evalExpr typeDefs env b
@@ -362,7 +391,10 @@ module Eval =
             | "@" ->
                 match av, bv with
                 | VList xs, VList ys -> VList (xs @ ys)
-                | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
+                | VStringMap left, VStringMap right ->
+                    let merged = Map.fold (fun acc key value -> Map.add key value acc) right left
+                    VStringMap merged
+                | _ -> raise (EvalException { Message = "Both sides of '@' must be lists or maps"; Span = span })
             | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
         | ESome (value, _) -> VOption (Some (evalExpr typeDefs env value))
         | ENone _ -> VOption None
@@ -409,7 +441,7 @@ module Eval =
         |> Option.iter (fun name ->
             raise (EvalException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        let stdlibTyped = TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram())
+        let stdlibTyped = TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram ())
         let combinedProgram = stdlibTyped @ program
 
         let decls =

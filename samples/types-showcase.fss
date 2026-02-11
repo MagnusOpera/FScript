@@ -60,6 +60,13 @@ let mathScore =
 let hasScience = updated.Scores |> Map.containsKey "science"
 let formatAddressKey = "format_address"
 
+let mapPreview =
+    match updated.Scores with
+    | {} ->
+        "empty"
+    | { [subject] = score; ..remaining } ->
+        $"first={subject}:{score}, remaining={Map.count remaining}"
+
 let monthlyPrice =
     match subscription with
     | Free -> 0
@@ -71,6 +78,7 @@ print $"User: {updated.Name}"
 print $"City: {city}"
 print $"Math score: {mathScore}"
 print $"Has 'science': {hasScience}"
+print $"Map preview: {mapPreview}"
 print $"Subscription price: {monthlyPrice}"
 
 // Structural record equivalence showcase:

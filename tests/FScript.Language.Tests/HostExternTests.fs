@@ -20,6 +20,13 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some 1")
 
     [<Test>]
+    member _.``Map indexer is the primitive and Map.tryGet matches it`` () =
+        let script = "let m = { [\"a\"] = 1 }\n(m[\"a\"], Map.tryGet \"a\" m)"
+        match Helpers.evalWithExterns externs script with
+        | VTuple [ VOption (Some (VInt 1L)); VOption (Some (VInt 1L)) ] -> ()
+        | _ -> Assert.Fail("Expected indexer and Map.tryGet to both return Some 1")
+
+    [<Test>]
     member _.``Map.empty behaves as a value and cannot be invoked`` () =
         match Helpers.evalWithExterns externs "Map.empty |> Map.count" with
         | VInt 0L -> ()

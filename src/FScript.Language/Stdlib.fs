@@ -6,7 +6,8 @@ open System.Reflection
 module Stdlib =
     let private stdlibResourceNames =
         [ "FScript.Language.Stdlib.List.fss"
-          "FScript.Language.Stdlib.Option.fss" ]
+          "FScript.Language.Stdlib.Option.fss"
+          "FScript.Language.Stdlib.Map.fss" ]
 
     let private readResourceText (assembly: Assembly) (resourceName: string) =
         use stream = assembly.GetManifestResourceStream(resourceName)

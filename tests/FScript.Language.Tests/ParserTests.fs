@@ -200,6 +200,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected map literal with expression key")
 
     [<Test>]
+    member _.``Parses map indexer expression`` () =
+        let p = Helpers.parse "let m = { [\"a\"] = 1 }\nm[\"a\"]"
+        match p.[1] with
+        | SExpr (EIndexGet (EVar ("m", _), ELiteral (LString "a", _), _)) -> ()
+        | _ -> Assert.Fail("Expected map indexer expression")
+
+    [<Test>]
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
@@ -304,6 +311,20 @@ type ParserTests () =
         match p.[0] with
         | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter with inline record type")
+
+    [<Test>]
+    member _.``Parses match with empty map pattern`` () =
+        let p = Helpers.parse "match {} with\n    | {} -> 0\n    | _ -> 1"
+        match p.[0] with
+        | SExpr (EMatch (_, (PMapEmpty _, _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected empty map pattern")
+
+    [<Test>]
+    member _.``Parses match with map cons pattern`` () =
+        let p = Helpers.parse "match { [\"a\"] = 1 } with\n    | { [k] = v; ..tail } -> v\n    | {} -> 0"
+        match p.[0] with
+        | SExpr (EMatch (_, (PMapCons (_, _, _, _), _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected map cons pattern")
 
     [<Test>]
     member _.``Rejects multiline inline record type annotation`` () =

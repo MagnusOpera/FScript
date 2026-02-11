@@ -261,6 +261,24 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match on empty map pattern`` () =
+        let typed =
+            Helpers.infer
+                "match {} with\n    | {} -> 0\n    | _ -> 1"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers match on map cons pattern`` () =
+        let typed =
+            Helpers.infer
+                "let m = { [\"a\"] = 1 }\nmatch m with\n    | { [k] = v; ..tail } -> (k, v)\n    | {} -> (\"\", 0)"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TString; TInt ])
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Reports type error for unknown record field in pattern`` () =
         let act () =
             Helpers.infer

@@ -16,8 +16,6 @@
     <Compile Include="HashExternsTests.fs" />
     <Compile Include="GuidExternsTests.fs" />
     <Compile Include="PrintExternsTests.fs" />
-    <Compile Include="MapExternsTests.fs" />
-    <Compile Include="OptionExternsTests.fs" />
     <Compile Include="JsonExternsTests.fs" />
     <Compile Include="XmlExternsTests.fs" />
     <Compile Include="ScriptHostTests.fs" />
