@@ -200,6 +200,20 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected map literal with expression key")
 
     [<Test>]
+    member _.``Parses map literal with spread`` () =
+        let p = Helpers.parse "let tail = { [\"b\"] = 2 }\n{ [\"a\"] = 1; ..tail }"
+        match p.[1] with
+        | SExpr (EMap ([ MEKeyValue (_, _); MESpread _ ], _)) -> ()
+        | _ -> Assert.Fail("Expected map literal with spread")
+
+    [<Test>]
+    member _.``Parses map literal with spread only`` () =
+        let p = Helpers.parse "let tail = { [\"b\"] = 2 }\n{ ..tail }"
+        match p.[1] with
+        | SExpr (EMap ([ MESpread _ ], _)) -> ()
+        | _ -> Assert.Fail("Expected map literal with spread-only entry")
+
+    [<Test>]
     member _.``Parses map indexer expression`` () =
         let p = Helpers.parse "let m = { [\"a\"] = 1 }\nm[\"a\"]"
         match p.[1] with

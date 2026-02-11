@@ -21,7 +21,8 @@ let x =
   - `'a map`
 - Map values use native literals:
   - `{ ["a"] = 1; ["b"] = 2 }`
-- Runtime helpers are also available for map construction/updates (for example `Map.ofList`, `Map.add`).
+- Map update/merge is available directly in literals:
+  - `{ ["a"] = 1; ..tail }`
 - Function types use arrow syntax:
   - `int -> string`
   - `int -> int -> int`

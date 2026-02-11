@@ -56,7 +56,7 @@ and Expr =
     | ERange of Expr * Expr * Span
     | ETuple of Expr list * Span
     | ERecord of (string * Expr) list * Span
-    | EMap of (Expr * Expr) list * Span
+    | EMap of MapEntry list * Span
     | ERecordUpdate of Expr * (string * Expr) list * Span
     | EFieldGet of Expr * string * Span
     | EIndexGet of Expr * Expr * Span
@@ -72,6 +72,10 @@ and Expr =
 and InterpolatedPart =
     | IPText of string
     | IPExpr of Expr
+
+and MapEntry =
+    | MEKeyValue of Expr * Expr
+    | MESpread of Expr
 
 and Stmt =
     | SType of TypeDef

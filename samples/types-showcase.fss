@@ -59,6 +59,8 @@ let mathScore =
 
 let hasScience = updated.Scores |> Map.containsKey "science"
 let formatAddressKey = "format_address"
+let scienceKey = "science"
+let patchedScores = { ["science"] = 19; ..updated.Scores }
 
 let mapPreview =
     match updated.Scores with
@@ -78,6 +80,7 @@ print $"User: {updated.Name}"
 print $"City: {city}"
 print $"Math score: {mathScore}"
 print $"Has 'science': {hasScience}"
+print $"Patched science score: {patchedScores |> Map.tryGet scienceKey |> Option.defaultValue 0}"
 print $"Map preview: {mapPreview}"
 print $"Subscription price: {monthlyPrice}"
 

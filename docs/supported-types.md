@@ -22,6 +22,7 @@ This document specifies the value and type system used by the interpreter.
 - Native map literal syntax:
   - empty: `{}`
   - populated: `{ ["a"] = 1; ["b"] = 2 }`
+  - spread update: `{ ["a"] = 1; ..tail }`
   - multiline entries are supported in an indented block.
 - Keys are bracketed expressions and must have type `string` (for example `{ [keyExpr] = value }`).
 - Record literals and map literals share `{ ... }` braces:

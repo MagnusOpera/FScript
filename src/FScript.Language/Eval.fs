@@ -266,16 +266,31 @@ module Eval =
             |> Map.ofList
             |> VRecord
         | EMap (entries, _) ->
-            entries
-            |> List.fold (fun (acc: Map<string, Value>) (keyExpr, valueExpr) ->
-                match evalExpr typeDefs env keyExpr with
-                | VString key ->
-                    let value = evalExpr typeDefs env valueExpr
-                    acc.Add(key, value)
-                | _ ->
-                    // Type checker guarantees string keys for map literals.
-                    raise (EvalException { Message = "Map literal keys must be strings"; Span = Ast.spanOfExpr keyExpr })) (Map.empty<string, Value>)
-            |> VStringMap
+            let mergeWithLeftPrecedence (left: Map<string, Value>) (right: Map<string, Value>) =
+                right
+                |> Map.fold (fun (state: Map<string, Value>) key value ->
+                    if state.ContainsKey key then state else Map.add key value state) left
+
+            let evaluated =
+                entries
+                |> List.fold (fun (acc: Map<string, Value>) entry ->
+                    match entry with
+                    | MEKeyValue (keyExpr, valueExpr) ->
+                        match evalExpr typeDefs env keyExpr with
+                        | VString key ->
+                            let value = evalExpr typeDefs env valueExpr
+                            acc.Add(key, value)
+                        | _ ->
+                            // Type checker guarantees string keys for map literals.
+                            raise (EvalException { Message = "Map literal keys must be strings"; Span = Ast.spanOfExpr keyExpr })
+                    | MESpread spreadExpr ->
+                        match evalExpr typeDefs env spreadExpr with
+                        | VStringMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
+                        | _ ->
+                            // Type checker guarantees spread operands are maps.
+                            raise (EvalException { Message = "Map spread value must be a map"; Span = Ast.spanOfExpr spreadExpr }))
+                    (Map.empty<string, Value>)
+            VStringMap evaluated
         | ERecordUpdate (target, updates, span) ->
             match evalExpr typeDefs env target with
             | VRecord fields ->
@@ -329,10 +344,7 @@ module Eval =
             let bv = evalExpr typeDefs env b
             match av, bv with
             | VList xs, VList ys -> VList (xs @ ys)
-            | VStringMap left, VStringMap right ->
-                let merged = Map.fold (fun acc key value -> Map.add key value acc) right left
-                VStringMap merged
-            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists or maps"; Span = span })
+            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
         | EBinOp (op, a, b, span) ->
             let av = evalExpr typeDefs env a
             let bv = evalExpr typeDefs env b
@@ -391,10 +403,7 @@ module Eval =
             | "@" ->
                 match av, bv with
                 | VList xs, VList ys -> VList (xs @ ys)
-                | VStringMap left, VStringMap right ->
-                    let merged = Map.fold (fun acc key value -> Map.add key value acc) right left
-                    VStringMap merged
-                | _ -> raise (EvalException { Message = "Both sides of '@' must be lists or maps"; Span = span })
+                | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
             | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
         | ESome (value, _) -> VOption (Some (evalExpr typeDefs env value))
         | ENone _ -> VOption None

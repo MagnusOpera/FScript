@@ -51,6 +51,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Maps:
   - empty `{}`
   - literal `{ ["a"] = 1; ["b"] = 2 }`
+  - update/merge with spread `{ ["a"] = 1; ..tail }`
   - map entries always use bracketed keys (`[expr] = value`)
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
@@ -79,7 +80,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   ]
   ```
   - range `[a..b]`
-  - `::`, `@`
+  - `::`, `@` (list-only)
   - if elements start on the next line, `[` must be on its own line
 - Tuples:
   - `(a, b, c)`

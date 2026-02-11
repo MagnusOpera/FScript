@@ -619,19 +619,21 @@ module Parser =
                 if stream.Match(RBrace) then
                     EMap([], mkSpanFrom lb.Span lb.Span)
                 else
-                    if stream.Peek().Kind = LBracket then
+                    if stream.Peek().Kind = LBracket || stream.Peek().Kind = RangeDots then
                         let parseMapEntry () =
-                            stream.Expect(LBracket, "Expected '[' in map entry key") |> ignore
-                            let keyExpr = parseExpr()
-                            stream.Expect(RBracket, "Expected ']' after map entry key") |> ignore
-                            stream.SkipNewlines()
-                            stream.Expect(Equals, "Expected '=' in map entry") |> ignore
-                            let value = parseEntryExpr()
-                            keyExpr, value
+                            if stream.Match(RangeDots) then
+                                MESpread (parseEntryExpr())
+                            else
+                                stream.Expect(LBracket, "Expected '[' in map entry key") |> ignore
+                                let keyExpr = parseExpr()
+                                stream.Expect(RBracket, "Expected ']' after map entry key") |> ignore
+                                stream.SkipNewlines()
+                                stream.Expect(Equals, "Expected '=' in map entry") |> ignore
+                                let value = parseEntryExpr()
+                                MEKeyValue (keyExpr, value)
 
-                        let entries = ResizeArray<Expr * Expr>()
-                        let firstKey, firstValue = parseMapEntry()
-                        entries.Add(firstKey, firstValue)
+                        let entries = ResizeArray<MapEntry>()
+                        entries.Add(parseMapEntry())
 
                         let mutable keepParsing = true
                         while keepParsing do
@@ -645,8 +647,7 @@ module Parser =
                                 if stream.Peek().Kind = RBrace then
                                     keepParsing <- false
                                 else
-                                    let key, value = parseMapEntry()
-                                    entries.Add(key, value)
+                                    entries.Add(parseMapEntry())
                             else
                                 if stream.Peek().Kind = RBrace then
                                     keepParsing <- false

@@ -93,6 +93,19 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected empty map value")
 
     [<Test>]
+    member _.``Evaluates map literal spread with left precedence`` () =
+        match Helpers.eval "let tail = { [\"a\"] = 2; [\"b\"] = 3 }\n{ [\"a\"] = 1; ..tail }" with
+        | VStringMap m ->
+            m.Count |> should equal 2
+            match m.["a"] with
+            | VInt 1L -> ()
+            | _ -> Assert.Fail("Expected key a to map to 1")
+            match m.["b"] with
+            | VInt 3L -> ()
+            | _ -> Assert.Fail("Expected key b to map to 3")
+        | _ -> Assert.Fail("Expected map value")
+
+    [<Test>]
     member _.``Evaluates map indexer lookup as option`` () =
         match Helpers.eval "let m = { [\"a\"] = 1 }\nm[\"a\"]" with
         | VOption (Some (VInt 1L)) -> ()
@@ -101,6 +114,11 @@ type EvalTests () =
         match Helpers.eval "let m = { [\"a\"] = 1 }\nm[\"b\"]" with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected None for missing map key")
+
+    [<Test>]
+    member _.``Rejects map append via append operator`` () =
+        let act () = Helpers.eval "{ [\"a\"] = 1 } @ { [\"b\"] = 2 }" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Evaluates record copy-update immutably`` () =

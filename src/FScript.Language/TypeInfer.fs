@@ -517,18 +517,26 @@ module TypeInfer =
         | EMap (entries, span) ->
             let valueType = Types.freshVar()
             let mutable sAcc = emptySubst
-            for (keyExpr, valueExpr) in entries do
-                let envForKey = applyEnv sAcc env
-                let sKey, tKey, _ = inferExpr typeDefs constructors envForKey keyExpr
-                let sKeyString = unify typeDefs (applyType sKey tKey) TString span
-                let sAfterKey = compose sKeyString (compose sKey sAcc)
+            for entry in entries do
+                match entry with
+                | MEKeyValue (keyExpr, valueExpr) ->
+                    let envForKey = applyEnv sAcc env
+                    let sKey, tKey, _ = inferExpr typeDefs constructors envForKey keyExpr
+                    let sKeyString = unify typeDefs (applyType sKey tKey) TString (Ast.spanOfExpr keyExpr)
+                    let sAfterKey = compose sKeyString (compose sKey sAcc)
 
-                let envForValue = applyEnv sAfterKey env
-                let sValue, tValue, _ = inferExpr typeDefs constructors envForValue valueExpr
-                let expectedValueType = applyType sValue (applyType sAfterKey valueType)
-                let sValueType = unify typeDefs expectedValueType tValue span
+                    let envForValue = applyEnv sAfterKey env
+                    let sValue, tValue, _ = inferExpr typeDefs constructors envForValue valueExpr
+                    let expectedValueType = applyType sValue (applyType sAfterKey valueType)
+                    let sValueType = unify typeDefs expectedValueType tValue (Ast.spanOfExpr valueExpr)
 
-                sAcc <- compose sValueType (compose sValue sAfterKey)
+                    sAcc <- compose sValueType (compose sValue sAfterKey)
+                | MESpread spreadExpr ->
+                    let envForSpread = applyEnv sAcc env
+                    let sSpread, tSpread, _ = inferExpr typeDefs constructors envForSpread spreadExpr
+                    let expectedSpreadType = TStringMap (applyType sSpread (applyType sAcc valueType))
+                    let sSpreadMap = unify typeDefs (applyType sSpread tSpread) expectedSpreadType (Ast.spanOfExpr spreadExpr)
+                    sAcc <- compose sSpreadMap (compose sSpread sAcc)
 
             let tRes = TStringMap (applyType sAcc valueType)
             sAcc, tRes, asTyped expr tRes
@@ -614,9 +622,11 @@ module TypeInfer =
                 let s1, t1, _ = inferExpr typeDefs constructors env a
                 let env2 = applyEnv s1 env
                 let s2, t2, _ = inferExpr typeDefs constructors env2 b
-                let s3 = unify typeDefs (applyType s2 t1) t2 span
-                let s = compose s3 (compose s2 s1)
-                let tRes = applyType s t2
+                let tv = Types.freshVar()
+                let s3 = unify typeDefs (applyType s2 t1) (TList tv) span
+                let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
+                let s = compose s4 (compose s3 (compose s2 s1))
+                let tRes = TList (applyType s tv)
                 s, tRes, asTyped expr tRes
             | _ ->
                 let s1, t1, _ = inferExpr typeDefs constructors env a
@@ -655,9 +665,12 @@ module TypeInfer =
             let s1, t1, _ = inferExpr typeDefs constructors env a
             let env2 = applyEnv s1 env
             let s2, t2, _ = inferExpr typeDefs constructors env2 b
-            let s3 = unify typeDefs (applyType s2 t1) t2 span
-            let s = compose s3 (compose s2 s1)
-            s, t2, asTyped expr t2
+            let tv = Types.freshVar()
+            let s3 = unify typeDefs (applyType s2 t1) (TList tv) span
+            let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
+            let s = compose s4 (compose s3 (compose s2 s1))
+            let tRes = TList (applyType s tv)
+            s, tRes, asTyped expr tRes
 
     let private envFromExterns (externs: ExternalFunction list) : Map<string, Scheme> =
         let builtins =

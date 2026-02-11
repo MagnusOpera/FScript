@@ -15,9 +15,9 @@ let rec add key value values =
     | {} -> { [key] = value }
     | { [currentKey] = currentValue; ..tail } ->
         if currentKey = key then
-            { [key] = value } @ tail
+            { [key] = value; ..tail }
         else
-            { [currentKey] = currentValue } @ add key value tail
+            { [currentKey] = currentValue; ..(add key value tail) }
 
 let ofList pairs =
     let rec loop remaining acc =

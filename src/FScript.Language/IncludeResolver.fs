@@ -126,7 +126,12 @@ module IncludeResolver =
             | ERecord (fields, span) ->
                 ERecord(fields |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EMap (entries, span) ->
-                EMap(entries |> List.map (fun (k, v) -> rewriteExpr boundNames k, rewriteExpr boundNames v), span)
+                let rewritten =
+                    entries
+                    |> List.map (function
+                        | MEKeyValue (k, v) -> MEKeyValue (rewriteExpr boundNames k, rewriteExpr boundNames v)
+                        | MESpread e -> MESpread (rewriteExpr boundNames e))
+                EMap(rewritten, span)
             | ERecordUpdate (target, updates, span) ->
                 ERecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EFieldGet (target, fieldName, span) ->

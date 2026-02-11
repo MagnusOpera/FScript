@@ -475,8 +475,20 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers map literal with spread`` () =
+        let typed = Helpers.infer "let tail = { [\"b\"] = 2 }\n{ [\"a\"] = 1; ..tail }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Reports type error for mixed map literal values`` () =
         let act () = Helpers.infer "{ [\"a\"] = 1; [\"b\"] = \"x\" }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for map append with append operator`` () =
+        let act () = Helpers.infer "{ [\"a\"] = 1 } @ { [\"b\"] = 2 }" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]
