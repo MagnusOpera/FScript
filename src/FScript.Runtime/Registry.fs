@@ -32,27 +32,5 @@ module Registry =
           MapExterns.iter
           MapExterns.containsKey
           MapExterns.remove
-          ListExterns.empty
-          ListExterns.map
-          ListExterns.choose
-          ListExterns.collect
-          ListExterns.contains
-          ListExterns.distinct
-          ListExterns.exists
-          ListExterns.fold
-          ListExterns.filter
-          ListExterns.iter
-          ListExterns.rev
-          ListExterns.length
-          ListExterns.tryFind
-          ListExterns.tryGet
-          ListExterns.tryHead
-          ListExterns.tail
-          ListExterns.append
-          OptionExterns.defaultValue
-          OptionExterns.defaultWith
-          OptionExterns.isNone
-          OptionExterns.isSome
-          OptionExterns.map
           JsonExterns.deserialize
           XmlExterns.values ]

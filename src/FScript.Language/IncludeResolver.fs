@@ -163,6 +163,70 @@ module IncludeResolver =
             | SExpr expr -> SExpr (rewriteExpr Set.empty expr)
             | stmt -> stmt)
 
+    let private expandProgram
+        (rootDirectoryWithSeparator: string)
+        (fileSpan: string -> Span)
+        (loadFileRef: (string list -> bool -> string -> Program) ref)
+        (stack: string list)
+        (isMainFile: bool)
+        (currentFile: string)
+        (program: Program)
+        : Program =
+        let mutable seenCode = false
+        let mutable moduleDecl: (string * Span) option = None
+        let includes = ResizeArray<string * Span>()
+        let localCode = ResizeArray<Stmt>()
+
+        for stmt in program do
+            match stmt with
+            | SInclude(includePath, span) ->
+                if seenCode || moduleDecl.IsSome then
+                    raise (ParseException { Message = "'#include' directives must appear before module declaration and code"; Span = span })
+                includes.Add(includePath, span)
+            | SModuleDecl(moduleName, span) ->
+                if isMainFile then
+                    raise (ParseException { Message = "'module' is not allowed in the main script"; Span = span })
+                if seenCode then
+                    raise (ParseException { Message = "'module' declaration must appear before code"; Span = span })
+                match moduleDecl with
+                | Some (_, previousSpan) ->
+                    raise (ParseException { Message = "Only one 'module' declaration is allowed per file"; Span = previousSpan })
+                | None ->
+                    moduleDecl <- Some(moduleName, span)
+            | _ ->
+                seenCode <- true
+                localCode.Add(stmt)
+
+        let includedStatements =
+            includes
+            |> Seq.toList
+            |> List.collect (fun (includePath, span) ->
+                let resolvedPath = resolveIncludePath currentFile includePath rootDirectoryWithSeparator span
+                (!loadFileRef) stack false resolvedPath)
+
+        let localStatements = localCode |> Seq.toList
+        let rewrittenLocalStatements =
+            match moduleDecl with
+            | Some (moduleName, _) -> rewriteModuleScopedStatements moduleName localStatements
+            | None -> localStatements
+
+        includedStatements @ rewrittenLocalStatements
+
+    let parseIncludedSource (sourceName: string) (source: string) : Program =
+        let program = Parser.parseProgramWithSourceName (Some sourceName) source
+        let dummyRoot = normalizeDirectoryPath "."
+        let fileSpan path =
+            let p = Span.posInFile path 1 1
+            Span.mk p p
+        let loadRef = ref (fun (_: string list) (_: bool) (_: string) -> ([]: Program))
+        if program |> List.exists (function | SInclude _ -> true | _ -> false) then
+            let includeSpan =
+                program
+                |> List.choose (function | SInclude(_, span) -> Some span | _ -> None)
+                |> List.head
+            raise (ParseException { Message = "Embedded stdlib source does not support '#include'"; Span = includeSpan })
+        expandProgram dummyRoot fileSpan loadRef [] false sourceName program
+
     let parseProgramFromFile (rootDirectory: string) (entryFile: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -187,47 +251,7 @@ module IncludeResolver =
                 visited.Add(sandboxedPath) |> ignore
                 let source = File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
-                expandProgram (sandboxedPath :: stack) isMainFile sandboxedPath program
-
-        and expandProgram (stack: string list) (isMainFile: bool) (currentFile: string) (program: Program) : Program =
-            let mutable seenCode = false
-            let mutable moduleDecl: (string * Span) option = None
-            let includes = ResizeArray<string * Span>()
-            let localCode = ResizeArray<Stmt>()
-
-            for stmt in program do
-                match stmt with
-                | SInclude(includePath, span) ->
-                    if seenCode || moduleDecl.IsSome then
-                        raise (ParseException { Message = "'#include' directives must appear before module declaration and code"; Span = span })
-                    includes.Add(includePath, span)
-                | SModuleDecl(moduleName, span) ->
-                    if isMainFile then
-                        raise (ParseException { Message = "'module' is not allowed in the main script"; Span = span })
-                    if seenCode then
-                        raise (ParseException { Message = "'module' declaration must appear before code"; Span = span })
-                    match moduleDecl with
-                    | Some (_, previousSpan) ->
-                        raise (ParseException { Message = "Only one 'module' declaration is allowed per file"; Span = previousSpan })
-                    | None ->
-                        moduleDecl <- Some(moduleName, span)
-                | _ ->
-                    seenCode <- true
-                    localCode.Add(stmt)
-
-            let includedStatements =
-                includes
-                |> Seq.toList
-                |> List.collect (fun (includePath, span) ->
-                    let resolvedPath = resolveIncludePath currentFile includePath rootDirectoryWithSeparator span
-                    loadFile stack false resolvedPath)
-
-            let localStatements = localCode |> Seq.toList
-            let rewrittenLocalStatements =
-                match moduleDecl with
-                | Some (moduleName, _) -> rewriteModuleScopedStatements moduleName localStatements
-                | None -> localStatements
-
-            includedStatements @ rewrittenLocalStatements
+                let loadRef = ref loadFile
+                expandProgram rootDirectoryWithSeparator fileSpan loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
 
         loadFile [] true entryFile

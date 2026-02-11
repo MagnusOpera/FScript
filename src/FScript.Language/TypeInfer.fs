@@ -640,7 +640,14 @@ module TypeInfer =
         externs
         |> List.fold (fun acc ext -> acc.Add(ext.Name, ext.Scheme)) builtins
 
-    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+    let private topLevelBindingNames (program: Program) : string list =
+        program
+        |> List.collect (function
+            | SLet(name, _, _, _, _, _) -> [ name ]
+            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
+            | _ -> [])
+
+    let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
         let decls =
             program
             |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None)
@@ -767,6 +774,23 @@ module TypeInfer =
                 env <- applyEnv s env
                 typed.Add(TSExpr typedExpr)
         typed |> Seq.toList
+
+    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+        let stdlibProgram = Stdlib.loadProgram ()
+        let reserved = Stdlib.reservedNames ()
+
+        externs
+        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
+        |> Option.iter (fun ext ->
+            raise (TypeException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        topLevelBindingNames program
+        |> List.tryFind (fun name -> Set.contains name reserved)
+        |> Option.iter (fun name ->
+            raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        let typedCombined = inferProgramWithExternsRaw externs (stdlibProgram @ program)
+        typedCombined |> List.skip (List.length stdlibProgram)
 
     let inferProgram (program: Program) : TypedProgram =
         inferProgramWithExterns [] program

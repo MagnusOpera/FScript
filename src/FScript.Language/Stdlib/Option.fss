@@ -1,0 +1,26 @@
+module Option
+
+let defaultValue fallback value =
+    match value with
+    | Some current -> current
+    | None -> fallback
+
+let defaultWith fallback value =
+    match value with
+    | Some current -> current
+    | None -> fallback ()
+
+let isNone value =
+    match value with
+    | None -> true
+    | Some _ -> false
+
+let isSome value =
+    match value with
+    | None -> false
+    | Some _ -> true
+
+let map mapper value =
+    match value with
+    | Some current -> Some (mapper current)
+    | None -> None

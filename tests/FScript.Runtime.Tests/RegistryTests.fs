@@ -38,27 +38,5 @@ type RegistryTests () =
         names.Contains "Map.map" |> should equal true
         names.Contains "Map.iter" |> should equal true
         names.Contains "Map.remove" |> should equal true
-        names.Contains "List.empty" |> should equal true
-        names.Contains "List.map" |> should equal true
-        names.Contains "List.choose" |> should equal true
-        names.Contains "List.collect" |> should equal true
-        names.Contains "List.contains" |> should equal true
-        names.Contains "List.distinct" |> should equal true
-        names.Contains "List.exists" |> should equal true
-        names.Contains "List.fold" |> should equal true
-        names.Contains "List.filter" |> should equal true
-        names.Contains "List.iter" |> should equal true
-        names.Contains "List.rev" |> should equal true
-        names.Contains "List.length" |> should equal true
-        names.Contains "List.tryFind" |> should equal true
-        names.Contains "List.tryGet" |> should equal true
-        names.Contains "List.tryHead" |> should equal true
-        names.Contains "List.tail" |> should equal true
-        names.Contains "List.append" |> should equal true
-        names.Contains "Option.defaultValue" |> should equal true
-        names.Contains "Option.defaultWith" |> should equal true
-        names.Contains "Option.isNone" |> should equal true
-        names.Contains "Option.isSome" |> should equal true
-        names.Contains "Option.map" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Xml.values" |> should equal true

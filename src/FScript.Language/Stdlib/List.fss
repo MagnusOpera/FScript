@@ -1,0 +1,112 @@
+module List
+
+let empty = []
+
+let map mapper values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> []
+        | head :: tail -> mapper head :: loop tail
+    loop values
+
+let iter iterator values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> ()
+        | head :: tail ->
+            iterator head
+            loop tail
+    loop values
+
+let choose chooser values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> []
+        | head :: tail ->
+            match chooser head with
+            | Some value -> value :: loop tail
+            | None -> loop tail
+    loop values
+
+let collect collector values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> []
+        | head :: tail -> collector head @ loop tail
+    loop values
+
+let exists predicate values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> false
+        | head :: tail ->
+            if predicate head then true else loop tail
+    loop values
+
+let contains needle values =
+    values |> exists (fun value -> value = needle)
+
+let rev values =
+    let rec loop remaining acc =
+        match remaining with
+        | [] -> acc
+        | head :: tail -> loop tail (head :: acc)
+    loop values []
+
+let distinct values =
+    let rec loop remaining seen =
+        match remaining with
+        | [] -> rev seen
+        | head :: tail ->
+            if contains head seen then
+                loop tail seen
+            else
+                loop tail (head :: seen)
+    loop values []
+
+let fold folder state values =
+    let rec loop acc remaining =
+        match remaining with
+        | [] -> acc
+        | head :: tail -> loop (folder acc head) tail
+    loop state values
+
+let filter predicate values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> []
+        | head :: tail ->
+            if predicate head then head :: loop tail else loop tail
+    loop values
+
+let length values =
+    fold (fun count _ -> count + 1) 0 values
+
+let tryFind predicate values =
+    let rec loop remaining =
+        match remaining with
+        | [] -> None
+        | head :: tail ->
+            if predicate head then Some head else loop tail
+    loop values
+
+let tryGet predicate values =
+    let rec loop index remaining =
+        match remaining with
+        | [] -> None
+        | head :: tail ->
+            if predicate head then Some index else loop (index + 1) tail
+    loop 0 values
+
+let tryHead values =
+    match values with
+    | [] -> None
+    | head :: _ -> Some head
+
+let tail values =
+    match values with
+    | [] -> raise "List.tail expects a non-empty list"
+    | _ :: rest -> rest
+
+let append left right =
+    left @ right

@@ -390,12 +390,32 @@ module Eval =
         args |> List.fold (fun state arg -> applyFunctionValue evalExpr typeDefs span state arg) fnValue
 
     let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
+        let reserved = Stdlib.reservedNames ()
+        let unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+
+        externs
+        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
+        |> Option.iter (fun ext ->
+            raise (EvalException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        program
+        |> List.tryPick (function
+            | TypeInfer.TSLet(name, _, _, _, _, _) when Set.contains name reserved -> Some name
+            | TypeInfer.TSLetRecGroup(bindings, _, _) ->
+                bindings
+                |> List.tryFind (fun (name, _, _, _) -> Set.contains name reserved)
+                |> Option.map (fun (name, _, _, _) -> name)
+            | _ -> None)
+        |> Option.iter (fun name ->
+            raise (EvalException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        let stdlibTyped = TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram())
+        let combinedProgram = stdlibTyped @ program
+
         let decls =
-            program
+            combinedProgram
             |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None)
             |> Map.ofList
-
-        let unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
 
         let rec fromRef (stack: string list) (tref: TypeRef) =
             match tref with
@@ -486,7 +506,7 @@ module Eval =
             constructorValues
             |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
         let mutable lastValue = VUnit
-        for stmt in program do
+        for stmt in combinedProgram do
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
