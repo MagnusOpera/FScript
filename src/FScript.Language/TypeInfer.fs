@@ -215,23 +215,38 @@ module TypeInfer =
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
             env, TRecord fieldTypes
-        | PMapEmpty _ ->
-            let tv = Types.freshVar()
-            Map.empty, TStringMap tv
-        | PMapCons (keyPattern, valuePattern, tailPattern, span) ->
-            let keyEnv, keyType = inferPattern typeDefs constructors keyPattern
-            let valueEnv, valueType = inferPattern typeDefs constructors valuePattern
-            let tailEnv, tailType = inferPattern typeDefs constructors tailPattern
-            let keySubst = unify typeDefs keyType TString span
-            let tailExpected = TStringMap (applyType keySubst valueType)
-            let tailSubst = unify typeDefs (applyType keySubst tailType) tailExpected span
-            let s = compose tailSubst keySubst
-            let mergedEnv =
-                keyEnv
-                |> Map.fold (fun acc k v -> Map.add k v acc) valueEnv
-                |> Map.fold (fun acc k v -> Map.add k v acc) tailEnv
-                |> Map.map (fun _ t -> applyType s t)
-            mergedEnv, applyType s tailExpected
+        | PMap (clauses, tailPattern, span) ->
+            let valueType = Types.freshVar()
+            let mutable sAcc = emptySubst
+            let mutable envAcc : Map<string, Type> = Map.empty
+
+            for (keyPattern, valuePattern) in clauses do
+                let keyEnv, keyType = inferPattern typeDefs constructors keyPattern
+                let valueEnv, currentValueType = inferPattern typeDefs constructors valuePattern
+
+                let sKey = unify typeDefs (applyType sAcc keyType) TString span
+                sAcc <- compose sKey sAcc
+
+                let sValue = unify typeDefs (applyType sAcc currentValueType) (applyType sAcc valueType) span
+                sAcc <- compose sValue sAcc
+
+                let mergedClauseEnv =
+                    keyEnv
+                    |> Map.fold (fun acc k v -> Map.add k v acc) valueEnv
+                    |> Map.map (fun _ t -> applyType sAcc t)
+
+                envAcc <- mergedClauseEnv |> Map.fold (fun acc k v -> Map.add k v acc) envAcc
+
+            match tailPattern with
+            | Some tail ->
+                let tailEnv, tailType = inferPattern typeDefs constructors tail
+                let expectedTailType = TStringMap (applyType sAcc valueType)
+                let sTail = unify typeDefs (applyType sAcc tailType) expectedTailType span
+                sAcc <- compose sTail sAcc
+                envAcc <- tailEnv |> Map.map (fun _ t -> applyType sAcc t) |> Map.fold (fun acc k v -> Map.add k v acc) envAcc
+            | None -> ()
+
+            envAcc |> Map.map (fun _ t -> applyType sAcc t), TStringMap (applyType sAcc valueType)
         | PSome (p, _) ->
             let env, t = inferPattern typeDefs constructors p
             env, TOption t

@@ -13,11 +13,10 @@ let containsKey key values =
 let rec add key value values =
     match values with
     | {} -> { [key] = value }
+    | { [currentKey] = _; ..tail } when currentKey = key ->
+        { [key] = value; ..tail }
     | { [currentKey] = currentValue; ..tail } ->
-        if currentKey = key then
-            { [key] = value; ..tail }
-        else
-            { [currentKey] = currentValue; ..(add key value tail) }
+        { [currentKey] = currentValue; ..(add key value tail) }
 
 let ofList pairs =
     let rec loop remaining acc =
@@ -64,10 +63,10 @@ let iter iterator values =
         ()
     fold folder () values
 
-let remove key values =
-    let folder acc currentKey value =
-        if currentKey = key then
-            acc
-        else
-            add currentKey value acc
-    fold folder {} values
+let rec remove key values =
+    match values with
+    | {} -> {}
+    | { [currentKey] = _; ..tail } when currentKey = key ->
+        tail
+    | { [currentKey] = currentValue; ..tail } ->
+        { [currentKey] = currentValue; ..(remove key tail) }

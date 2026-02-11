@@ -330,15 +330,22 @@ type ParserTests () =
     member _.``Parses match with empty map pattern`` () =
         let p = Helpers.parse "match {} with\n    | {} -> 0\n    | _ -> 1"
         match p.[0] with
-        | SExpr (EMatch (_, (PMapEmpty _, _, _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PMap ([], None, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected empty map pattern")
 
     [<Test>]
     member _.``Parses match with map cons pattern`` () =
         let p = Helpers.parse "match { [\"a\"] = 1 } with\n    | { [k] = v; ..tail } -> v\n    | {} -> 0"
         match p.[0] with
-        | SExpr (EMatch (_, (PMapCons (_, _, _, _), _, _, _) :: _, _)) -> ()
+        | SExpr (EMatch (_, (PMap ([_], Some _, _), _, _, _) :: _, _)) -> ()
         | _ -> Assert.Fail("Expected map cons pattern")
+
+    [<Test>]
+    member _.``Parses match with map multi-key pattern without tail`` () =
+        let p = Helpers.parse "match { [\"a\"] = 1; [\"b\"] = 2 } with\n    | { [\"a\"] = x; [\"b\"] = y } -> x\n    | _ -> 0"
+        match p.[0] with
+        | SExpr (EMatch (_, (PMap ([_; _], None, _), _, _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected two-key map pattern without tail")
 
     [<Test>]
     member _.``Parses match case guard`` () =

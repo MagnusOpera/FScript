@@ -82,6 +82,78 @@ module Eval =
         | _ -> false
 
     let rec private patternMatch (pat: Pattern) (value: Value) : Env option =
+        let mergeBindings (left: Env) (right: Env) : Env option =
+            let mutable ok = true
+            let mutable merged = left
+            for KeyValue(k, v) in right do
+                match merged.TryFind k with
+                | Some existing when not (valueEquals existing v) ->
+                    ok <- false
+                | Some _ -> ()
+                | None -> merged <- Map.add k v merged
+            if ok then Some merged else None
+
+        let rec matchMapClauses (hasExplicitClauses: bool) (clauses: (Pattern * Pattern) list) (tailPattern: Pattern option) (remaining: Map<string, Value>) (envAcc: Env) : Env option =
+            let applyTail () =
+                match tailPattern with
+                | Some tail ->
+                    match patternMatch tail (VStringMap remaining) with
+                    | Some tailEnv -> mergeBindings envAcc tailEnv
+                    | None -> None
+                | None ->
+                    if hasExplicitClauses || remaining.IsEmpty then Some envAcc else None
+
+            match clauses with
+            | [] -> applyTail ()
+            | (keyPattern, valuePattern) :: rest ->
+                match keyPattern with
+                | PVar (name, _) when not (envAcc.ContainsKey name) ->
+                    if remaining.IsEmpty then None
+                    else
+                        let head = remaining |> Seq.head
+                        let key = head.Key
+                        let value = head.Value
+                        let nextRemaining = remaining.Remove key
+                        match patternMatch keyPattern (VString key), patternMatch valuePattern value with
+                        | Some keyEnv, Some valueEnv ->
+                            match mergeBindings envAcc keyEnv with
+                            | Some merged1 ->
+                                match mergeBindings merged1 valueEnv with
+                                | Some merged2 -> matchMapClauses hasExplicitClauses rest tailPattern nextRemaining merged2
+                                | None -> None
+                            | None -> None
+                        | _ -> None
+                | PVar (name, _) ->
+                    match envAcc.TryFind name with
+                    | Some (VString targetKey) when remaining.ContainsKey targetKey ->
+                        let value = remaining.[targetKey]
+                        match patternMatch valuePattern value with
+                        | Some valueEnv ->
+                            match mergeBindings envAcc valueEnv with
+                            | Some merged -> matchMapClauses hasExplicitClauses rest tailPattern (remaining.Remove targetKey) merged
+                            | None -> None
+                        | None -> None
+                    | _ -> None
+                | _ ->
+                    let tryKey (kv: System.Collections.Generic.KeyValuePair<string, Value>) : (string * Env) option =
+                        match patternMatch keyPattern (VString kv.Key) with
+                        | Some keyEnv ->
+                            match mergeBindings envAcc keyEnv with
+                            | Some merged1 ->
+                                match patternMatch valuePattern kv.Value with
+                                | Some valueEnv ->
+                                    match mergeBindings merged1 valueEnv with
+                                    | Some merged2 -> Some (kv.Key, merged2)
+                                    | None -> None
+                                | None -> None
+                            | None -> None
+                        | None -> None
+
+                    remaining
+                    |> Seq.tryPick tryKey
+                    |> Option.bind (fun (matchedKey, mergedEnv) ->
+                        matchMapClauses hasExplicitClauses rest tailPattern (remaining.Remove matchedKey) mergedEnv)
+
         match pat, value with
         | PWildcard _, _ -> Some Map.empty
         | PVar (name, _), v -> Some (Map.ofList [ name, v ])
@@ -109,22 +181,8 @@ module Eval =
                     | Some next -> Some (Map.fold (fun state k v -> Map.add k v state) acc next)
                     | None -> None
                 | _ -> None)
-        | PMapEmpty _, VStringMap values when values.IsEmpty ->
-            Some Map.empty
-        | PMapCons (keyPattern, valuePattern, tailPattern, _), VStringMap values when not values.IsEmpty ->
-            let key, value =
-                values
-                |> Seq.head
-                |> fun kv -> kv.Key, kv.Value
-            let tail = VStringMap (values.Remove key)
-            match patternMatch keyPattern (VString key), patternMatch valuePattern value, patternMatch tailPattern tail with
-            | Some keyEnv, Some valueEnv, Some tailEnv ->
-                Some
-                    (Map.empty
-                     |> Map.fold (fun acc k v -> Map.add k v acc) keyEnv
-                     |> Map.fold (fun acc k v -> Map.add k v acc) valueEnv
-                     |> Map.fold (fun acc k v -> Map.add k v acc) tailEnv)
-            | _ -> None
+        | PMap (clauses, tailPattern, _), VStringMap values ->
+            matchMapClauses (not clauses.IsEmpty) clauses tailPattern values Map.empty
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
         | PNone _, VOption None -> Some Map.empty

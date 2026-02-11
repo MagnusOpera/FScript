@@ -192,6 +192,21 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected map cons pattern to expose head and tail")
 
     [<Test>]
+    member _.``Evaluates match on map literal key with tail`` () =
+        let src = "let values = { [\"toto\"] = 42; [\"titi\"] = 666; [\"tata\"] = 123 }\nmatch values with\n| { [\"toto\"] = v1; ..tail } -> v1\n| _ -> 0"
+        Helpers.eval src |> assertInt 42L
+
+    [<Test>]
+    member _.``Evaluates match on map two literal keys with tail`` () =
+        let src = "let values = { [\"toto\"] = 42; [\"titi\"] = 666; [\"tata\"] = 123 }\nmatch values with\n| { [\"toto\"] = v1; [\"titi\"] = v2; ..tail } -> v1 + v2\n| _ -> 0"
+        Helpers.eval src |> assertInt 708L
+
+    [<Test>]
+    member _.``Evaluates match on map two literal keys without tail`` () =
+        let src = "let values = { [\"toto\"] = 42; [\"titi\"] = 666; [\"tata\"] = 123 }\nmatch values with\n| { [\"toto\"] = v1; [\"titi\"] = v2 } -> v1 + v2\n| _ -> 0"
+        Helpers.eval src |> assertInt 708L
+
+    [<Test>]
     member _.``Evaluates match with map guard for removal`` () =
         let src =
             "let remove k m =\n" +

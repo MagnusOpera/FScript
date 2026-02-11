@@ -36,6 +36,11 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `match expr with | ...`
   - case guards: `| pattern when condition -> expr`
   - record patterns in cases: `{ Field = pattern; ... }`
+  - map patterns in cases support keyed lookup and extraction:
+    - keyed lookup: `{ ["key"] = v }`
+    - multiple keys: `{ ["a"] = x; ["b"] = y }`
+    - optional tail capture: `{ ["a"] = x; ..tail }`
+    - dynamic extraction (preserved): `{ [k] = v; ..tail }`
   - union case patterns in cases: `Case` and `Case pattern`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`

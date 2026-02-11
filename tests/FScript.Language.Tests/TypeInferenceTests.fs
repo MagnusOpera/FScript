@@ -279,6 +279,15 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers match on map literal-key pattern without tail`` () =
+        let typed =
+            Helpers.infer
+                "let m = { [\"a\"] = 1; [\"b\"] = 2 }\nmatch m with\n    | { [\"a\"] = x; [\"b\"] = y } -> x + y\n    | _ -> 0"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers match case guard`` () =
         let typed =
             Helpers.infer

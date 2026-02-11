@@ -1,0 +1,20 @@
+
+let values =
+    { ["alpha"] = 10
+      ["beta"] = 20
+      ["gamma"] = 30 }
+
+match values with
+| { ["alpha"] = v1; ..tail } ->
+    print $"alpha={v1}; tail={tail}"
+| _ -> print "no literal-key match"
+
+match values with
+| { ["alpha"] = v1; ["beta"] = v2 } ->
+    print $"alpha={v1} beta={v2}"
+| _ -> print "no two-key match"
+
+match values with
+| { [k] = v; ..tail } ->
+    print $"dynamic extraction: {k} = {v}, tail={tail}"
+| _ -> print "no dynamic match"

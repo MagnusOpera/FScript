@@ -49,9 +49,13 @@ module IncludeResolver =
             | PCons (head, tail, _) -> loop (loop acc head) tail
             | PTuple (patterns, _) -> patterns |> List.fold loop acc
             | PRecord (fields, _) -> fields |> List.fold (fun s (_, p) -> loop s p) acc
-            | PMapEmpty _ -> acc
-            | PMapCons (keyPattern, valuePattern, tailPattern, _) ->
-                loop (loop (loop acc keyPattern) valuePattern) tailPattern
+            | PMap (clauses, tailPattern, _) ->
+                let withClauses =
+                    clauses
+                    |> List.fold (fun s (keyPattern, valuePattern) -> loop (loop s keyPattern) valuePattern) acc
+                match tailPattern with
+                | Some tail -> loop withClauses tail
+                | None -> withClauses
             | PSome (inner, _) -> loop acc inner
             | PUnionCase (_, _, payload, _) ->
                 match payload with

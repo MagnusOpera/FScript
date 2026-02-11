@@ -477,23 +477,52 @@ module Parser =
                 let lb = stream.Next()
                 stream.SkipNewlines()
                 if stream.Match(RBrace) then
-                    PMapEmpty (mkSpanFrom lb.Span lb.Span)
+                    PMap([], None, mkSpanFrom lb.Span lb.Span)
                 elif stream.Peek().Kind = LBracket then
-                    stream.Next() |> ignore // '['
-                    let keyPattern = parsePatternCons()
-                    stream.Expect(RBracket, "Expected ']' in map pattern") |> ignore
+                    let clauses = ResizeArray<Pattern * Pattern>()
+                    let parseClause () =
+                        stream.Expect(LBracket, "Expected '[' in map pattern key") |> ignore
+                        let keyPattern = parsePatternCons()
+                        stream.Expect(RBracket, "Expected ']' in map pattern key") |> ignore
+                        stream.SkipNewlines()
+                        stream.Expect(Equals, "Expected '=' after map key pattern") |> ignore
+                        let valuePattern = parsePatternCons()
+                        clauses.Add(keyPattern, valuePattern)
+
+                    parseClause()
                     stream.SkipNewlines()
-                    stream.Expect(Equals, "Expected '=' after map key pattern") |> ignore
-                    let valuePattern = parsePatternCons()
-                    stream.SkipNewlines()
-                    if not (stream.Match(Semicolon)) then
-                        raise (ParseException { Message = "Expected ';' before '..' in map pattern"; Span = stream.Peek().Span })
-                    stream.SkipNewlines()
-                    stream.Expect(RangeDots, "Expected '..' in map pattern tail") |> ignore
-                    let tailPattern = parsePatternCons()
-                    stream.SkipNewlines()
+
+                    let mutable tailPattern : Pattern option = None
+                    let mutable donePattern = false
+
+                    while not donePattern do
+                        if stream.Match(Semicolon) then
+                            stream.SkipNewlines()
+                            if stream.Peek().Kind = RangeDots then
+                                stream.Next() |> ignore
+                                tailPattern <- Some (parsePatternCons())
+                                stream.SkipNewlines()
+                                donePattern <- true
+                            elif stream.Peek().Kind = LBracket then
+                                parseClause()
+                                stream.SkipNewlines()
+                            elif stream.Peek().Kind = RBrace then
+                                donePattern <- true
+                            else
+                                raise (ParseException { Message = "Expected map pattern clause or '..tail'"; Span = stream.Peek().Span })
+                        elif stream.Peek().Kind = RangeDots then
+                            stream.Next() |> ignore
+                            tailPattern <- Some (parsePatternCons())
+                            stream.SkipNewlines()
+                            donePattern <- true
+                        elif stream.Peek().Kind = LBracket then
+                            parseClause()
+                            stream.SkipNewlines()
+                        else
+                            donePattern <- true
+
                     let rb = stream.Expect(RBrace, "Expected '}' in map pattern")
-                    PMapCons(keyPattern, valuePattern, tailPattern, mkSpanFrom lb.Span rb.Span)
+                    PMap(clauses |> Seq.toList, tailPattern, mkSpanFrom lb.Span rb.Span)
                 else
                     let fields = ResizeArray<string * Pattern>()
                     let seen = System.Collections.Generic.HashSet<string>()

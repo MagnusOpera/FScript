@@ -33,8 +33,7 @@ and Pattern =
     | PCons of Pattern * Pattern * Span
     | PTuple of Pattern list * Span
     | PRecord of (string * Pattern) list * Span
-    | PMapEmpty of Span
-    | PMapCons of Pattern * Pattern * Pattern * Span
+    | PMap of (Pattern * Pattern) list * Pattern option * Span
     | PSome of Pattern * Span
     | PNone of Span
     | PUnionCase of string option * string * Pattern option * Span
@@ -97,8 +96,7 @@ module Ast =
         | PCons (_, _, s) -> s
         | PTuple (_, s) -> s
         | PRecord (_, s) -> s
-        | PMapEmpty s -> s
-        | PMapCons (_, _, _, s) -> s
+        | PMap (_, _, s) -> s
         | PSome (_, s) -> s
         | PNone s -> s
         | PUnionCase (_, _, _, s) -> s
