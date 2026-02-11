@@ -30,7 +30,7 @@ FScript currently includes:
 - optional type annotations on parameters,
 - type declarations: records and unions (including recursive forms),
 - interpolation, pipeline operator, `typeof` type tokens, and `nameof` identifier tokens for host workflows.
-- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map).
+- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string` or `int`.
 
 ## Quick Start
 
@@ -113,6 +113,7 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 - [`docs/supported-types.md`](docs/supported-types.md)
 - [`docs/function-annotations.md`](docs/function-annotations.md)
 - [`docs/external-functions.md`](docs/external-functions.md)
+- [`docs/stdlib-functions.md`](docs/stdlib-functions.md)
 - [`docs/embedding-fscript-language.md`](docs/embedding-fscript-language.md)
 - [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md)
 - [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)

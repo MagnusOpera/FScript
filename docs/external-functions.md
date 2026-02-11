@@ -52,6 +52,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Collections and prelude
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
 - Runtime externs focus on host/system capabilities.
+- See `docs/stdlib-functions.md` for the full stdlib function reference.
 
 ### Typed decoders
 - `Json.deserialize : type -> string -> 'a option`
