@@ -1,5 +1,9 @@
 namespace FScript.Language
 
+type MapKey =
+    | MKString of string
+    | MKInt of int64
+
 type Value =
     | VUnit
     | VInt of int64
@@ -9,7 +13,7 @@ type Value =
     | VList of Value list
     | VTuple of Value list
     | VRecord of Map<string, Value>
-    | VStringMap of Map<string, Value>
+    | VMap of Map<MapKey, Value>
     | VOption of Value option
     | VUnionCase of string * string * Value option
     | VUnionCtor of string * string

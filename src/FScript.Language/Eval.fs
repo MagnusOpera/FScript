@@ -36,10 +36,14 @@ module Eval =
             |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToInterpolationString value))
             |> String.concat "; "
             |> sprintf "{ %s }"
-        | VStringMap fields ->
+        | VMap fields ->
+            let mapKeyToString key =
+                match key with
+                | MKString s -> $"\"{s}\""
+                | MKInt i -> string i
             fields
             |> Map.toList
-            |> List.map (fun (name, value) -> sprintf "\"%s\" => %s" name (valueToInterpolationString value))
+            |> List.map (fun (key, value) -> sprintf "%s => %s" (mapKeyToString key) (valueToInterpolationString value))
             |> String.concat "; "
             |> sprintf "map { %s }"
         | VOption None -> "None"
@@ -66,7 +70,7 @@ module Eval =
             xf.Count = yf.Count
             && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
-        | VStringMap xf, VStringMap yf ->
+        | VMap xf, VMap yf ->
             xf.Count = yf.Count
             && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
@@ -81,6 +85,17 @@ module Eval =
         | VTypeToken tx, VTypeToken ty -> tx = ty
         | _ -> false
 
+    let private mapKeyToValue (key: MapKey) : Value =
+        match key with
+        | MKString s -> VString s
+        | MKInt i -> VInt i
+
+    let private valueToMapKey (span: Span) (value: Value) : MapKey =
+        match value with
+        | VString s -> MKString s
+        | VInt i -> MKInt i
+        | _ -> raise (EvalException { Message = "Map key must be string or int"; Span = span })
+
     let rec private patternMatch (pat: Pattern) (value: Value) : Env option =
         let mergeBindings (left: Env) (right: Env) : Env option =
             let mutable ok = true
@@ -93,11 +108,11 @@ module Eval =
                 | None -> merged <- Map.add k v merged
             if ok then Some merged else None
 
-        let rec matchMapClauses (hasExplicitClauses: bool) (clauses: (Pattern * Pattern) list) (tailPattern: Pattern option) (remaining: Map<string, Value>) (envAcc: Env) : Env option =
+        let rec matchMapClauses (hasExplicitClauses: bool) (clauses: (Pattern * Pattern) list) (tailPattern: Pattern option) (remaining: Map<MapKey, Value>) (envAcc: Env) : Env option =
             let applyTail () =
                 match tailPattern with
                 | Some tail ->
-                    match patternMatch tail (VStringMap remaining) with
+                    match patternMatch tail (VMap remaining) with
                     | Some tailEnv -> mergeBindings envAcc tailEnv
                     | None -> None
                 | None ->
@@ -114,7 +129,7 @@ module Eval =
                         let key = head.Key
                         let value = head.Value
                         let nextRemaining = remaining.Remove key
-                        match patternMatch keyPattern (VString key), patternMatch valuePattern value with
+                        match patternMatch keyPattern (mapKeyToValue key), patternMatch valuePattern value with
                         | Some keyEnv, Some valueEnv ->
                             match mergeBindings envAcc keyEnv with
                             | Some merged1 ->
@@ -125,18 +140,26 @@ module Eval =
                         | _ -> None
                 | PVar (name, _) ->
                     match envAcc.TryFind name with
-                    | Some (VString targetKey) when remaining.ContainsKey targetKey ->
-                        let value = remaining.[targetKey]
-                        match patternMatch valuePattern value with
-                        | Some valueEnv ->
-                            match mergeBindings envAcc valueEnv with
-                            | Some merged -> matchMapClauses hasExplicitClauses rest tailPattern (remaining.Remove targetKey) merged
+                    | Some targetKeyValue ->
+                        let targetKey =
+                            match targetKeyValue with
+                            | VString s -> MKString s
+                            | VInt i -> MKInt i
+                            | _ -> raise (EvalException { Message = "Map key must be string or int"; Span = Ast.spanOfPattern keyPattern })
+                        if not (remaining.ContainsKey targetKey) then
+                            None
+                        else
+                            let value = remaining.[targetKey]
+                            match patternMatch valuePattern value with
+                            | Some valueEnv ->
+                                match mergeBindings envAcc valueEnv with
+                                | Some merged -> matchMapClauses hasExplicitClauses rest tailPattern (remaining.Remove targetKey) merged
+                                | None -> None
                             | None -> None
-                        | None -> None
                     | _ -> None
                 | _ ->
-                    let tryKey (kv: System.Collections.Generic.KeyValuePair<string, Value>) : (string * Env) option =
-                        match patternMatch keyPattern (VString kv.Key) with
+                    let tryKey (kv: System.Collections.Generic.KeyValuePair<MapKey, Value>) : (MapKey * Env) option =
+                        match patternMatch keyPattern (mapKeyToValue kv.Key) with
                         | Some keyEnv ->
                             match mergeBindings envAcc keyEnv with
                             | Some merged1 ->
@@ -181,7 +204,7 @@ module Eval =
                     | Some next -> Some (Map.fold (fun state k v -> Map.add k v state) acc next)
                     | None -> None
                 | _ -> None)
-        | PMap (clauses, tailPattern, _), VStringMap values ->
+        | PMap (clauses, tailPattern, _), VMap values ->
             matchMapClauses (not clauses.IsEmpty) clauses tailPattern values Map.empty
         | PSome (p, _), VOption (Some v) ->
             patternMatch p v
@@ -331,31 +354,34 @@ module Eval =
             |> Map.ofList
             |> VRecord
         | EMap (entries, _) ->
-            let mergeWithLeftPrecedence (left: Map<string, Value>) (right: Map<string, Value>) =
+            let mergeWithLeftPrecedence (left: Map<MapKey, Value>) (right: Map<MapKey, Value>) =
                 right
-                |> Map.fold (fun (state: Map<string, Value>) key value ->
+                |> Map.fold (fun (state: Map<MapKey, Value>) key value ->
                     if state.ContainsKey key then state else Map.add key value state) left
 
             let evaluated =
                 entries
-                |> List.fold (fun (acc: Map<string, Value>) entry ->
+                |> List.fold (fun (acc: Map<MapKey, Value>) entry ->
                     match entry with
                     | MEKeyValue (keyExpr, valueExpr) ->
-                        match evalExpr typeDefs env keyExpr with
-                        | VString key ->
+                        let keyValue = evalExpr typeDefs env keyExpr
+                        match keyValue with
+                        | VString _
+                        | VInt _ ->
+                            let key = valueToMapKey (Ast.spanOfExpr keyExpr) keyValue
                             let value = evalExpr typeDefs env valueExpr
                             acc.Add(key, value)
                         | _ ->
-                            // Type checker guarantees string keys for map literals.
-                            raise (EvalException { Message = "Map literal keys must be strings"; Span = Ast.spanOfExpr keyExpr })
+                            // Type checker guarantees string/int keys for map literals.
+                            raise (EvalException { Message = "Map literal keys must be string or int"; Span = Ast.spanOfExpr keyExpr })
                     | MESpread spreadExpr ->
                         match evalExpr typeDefs env spreadExpr with
-                        | VStringMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
+                        | VMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
                         | _ ->
                             // Type checker guarantees spread operands are maps.
                             raise (EvalException { Message = "Map spread value must be a map"; Span = Ast.spanOfExpr spreadExpr }))
-                    (Map.empty<string, Value>)
-            VStringMap evaluated
+                    (Map.empty<MapKey, Value>)
+            VMap evaluated
         | ERecordUpdate (target, updates, span) ->
             match evalExpr typeDefs env target with
             | VRecord fields ->
@@ -392,10 +418,11 @@ module Eval =
             let targetValue = evalExpr typeDefs env target
             let keyValue = evalExpr typeDefs env keyExpr
             match targetValue, keyValue with
-            | VStringMap mapValue, VString key ->
+            | VMap mapValue, (VString _ | VInt _) ->
+                let key = valueToMapKey span keyValue
                 VOption (mapValue.TryFind key)
-            | VStringMap _, _ ->
-                raise (EvalException { Message = "Map index key must be string"; Span = span })
+            | VMap _, _ ->
+                raise (EvalException { Message = "Map index key must be string or int"; Span = span })
             | _ ->
                 raise (EvalException { Message = "Index access requires a map value"; Span = span })
         | ECons (head, tail, span) ->
@@ -559,7 +586,7 @@ module Eval =
             | TRFun (a, b) -> TFun(fromRef stack a, fromRef stack b)
             | TRPostfix (inner, "list") -> TList (fromRef stack inner)
             | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
-            | TRPostfix (inner, "map") -> TStringMap (fromRef stack inner)
+            | TRPostfix (inner, "map") -> TMap (TString, fromRef stack inner)
             | TRPostfix (_, suffix) ->
                 raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
             | TRRecord fields ->

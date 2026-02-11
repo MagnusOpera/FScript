@@ -66,12 +66,12 @@ type EvalTests () =
     [<Test>]
     member _.``Evaluates map literals`` () =
         match Helpers.eval "{ [\"a\"] = 1; [\"b\"] = 2 }" with
-        | VStringMap m ->
+        | VMap m ->
             m.Count |> should equal 2
-            match m.["a"] with
+            match m.[MKString "a"] with
             | VInt 1L -> ()
             | _ -> Assert.Fail("Expected key a to map to 1")
-            match m.["b"] with
+            match m.[MKString "b"] with
             | VInt 2L -> ()
             | _ -> Assert.Fail("Expected key b to map to 2")
         | _ -> Assert.Fail("Expected map value")
@@ -79,9 +79,9 @@ type EvalTests () =
     [<Test>]
     member _.``Evaluates map literals with duplicate keys as last-wins`` () =
         match Helpers.eval "{ [\"a\"] = 1; [\"a\"] = 2 }" with
-        | VStringMap m ->
+        | VMap m ->
             m.Count |> should equal 1
-            match m.["a"] with
+            match m.[MKString "a"] with
             | VInt 2L -> ()
             | _ -> Assert.Fail("Expected key a to map to 2")
         | _ -> Assert.Fail("Expected map value")
@@ -89,18 +89,18 @@ type EvalTests () =
     [<Test>]
     member _.``Evaluates empty map literal`` () =
         match Helpers.eval "{}" with
-        | VStringMap m -> m.Count |> should equal 0
+        | VMap m -> m.Count |> should equal 0
         | _ -> Assert.Fail("Expected empty map value")
 
     [<Test>]
     member _.``Evaluates map literal spread with left precedence`` () =
         match Helpers.eval "let tail = { [\"a\"] = 2; [\"b\"] = 3 }\n{ [\"a\"] = 1; ..tail }" with
-        | VStringMap m ->
+        | VMap m ->
             m.Count |> should equal 2
-            match m.["a"] with
+            match m.[MKString "a"] with
             | VInt 1L -> ()
             | _ -> Assert.Fail("Expected key a to map to 1")
-            match m.["b"] with
+            match m.[MKString "b"] with
             | VInt 3L -> ()
             | _ -> Assert.Fail("Expected key b to map to 3")
         | _ -> Assert.Fail("Expected map value")
@@ -114,6 +114,12 @@ type EvalTests () =
         match Helpers.eval "let m = { [\"a\"] = 1 }\nm[\"b\"]" with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected None for missing map key")
+
+    [<Test>]
+    member _.``Evaluates int keyed map indexer lookup as option`` () =
+        match Helpers.eval "let m = { [1] = 42 }\nm[1]" with
+        | VOption (Some (VInt 42L)) -> ()
+        | _ -> Assert.Fail("Expected Some 42 from int-key map indexer")
 
     [<Test>]
     member _.``Rejects map append via append operator`` () =
@@ -186,9 +192,9 @@ type EvalTests () =
     member _.``Evaluates match on map cons pattern`` () =
         let src = "let m = { [\"b\"] = 2; [\"a\"] = 1 }\nmatch m with\n    | { [k] = v; ..tail } -> (k, v, tail)\n    | {} -> (\"\", 0, {})"
         match Helpers.eval src with
-        | VTuple [ VString "a"; VInt 1L; VStringMap tail ] ->
+        | VTuple [ VString "a"; VInt 1L; VMap tail ] ->
             tail.Count |> should equal 1
-            tail.ContainsKey "b" |> should equal true
+            tail.ContainsKey (MKString "b") |> should equal true
         | _ -> Assert.Fail("Expected map cons pattern to expose head and tail")
 
     [<Test>]

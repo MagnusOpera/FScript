@@ -12,7 +12,7 @@ type Type =
     | TList of Type
     | TTuple of Type list
     | TRecord of Map<string, Type>
-    | TStringMap of Type
+    | TMap of Type * Type
     | TOption of Type
     | TFun of Type * Type
     | TNamed of string
@@ -37,7 +37,7 @@ module Types =
         | TList t1 -> ftvType t1
         | TTuple ts -> ts |> List.map ftvType |> List.fold Set.union Set.empty
         | TRecord fields -> fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty
-        | TStringMap t1 -> ftvType t1
+        | TMap (tk, tv) -> Set.union (ftvType tk) (ftvType tv)
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
         | TNamed _ | TUnion _ | TTypeToken -> Set.empty
@@ -69,7 +69,10 @@ module Types =
                 |> List.map (fun (name, t) -> sprintf "%s: %s" name (go t))
                 |> String.concat "; "
                 |> sprintf "{ %s }"
-            | TStringMap t1 -> sprintf "%s map" (postfixArg t1)
+            | TMap (tk, tv) ->
+                match tk with
+                | TString -> sprintf "%s map" (postfixArg tv)
+                | _ -> sprintf "map<%s, %s>" (go tk) (go tv)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n

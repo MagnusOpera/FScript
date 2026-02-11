@@ -6,6 +6,15 @@ open System.Xml.Linq
 open FScript.Language
 
 module internal HostDecode =
+    let private decodeMapKey (target: Type) (raw: string) : MapKey option =
+        match target with
+        | TString -> Some (MKString raw)
+        | TInt ->
+            match Int64.TryParse(raw) with
+            | true, value -> Some (MKInt value)
+            | _ -> None
+        | _ -> None
+
     let rec decodeJson (target: Type) (el: JsonElement) : Value option =
         match target with
         | TUnit -> Some VUnit
@@ -38,14 +47,14 @@ module internal HostDecode =
                     | Some xs, Some x -> Some (x :: xs)
                     | _ -> None) (Some [])
                 |> Option.map (List.rev >> VTuple)
-        | TStringMap inner when el.ValueKind = JsonValueKind.Object ->
+        | TMap (keyType, inner) when el.ValueKind = JsonValueKind.Object ->
             let mutable ok = true
-            let mutable map = Map.empty<string, Value>
+            let mutable map = Map.empty<MapKey, Value>
             for prop in el.EnumerateObject() do
-                match decodeJson inner prop.Value with
-                | Some v -> map <- map.Add(prop.Name, v)
-                | None -> ok <- false
-            if ok then Some (VStringMap map) else None
+                match decodeMapKey keyType prop.Name, decodeJson inner prop.Value with
+                | Some key, Some v -> map <- map.Add(key, v)
+                | _ -> ok <- false
+            if ok then Some (VMap map) else None
         | TRecord fields when el.ValueKind = JsonValueKind.Object ->
             let mutable ok = true
             let mutable map = Map.empty<string, Value>
@@ -94,14 +103,14 @@ module internal HostDecode =
                 | Some xs, Some x -> Some (x :: xs)
                 | _ -> None) (Some [])
             |> Option.map (List.rev >> VList)
-        | TStringMap inner ->
+        | TMap (keyType, inner) ->
             let mutable ok = true
-            let mutable map = Map.empty<string, Value>
+            let mutable map = Map.empty<MapKey, Value>
             for child in el.Elements() do
-                match decodeXmlValue inner child with
-                | Some v -> map <- map.Add(child.Name.LocalName, v)
-                | None -> ok <- false
-            if ok then Some (VStringMap map) else None
+                match decodeMapKey keyType child.Name.LocalName, decodeXmlValue inner child with
+                | Some key, Some v -> map <- map.Add(key, v)
+                | _ -> ok <- false
+            if ok then Some (VMap map) else None
         | TRecord fields ->
             let mutable ok = true
             let mutable map = Map.empty<string, Value>

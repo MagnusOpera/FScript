@@ -485,26 +485,40 @@ type TypeInferenceTests () =
     member _.``Infers map literal type`` () =
         let typed = Helpers.infer "{ [\"a\"] = 1; [\"b\"] = 2 }"
         match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TString, TInt))
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Reports type error for non-string map key`` () =
-        let act () = Helpers.infer "{ [1] = 2 }" |> ignore
+    member _.``Infers map literal type with int keys`` () =
+        let typed = Helpers.infer "{ [1] = 2; [3] = 4 }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TInt, TInt))
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for unsupported map key type`` () =
+        let act () = Helpers.infer "{ [true] = 2 }" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Infers map literal with string key expression`` () =
         let typed = Helpers.infer "let key = \"a\"\n{ [key] = 1 }"
         match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TString, TInt))
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers map literal with spread`` () =
         let typed = Helpers.infer "let tail = { [\"b\"] = 2 }\n{ [\"a\"] = 1; ..tail }"
         match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TStringMap TInt)
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TString, TInt))
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers empty map through int-keyed usage`` () =
+        let typed = Helpers.infer "let empty = {}\nlet f x m = Map.add 1 x m\nf 42 empty"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TInt, TInt))
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]

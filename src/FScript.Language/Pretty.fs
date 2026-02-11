@@ -20,10 +20,14 @@ module Pretty =
             |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToString value))
             |> String.concat "; "
             |> sprintf "{ %s }"
-        | VStringMap fields ->
+        | VMap fields ->
+            let mapKeyToString key =
+                match key with
+                | MKString s -> $"\"{s}\""
+                | MKInt i -> string i
             fields
             |> Map.toList
-            |> List.map (fun (name, value) -> sprintf "\"%s\" => %s" name (valueToString value))
+            |> List.map (fun (key, value) -> sprintf "%s => %s" (mapKeyToString key) (valueToString value))
             |> String.concat "; "
             |> sprintf "map { %s }"
         | VOption None -> "None"
