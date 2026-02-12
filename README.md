@@ -92,7 +92,8 @@ Each extern declares:
 - arity,
 - implementation.
 
-Built-in extern families include `List.*`, `Map.*`, `Option.*`, `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
+Built-in host extern families include `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
+`List.*`, `Map.*`, and `Option.*` are provided by the embedded stdlib prelude.
 
 For details and extension workflow, see [`docs/external-functions.md`](docs/external-functions.md).
 
@@ -109,6 +110,7 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 
 ## Documentation
 
+- [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
 - [`docs/syntax-and-indentation.md`](docs/syntax-and-indentation.md)
 - [`docs/supported-types.md`](docs/supported-types.md)
 - [`docs/function-annotations.md`](docs/function-annotations.md)
