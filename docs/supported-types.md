@@ -31,6 +31,7 @@ This document specifies the value and type system used by the interpreter.
   - record entries use `Field = value`
   - `{}` denotes an empty map.
 - Values are inferred and unified to a single value type.
+- See `./map-matching-reference.md` for focused map-pattern examples.
 
 ## Function types
 - Functions use curried arrow types:

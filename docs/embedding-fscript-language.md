@@ -185,3 +185,71 @@ Use `Pretty.valueToString` for a readable string form.
 Each error contains:
 - `Message`
 - `Span` (`Line`/`Column` information)
+
+## Embedding cookbook
+
+### 1. Parse/eval a file with `#include`
+Use include-aware parsing when executing scripts from disk.
+
+```fsharp
+open FScript.Language
+
+let root = "/path/to/workspace"
+let entry = "/path/to/workspace/main.fss"
+
+let program = FScript.parseFileWithIncludes root entry
+let typed = FScript.infer program
+let value = FScript.eval typed
+```
+
+### 2. Load once, invoke many times
+Use `ScriptHost` when you want to invoke exported functions repeatedly.
+
+```fsharp
+open FScript.Language
+open FScript.Runtime
+
+let hostContext = { RootDirectory = "." }
+let externs = Registry.all hostContext
+
+let loaded =
+    ScriptHost.loadFile externs "./script.fss" "."
+
+let r1 = ScriptHost.invoke loaded "run" [ VString "build" ]
+let r2 = ScriptHost.invoke loaded "run" [ VString "test" ]
+```
+
+### 3. Add one custom extern
+Define a typed external function and pass it to inference/evaluation.
+
+```fsharp
+open FScript.Language
+
+let envExtern =
+    { Name = "Env.get"
+      Scheme = Forall([], TFun(TString, TOption TString))
+      Arity = 1
+      Impl =
+        function
+        | [ VString key ] ->
+            System.Environment.GetEnvironmentVariable(key)
+            |> Option.ofObj
+            |> VOption
+        | _ ->
+            raise (EvalException { Message = "Env.get expects one string"; Span = Span.mk (Span.pos 0 0) (Span.pos 0 0) }) }
+
+let src = "Env.get \"HOME\""
+let program = FScript.parse src
+let typed = FScript.inferWithExterns [ envExtern ] program
+let value = FScript.evalWithExterns [ envExtern ] typed
+```
+
+### 4. Export descriptor discovery
+After inference, get function descriptors to expose callable surface in hosts.
+
+```fsharp
+open FScript.Language
+
+let typed = "[<export>] let run x = x" |> FScript.parse |> FScript.infer
+let descriptors = Descriptor.describeFunctions typed Map.empty
+```

@@ -214,3 +214,13 @@ All of the following map literal layouts are valid:
 - Include loading is recursive.
 - Cycles are fatal and reported as parse errors.
 - File paths in includes must be `.fss`.
+- Include resolution is file-relative:
+  - `#include "x.fss"` resolves from the directory of the file containing the directive.
+- Paths are normalized before loading:
+  - relative segments like `.` and `..` are collapsed.
+- Resolved files must stay inside the configured sandbox root (`RootDirectory`).
+  - escaping the root is a parse error.
+- A file already loaded once in the include graph is skipped on subsequent includes.
+  - includes are effectively deduplicated.
+- `#include` must appear before module declarations and executable/type code in a file.
+- Parse/type/eval errors include file-aware spans (`file`, `line`, `column`) so failures in included files point to the offending source.

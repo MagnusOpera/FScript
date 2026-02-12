@@ -120,6 +120,7 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 
 - [`docs/syntax-and-indentation.md`](docs/syntax-and-indentation.md)
 - [`docs/supported-types.md`](docs/supported-types.md)
+- [`docs/map-matching-reference.md`](docs/map-matching-reference.md)
 - [`docs/function-annotations.md`](docs/function-annotations.md)
 - [`docs/external-functions.md`](docs/external-functions.md)
 - [`docs/stdlib-functions.md`](docs/stdlib-functions.md)
@@ -127,6 +128,10 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 - [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md)
 - [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
 - [`docs/assemblies-and-roles.md`](docs/assemblies-and-roles.md)
+
+## Changelog
+
+- [`CHANGELOG.md`](CHANGELOG.md)
 
 ## License
 
