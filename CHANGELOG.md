@@ -12,67 +12,297 @@ All notable changes to FScript are documented in this file.
 
 ## [0.23.1]
 
-### Documentation
-- Refined onboarding tutorial and prioritized tutorial-first navigation in `README.md`.
+_Published: 2026-02-12_
+
+  - Added comprehensive Getting Started tutorial (docs/getting-started-tutorial.md) with progressive onboarding: install, basic/flow types, pattern matching, partial matching,
+    recursion, stdlib, includes/modules, exports, and hosting/security.
+  - Reworked README to prioritize onboarding:
+      - dedicated Getting Started Tutorial section
+      - repository development instructions moved after install/tutorial content
+      - clarified stdlib vs host externs (List.*, Map.*, Option.* are prelude stdlib).
+  - Minor docs polish and navigation improvements:
+      - better cross-links between tutorial, samples, and reference docs.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.23.0...0.23.1
 
 ## [0.23.0]
 
-### Documentation
-- Added progressive getting-started tutorial and linked it from docs/README.
+_Draft_
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.22.0...0.23.0
 
 ## [0.22.0]
 
-### Documentation
-- Updated docs and samples for `int` + `string` map keys.
+_Published: 2026-02-11_
 
-## [0.21.0]
+  - Added generic map key support for string and int in FScript.
+  - Kept {} polymorphic and inference-driven, so it resolves by usage.
+  - Updated map indexer, map pattern matching, and map spread typing to work with typed keys.
+  - Added validation errors for unsupported map key types.
+  - Updated tests and samples behavior accordingly; full test suite and smoke tests pass.
+  - Updated documentation.
 
-### Language
-- Added `int` and `string` map key support with inferred polymorphic empty maps.
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.21.0...0.22.0
 
 ## [0.20.0]
 
-### Language
-- Improved map pattern matching semantics.
+_Published: 2026-02-11_
+
+  - Improved map match semantics to support intuitive key-based lookup patterns.
+  - Added support for multi-key map patterns, with optional ..tail.
+  - Preserved dynamic extraction patterns ({ [k] = v; ..tail }).
+  - Added map-pattern sample (samples/map-matching.fss) and updated syntax/tests accordingly.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.19.0...0.20.0
 
 ## [0.19.0]
 
-### Language
-- Added `when` guards in match cases.
+_Published: 2026-02-11_
+
+  - Added when guards to match cases (| pattern when condition -> expr).
+  - Guards are type-checked as bool and evaluated after pattern binding.
+  - Works uniformly across list, record, tuple, union, and map patterns.
+  - Added tests and docs updates, plus a sample demonstrating guarded map matching.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.18.0...0.19.0
 
 ## [0.18.0]
 
-### Language
-- Added map spread syntax (`{ [k] = v; ..tail }`).
-- Restricted append operator `@` to list-only usage.
+_Published: 2026-02-11_
+
+  - Added native map spread/update syntax: { [k] = v; ..tail } and { ..tail }.
+  - Removed map support from @; append is now list-only.
+  - Updated Map stdlib internals to use spread syntax.
+  - Added parser/type/eval tests for map spread and map-append rejection.
+  - Updated docs and types-showcase sample to reflect the new map update style.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.17.0...0.18.0
 
 ## [0.17.0]
 
-### Language and stdlib
-- Added map pattern matching.
-- Moved collection helpers to stdlib-first model.
+_Published: 2026-02-11_
+
+  - Added #include "file.fss" support with cycle detection, sandbox-aware path checks, and file-aware error reporting.
+  - Added module support for included scripts (module Foo) with scoped symbol resolution.
+  - Introduced a protected built-in stdlib prelude and migrated List/Option core functions from runtime externs to stdlib scripts.
+  - Added map pattern matching ({} and { [k] = v; ..tail }) and migrated map helpers to stdlib, removing collection extern files.
+  - Updated samples/docs to cover includes, modules, and map matching.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.16.0...0.17.0
 
 ## [0.16.0]
 
-### Language
-- Added qualified discriminated union constructors/pattern support.
+_Published: 2026-02-10_
+
+  - Added attribute-based exports with [<export>] (case-sensitive), replacing export let.
+  - Added qualified discriminated union support:
+      - constructor usage with Type.Case
+      - match patterns with Type.Case
+  - Preserved backward compatibility for unqualified DU cases (Case still works).
+  - Extended parser/type-inference/eval test coverage for export attributes and qualified DU behavior.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.15.2...0.16.0
 
 ## [0.15.2]
 
-### Packaging
-- Stopped packing `FScript.png` in NuGet packages.
+_Published: 2026-02-10_
 
-## [0.15.1]
+- Update README.
 
-### Documentation
-- Updated README content.
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.15.1...0.15.2
 
 ## [0.15.0]
 
-### Packaging
-- Added NuGet package icon and branding assets.
+_Published: 2026-02-10_
+
+  - Added NuGet package icon metadata for MagnusOpera.FScript.Language and MagnusOpera.FScript.Runtime.
+  - Updated README.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.14.0...0.15.0
 
 ## [0.14.0]
 
-### Language
-- Improved indentation diagnostics for misindented expressions.
+_Published: 2026-02-10_
+
+  - Added support for multiline lambda bodies inside parenthesized call chains, including correct pipeline continuation after ).
+  - Added support for aligned multiline let parameter declarations (strict column alignment).
+  - Tightened layout rules for multiline literals and inline record type annotations.
+  - Improved parse diagnostics for layout issues: misindented expressions now report explicit indentation errors instead of generic unexpected-token errors.
+  - Updated syntax/indentation documentation and parser regression tests accordingly.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.13.0...0.14.0
+
+## [0.13.0]
+
+_Published: 2026-02-09_
+
+  - Added support for multiline lambda bodies inside parenthesized call chains, including pipeline continuation after ).
+  - Added parser tests for multiline lambda/pipeline behavior.
+  - Added support for aligned multiline let parameter declarations with strict column alignment.
+  - Tightened indentation/layout rules for multiline literals and inline record annotation shapes.
+  - Updated syntax-and-indentation.md with the new accepted layouts and multiline lambda examples.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.12.0...0.13.0
+
+## [0.12.0]
+
+_Published: 2026-02-09_
+
+  - Added newline-separated multiline layouts for map, record, list literals, record updates, and inline record type annotations.
+  - Kept semicolon-separated syntax fully compatible.
+  - Added parser tests and a new samples/layout-styles.fss.
+  - Updated syntax docs and showcase examples.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.10.0...0.12.0
+
+## [0.10.0]
+
+_Published: 2026-02-08_
+
+  - Added List.empty (arity-0 value, like Map.empty).
+  - Added Map.map (maps values only) and Map.iter.
+  - Registered new externs in runtime registry.
+  - Added tests for new extern behavior and registry exposure.
+  - Updated docs for extern catalog and map/list value semantics.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.9.0...0.10.0
+
+## [0.11.0]
+
+_Published: 2026-02-08_
+
+- Fix fscript macOS binary identifier
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.9.0...0.11.0
+
+## [0.9.0]
+
+_Published: 2026-02-08_
+
+- Unified map literals with brace syntax.
+- Added key-expression support in map literals.
+- Completed parser/tests/docs updates for the new map syntax.
+ 
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.8.0...0.9.0
+
+## [0.8.0]
+
+_Published: 2026-02-08_
+
+- Fixed inference for unannotated record field access in Option.map lambdas.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.7.0...0.8.0
+
+## [0.7.0]
+
+_Published: 2026-02-08_
+
+- Targeted FScript.Language and FScript.Runtime to netstandard2.1.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.6.0...0.7.0
+
+## [0.6.0]
+
+_Draft_
+
+- Added non-empty list pattern support.
+- Improved multiline lambda application robustness.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.5.0...0.6.0
+
+## [0.5.0]
+
+_Published: 2026-02-08_
+
+  - Enforced explicit tuple syntax in match cases.
+  - Added multi-parameter lambda syntax support.
+  - Improved host integration:
+      - exposed exported function signatures,
+      - accepted host record maps in map externs.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.4.0...0.5.0
+
+## [0.4.0]
+
+_Published: 2026-02-08_
+
+ - Added native map literal syntax #{ ... }.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.3.0...0.4.0
+
+## [0.3.0]
+
+_Draft_
+
+- Treated arity-0 externs and exports as values (not callable functions).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.2.0...0.3.0
+
+## [0.2.0]
+
+_Published: 2026-02-08_
+
+  - Added script host invocation API.
+  - Added top-level export let metadata and restricted host visibility to exported bindings.
+  - Refactored higher-order externs to callback-based runtime handlers.
+  - Added nameof.
+  - Added Map.ofList, multiline argument support, and extended map APIs (count/filter/fold/choose + try-get rename work).
+  - Added root-confined filesystem write externs.
+  - Added smoke-tests and updated export/host documentation.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.4...0.2.0
+
+## [0.1.4]
+
+_Published: 2026-02-07_
+
+  - Updated entitlements.
+  - Added embedding documentation.
+  - Added distribution setup for NuGet and Homebrew.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.3...0.1.4
+
+## [0.1.3]
+
+_Published: 2026-02-07_
+
+ - Fixed token issue affecting tap publishing.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.2-next...0.1.3
+
+## [0.1.3-next]
+
+_Pre-release Published: 2026-02-07_
+
+- No code changes vs 0.1.3 (tag points to same commit).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.2-next...0.1.3-next
+
+## [0.1.2-next]
+
+_Pre-release Published: 2026-02-07_
+
+- Fixed Homebrew tap publishing.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.1-next...0.1.2-next
+
+## [0.1.1-next]
+
+_Pre-release Published: 2026-02-07_
+
+  - Fixed missing entitlement in macOS signing/publish flow.
+  - Ensured signed macOS artifacts can be produced correctly in CI.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.1.0-next...0.1.1-next
+
+## [0.1.0-next]
+
+_Pre-release Published: 2026-02-07_
+
+  - Added publishing/distribution groundwork.
+  - Introduced CLI parsing updates and root-directory behavior.
+  - Renamed projects and improved docs.
+  - Added macOS signing/versioning alignment and fixed build warnings.
+  - Switched license to MIT.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/commits/0.1.0-next
