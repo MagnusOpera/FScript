@@ -32,7 +32,26 @@ FScript currently includes:
 - interpolation, pipeline operator, `typeof` type tokens, and `nameof` identifier tokens for host workflows.
 - unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string` or `int`.
 
-## Quick Start
+## Getting Started Tutorial
+
+If you are new to FScript, start with the progressive tutorial:
+
+- [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
+
+It covers installation, syntax basics, flow control, collections, pattern matching, stdlib usage, includes, and host/export concepts.
+
+## Installation
+
+### CLI via Homebrew
+```bash
+brew install magnusopera/tap/fscript
+```
+
+### Embeddable language via NuGet
+- `MagnusOpera.FScript.Language`
+- `MagnusOpera.FScript.Runtime`
+
+## Repository Development
 
 ### Build
 ```bash
@@ -60,17 +79,6 @@ Useful samples:
 - [`samples/tree.fss`](samples/tree.fss)
 - [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
 - [`samples/includes-and-exports.fss`](samples/includes-and-exports.fss)
-
-## Installation
-
-### CLI via Homebrew
-```bash
-brew install magnusopera/tap/fscript
-```
-
-### Embeddable language via NuGet
-- `MagnusOpera.FScript.Language`
-- `MagnusOpera.FScript.Runtime`
 
 ## Interpreter Architecture
 
@@ -110,7 +118,6 @@ See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full 
 
 ## Documentation
 
-- [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
 - [`docs/syntax-and-indentation.md`](docs/syntax-and-indentation.md)
 - [`docs/supported-types.md`](docs/supported-types.md)
 - [`docs/function-annotations.md`](docs/function-annotations.md)

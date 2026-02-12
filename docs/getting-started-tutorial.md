@@ -204,6 +204,14 @@ let describe items =
   | _ -> "empty"
 ```
 
+### Tuple
+```fsharp
+let describePair pair =
+  match pair with
+  | ("ok", code) -> $"success:{code}"
+  | (kind, code) -> $"{kind}:{code}"
+```
+
 ### Record
 ```fsharp
 let cityLabel address =
@@ -339,8 +347,11 @@ Notes:
 - include cycles are fatal,
 - modules are supported in included files.
 
-## 11. Export functions for host integration
-Mark top-level bindings with `[<export>]` when a host must discover them.
+## 11. Hosting, exports, and sandboxing (advanced)
+FScript is designed to be embedded.
+At host boundary, scripts can expose explicit entry points while the host controls capabilities and security.
+
+Mark top-level bindings with `[<export>]` when a host must discover them:
 
 ```fsharp
 [<export>] let dispatch (context: { Command: string }) =
@@ -352,19 +363,20 @@ Mark top-level bindings with `[<export>]` when a host must discover them.
 }
 ```
 
-## 12. Security mindset and Hosting
-FScript core evaluation is pure in-memory computation.
-Side effects depend on host-exposed functions.
+Security/hosting teaser:
+- core FScript evaluation is pure in-memory computation,
+- side effects exist only through host-exposed externs,
+- sandboxing is enforced by host decisions (filesystem root, allowed functions, execution controls).
 
-When embedding:
+When embedding, keep this mindset:
 - expose only needed externs,
 - keep filesystem/network boundaries explicit,
 - use host-level timeout/cancellation/resource limits.
-- see [`docs/embedding-fscript-language.md`](./embedding-fscript-language.md) for host integration API,
-- see [`docs/external-functions.md`](./external-functions.md) for extern design and registration.
-- see [`docs/sandbox-and-security.md`](./sandbox-and-security.md) for security model and host responsibilities.
+- see [`docs/embedding-fscript-language.md`](./embedding-fscript-language.md) for the embedding API,
+- see [`docs/external-functions.md`](./external-functions.md) for extern design/registration,
+- see [`docs/sandbox-and-security.md`](./sandbox-and-security.md) for the full security model.
 
-## 13. Next steps
+## 12. Next steps
 - Sample scripts:
   - [`samples/types-showcase.fss`](../samples/types-showcase.fss)
   - [`samples/patterns-and-collections.fss`](../samples/patterns-and-collections.fss)
