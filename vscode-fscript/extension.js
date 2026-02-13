@@ -43,9 +43,14 @@ async function resolveDotnetCommand(context) {
   return 'dotnet';
 }
 
+function hasDotnetSdkOnPath() {
+  const probe = cp.spawnSync('dotnet', ['--list-sdks'], { encoding: 'utf8' });
+  return probe.status === 0 && Boolean((probe.stdout || '').trim());
+}
+
 async function createServerOptions(context, config) {
   const { TransportKind } = require('vscode-languageclient/node');
-  const dotnetCommand = await resolveDotnetCommand(context);
+  const runtimeDotnetCommand = await resolveDotnetCommand(context);
   if (config.serverPath) {
     const userProvidedPath = path.isAbsolute(config.serverPath)
       ? config.serverPath
@@ -53,8 +58,8 @@ async function createServerOptions(context, config) {
 
     if (fs.existsSync(userProvidedPath)) {
       return {
-        run: { command: dotnetCommand, args: [userProvidedPath], transport: TransportKind.stdio },
-        debug: { command: dotnetCommand, args: [userProvidedPath], transport: TransportKind.stdio }
+        run: { command: runtimeDotnetCommand, args: [userProvidedPath], transport: TransportKind.stdio },
+        debug: { command: runtimeDotnetCommand, args: [userProvidedPath], transport: TransportKind.stdio }
       };
     }
 
@@ -67,9 +72,16 @@ async function createServerOptions(context, config) {
 
   if (fs.existsSync(packagedDll)) {
     return {
-      run: { command: dotnetCommand, args: [packagedDll], transport: TransportKind.stdio },
-      debug: { command: dotnetCommand, args: [packagedDll], transport: TransportKind.stdio }
+      run: { command: runtimeDotnetCommand, args: [packagedDll], transport: TransportKind.stdio },
+      debug: { command: runtimeDotnetCommand, args: [packagedDll], transport: TransportKind.stdio }
     };
+  }
+
+  if (context.extensionMode !== vscode.ExtensionMode.Development) {
+    vscode.window.showErrorMessage(
+      'FScript extension: packaged language server is missing. Reinstall the extension or set fscript.server.path.'
+    );
+    return null;
   }
 
   const projectPath = path.resolve(context.extensionPath, '..', 'src', 'FScript.LanguageServer', 'FScript.LanguageServer.fsproj');
@@ -84,7 +96,14 @@ async function createServerOptions(context, config) {
     'FScript.LanguageServer.dll'
   );
 
-  const build = cp.spawnSync(dotnetCommand, ['build', projectPath, '-nologo', '-v', 'q'], {
+  if (!hasDotnetSdkOnPath()) {
+    vscode.window.showErrorMessage(
+      'FScript extension: language server build fallback requires a .NET SDK in PATH. Install an SDK or set fscript.server.path.'
+    );
+    return null;
+  }
+
+  const build = cp.spawnSync('dotnet', ['build', projectPath, '-nologo', '-v', 'q'], {
     cwd: context.extensionPath,
     encoding: 'utf8'
   });
@@ -98,8 +117,8 @@ async function createServerOptions(context, config) {
   }
 
   return {
-    run: { command: dotnetCommand, args: [outputDll], transport: TransportKind.stdio },
-    debug: { command: dotnetCommand, args: [outputDll], transport: TransportKind.stdio }
+    run: { command: runtimeDotnetCommand, args: [outputDll], transport: TransportKind.stdio },
+    debug: { command: runtimeDotnetCommand, args: [outputDll], transport: TransportKind.stdio }
   };
 }
 

@@ -21,12 +21,16 @@ module LspServer =
                         match asObject rootNode with
                         | None -> ()
                         | Some root ->
-                            match tryGetString root "method", root["id"], tryGetObject root "params" with
-                            | Some "initialize", idNode, paramsObj when not (isNull idNode) ->
+                            let methodName = tryGetString root "method"
+                            let idNode = tryGetNode root "id"
+                            let paramsObj = tryGetObject root "params"
+
+                            match methodName, idNode, paramsObj with
+                            | Some "initialize", Some idNode, paramsObj ->
                                 LspHandlers.handleInitialize idNode paramsObj
                             | Some "initialized", _, _ ->
                                 ()
-                            | Some "shutdown", idNode, _ when not (isNull idNode) ->
+                            | Some "shutdown", Some idNode, _ ->
                                 shutdownReceived <- true
                                 LspProtocol.sendResponse idNode None
                             | Some "exit", _, _ ->
@@ -41,35 +45,35 @@ module LspServer =
                                 LspHandlers.handleDidChange paramsObj
                             | Some "textDocument/didClose", _, Some paramsObj ->
                                 LspHandlers.handleDidClose paramsObj
-                            | Some "textDocument/completion", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/completion", Some idNode, Some paramsObj ->
                                 LspHandlers.handleCompletion idNode paramsObj
-                            | Some "textDocument/semanticTokens/full", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/semanticTokens/full", Some idNode, Some paramsObj ->
                                 LspHandlers.handleSemanticTokens idNode paramsObj
-                            | Some "textDocument/hover", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/hover", Some idNode, Some paramsObj ->
                                 LspHandlers.handleHover idNode paramsObj
-                            | Some "textDocument/definition", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/definition", Some idNode, Some paramsObj ->
                                 LspHandlers.handleDefinition idNode paramsObj
-                            | Some "textDocument/typeDefinition", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/typeDefinition", Some idNode, Some paramsObj ->
                                 LspHandlers.handleTypeDefinition idNode paramsObj
-                            | Some "textDocument/documentSymbol", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/documentSymbol", Some idNode, Some paramsObj ->
                                 LspHandlers.handleDocumentSymbol idNode paramsObj
-                            | Some "textDocument/references", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/references", Some idNode, Some paramsObj ->
                                 LspHandlers.handleReferences idNode paramsObj
-                            | Some "textDocument/documentHighlight", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/documentHighlight", Some idNode, Some paramsObj ->
                                 LspHandlers.handleDocumentHighlight idNode paramsObj
-                            | Some "textDocument/signatureHelp", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/signatureHelp", Some idNode, Some paramsObj ->
                                 LspHandlers.handleSignatureHelp idNode paramsObj
-                            | Some "textDocument/rename", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/rename", Some idNode, Some paramsObj ->
                                 LspHandlers.handleRename idNode paramsObj
-                            | Some "textDocument/prepareRename", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/prepareRename", Some idNode, Some paramsObj ->
                                 LspHandlers.handlePrepareRename idNode paramsObj
-                            | Some "workspace/symbol", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "workspace/symbol", Some idNode, Some paramsObj ->
                                 LspHandlers.handleWorkspaceSymbol idNode paramsObj
-                            | Some "textDocument/codeAction", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/codeAction", Some idNode, Some paramsObj ->
                                 LspHandlers.handleCodeAction idNode paramsObj
-                            | Some "textDocument/inlayHint", idNode, Some paramsObj when not (isNull idNode) ->
+                            | Some "textDocument/inlayHint", Some idNode, Some paramsObj ->
                                 LspHandlers.handleInlayHints idNode paramsObj
-                            | Some _, idNode, _ when not (isNull idNode) ->
+                            | Some _, Some idNode, _ ->
                                 LspProtocol.sendError idNode -32601 "Method not found"
                             | _ -> ()
                 with ex ->

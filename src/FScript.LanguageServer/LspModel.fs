@@ -26,6 +26,11 @@ module LspModel =
         | null -> None
         | node -> asObject node
 
+    let tryGetNode (obj: JsonObject) (name: string) : JsonNode option =
+        match obj[name] with
+        | null -> None
+        | node -> Some node
+
     let tryGetString (obj: JsonObject) (name: string) : string option =
         match obj[name] with
         | :? JsonValue as v ->

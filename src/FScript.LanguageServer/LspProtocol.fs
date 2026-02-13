@@ -10,8 +10,6 @@ module LspProtocol =
     let private stdin = Console.OpenStandardInput()
     let private stdout = Console.OpenStandardOutput()
 
-    let private jsonNull () = JsonNode.Parse("null")
-
     let sendMessage (payload: string) =
         let bytes = utf8.GetBytes(payload)
         let header = $"Content-Length: {bytes.Length}\r\n\r\n"
@@ -20,14 +18,14 @@ module LspProtocol =
         stdout.Write(bytes, 0, bytes.Length)
         stdout.Flush()
 
-    let sendResponse (idNode: JsonNode) (resultNode: JsonNode option) =
+    let sendResponse (idNode: JsonNode) (resultNode: (JsonNode | null) option) =
         let obj = JsonObject()
         obj["jsonrpc"] <- JsonValue.Create("2.0")
         obj["id"] <- idNode.DeepClone()
         obj["result"] <-
             match resultNode with
             | Some node -> node
-            | None -> jsonNull ()
+            | None -> null
         sendMessage (obj.ToJsonString())
 
     let sendError (idNode: JsonNode) (code: int) (message: string) =
@@ -41,14 +39,14 @@ module LspProtocol =
         obj["error"] <- err
         sendMessage (obj.ToJsonString())
 
-    let sendNotification (methodName: string) (paramsNode: JsonNode option) =
+    let sendNotification (methodName: string) (paramsNode: (JsonNode | null) option) =
         let obj = JsonObject()
         obj["jsonrpc"] <- JsonValue.Create("2.0")
         obj["method"] <- JsonValue.Create(methodName)
         obj["params"] <-
             match paramsNode with
             | Some node -> node
-            | None -> jsonNull ()
+            | None -> null
         sendMessage (obj.ToJsonString())
 
     let rec private readExact (stream: Stream) (buffer: byte[]) (offset: int) (count: int) =

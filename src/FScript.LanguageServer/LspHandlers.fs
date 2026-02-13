@@ -27,10 +27,10 @@ module LspHandlers =
 
         let completionProvider = JsonObject()
         completionProvider["resolveProvider"] <- JsonValue.Create(false)
-        let triggerChars: JsonNode array =
-            [| JsonNode.Parse("\".\"")
-               JsonNode.Parse("\"[\"") |]
-        completionProvider["triggerCharacters"] <- JsonArray(triggerChars)
+        let triggerChars = JsonArray()
+        triggerChars.Add(JsonValue.Create("."))
+        triggerChars.Add(JsonValue.Create("["))
+        completionProvider["triggerCharacters"] <- triggerChars
 
         let serverInfo = JsonObject()
         serverInfo["name"] <- JsonValue.Create("FScript Language Server")
@@ -47,20 +47,20 @@ module LspHandlers =
         renameProvider["prepareProvider"] <- JsonValue.Create(true)
         capabilities["renameProvider"] <- renameProvider
         let signatureHelpProvider = JsonObject()
-        let signatureTriggers: JsonNode array =
-            [| JsonNode.Parse("\"(\"")
-               JsonNode.Parse("\",\"") |]
-        signatureHelpProvider["triggerCharacters"] <- JsonArray(signatureTriggers)
+        let signatureTriggers = JsonArray()
+        signatureTriggers.Add(JsonValue.Create("("))
+        signatureTriggers.Add(JsonValue.Create(","))
+        signatureHelpProvider["triggerCharacters"] <- signatureTriggers
         capabilities["signatureHelpProvider"] <- signatureHelpProvider
         capabilities["documentSymbolProvider"] <- JsonValue.Create(true)
         capabilities["workspaceSymbolProvider"] <- JsonValue.Create(true)
         capabilities["codeActionProvider"] <- JsonValue.Create(true)
         capabilities["inlayHintProvider"] <- JsonValue.Create(true)
         let semanticLegend = JsonObject()
-        let tokenTypeNodes: JsonNode array =
-            [| "keyword"; "string"; "number"; "function"; "type"; "variable" |]
-            |> Array.map (fun s -> JsonValue.Create(s) :> JsonNode)
-        semanticLegend["tokenTypes"] <- JsonArray(tokenTypeNodes)
+        let tokenTypeNodes = JsonArray()
+        [| "keyword"; "string"; "number"; "function"; "type"; "variable" |]
+        |> Array.iter (fun s -> tokenTypeNodes.Add(JsonValue.Create(s)))
+        semanticLegend["tokenTypes"] <- tokenTypeNodes
         semanticLegend["tokenModifiers"] <- JsonArray()
         let semanticProvider = JsonObject()
         semanticProvider["legend"] <- semanticLegend
@@ -405,11 +405,10 @@ module LspHandlers =
                                         else
                                             if sourceUri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
                                                 let sourcePath = Uri(sourceUri).LocalPath
-                                                let baseDir = Path.GetDirectoryName(sourcePath)
-                                                if String.IsNullOrWhiteSpace(baseDir) then
-                                                    Path.GetFullPath(includePath)
-                                                else
-                                                    Path.GetFullPath(Path.Combine(baseDir, includePath))
+                                                match Path.GetDirectoryName(sourcePath) with
+                                                | null -> Path.GetFullPath(includePath)
+                                                | baseDir when String.IsNullOrWhiteSpace(baseDir) -> Path.GetFullPath(includePath)
+                                                | baseDir -> Path.GetFullPath(Path.Combine(baseDir, includePath))
                                             else
                                                 includePath
 

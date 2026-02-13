@@ -385,8 +385,9 @@ type LspServerTests () =
                         |> Array.chunkBySize 5
                         |> Array.choose (fun chunk ->
                             if chunk.Length <> 5 then None else
-                            let readInt (n: JsonNode) =
+                            let readInt (n: JsonNode | null) =
                                 match n with
+                                | null -> None
                                 | :? JsonValue as v -> (try Some (v.GetValue<int>()) with _ -> None)
                                 | _ -> None
 
@@ -955,7 +956,10 @@ type LspServerTests () =
             let context = JsonObject()
             let diagnosticsCopy = JsonArray()
             for d in diagnostics do
-                diagnosticsCopy.Add(JsonNode.Parse(d.ToString()))
+                match d with
+                | null -> ()
+                | node ->
+                    diagnosticsCopy.Add(node.DeepClone())
             context["diagnostics"] <- diagnosticsCopy
             req["context"] <- context
 
