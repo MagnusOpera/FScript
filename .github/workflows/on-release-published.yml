@@ -31,6 +31,43 @@ jobs:
             dotnet nuget push "$pkg" --skip-duplicate --api-key "${{ secrets.NUGET_KEY }}" --source https://api.nuget.org/v3/index.json
           done
 
+  publish-vscode-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download VSIX artifact
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: '*.vsix'
+
+      - name: Install extension publishing tools
+        run: npm install -g @vscode/vsce@3.5 ovsx@0.9
+
+      - name: Publish to VS Code Marketplace
+        shell: bash
+        run: |
+          VSIX_FILE=$(ls -1 *.vsix | head -n 1)
+          if [ -z "$VSIX_FILE" ]; then
+            echo "No VSIX artifact found in release assets."
+            exit 1
+          fi
+          vsce publish --packagePath "$VSIX_FILE" --pat "${{ secrets.VSCE_TOKEN }}"
+
+      - name: Publish to Open VSX
+        shell: bash
+        run: |
+          VSIX_FILE=$(ls -1 *.vsix | head -n 1)
+          if [ -z "$VSIX_FILE" ]; then
+            echo "No VSIX artifact found in release assets."
+            exit 1
+          fi
+          ovsx publish "$VSIX_FILE" --pat "${{ secrets.OPEN_VSX_TOKEN }}"
+
   sign-and-notarize:
     runs-on: macos-latest
     steps:
@@ -116,6 +153,7 @@ jobs:
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
       - release-nuget
+      - publish-vscode-extension
       - sign-and-notarize
     with:
       ref: ${{ github.ref }}

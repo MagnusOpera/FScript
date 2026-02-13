@@ -25,11 +25,43 @@ jobs:
         with:
           dotnet-version: 10.0.100
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Build and test
         run: |
           dotnet restore FScript.sln
           dotnet build FScript.sln -c Release --no-restore
           dotnet test FScript.sln -c Release --no-build
+
+      - name: Validate tag matches extension version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME}"
+          EXT_VERSION=$(node -p "require('./vscode-fscript/package.json').version")
+          if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match vscode-fscript/package.json version ($EXT_VERSION)."
+            exit 1
+          fi
+
+      - name: Install extension dependencies
+        working-directory: vscode-fscript
+        run: npm ci
+
+      - name: Build and stage language server
+        shell: bash
+        run: |
+          rm -rf vscode-fscript/server
+          dotnet publish src/FScript.LanguageServer/FScript.LanguageServer.fsproj -c Release -o vscode-fscript/server
+
+      - name: Install extension packaging tool
+        run: npm install -g @vscode/vsce@3.5
+
+      - name: Package extension
+        working-directory: vscode-fscript
+        run: vsce package
 
       - name: Publish artifacts
         run: make publish-all config=Release version=${{ env.BUILD_VERSION }}
@@ -62,3 +94,4 @@ jobs:
           files: |
             .out/*.zip
             .out/*.nupkg
+            vscode-fscript/*.vsix
