@@ -27,7 +27,7 @@
   "activationEvents": [
     "onLanguage:fscript"
   ],
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "languages": [
       {
@@ -90,12 +90,15 @@
   },
   "scripts": {
     "lint": "echo \"No lint configured\"",
+    "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
+    "vscode:prepublish": "npm run compile",
     "package": "vsce package"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.2.2"
+    "@vscode/vsce": "^3.2.2",
+    "esbuild": "^0.25.9"
   }
 }
