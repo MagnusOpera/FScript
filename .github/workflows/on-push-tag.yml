@@ -36,19 +36,16 @@ jobs:
           dotnet build FScript.sln -c Release --no-restore
           dotnet test FScript.sln -c Release --no-build
 
-      - name: Validate tag matches extension version
-        shell: bash
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME}"
-          EXT_VERSION=$(node -p "require('./vscode-fscript/package.json').version")
-          if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
-            echo "Tag version ($TAG_VERSION) does not match vscode-fscript/package.json version ($EXT_VERSION)."
-            exit 1
-          fi
-
       - name: Install extension dependencies
         working-directory: vscode-fscript
         run: npm ci
+
+      - name: Sync extension version to tag
+        shell: bash
+        working-directory: vscode-fscript
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME}"
+          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
 
       - name: Build and stage language server
         shell: bash
