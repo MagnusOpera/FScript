@@ -156,6 +156,33 @@ module TypeInfer =
             let names = String.concat ", " many
             raise (TypeException { Message = $"Ambiguous declared record type for shape {shapeText}: {names}"; Span = span })
 
+    let private resolveNamedRecordByFieldSet (typeDefs: Map<string, Type>) (fields: Set<string>) (span: Span) : string =
+        let matches =
+            typeDefs
+            |> Map.toList
+            |> List.choose (fun (name, t) ->
+                match t with
+                | TRecord recordFields when (recordFields |> Map.keys |> Set.ofSeq) = fields -> Some name
+                | _ -> None)
+
+        match matches with
+        | [ name ] -> name
+        | [] ->
+            let shapeText =
+                fields
+                |> Set.toList
+                |> String.concat "; "
+                |> fun f -> $"{{ {f} }}"
+            raise (TypeException { Message = $"No declared record type matches fields {shapeText}"; Span = span })
+        | many ->
+            let shapeText =
+                fields
+                |> Set.toList
+                |> String.concat "; "
+                |> fun f -> $"{{ {f} }}"
+            let names = String.concat ", " many
+            raise (TypeException { Message = $"Ambiguous declared record type for fields {shapeText}: {names}"; Span = span })
+
     let rec private annotationTypeFromRef (typeDefs: Map<string, Type>) (span: Span) (tref: TypeRef) : Type =
         match tref with
         | TRName "unit" -> TUnit
@@ -540,6 +567,19 @@ module TypeInfer =
                                 compose sField sLocal
                             | None ->
                                 raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
+                    | PRecord _, TNamed typeName, TRecord patFields ->
+                        match typeDefs.TryFind typeName with
+                        | Some (TRecord scrutFields) ->
+                            patFields
+                            |> Map.fold (fun sLocal field patTy ->
+                                match scrutFields.TryFind field with
+                                | Some scrutTy ->
+                                    let sField = unify typeDefs (applyType sLocal scrutTy) (applyType sLocal patTy) caseSpan
+                                    compose sField sLocal
+                                | None ->
+                                    raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
+                        | _ ->
+                            raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
                     | PRecord _, _, _ ->
                         raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
                     | _ ->
@@ -591,7 +631,20 @@ module TypeInfer =
                 inferred <- inferred @ [ applyType sAcc t1 ]
             let tRes = TTuple inferred
             sAcc, tRes, asTyped expr tRes
-        | ERecord (fields, _) ->
+        | ERecord (fields, span) ->
+            let mutable sAcc = emptySubst
+            let mutable inferred : Map<string, Type> = Map.empty
+            for (name, valueExpr) in fields do
+                let s1, t1, _ = inferExpr typeDefs constructors (applyEnv sAcc env) valueExpr
+                sAcc <- compose s1 sAcc
+                inferred <- inferred.Add(name, applyType sAcc t1)
+            let recordTypeName = resolveNamedRecordByFieldSet typeDefs (inferred |> Map.keys |> Set.ofSeq) span
+            let expected = TNamed recordTypeName
+            let sRecord = unify typeDefs (applyType sAcc (TRecord inferred)) expected span
+            let s = compose sRecord sAcc
+            let tRes = applyType s expected
+            s, tRes, asTyped expr tRes
+        | EStructuralRecord (fields, _) ->
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
             for (name, valueExpr) in fields do

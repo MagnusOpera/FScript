@@ -210,6 +210,8 @@ module LspSymbols =
                 items |> List.fold collectExpr acc
             | ERecord (fields, _) ->
                 fields |> List.fold (fun state (_, value) -> collectExpr state value) acc
+            | EStructuralRecord (fields, _) ->
+                fields |> List.fold (fun state (_, value) -> collectExpr state value) acc
             | EMap (entries, _) ->
                 entries
                 |> List.fold (fun state entry ->

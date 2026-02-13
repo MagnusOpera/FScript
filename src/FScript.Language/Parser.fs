@@ -741,7 +741,7 @@ module Parser =
                                 keepParsing <- false
                         stream.Expect(Bar, "Expected '|' in structural record literal") |> ignore
                         let rb = stream.Expect(RBrace, "Expected '}' in structural record literal")
-                        ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                        EStructuralRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
                     else
                     if stream.Peek().Kind = LBracket || stream.Peek().Kind = RangeDots then
                         let parseMapEntry () =

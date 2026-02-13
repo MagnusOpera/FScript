@@ -330,7 +330,7 @@ type ParserTests () =
     member _.``Parses structural record literal expression`` () =
         let p = Helpers.parse "let officeAddress = {| City = \"London\"; Zip = 12345 |}"
         match p.[0] with
-        | SLet ("officeAddress", [], ERecord ([ ("City", ELiteral (LString "London", _)); ("Zip", ELiteral (LInt 12345L, _)) ], _), _, _, _) -> ()
+        | SLet ("officeAddress", [], EStructuralRecord ([ ("City", ELiteral (LString "London", _)); ("Zip", ELiteral (LInt 12345L, _)) ], _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected structural record literal expression")
 
     [<Test>]

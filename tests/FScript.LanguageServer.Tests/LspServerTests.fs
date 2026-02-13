@@ -1128,7 +1128,7 @@ type LspServerTests () =
             initialize client
 
             let uri = "file:///tmp/record-field-completion-test.fss"
-            let source = "let home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
+            let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
 
             let td = JsonObject()
             td["uri"] <- JsonValue.Create(uri)
@@ -1151,7 +1151,7 @@ type LspServerTests () =
             let textDocument = JsonObject()
             textDocument["uri"] <- JsonValue.Create(uri)
             let position = JsonObject()
-            position["line"] <- JsonValue.Create(1)
+            position["line"] <- JsonValue.Create(2)
             position["character"] <- JsonValue.Create(5)
             completionProbe["textDocument"] <- textDocument
             completionProbe["position"] <- position
@@ -1195,7 +1195,7 @@ type LspServerTests () =
             initialize client
 
             let uri = "file:///tmp/record-field-prefix-completion-test.fss"
-            let source = "let home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
+            let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
 
             let td = JsonObject()
             td["uri"] <- JsonValue.Create(uri)
@@ -1218,7 +1218,7 @@ type LspServerTests () =
             let textDocument = JsonObject()
             textDocument["uri"] <- JsonValue.Create(uri)
             let position = JsonObject()
-            position["line"] <- JsonValue.Create(1)
+            position["line"] <- JsonValue.Create(2)
             position["character"] <- JsonValue.Create(6)
             completionProbe["textDocument"] <- textDocument
             completionProbe["position"] <- position
@@ -2561,7 +2561,7 @@ type LspServerTests () =
             initialize client
 
             let uri = "file:///tmp/hover-record-field-test.fss"
-            let source = "let home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
+            let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
 
             let td = JsonObject()
             td["uri"] <- JsonValue.Create(uri)
@@ -2584,7 +2584,7 @@ type LspServerTests () =
             let textDocument = JsonObject()
             textDocument["uri"] <- JsonValue.Create(uri)
             let position = JsonObject()
-            position["line"] <- JsonValue.Create(1)
+            position["line"] <- JsonValue.Create(2)
             position["character"] <- JsonValue.Create(7)
             hoverParams["textDocument"] <- textDocument
             hoverParams["position"] <- position

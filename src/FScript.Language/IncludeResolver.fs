@@ -130,6 +130,8 @@ module IncludeResolver =
                 ETuple(items |> List.map (rewriteExpr boundNames), span)
             | ERecord (fields, span) ->
                 ERecord(fields |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
+            | EStructuralRecord (fields, span) ->
+                EStructuralRecord(fields |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EMap (entries, span) ->
                 let rewritten =
                     entries

@@ -2,6 +2,12 @@
 
 All notable changes to FScript are documented in this file.
 
+## [0.26.0]
+
+- Split record literals: `{ ... }` is nominal (must match one declared record type), while `{| ... |}` is structural.
+- Improved type identity and LSP navigation for records (definition/type-definition from annotations, record literal fields, and parameter usages).
+- Added sample and regression coverage for annotation/literal semantics and record navigation (`samples/annotations-and-matching.fss`, language + LSP tests).
+
 ## [0.25.0]
 
 ### Extension

@@ -61,7 +61,7 @@ type EvalTests () =
         match Helpers.eval "(1, true)" with
         | VTuple [ VInt 1L; VBool true ] -> ()
         | _ -> Assert.Fail("Expected tuple value")
-        Helpers.eval "{ Name = \"a\"; Age = 42 }.Age" |> assertInt 42L
+        Helpers.eval "type Person = { Name: string; Age: int }\n{ Name = \"a\"; Age = 42 }.Age" |> assertInt 42L
 
     [<Test>]
     member _.``Evaluates map literals`` () =
@@ -128,8 +128,8 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates record copy-update immutably`` () =
-        Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np.Age" |> assertInt 1L
-        Helpers.eval "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age" |> assertInt 2L
+        Helpers.eval "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np.Age" |> assertInt 1L
+        Helpers.eval "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age" |> assertInt 2L
 
     [<Test>]
     member _.``Evaluates match on list`` () =
@@ -180,7 +180,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates match on record subset pattern`` () =
-        let src = "let n = { Value = 1; Next = None }\nmatch n with\n    | { Value = v } -> v\n    | _ -> 0"
+        let src = "type rec Node = { Value: int; Next: Node option }\nlet n = { Value = 1; Next = None }\nmatch n with\n    | { Value = v } -> v\n    | _ -> 0"
         Helpers.eval src |> assertInt 1L
 
     [<Test>]
@@ -317,7 +317,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates structural inline record annotation`` () =
-        match Helpers.eval "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000; Country = \"FR\" }" with
+        match Helpers.eval "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address {| City = \"Paris\"; Zip = 75000; Country = \"FR\" |}" with
         | VString "Paris (75000)" -> ()
         | _ -> Assert.Fail("Expected inline structural record annotation evaluation")
 
@@ -357,7 +357,12 @@ type EvalTests () =
 
     [<Test>]
     member _.``Reports type error for unknown field in record update`` () =
-        let act () = Helpers.eval "let p = { Name = \"a\"; Age = 1 }\n{ p with Missing = 2 }" |> ignore
+        let act () = Helpers.eval "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\n{ p with Missing = 2 }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for undeclared plain record literal`` () =
+        let act () = Helpers.eval "let home = { City = \"Paris\"; Zip = 75000; Name = \"toto\" }\nhome" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

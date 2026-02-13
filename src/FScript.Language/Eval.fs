@@ -457,6 +457,11 @@ module Eval =
             |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
             |> Map.ofList
             |> VRecord
+        | EStructuralRecord (fields, _) ->
+            fields
+            |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
+            |> Map.ofList
+            |> VRecord
         | EMap (entries, _) ->
             let mergeWithLeftPrecedence (left: Map<MapKey, Value>) (right: Map<MapKey, Value>) =
                 right

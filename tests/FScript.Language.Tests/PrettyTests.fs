@@ -17,4 +17,4 @@ type PrettyTests () =
     [<Test>]
     member _.``Formats tuple and record`` () =
         Helpers.evalToString "(1, true)" |> should equal "(1, true)"
-        Helpers.evalToString "{ Name = \"a\"; Age = 1 }" |> should equal "{ Age = 1; Name = \"a\" }"
+        Helpers.evalToString "{| Name = \"a\"; Age = 1 |}" |> should equal "{ Age = 1; Name = \"a\" }"

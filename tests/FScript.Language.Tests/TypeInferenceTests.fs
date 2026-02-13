@@ -67,7 +67,7 @@ type TypeInferenceTests () =
     member _.``Infers structural inline record parameter annotation`` () =
         let typed =
             Helpers.infer
-                "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000; Country = \"FR\" }"
+                "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address {| City = \"Paris\"; Zip = 75000; Country = \"FR\" |}"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TString
         | _ -> Assert.Fail("Expected expression")
@@ -97,7 +97,7 @@ type TypeInferenceTests () =
     member _.``Reports type error for inline record annotation mismatch`` () =
         let act () =
             Helpers.infer
-                "let format_address (address: { City: string; Zip: int }) = address.City\nformat_address { City = \"Paris\"; Zip = \"75000\" }"
+                "let format_address (address: { City: string; Zip: int }) = address.City\nformat_address {| City = \"Paris\"; Zip = \"75000\" |}"
             |> ignore
         act |> should throw typeof<TypeException>
 
@@ -155,14 +155,14 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Infers record type and field projection`` () =
-        let typed = Helpers.infer "let p = { Name = \"a\"; Age = 1 }\np.Age"
+        let typed = Helpers.infer "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\np.Age"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers record copy-update`` () =
-        let typed = Helpers.infer "let p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age"
+        let typed = Helpers.infer "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
@@ -383,7 +383,12 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Reports type error for unknown field in record update`` () =
-        let act () = Helpers.infer "let p = { Name = \"a\"; Age = 1 }\n{ p with Missing = 2 }" |> ignore
+        let act () = Helpers.infer "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\n{ p with Missing = 2 }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for undeclared plain record literal`` () =
+        let act () = Helpers.infer "let home = { City = \"Paris\"; Zip = 75000; Name = \"toto\" }\nhome" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]
