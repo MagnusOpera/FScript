@@ -1,5 +1,5 @@
 {
-  "name": "vscode-fscript",
+  "name": "fscript",
   "displayName": "FScript",
   "description": "Syntax highlighting and language-server integration for FScript (*.fss).",
   "version": "0.1.0",

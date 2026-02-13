@@ -51,6 +51,16 @@ brew install magnusopera/tap/fscript
 - `MagnusOpera.FScript.Language`
 - `MagnusOpera.FScript.Runtime`
 
+## VS Code Extension
+
+FScript has a first-party VS Code extension with syntax highlighting and Language Server features (diagnostics, completion, hover, symbols, go-to-definition, references, rename, semantic tokens, inlay hints).
+
+- VS Code Marketplace: `https://marketplace.visualstudio.com/items?itemName=MagnusOpera.fscript`
+- Open VSX: `https://open-vsx.org/extension/MagnusOpera/fscript`
+
+The extension uses automatic .NET runtime acquisition via `.NET Install Tool` and falls back to `dotnet` from `PATH` when needed.
+Source lives in [`vscode-fscript/`](vscode-fscript/).
+
 ## Repository Development
 
 ### Build
