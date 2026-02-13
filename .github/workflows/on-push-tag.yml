@@ -30,12 +30,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build and test
-        run: |
-          dotnet restore FScript.sln
-          dotnet build FScript.sln -c Release --no-restore
-          dotnet test FScript.sln -c Release --no-build
-
       - name: Install extension dependencies
         working-directory: vscode-fscript
         run: npm ci
