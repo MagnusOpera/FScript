@@ -42,9 +42,9 @@ let x =
 - Parameter annotations use parenthesized form:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
-- Parameter annotations also support inline structural record shapes:
-  - `let f (x: { Name: string; Zip: int }) = ...`
-  - `fun (x: { Id: int; Tags: string list }) -> ...`
+- Parameter annotations support two inline record forms:
+  - structural: `let f (x: {| Name: string; Zip: int |}) = ...`
+  - declared-type-by-shape: `let f (x: { Name: string; Zip: int }) = ...`
 
 ## Pattern-matching style
 - `match` supports wildcard, literal, tuple, list-cons, option, record, and union-case patterns.

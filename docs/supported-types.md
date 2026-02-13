@@ -38,8 +38,10 @@ This document specifies the value and type system used by the interpreter.
   - `t1 -> t2`
   - `t1 -> t2 -> t3` is right-associative
 - Function type syntax is available in parameter annotations.
-- Parameter annotations also support inline structural record type refs:
-  - `let f (x: { A: int; B: string }) = ...`
+- Parameter annotations support two inline record type forms:
+  - structural: `let f (x: {| A: int; B: string |}) = ...`
+  - declared-type-by-shape: `let f (x: { A: int; B: string }) = ...`
+- `{ ... }` resolves only if exactly one declared record type matches that shape.
 - Inline record annotation fields are semicolon-separated in single-line form.
 
 ## Named record declarations

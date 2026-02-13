@@ -37,10 +37,13 @@ This document specifies type annotations for function parameters in FScript.
 - Function:
   - `int -> string`
   - `(int -> string) list`
-- Inline structural record (single-line):
+- Structural record (single-line):
+  - `{| City: string; Zip: int |}`
+  - `{| Meta: string map; Next: Node option |}`
+- Declared-type-by-shape record (single-line):
   - `{ City: string; Zip: int }`
-  - `{ Meta: string map; Next: Node option }`
-- Inline structural record annotations are parsed as single-line, semicolon-separated field lists.
+  - this form must resolve to exactly one declared record type with matching shape.
+- Inline record annotation fields are parsed as single-line, semicolon-separated field lists.
 
 ## Type-checking semantics
 - An annotation constrains parameter type during inference.
@@ -51,4 +54,4 @@ This document specifies type annotations for function parameters in FScript.
 - Annotations are useful for making function argument intent explicit.
 - Example:
   - `let display_node (node: Node) = $"{node.Value}"`
-  - `let format_address (address: { City: string; Zip: int }) = $"{address.City} ({address.Zip})"`
+  - `let format_address (address: {| City: string; Zip: int |}) = $"{address.City} ({address.Zip})"`

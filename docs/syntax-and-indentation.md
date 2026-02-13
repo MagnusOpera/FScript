@@ -124,11 +124,11 @@ From highest to lowest:
   - `let f x y = expr`
 - Multiline parameter declarations are valid when all continuation parameter lines are aligned to the same column:
 ```fsharp
-let format_address (address: { City: string; Zip: int })
+let format_address (address: {| City: string; Zip: int |})
                    (name: string) = $"{address.City} ({name})"
 ```
 ```fsharp
-let format_address (address: { City: string; Zip: int })
+let format_address (address: {| City: string; Zip: int |})
                    (name: string) =
     $"{address.City} ({name})"
 ```
@@ -201,9 +201,10 @@ All of the following map literal layouts are valid:
   - `type rec Tree = | Empty | Node of (int * Tree list)`
 
 ## Inline type annotations in parameters
-- Parameter annotations accept inline structural record types:
-  - `let format_address (address: { City: string; Zip: int }) = ...`
-  - `fun (x: { Name: string; Tags: string list }) -> ...`
+- Parameter annotations accept inline record types:
+  - structural: `let format_address (address: {| City: string; Zip: int |}) = ...`
+  - structural lambda: `fun (x: {| Name: string; Tags: string list |}) -> ...`
+  - declared-type-by-shape: `let say_hello (person: { Name: string }) = ...`
 - Inline record annotation fields are `;`-separated in single-line form.
 
 ## Include directive

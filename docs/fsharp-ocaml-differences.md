@@ -53,10 +53,13 @@ let x =
 - FScript supports optional parameter annotations using F#-style syntax:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
-- FScript also supports inline structural record parameter annotations:
-  - `let f (x: { Name: string; Zip: int }) = ...`
+- FScript also supports two inline record annotation forms:
+  - structural (explicit): `let f (x: {| Name: string; Zip: int |}) = ...`
+  - declared-type-by-shape: `let f (x: { Name: string; Zip: int }) = ...` (must resolve to a declared record type)
 - Return type annotations are not supported.
-- Pattern-level type annotations are not supported.
+- Pattern-level type annotations are supported in `match`:
+  - structural: `| {| Name: string |} -> ...`
+  - declared-type-by-shape: `| { Name: string } -> ...`
 
 ### Recursive types
 - Recursive record declarations must be explicit: `type rec Name = { ... }`.

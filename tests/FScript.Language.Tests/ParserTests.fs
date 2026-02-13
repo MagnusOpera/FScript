@@ -320,11 +320,32 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated lambda parameter with function type")
 
     [<Test>]
-    member _.``Parses annotated parameter with inline record type`` () =
-        let p = Helpers.parse "let format_address (address: { City: string; Zip: int }) = address.City"
+    member _.``Parses annotated parameter with structural inline record type`` () =
+        let p = Helpers.parse "let format_address (address: {| City: string; Zip: int |}) = address.City"
         match p.[0] with
-        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
-        | _ -> Assert.Fail("Expected annotated let parameter with inline record type")
+        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRStructuralRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let parameter with structural inline record type")
+
+    [<Test>]
+    member _.``Parses structural record literal expression`` () =
+        let p = Helpers.parse "let officeAddress = {| City = \"London\"; Zip = 12345 |}"
+        match p.[0] with
+        | SLet ("officeAddress", [], ERecord ([ ("City", ELiteral (LString "London", _)); ("Zip", ELiteral (LInt 12345L, _)) ], _), _, _, _) -> ()
+        | _ -> Assert.Fail("Expected structural record literal expression")
+
+    [<Test>]
+    member _.``Parses match with structural record type pattern`` () =
+        let p = Helpers.parse "match person with\n| {| Name: string |} -> person.Name\n| _ -> \"missing\""
+        match p.[0] with
+        | SExpr (EMatch (_, (PTypeRef (TRStructuralRecord [ ("Name", TRName "string") ], _), _, _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected structural record type pattern")
+
+    [<Test>]
+    member _.``Parses match with declared record type pattern literal`` () =
+        let p = Helpers.parse "match person with\n| { Name: string } -> person.Name\n| _ -> \"missing\""
+        match p.[0] with
+        | SExpr (EMatch (_, (PTypeRef (TRRecord [ ("Name", TRName "string") ], _), _, _, _) :: _, _)) -> ()
+        | _ -> Assert.Fail("Expected declared record type pattern literal")
 
     [<Test>]
     member _.``Parses match with empty map pattern`` () =

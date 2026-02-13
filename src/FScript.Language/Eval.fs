@@ -110,7 +110,95 @@ module Eval =
         | VInt i -> MKInt i
         | _ -> raise (EvalException { Message = "Map key must be string or int"; Span = span })
 
-    let rec private patternMatch (pat: Pattern) (value: Value) : Env option =
+    let rec private valueMatchesTypeRef (typeDefs: Map<string, Type>) (tref: TypeRef) (value: Value) : bool =
+        let rec resolve (tref: TypeRef) : Type option =
+            match tref with
+            | TRName "unit" -> Some TUnit
+            | TRName "int" -> Some TInt
+            | TRName "float" -> Some TFloat
+            | TRName "bool" -> Some TBool
+            | TRName "string" -> Some TString
+            | TRName name ->
+                typeDefs |> Map.tryFind name
+            | TRTuple ts ->
+                resolveTypeList ts |> Option.map TTuple
+            | TRFun _ -> None
+            | TRPostfix (inner, "list") -> resolve inner |> Option.map TList
+            | TRPostfix (inner, "option") -> resolve inner |> Option.map TOption
+            | TRPostfix (inner, "map") -> resolve inner |> Option.map (fun t -> TMap (TString, t))
+            | TRPostfix _ -> None
+            | TRRecord fields ->
+                let shape = resolveFieldList fields |> Option.map Map.ofList
+                match shape with
+                | None -> None
+                | Some s ->
+                    typeDefs
+                    |> Map.toSeq
+                    |> Seq.tryPick (fun (name, t) ->
+                        match t with
+                        | TRecord f when f = s -> Some (TNamed name)
+                        | _ -> None)
+            | TRStructuralRecord fields ->
+                resolveFieldList fields |> Option.map (Map.ofList >> TRecord)
+        and resolveTypeList (items: TypeRef list) : Type list option =
+            match items with
+            | [] -> Some []
+            | head :: tail ->
+                match resolve head, resolveTypeList tail with
+                | Some h, Some t -> Some (h :: t)
+                | _ -> None
+        and resolveFieldList (fields: (string * TypeRef) list) : (string * Type) list option =
+            match fields with
+            | [] -> Some []
+            | (name, tref) :: tail ->
+                match resolve tref, resolveFieldList tail with
+                | Some t, Some rest -> Some ((name, t) :: rest)
+                | _ -> None
+
+        let rec valueHasType (value: Value) (t: Type) : bool =
+            match t, value with
+            | TUnit, VUnit -> true
+            | TInt, VInt _ -> true
+            | TFloat, VFloat _ -> true
+            | TBool, VBool _ -> true
+            | TString, VString _ -> true
+            | TList inner, VList items -> items |> List.forall (fun v -> valueHasType v inner)
+            | TTuple inner, VTuple items ->
+                inner.Length = items.Length && List.forall2 valueHasType items inner
+            | TOption inner, VOption None -> true
+            | TOption inner, VOption (Some v) -> valueHasType v inner
+            | TMap (_, _), VMap _ -> true
+            | TRecord fields, VRecord values ->
+                // Structural superset: all required fields must exist and match.
+                fields
+                |> Map.forall (fun name ft ->
+                    match values.TryFind name with
+                    | Some fv -> valueHasType fv ft
+                    | None -> false)
+            | TNamed name, v ->
+                match typeDefs.TryFind name with
+                | Some expanded -> valueHasType v expanded
+                | None -> false
+            | _ -> false
+
+        match tref with
+        | TRRecord _ ->
+            // Declared-type-only check for { ... }.
+            match resolve tref with
+            | Some t -> valueHasType value t
+            | None -> false
+        | TRStructuralRecord fields ->
+            // Structural-only check for {| ... |}.
+            let structuralType = TRStructuralRecord fields
+            match resolve structuralType with
+            | Some t -> valueHasType value t
+            | None -> false
+        | _ ->
+            match resolve tref with
+            | Some t -> valueHasType value t
+            | None -> false
+
+    let rec private patternMatch (typeDefs: Map<string, Type>) (pat: Pattern) (value: Value) : Env option =
         let mergeBindings (left: Env) (right: Env) : Env option =
             let mutable ok = true
             let mutable merged = left
@@ -126,7 +214,7 @@ module Eval =
             let applyTail () =
                 match tailPattern with
                 | Some tail ->
-                    match patternMatch tail (VMap remaining) with
+                    match patternMatch typeDefs tail (VMap remaining) with
                     | Some tailEnv -> mergeBindings envAcc tailEnv
                     | None -> None
                 | None ->
@@ -143,7 +231,7 @@ module Eval =
                         let key = head.Key
                         let value = head.Value
                         let nextRemaining = remaining.Remove key
-                        match patternMatch keyPattern (mapKeyToValue key), patternMatch valuePattern value with
+                        match patternMatch typeDefs keyPattern (mapKeyToValue key), patternMatch typeDefs valuePattern value with
                         | Some keyEnv, Some valueEnv ->
                             match mergeBindings envAcc keyEnv with
                             | Some merged1 ->
@@ -164,7 +252,7 @@ module Eval =
                             None
                         else
                             let value = remaining.[targetKey]
-                            match patternMatch valuePattern value with
+                            match patternMatch typeDefs valuePattern value with
                             | Some valueEnv ->
                                 match mergeBindings envAcc valueEnv with
                                 | Some merged -> matchMapClauses hasExplicitClauses rest tailPattern (remaining.Remove targetKey) merged
@@ -173,11 +261,11 @@ module Eval =
                     | _ -> None
                 | _ ->
                     let tryKey (kv: System.Collections.Generic.KeyValuePair<MapKey, Value>) : (MapKey * Env) option =
-                        match patternMatch keyPattern (mapKeyToValue kv.Key) with
+                        match patternMatch typeDefs keyPattern (mapKeyToValue kv.Key) with
                         | Some keyEnv ->
                             match mergeBindings envAcc keyEnv with
                             | Some merged1 ->
-                                match patternMatch valuePattern kv.Value with
+                                match patternMatch typeDefs valuePattern kv.Value with
                                 | Some valueEnv ->
                                     match mergeBindings merged1 valueEnv with
                                     | Some merged2 -> Some (kv.Key, merged2)
@@ -198,14 +286,14 @@ module Eval =
             if valueEquals (literalToValue lit) v then Some Map.empty else None
         | PNil _, VList [] -> Some Map.empty
         | PCons (p1, p2, _), VList (h :: t) ->
-            match patternMatch p1 h, patternMatch p2 (VList t) with
+            match patternMatch typeDefs p1 h, patternMatch typeDefs p2 (VList t) with
             | Some env1, Some env2 ->
                 Some (Map.fold (fun acc k v -> Map.add k v acc) env1 env2)
             | _ -> None
         | PTuple (patterns, _), VTuple values when patterns.Length = values.Length ->
             (Some Map.empty, List.zip patterns values)
             ||> List.fold (fun accOpt (p, v) ->
-                match accOpt, patternMatch p v with
+                match accOpt, patternMatch typeDefs p v with
                 | Some acc, Some next ->
                     Some (Map.fold (fun state k value -> Map.add k value state) acc next)
                 | _ -> None)
@@ -214,14 +302,14 @@ module Eval =
             ||> List.fold (fun accOpt (name, p) ->
                 match accOpt, values.TryFind name with
                 | Some acc, Some value ->
-                    match patternMatch p value with
+                    match patternMatch typeDefs p value with
                     | Some next -> Some (Map.fold (fun state k v -> Map.add k v state) acc next)
                     | None -> None
                 | _ -> None)
         | PMap (clauses, tailPattern, _), VMap values ->
             matchMapClauses (not clauses.IsEmpty) clauses tailPattern values Map.empty
         | PSome (p, _), VOption (Some v) ->
-            patternMatch p v
+            patternMatch typeDefs p v
         | PNone _, VOption None -> Some Map.empty
         | PUnionCase (qualifier, caseName, payload, _), VUnionCase (valueTypeName, valueCaseName, valuePayload) ->
             let caseMatches = caseName = valueCaseName
@@ -230,12 +318,14 @@ module Eval =
                 | Some qualifiedType -> qualifiedType = valueTypeName
                 | None -> true
             if caseMatches && qualifierMatches then
-                match payload, valuePayload with
-                | None, None -> Some Map.empty
-                | Some p, Some v -> patternMatch p v
-                | _ -> None
+                    match payload, valuePayload with
+                    | None, None -> Some Map.empty
+                    | Some p, Some v -> patternMatch typeDefs p v
+                    | _ -> None
             else
                 None
+        | PTypeRef (tref, _), v ->
+            if valueMatchesTypeRef typeDefs tref v then Some Map.empty else None
         | _ -> None
 
     let rec private applyFunctionValue
@@ -332,7 +422,7 @@ module Eval =
                 match cs with
                 | [] -> raise (EvalException { Message = "No match cases matched"; Span = span })
                 | (pat, guard, body, _) :: rest ->
-                    match patternMatch pat v with
+                    match patternMatch typeDefs pat v with
                     | Some bindings ->
                         let env' = Map.fold (fun acc k v -> Map.add k v acc) env bindings
                         match guard with
@@ -604,6 +694,11 @@ module Eval =
             | TRPostfix (_, suffix) ->
                 raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
             | TRRecord fields ->
+                fields
+                |> List.map (fun (name, t) -> name, fromRef stack t)
+                |> Map.ofList
+                |> TRecord
+            | TRStructuralRecord fields ->
                 fields
                 |> List.map (fun (name, t) -> name, fromRef stack t)
                 |> Map.ofList

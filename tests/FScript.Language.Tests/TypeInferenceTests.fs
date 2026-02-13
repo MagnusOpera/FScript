@@ -42,8 +42,8 @@ type TypeInferenceTests () =
         match typed.[1] with
         | TypeInfer.TSLet (_, _, t, _, _, _) ->
             match t with
-            | TFun (TRecord fields, TString) ->
-                fields.ContainsKey "Value" |> should equal true
+            | TFun (TNamed "Node", TString) ->
+                ()
             | _ -> Assert.Fail("Expected Node -> string function type")
         | _ -> Assert.Fail("Expected annotated function let")
 
@@ -64,10 +64,31 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Infers inline structural record parameter annotation`` () =
+    member _.``Infers structural inline record parameter annotation`` () =
         let typed =
             Helpers.infer
-                "let format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000 }"
+                "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000; Country = \"FR\" }"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers structural record literal at call site`` () =
+        let typed =
+            Helpers.infer
+                "type OfficeAddress = { City: string; Zip: int }\nlet make_office_address (address: OfficeAddress) = address\nmake_office_address {| City = \"London\"; Zip = 12345 |}"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te ->
+            match te.Type with
+            | TNamed "OfficeAddress" -> ()
+            | _ -> Assert.Fail($"Expected OfficeAddress, got {te.Type}")
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Resolves declared type from inline nominal record annotation`` () =
+        let typed =
+            Helpers.infer
+                "type Person = { Name: string }\nlet sayHello (person: { Name: string }) = person.Name\nsayHello { Name = \"Ada\" }"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TString
         | _ -> Assert.Fail("Expected expression")
@@ -413,7 +434,7 @@ type TypeInferenceTests () =
             Helpers.infer
                 "type Package = { name: string }\nlet get_name = fun (value: Package) -> value.name\nget_name"
         match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TFun (TRecord (Map.ofList [ "name", TString ]), TString))
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TFun (TNamed "Package", TString))
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]

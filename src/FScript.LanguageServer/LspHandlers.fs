@@ -454,16 +454,27 @@ module LspHandlers =
                     loc["range"] <- toLspRange sym.Span
                     LspProtocol.sendResponse idNode (Some loc)
                 | None ->
-                    LspProtocol.sendResponse idNode None
+                    match tryResolveTypeTargetAtPosition doc line character with
+                    | Some typeName ->
+                        match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
+                        | Some typeSym ->
+                            let loc = JsonObject()
+                            loc["uri"] <- JsonValue.Create(uri)
+                            loc["range"] <- toLspRange typeSym.Span
+                            LspProtocol.sendResponse idNode (Some loc)
+                        | None ->
+                            LspProtocol.sendResponse idNode None
+                    | None ->
+                        LspProtocol.sendResponse idNode None
         | _ -> LspProtocol.sendResponse idNode None
 
     let handleTypeDefinition (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
-            match tryResolveSymbol doc line character with
-            | Some sym ->
-                let targetTypeName =
+            let targetTypeName =
+                match tryResolveSymbol doc line character with
+                | Some sym ->
                     match sym.TypeTargetName with
                     | Some name -> Some name
                     | None ->
@@ -472,17 +483,17 @@ module LspHandlers =
                             doc.Symbols
                             |> List.tryFind (fun s -> s.Kind = 5 && s.Name = t)
                             |> Option.map (fun s -> s.Name))
+                | None ->
+                    tryResolveTypeTargetAtPosition doc line character
 
-                match targetTypeName with
-                | Some typeName ->
-                    match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
-                    | Some typeSym ->
-                        let loc = JsonObject()
-                        loc["uri"] <- JsonValue.Create(uri)
-                        loc["range"] <- toLspRange typeSym.Span
-                        LspProtocol.sendResponse idNode (Some loc)
-                    | None ->
-                        LspProtocol.sendResponse idNode None
+            match targetTypeName with
+            | Some typeName ->
+                match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
+                | Some typeSym ->
+                    let loc = JsonObject()
+                    loc["uri"] <- JsonValue.Create(uri)
+                    loc["range"] <- toLspRange typeSym.Span
+                    LspProtocol.sendResponse idNode (Some loc)
                 | None ->
                     LspProtocol.sendResponse idNode None
             | None ->

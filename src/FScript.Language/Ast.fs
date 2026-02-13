@@ -13,6 +13,7 @@ and TypeRef =
     | TRFun of TypeRef * TypeRef
     | TRPostfix of TypeRef * string
     | TRRecord of (string * TypeRef) list
+    | TRStructuralRecord of (string * TypeRef) list
 
 type Param =
     { Name: string
@@ -37,6 +38,7 @@ and Pattern =
     | PSome of Pattern * Span
     | PNone of Span
     | PUnionCase of string option * string * Pattern option * Span
+    | PTypeRef of TypeRef * Span
 
 and Expr =
     | EUnit of Span
@@ -100,6 +102,7 @@ module Ast =
         | PSome (_, s) -> s
         | PNone s -> s
         | PUnionCase (_, _, _, s) -> s
+        | PTypeRef (_, s) -> s
 
     let spanOfExpr expr =
         match expr with

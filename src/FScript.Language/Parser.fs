@@ -191,6 +191,7 @@ module Parser =
                 TRName name
             | LBrace ->
                 stream.Next() |> ignore
+                let isStructural = stream.Match(Bar)
                 let fields = ResizeArray<string * TypeRef>()
                 let seen = System.Collections.Generic.HashSet<string>()
                 let parseField () =
@@ -204,14 +205,21 @@ module Parser =
                     stream.Expect(Colon, "Expected ':' after inline record type field name") |> ignore
                     let fieldType = parseTypeRef()
                     fields.Add(fieldName, fieldType)
-                if stream.Peek().Kind = RBrace then
+                if (isStructural && stream.Peek().Kind = Bar)
+                   || (not isStructural && stream.Peek().Kind = RBrace) then
                     raise (ParseException { Message = "Inline record type must define at least one field"; Span = stream.Peek().Span })
                 parseField()
                 while stream.Match(Semicolon) do
-                    if stream.Peek().Kind <> RBrace then
+                    if (isStructural && stream.Peek().Kind <> Bar)
+                       || ((not isStructural) && stream.Peek().Kind <> RBrace) then
                         parseField()
+                if isStructural then
+                    stream.Expect(Bar, "Expected '|' in structural record type") |> ignore
                 stream.Expect(RBrace, "Expected '}' in inline record type") |> ignore
-                TRRecord (fields |> Seq.toList)
+                if isStructural then
+                    TRStructuralRecord (fields |> Seq.toList)
+                else
+                    TRRecord (fields |> Seq.toList)
             | LParen ->
                 stream.Next() |> ignore
                 let first = parseTypeRef()
@@ -478,6 +486,29 @@ module Parser =
                 stream.SkipNewlines()
                 if stream.Match(RBrace) then
                     PMap([], None, mkSpanFrom lb.Span lb.Span)
+                elif stream.Peek().Kind = Bar then
+                    // Type-ref pattern: {| Field: type; ... |}
+                    stream.Next() |> ignore
+                    let fields = ResizeArray<string * TypeRef>()
+                    let seen = System.Collections.Generic.HashSet<string>()
+                    let parseTypeField () =
+                        let nameTok = stream.ExpectIdent("Expected field name in structural record type pattern")
+                        let fieldName =
+                            match nameTok.Kind with
+                            | Ident n -> n
+                            | _ -> ""
+                        if not (seen.Add fieldName) then
+                            raise (ParseException { Message = $"Duplicate field '{fieldName}' in structural record type pattern"; Span = nameTok.Span })
+                        stream.Expect(Colon, "Expected ':' in structural record type pattern") |> ignore
+                        let fieldType = parseTypeRef()
+                        fields.Add(fieldName, fieldType)
+                    parseTypeField()
+                    while stream.Match(Semicolon) do
+                        if stream.Peek().Kind <> Bar then
+                            parseTypeField()
+                    stream.Expect(Bar, "Expected '|' in structural record type pattern") |> ignore
+                    let rb = stream.Expect(RBrace, "Expected '}' in structural record type pattern")
+                    PTypeRef(TRStructuralRecord(fields |> Seq.toList), mkSpanFrom lb.Span rb.Span)
                 elif stream.Peek().Kind = LBracket then
                     let clauses = ResizeArray<Pattern * Pattern>()
                     let parseClause () =
@@ -524,27 +555,60 @@ module Parser =
                     let rb = stream.Expect(RBrace, "Expected '}' in map pattern")
                     PMap(clauses |> Seq.toList, tailPattern, mkSpanFrom lb.Span rb.Span)
                 else
-                    let fields = ResizeArray<string * Pattern>()
-                    let seen = System.Collections.Generic.HashSet<string>()
-                    let parseField () =
-                        stream.SkipNewlines()
-                        let nameTok = stream.ExpectIdent("Expected field name in record pattern")
-                        let name =
-                            match nameTok.Kind with
-                            | Ident n -> n
-                            | _ -> ""
-                        if not (seen.Add name) then
-                            raise (ParseException { Message = $"Duplicate field '{name}' in record pattern"; Span = nameTok.Span })
-                        stream.SkipNewlines()
-                        stream.Expect(Equals, "Expected '=' in record pattern field") |> ignore
-                        let p = parsePatternCons()
-                        fields.Add(name, p)
-                    parseField()
-                    while stream.Match(Semicolon) do
-                        if stream.Peek().Kind <> RBrace then
-                            parseField()
-                    let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
-                    PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                    let mark = stream.Mark()
+                    let isTypeRefPattern =
+                        try
+                            let _ = stream.ExpectIdent("Expected field name in record type pattern")
+                            stream.SkipNewlines()
+                            stream.Match(Colon)
+                        with _ ->
+                            false
+                    stream.Restore(mark)
+
+                    if isTypeRefPattern then
+                        let fields = ResizeArray<string * TypeRef>()
+                        let seen = System.Collections.Generic.HashSet<string>()
+                        let parseTypeField () =
+                            stream.SkipNewlines()
+                            let nameTok = stream.ExpectIdent("Expected field name in record type pattern")
+                            let name =
+                                match nameTok.Kind with
+                                | Ident n -> n
+                                | _ -> ""
+                            if not (seen.Add name) then
+                                raise (ParseException { Message = $"Duplicate field '{name}' in record type pattern"; Span = nameTok.Span })
+                            stream.SkipNewlines()
+                            stream.Expect(Colon, "Expected ':' in record type pattern field") |> ignore
+                            let t = parseTypeRef()
+                            fields.Add(name, t)
+                        parseTypeField()
+                        while stream.Match(Semicolon) do
+                            if stream.Peek().Kind <> RBrace then
+                                parseTypeField()
+                        let rb = stream.Expect(RBrace, "Expected '}' in record type pattern")
+                        PTypeRef(TRRecord(fields |> Seq.toList), mkSpanFrom lb.Span rb.Span)
+                    else
+                        let fields = ResizeArray<string * Pattern>()
+                        let seen = System.Collections.Generic.HashSet<string>()
+                        let parseField () =
+                            stream.SkipNewlines()
+                            let nameTok = stream.ExpectIdent("Expected field name in record pattern")
+                            let name =
+                                match nameTok.Kind with
+                                | Ident n -> n
+                                | _ -> ""
+                            if not (seen.Add name) then
+                                raise (ParseException { Message = $"Duplicate field '{name}' in record pattern"; Span = nameTok.Span })
+                            stream.SkipNewlines()
+                            stream.Expect(Equals, "Expected '=' in record pattern field") |> ignore
+                            let p = parsePatternCons()
+                            fields.Add(name, p)
+                        parseField()
+                        while stream.Match(Semicolon) do
+                            if stream.Peek().Kind <> RBrace then
+                                parseField()
+                        let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
+                        PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
 
         and parsePatternCons () : Pattern =
@@ -648,6 +712,37 @@ module Parser =
                 if stream.Match(RBrace) then
                     EMap([], mkSpanFrom lb.Span lb.Span)
                 else
+                    if stream.Match(Bar) then
+                        if stream.Peek().Kind = Bar then
+                            raise (ParseException { Message = "Structural record literal must define at least one field"; Span = stream.Peek().Span })
+                        let fields = ResizeArray<string * Expr>()
+                        let parseField () =
+                            let nameTok = stream.ExpectIdent("Expected field name in structural record literal")
+                            let name =
+                                match nameTok.Kind with
+                                | Ident n -> n
+                                | _ -> ""
+                            stream.SkipNewlines()
+                            stream.Expect(Equals, "Expected '=' in structural record field") |> ignore
+                            let value = parseEntryExpr()
+                            fields.Add(name, value)
+                        parseField()
+                        let mutable keepParsing = true
+                        while keepParsing do
+                            let hasSeparator =
+                                if stream.Match(Semicolon) then
+                                    consumeLayoutSeparators() |> ignore
+                                    true
+                                else
+                                    consumeLayoutSeparators()
+                            if hasSeparator && stream.Peek().Kind <> Bar then
+                                parseField()
+                            else
+                                keepParsing <- false
+                        stream.Expect(Bar, "Expected '|' in structural record literal") |> ignore
+                        let rb = stream.Expect(RBrace, "Expected '}' in structural record literal")
+                        ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                    else
                     if stream.Peek().Kind = LBracket || stream.Peek().Kind = RangeDots then
                         let parseMapEntry () =
                             if stream.Match(RangeDots) then

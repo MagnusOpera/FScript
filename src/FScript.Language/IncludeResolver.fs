@@ -61,6 +61,7 @@ module IncludeResolver =
                 match payload with
                 | Some inner -> loop acc inner
                 | None -> acc
+            | PTypeRef _ -> acc
         loop Set.empty pattern
 
     let private qualifyName (moduleName: string) (name: string) = $"{moduleName}.{name}"

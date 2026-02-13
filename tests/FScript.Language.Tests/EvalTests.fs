@@ -316,10 +316,22 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected recursive Node annotation evaluation")
 
     [<Test>]
-    member _.``Evaluates inline structural record annotation`` () =
-        match Helpers.eval "let format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000 }" with
+    member _.``Evaluates structural inline record annotation`` () =
+        match Helpers.eval "let format_address (address: {| City: string; Zip: int |}) = $\"{address.City} ({address.Zip})\"\nformat_address { City = \"Paris\"; Zip = 75000; Country = \"FR\" }" with
         | VString "Paris (75000)" -> ()
         | _ -> Assert.Fail("Expected inline structural record annotation evaluation")
+
+    [<Test>]
+    member _.``Evaluates structural record literal at call site`` () =
+        match Helpers.eval "type OfficeAddress = { City: string; Zip: int }\nlet make_office_address (address: OfficeAddress) = address\nlet officeAddress = make_office_address {| City = \"London\"; Zip = 12345 |}\nofficeAddress.City" with
+        | VString "London" -> ()
+        | _ -> Assert.Fail("Expected structural record literal call-site evaluation")
+
+    [<Test>]
+    member _.``Evaluates nominal record type annotation resolved by shape`` () =
+        match Helpers.eval "type Person = { Name: string }\nlet say_hello (person: { Name: string }) = $\"Hello {person.Name}\"\nsay_hello { Name = \"Ada\" }" with
+        | VString "Hello Ada" -> ()
+        | _ -> Assert.Fail("Expected nominal record annotation evaluation")
 
     [<Test>]
     member _.``Evaluates top-level function value as unit result`` () =

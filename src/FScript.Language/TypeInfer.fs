@@ -137,6 +137,52 @@ module TypeInfer =
         | "string" -> Some TString
         | _ -> None
 
+    let private resolveNamedRecordByShape (typeDefs: Map<string, Type>) (shape: Map<string, Type>) (span: Span) : Type =
+        let matches =
+            typeDefs
+            |> Map.toList
+            |> List.choose (fun (name, t) ->
+                match t with
+                | TRecord fields when fields = shape -> Some name
+                | _ -> None)
+
+        match matches with
+        | [ name ] -> TNamed name
+        | [] ->
+            let shapeText = Types.typeToString (TRecord shape)
+            raise (TypeException { Message = $"No declared record type matches shape {shapeText}"; Span = span })
+        | many ->
+            let shapeText = Types.typeToString (TRecord shape)
+            let names = String.concat ", " many
+            raise (TypeException { Message = $"Ambiguous declared record type for shape {shapeText}: {names}"; Span = span })
+
+    let rec private annotationTypeFromRef (typeDefs: Map<string, Type>) (span: Span) (tref: TypeRef) : Type =
+        match tref with
+        | TRName "unit" -> TUnit
+        | TRName "int" -> TInt
+        | TRName "float" -> TFloat
+        | TRName "bool" -> TBool
+        | TRName "string" -> TString
+        | TRName name -> TNamed name
+        | TRTuple ts -> ts |> List.map (annotationTypeFromRef typeDefs span) |> TTuple
+        | TRFun (a, b) -> TFun(annotationTypeFromRef typeDefs span a, annotationTypeFromRef typeDefs span b)
+        | TRPostfix (inner, "list") -> TList (annotationTypeFromRef typeDefs span inner)
+        | TRPostfix (inner, "option") -> TOption (annotationTypeFromRef typeDefs span inner)
+        | TRPostfix (inner, "map") -> TMap (TString, annotationTypeFromRef typeDefs span inner)
+        | TRPostfix (_, suffix) ->
+            raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = span })
+        | TRRecord fields ->
+            let shape =
+                fields
+                |> List.map (fun (name, t) -> name, annotationTypeFromRef typeDefs span t)
+                |> Map.ofList
+            resolveNamedRecordByShape typeDefs shape span
+        | TRStructuralRecord fields ->
+            fields
+            |> List.map (fun (name, t) -> name, annotationTypeFromRef typeDefs span t)
+            |> Map.ofList
+            |> TRecord
+
     let rec private typeFromRef (decls: Map<string, TypeDef>) (stack: string list) (tref: TypeRef) : Type =
         match tref with
         | TRName name ->
@@ -174,6 +220,11 @@ module TypeInfer =
             | "map" -> TMap (TString, resolved)
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
         | TRRecord fields ->
+            fields
+            |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
+            |> Map.ofList
+            |> TRecord
+        | TRStructuralRecord fields ->
             fields
             |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
             |> Map.ofList
@@ -287,6 +338,8 @@ module TypeInfer =
                     raise (TypeException { Message = sprintf "Union case '%s' does not take a payload" constructorName; Span = span })
                 | Some _, None ->
                     raise (TypeException { Message = sprintf "Union case '%s' requires a payload" constructorName; Span = span })
+        | PTypeRef (tref, span) ->
+            Map.empty, annotationTypeFromRef typeDefs span tref
 
     let private numericResult (t: Type) (span: Span) =
         match t with
@@ -357,29 +410,7 @@ module TypeInfer =
         | ELambda (param, body, _) ->
             let tv =
                 match param.Annotation with
-                | Some tref ->
-                    let rec fromRef (tref: TypeRef) =
-                        match tref with
-                        | TRName "unit" -> TUnit
-                        | TRName "int" -> TInt
-                        | TRName "float" -> TFloat
-                        | TRName "bool" -> TBool
-                        | TRName "string" -> TString
-                        | TRName name ->
-                            typeDefs |> Map.tryFind name |> Option.defaultValue (TNamed name)
-                        | TRTuple ts -> ts |> List.map fromRef |> TTuple
-                        | TRFun (a, b) -> TFun(fromRef a, fromRef b)
-                        | TRPostfix (inner, "list") -> TList (fromRef inner)
-                        | TRPostfix (inner, "option") -> TOption (fromRef inner)
-                        | TRPostfix (inner, "map") -> TMap (TString, fromRef inner)
-                        | TRPostfix (_, suffix) ->
-                            raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = param.Span })
-                        | TRRecord fields ->
-                            fields
-                            |> List.map (fun (name, t) -> name, fromRef t)
-                            |> Map.ofList
-                            |> TRecord
-                    fromRef tref
+                | Some tref -> annotationTypeFromRef typeDefs param.Span tref
                 | None -> Types.freshVar()
             let env' = env |> Map.add param.Name (Forall([], tv))
             let s1, tBody, _ = inferExpr typeDefs constructors env' body
@@ -611,6 +642,10 @@ module TypeInfer =
             let baseFields =
                 match applyType sBase tBase with
                 | TRecord fields -> fields
+                | TNamed name ->
+                    match typeDefs.TryFind name with
+                    | Some (TRecord fields) -> fields
+                    | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
                 | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
             let mutable sAcc = sBase
             for (name, valueExpr) in updates do
@@ -633,6 +668,13 @@ module TypeInfer =
                     match fields.TryFind fieldName with
                     | Some tField -> s1, tField
                     | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                | TNamed name ->
+                    match typeDefs.TryFind name with
+                    | Some (TRecord fields) ->
+                        match fields.TryFind fieldName with
+                        | Some tField -> s1, tField
+                        | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
+                    | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
                 | TVar _ as tv ->
                     let tField = Types.freshVar()
                     let sField = unify typeDefs tv (TRecord (Map.ofList [ fieldName, tField ])) span

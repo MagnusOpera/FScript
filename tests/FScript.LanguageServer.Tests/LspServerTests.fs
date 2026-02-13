@@ -2146,6 +2146,345 @@ type LspServerTests () =
                         | _ -> false
                     uriOk && startLineOk
                 | _ -> false
+            pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Type definition resolves inline nominal record annotation to declared type`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/type-definition-inline-annotation-test.fss"
+            let source = "type Address = { City: string; Zip: int }\nlet format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\""
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(1)
+            position["character"] <- JsonValue.Create(30) // City in annotation
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 160 "textDocument/typeDefinition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 160 with _ -> false
+                    | _ -> false)
+
+            let pointsToTypeDecl =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    let uriOk =
+                        match result["uri"] with
+                        | :? JsonValue as v -> (try v.GetValue<string>() = uri with _ -> false)
+                        | _ -> false
+                    let startLineOk =
+                        match result["range"] with
+                        | :? JsonObject as rangeObj ->
+                            match rangeObj["start"] with
+                            | :? JsonObject as startObj ->
+                                match startObj["line"] with
+                                | :? JsonValue as v -> (try v.GetValue<int>() = 0 with _ -> false)
+                                | _ -> false
+                            | _ -> false
+                        | _ -> false
+                    uriOk && startLineOk
+                | _ -> false
+
+            pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Type definition resolves annotated parameter usage to declared type`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/type-definition-parameter-usage-test.fss"
+            let source = "type Address = { City: string; Zip: int }\nlet format_address (address: { City: string; Zip: int }) = address.City"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(1)
+            position["character"] <- JsonValue.Create(62) // address in address.City
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 161 "textDocument/typeDefinition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 161 with _ -> false
+                    | _ -> false)
+
+            let pointsToTypeDecl =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    let uriOk =
+                        match result["uri"] with
+                        | :? JsonValue as v -> (try v.GetValue<string>() = uri with _ -> false)
+                        | _ -> false
+                    let startLineOk =
+                        match result["range"] with
+                        | :? JsonObject as rangeObj ->
+                            match rangeObj["start"] with
+                            | :? JsonObject as startObj ->
+                                match startObj["line"] with
+                                | :? JsonValue as v -> (try v.GetValue<int>() = 0 with _ -> false)
+                                | _ -> false
+                            | _ -> false
+                        | _ -> false
+                    uriOk && startLineOk
+                | _ -> false
+
+            pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Type definition resolves record literal call-argument field label to declared type`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/type-definition-record-call-arg-field-test.fss"
+            let source = "type Address = { City: string; Zip: int }\nlet make_office_address (address: Address) = address\nlet officeAddress = make_office_address { City = \"London\"; Zip = 12345 }"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(2)
+            position["character"] <- JsonValue.Create(43) // City in literal argument
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 162 "textDocument/typeDefinition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 162 with _ -> false
+                    | _ -> false)
+
+            let pointsToTypeDecl =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    let uriOk =
+                        match result["uri"] with
+                        | :? JsonValue as v -> (try v.GetValue<string>() = uri with _ -> false)
+                        | _ -> false
+                    let startLineOk =
+                        match result["range"] with
+                        | :? JsonObject as rangeObj ->
+                            match rangeObj["start"] with
+                            | :? JsonObject as startObj ->
+                                match startObj["line"] with
+                                | :? JsonValue as v -> (try v.GetValue<int>() = 0 with _ -> false)
+                                | _ -> false
+                            | _ -> false
+                        | _ -> false
+                    uriOk && startLineOk
+                | _ -> false
+
+            pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Definition resolves record literal call-argument field label to declared type`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/definition-record-call-arg-field-test.fss"
+            let source = "type Address = { City: string; Zip: int }\nlet make_address (address: Address) = address\nlet office = make_address { City = \"London\"; Zip = 12345 }"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(2)
+            position["character"] <- JsonValue.Create(33) // City in literal argument
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 163 "textDocument/definition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 163 with _ -> false
+                    | _ -> false)
+
+            let pointsToTypeDecl =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    let uriOk =
+                        match result["uri"] with
+                        | :? JsonValue as v -> (try v.GetValue<string>() = uri with _ -> false)
+                        | _ -> false
+                    let startLineOk =
+                        match result["range"] with
+                        | :? JsonObject as rangeObj ->
+                            match rangeObj["start"] with
+                            | :? JsonObject as startObj ->
+                                match startObj["line"] with
+                                | :? JsonValue as v -> (try v.GetValue<int>() = 0 with _ -> false)
+                                | _ -> false
+                            | _ -> false
+                        | _ -> false
+                    uriOk && startLineOk
+                | _ -> false
+
+            pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Type definition resolves record literal binding field label to declared type`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/type-definition-record-binding-field-test.fss"
+            let source = "type Contact = { Name: string; City: string; Zip: int; Country: string }\nlet contact = { Name = \"Ada\"; City = \"Paris\"; Zip = 75000; Country = \"FR\" }"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(1)
+            position["character"] <- JsonValue.Create(30) // City in literal binding
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 164 "textDocument/typeDefinition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 164 with _ -> false
+                    | _ -> false)
+
+            let pointsToTypeDecl =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    let uriOk =
+                        match result["uri"] with
+                        | :? JsonValue as v -> (try v.GetValue<string>() = uri with _ -> false)
+                        | _ -> false
+                    let startLineOk =
+                        match result["range"] with
+                        | :? JsonObject as rangeObj ->
+                            match rangeObj["start"] with
+                            | :? JsonObject as startObj ->
+                                match startObj["line"] with
+                                | :? JsonValue as v -> (try v.GetValue<int>() = 0 with _ -> false)
+                                | _ -> false
+                            | _ -> false
+                        | _ -> false
+                    uriOk && startLineOk
+                | _ -> false
 
             pointsToTypeDecl |> should equal true
         finally

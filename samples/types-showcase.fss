@@ -2,10 +2,6 @@ type Address =
     { City: string
       Zip: int }
 
-type OfficeAddress =
-    { City: string
-      Zip: int }
-
 type User =
     { Id: int
       Name: string
@@ -30,7 +26,7 @@ let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some
 let subscription = Premium 12
 
 // Helper typed with OfficeAddress.
-let make_office_address (address: OfficeAddress) = address
+let make_office_address (address: Address) = address
 let officeAddress = make_office_address { City = "London"; Zip = 12345 }
 // Same shape as Address, inferred structurally from literal.
 let parisAddress = { City = "Paris"; Zip = 75000 }

@@ -54,6 +54,7 @@ module LspModel =
         { Text: string
           Symbols: TopLevelSymbol list
           RecordParameterFields: Map<string, (string * string) list>
+          ParameterTypeTargets: Map<string, string>
           FunctionParameters: Map<string, string list>
           ParameterTypeHints: (Span * string) list
           // Variable occurrences keyed by identifier, sourced from AST spans.

@@ -19,16 +19,21 @@ module LspSymbols =
             |> List.map (fun (name, t) -> sprintf "%s: %s" name (typeRefToString t))
             |> String.concat "; "
             |> sprintf "{ %s }"
+        | TRStructuralRecord fields ->
+            fields
+            |> List.map (fun (name, t) -> sprintf "%s: %s" name (typeRefToString t))
+            |> String.concat "; "
+            |> sprintf "{| %s |}"
+
+    let private canonicalRecordSignatureFromFields (fields: (string * string) list) =
+        fields
+        |> List.sortBy fst
+        |> List.map (fun (name, t) -> $"{name}:{t}")
+        |> String.concat ";"
 
     let buildSymbolsFromProgram (program: Program) (typed: TypeInfer.TypedProgram option) : TopLevelSymbol list =
         let typedByName = Dictionary<string, TypeInfer.TypedStmt>(StringComparer.Ordinal)
         let recordTypeDefsBySignature = Dictionary<string, ResizeArray<string>>(StringComparer.Ordinal)
-
-        let canonicalRecordSignatureFromFields (fields: (string * string) list) =
-            fields
-            |> List.sortBy fst
-            |> List.map (fun (name, t) -> $"{name}:{t}")
-            |> String.concat ";"
 
         let canonicalRecordSignatureFromType (t: Type) =
             match t with
@@ -307,6 +312,52 @@ module LspSymbols =
             | _ ->
                 state) Map.empty
 
+    let private buildParameterTypeTargets (program: Program) =
+        let namedRecordTypeBySignature =
+            program
+            |> List.choose (function
+                | SType typeDef when typeDef.Cases.IsEmpty ->
+                    let fields =
+                        typeDef.Fields
+                        |> List.map (fun (fieldName, t) -> fieldName, typeRefToString t)
+                    Some (canonicalRecordSignatureFromFields fields, typeDef.Name)
+                | _ -> None)
+            |> List.groupBy fst
+            |> List.choose (fun (sigText, entries) ->
+                let names = entries |> List.map snd |> List.distinct
+                match names with
+                | [ one ] -> Some (sigText, one)
+                | _ -> None)
+            |> Map.ofList
+
+        let resolveAnnotationTarget (annotation: TypeRef option) =
+            match annotation with
+            | Some (TRName typeName) -> Some typeName
+            | Some (TRRecord fields) ->
+                fields
+                |> List.map (fun (fieldName, t) -> fieldName, typeRefToString t)
+                |> canonicalRecordSignatureFromFields
+                |> fun sigText -> namedRecordTypeBySignature |> Map.tryFind sigText
+            | _ -> None
+
+        let collectFromArgs (acc: Map<string, string>) (args: Param list) =
+            args
+            |> List.fold (fun state arg ->
+                match resolveAnnotationTarget arg.Annotation with
+                | Some typeName -> state |> Map.add arg.Name typeName
+                | None -> state) acc
+
+        program
+        |> List.fold (fun state stmt ->
+            match stmt with
+            | SLet (_, args, _, _, _, _) ->
+                collectFromArgs state args
+            | SLetRecGroup (bindings, _, _) ->
+                bindings
+                |> List.fold (fun inner (_, args, _, _) -> collectFromArgs inner args) state
+            | _ ->
+                state) Map.empty
+
     let private buildFunctionParameters (program: Program) =
         let addBinding name (args: Param list) (acc: Map<string, string list>) =
             let paramNames =
@@ -400,6 +451,7 @@ module LspSymbols =
         let mutable symbols : TopLevelSymbol list = []
         let mutable occurrences : Map<string, Span list> = Map.empty
         let mutable recordParamFields : Map<string, (string * string) list> = Map.empty
+        let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
         let mutable parameterTypeHints : (Span * string) list = []
 
@@ -410,6 +462,7 @@ module LspSymbols =
             parsedProgram <- Some program
             occurrences <- collectVariableOccurrences program
             recordParamFields <- buildRecordParameterFields program
+            parameterTypeTargets <- buildParameterTypeTargets program
             functionParameters <- buildFunctionParameters program
             if isIncludeProgram program then
                 symbols <- buildSymbolsFromProgram program None
@@ -446,7 +499,7 @@ module LspSymbols =
                         diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
         | None -> ()
 
-        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; VariableOccurrences = occurrences }
+        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
@@ -544,6 +597,208 @@ module LspSymbols =
         |> function
             | Some fields -> Some fields
             | None -> doc.RecordParameterFields |> Map.tryFind normalized
+
+    let private tryResolveNamedRecordTypeByFields (doc: DocumentState) (fields: (string * string) list) =
+        let wanted = canonicalRecordSignatureFromFields fields
+        let candidates =
+            doc.Symbols
+            |> List.choose (fun s ->
+                if s.Kind = 5 then
+                    s.TypeText
+                    |> Option.bind tryParseRecordFields
+                    |> Option.map (fun typeFields -> s.Name, canonicalRecordSignatureFromFields typeFields)
+                else
+                    None)
+            |> List.choose (fun (name, signature) -> if signature = wanted then Some name else None)
+            |> List.distinct
+        match candidates with
+        | [ one ] -> Some one
+        | _ -> None
+
+    let private tryResolveTypeNameForQualifier (doc: DocumentState) (qualifier: string) =
+        let normalized =
+            if qualifier.Contains('.') then qualifier.Split('.') |> Array.last
+            else qualifier
+
+        let fromSymbol =
+            doc.Symbols
+            |> List.tryFind (fun s -> s.Name = qualifier || s.Name = normalized)
+            |> Option.bind (fun s ->
+                match s.TypeTargetName with
+                | Some t -> Some t
+                | None ->
+                    s.TypeText
+                    |> Option.bind tryParseRecordFields
+                    |> Option.bind (tryResolveNamedRecordTypeByFields doc))
+
+        match fromSymbol with
+        | Some typeName -> Some typeName
+        | None -> doc.ParameterTypeTargets |> Map.tryFind normalized
+
+    let private tryFindSymbolByName (doc: DocumentState) (name: string) =
+        let normalized =
+            if name.Contains('.') then name.Split('.') |> Array.last
+            else name
+        doc.Symbols
+        |> List.tryFind (fun s -> s.Name = name || s.Name = normalized)
+
+    let private tryResolveTypeNameFromSymbol (doc: DocumentState) (symbol: TopLevelSymbol) =
+        match symbol.TypeTargetName with
+        | Some typeName -> Some typeName
+        | None ->
+            symbol.TypeText
+            |> Option.bind tryParseRecordFields
+            |> Option.bind (tryResolveNamedRecordTypeByFields doc)
+
+    let private trimWrappingParens (input: string) =
+        let mutable value = input.Trim()
+        let mutable changed = true
+        while changed && value.Length >= 2 && value[0] = '(' && value[value.Length - 1] = ')' do
+            changed <- false
+            let mutable depth = 0
+            let mutable wraps = true
+            for i = 0 to value.Length - 1 do
+                match value[i] with
+                | '(' -> depth <- depth + 1
+                | ')' ->
+                    depth <- depth - 1
+                    if depth = 0 && i < value.Length - 1 then
+                        wraps <- false
+                | _ -> ()
+            if wraps then
+                value <- value.Substring(1, value.Length - 2).Trim()
+                changed <- true
+        value
+
+    let private tryFirstArgumentTypeNameFromFunctionSymbol (doc: DocumentState) (symbol: TopLevelSymbol) =
+        let tryResolveTypeName (t: string) =
+            let trimmed = trimWrappingParens t
+            match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = trimmed) with
+            | Some _ -> Some trimmed
+            | None ->
+                tryParseRecordFields trimmed
+                |> Option.bind (tryResolveNamedRecordTypeByFields doc)
+
+        symbol.TypeText
+        |> Option.bind (fun t ->
+            let normalizedTypeText = trimWrappingParens t
+            let arrowIndex = normalizedTypeText.IndexOf("->", StringComparison.Ordinal)
+            if arrowIndex <= 0 then None
+            else
+                let firstArg = normalizedTypeText.Substring(0, arrowIndex).Trim()
+                tryResolveTypeName firstArg)
+
+    let private tryResolveRecordLiteralCallArgTypeTarget (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | Some lineText ->
+            let pos = max 0 (min character lineText.Length)
+            let leftBrace = lineText.LastIndexOf('{', max 0 (pos - 1))
+            let rightBrace = if pos < lineText.Length then lineText.IndexOf('}', pos) else -1
+            if leftBrace < 0 || rightBrace <= leftBrace then
+                None
+            else
+                let segment = lineText.Substring(leftBrace, rightBrace - leftBrace + 1)
+                if not (segment.Contains('='))
+                   || segment.Contains(':') then
+                    None
+                else
+                    let callPrefix = lineText.Substring(0, leftBrace).TrimEnd()
+                    if String.IsNullOrWhiteSpace(callPrefix) then
+                        None
+                    else
+                        let mutable finish = callPrefix.Length - 1
+                        while finish >= 0 && Char.IsWhiteSpace(callPrefix[finish]) do
+                            finish <- finish - 1
+                        let mutable start = finish
+                        while start >= 0 && isWordChar callPrefix[start] do
+                            start <- start - 1
+                        let tokenStart = start + 1
+                        if tokenStart > finish then
+                            None
+                        else
+                            let callTarget = callPrefix.Substring(tokenStart, finish - tokenStart + 1)
+                            tryFindSymbolByName doc callTarget
+                            |> Option.bind (tryFirstArgumentTypeNameFromFunctionSymbol doc)
+        | None -> None
+
+    let private tryResolveRecordLiteralBindingTypeTarget (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | Some lineText ->
+            let pos = max 0 (min character lineText.Length)
+            let leftBrace = lineText.LastIndexOf('{', max 0 (pos - 1))
+            let rightBrace = if pos < lineText.Length then lineText.IndexOf('}', pos) else -1
+            if leftBrace < 0 || rightBrace <= leftBrace then
+                None
+            else
+                let segment = lineText.Substring(leftBrace, rightBrace - leftBrace + 1)
+                if not (segment.Contains('='))
+                   || segment.Contains(':') then
+                    None
+                else
+                    let prefix = lineText.Substring(0, leftBrace).TrimEnd()
+                    let eqIndex = prefix.LastIndexOf('=')
+                    if eqIndex <= 0 then
+                        None
+                    else
+                        let lhs = prefix.Substring(0, eqIndex).Trim()
+                        if not (lhs.StartsWith("let ", StringComparison.Ordinal)) then
+                            None
+                        else
+                            let afterLet = lhs.Substring(4).Trim()
+                            if String.IsNullOrWhiteSpace(afterLet) then
+                                None
+                            else
+                                let mutable idx = 0
+                                while idx < afterLet.Length && isWordChar afterLet[idx] do
+                                    idx <- idx + 1
+                                if idx = 0 then
+                                    None
+                                else
+                                    let bindingName = afterLet.Substring(0, idx)
+                                    tryFindSymbolByName doc bindingName
+                                    |> Option.bind (tryResolveTypeNameFromSymbol doc)
+        | None -> None
+
+    let private tryExtractInlineRecordAnnotationAtPosition (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | None -> None
+        | Some lineText ->
+            let pos = max 0 (min character lineText.Length)
+            let left = lineText.LastIndexOf('{', max 0 (pos - 1))
+            let right = if pos < lineText.Length then lineText.IndexOf('}', pos) else -1
+            if left < 0 || right <= left then
+                None
+            else
+                let segment = lineText.Substring(left, right - left + 1)
+                if segment.Contains(':', StringComparison.Ordinal) && not (segment.Contains('=', StringComparison.Ordinal)) then
+                    tryParseRecordFields segment
+                else
+                    None
+
+    let tryResolveTypeTargetAtPosition (doc: DocumentState) (line: int) (character: int) : string option =
+        let fromWord =
+            match tryGetWordAtPosition doc.Text line character with
+            | Some word when word.Contains('.') ->
+                let idx = word.LastIndexOf('.')
+                if idx > 0 then
+                    let qualifier = word.Substring(0, idx)
+                    tryResolveTypeNameForQualifier doc qualifier
+                else
+                    None
+            | Some word ->
+                tryResolveTypeNameForQualifier doc word
+            | None -> None
+
+        match fromWord with
+        | Some typeName -> Some typeName
+        | None ->
+            match tryExtractInlineRecordAnnotationAtPosition doc line character with
+            | Some fields ->
+                tryResolveNamedRecordTypeByFields doc fields
+            | None ->
+                match tryResolveRecordLiteralCallArgTypeTarget doc line character with
+                | Some t -> Some t
+                | None -> tryResolveRecordLiteralBindingTypeTarget doc line character
 
     let tryGetRecordFieldHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         match tryGetWordAtPosition doc.Text line character with

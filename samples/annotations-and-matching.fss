@@ -1,0 +1,52 @@
+type Address =
+    { City: string
+      Zip: int }
+
+type Contact =
+    { Name: string
+      City: string
+      Zip: int
+      Country: string }
+
+let make_address (address: Address) = address
+
+// Exact named annotation.
+let describe_named (address: Address) =
+    $"named: {address.City} ({address.Zip})"
+
+// Inline nominal-by-shape annotation ({ ... }).
+// This resolves to the declared Address type.
+let describe_nominal_shape (address: { City: string; Zip: int }) =
+    $"nominal-shape: {address.City} ({address.Zip})"
+
+// Explicit structural annotation ({| ... |}).
+// Any record value with at least City/Zip is accepted.
+let describe_structural (address: {| City: string; Zip: int |}) =
+    $"structural: {address.City} ({address.Zip})"
+
+let office = make_address { City = "London"; Zip = 12345 }
+let home = { City = "Paris"; Zip = 75000 }
+let contact = { Name = "Ada"; City = "Paris"; Zip = 75000; Country = "FR" }
+
+// Cross-calls between helpers.
+print (describe_named office)
+print (describe_nominal_shape office)
+print (describe_nominal_shape (make_address home))
+print (describe_structural office)
+print (describe_structural home)
+print (describe_structural contact)
+
+let match_nominal_shape value =
+    match value with
+    | { City: string; Zip: int } -> "match nominal shape"
+    | _ -> "no nominal match"
+
+let match_structural value =
+    match value with
+    | {| City: string; Zip: int |} -> "match structural"
+    | _ -> "no structural match"
+
+print (match_nominal_shape office)
+print (match_nominal_shape contact)
+print (match_structural office)
+print (match_structural contact)
