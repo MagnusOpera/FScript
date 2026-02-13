@@ -25,7 +25,8 @@ let describe_structural (address: {| City: string; Zip: int |}) =
     $"structural: {address.City} ({address.Zip})"
 
 let office = make_address { City = "London"; Zip = 12345 }
-let home = { City = "Paris"; Zip = 75000 }
+let home = {| City = "Paris"; Zip = 75000 |}
+let home = {| home with Name = "Robert" |}
 let contact = { Name = "Ada"; City = "Paris"; Zip = 75000; Country = "FR" }
 
 // Cross-calls between helpers.

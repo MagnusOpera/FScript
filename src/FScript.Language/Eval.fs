@@ -503,6 +503,15 @@ module Eval =
                             raise (EvalException { Message = sprintf "Record field '%s' not found" name; Span = span })) fields
                 VRecord updated
             | _ -> raise (EvalException { Message = "Record update requires a record value"; Span = span })
+        | EStructuralRecordUpdate (target, updates, span) ->
+            match evalExpr typeDefs env target with
+            | VRecord fields ->
+                let updated =
+                    updates
+                    |> List.fold (fun acc (name, valueExpr) ->
+                        Map.add name (evalExpr typeDefs env valueExpr) acc) fields
+                VRecord updated
+            | _ -> raise (EvalException { Message = "Structural record update requires a record value"; Span = span })
         | EFieldGet (target, fieldName, span) ->
             match target with
             | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->

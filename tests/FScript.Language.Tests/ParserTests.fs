@@ -334,6 +334,14 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected structural record literal expression")
 
     [<Test>]
+    member _.``Parses structural record copy-update expression`` () =
+        let p = Helpers.parse "{| p with Age = 2 |}"
+        match p.[0] with
+        | SExpr (EStructuralRecordUpdate (EVar ("p", _), updates, _)) ->
+            updates.Length |> should equal 1
+        | _ -> Assert.Fail("Expected structural record update expression")
+
+    [<Test>]
     member _.``Parses match with structural record type pattern`` () =
         let p = Helpers.parse "match person with\n| {| Name: string |} -> person.Name\n| _ -> \"missing\""
         match p.[0] with

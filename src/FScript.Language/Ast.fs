@@ -60,6 +60,7 @@ and Expr =
     | EStructuralRecord of (string * Expr) list * Span
     | EMap of MapEntry list * Span
     | ERecordUpdate of Expr * (string * Expr) list * Span
+    | EStructuralRecordUpdate of Expr * (string * Expr) list * Span
     | EFieldGet of Expr * string * Span
     | EIndexGet of Expr * Expr * Span
     | ECons of Expr * Expr * Span
@@ -126,6 +127,7 @@ module Ast =
         | EStructuralRecord (_, s) -> s
         | EMap (_, s) -> s
         | ERecordUpdate (_, _, s) -> s
+        | EStructuralRecordUpdate (_, _, s) -> s
         | EFieldGet (_, _, s) -> s
         | EIndexGet (_, _, s) -> s
         | ECons (_, _, s) -> s

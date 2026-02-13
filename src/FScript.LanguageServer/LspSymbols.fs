@@ -224,6 +224,9 @@ module LspSymbols =
             | ERecordUpdate (baseExpr, fields, _) ->
                 let withBase = collectExpr acc baseExpr
                 fields |> List.fold (fun state (_, value) -> collectExpr state value) withBase
+            | EStructuralRecordUpdate (baseExpr, fields, _) ->
+                let withBase = collectExpr acc baseExpr
+                fields |> List.fold (fun state (_, value) -> collectExpr state value) withBase
             | EFieldGet (target, _, _) -> collectExpr acc target
             | EIndexGet (target, key, _) ->
                 let withTarget = collectExpr acc target

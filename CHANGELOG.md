@@ -2,6 +2,12 @@
 
 All notable changes to FScript are documented in this file.
 
+## [0.27.0]
+
+- Added structural update syntax support with `with` inside structural literals: `{| base with Field = value |}`.
+- Structural updates can add new fields and work with multiline layout.
+- Added parser/type/eval regression coverage for structural record update semantics.
+
 ## [0.26.0]
 
 - Split record literals: `{ ... }` is nominal (must match one declared record type), while `{| ... |}` is structural.

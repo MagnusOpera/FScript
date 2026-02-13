@@ -141,6 +141,8 @@ module IncludeResolver =
                 EMap(rewritten, span)
             | ERecordUpdate (target, updates, span) ->
                 ERecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
+            | EStructuralRecordUpdate (target, updates, span) ->
+                EStructuralRecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EFieldGet (target, fieldName, span) ->
                 EFieldGet(rewriteExpr boundNames target, fieldName, span)
             | EIndexGet (target, keyExpr, span) ->

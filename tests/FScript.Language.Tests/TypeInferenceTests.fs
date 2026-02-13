@@ -168,6 +168,20 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers structural record copy-update`` () =
+        let typed = Helpers.infer "let p = {| Name = \"a\"; Age = 1 |}\nlet p2 = {| p with Age = 2 |}\np2.Age"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers structural record copy-update with new fields`` () =
+        let typed = Helpers.infer "let home = {| City = \"Paris\"; Zip = 75000 |}\nlet home = {| home with Name = \"toto\"\n                        Country = \"toto\" |}\nhome.Name"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers append list type`` () =
         let typed = Helpers.infer "[1] @ [2]"
         match typed |> List.last with

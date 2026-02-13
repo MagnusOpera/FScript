@@ -132,6 +132,17 @@ type EvalTests () =
         Helpers.eval "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\nlet p2 = { p with Age = 2 }\np2.Age" |> assertInt 2L
 
     [<Test>]
+    member _.``Evaluates structural record copy-update`` () =
+        Helpers.eval "let p = {| Name = \"a\"; Age = 1 |}\nlet p2 = {| p with Age = 2 |}\np.Age" |> assertInt 1L
+        Helpers.eval "let p = {| Name = \"a\"; Age = 1 |}\nlet p2 = {| p with Age = 2 |}\np2.Age" |> assertInt 2L
+
+    [<Test>]
+    member _.``Evaluates structural record copy-update with new fields`` () =
+        match Helpers.eval "let home = {| City = \"Paris\"; Zip = 75000 |}\nlet home = {| home with Name = \"toto\"\n                        Country = \"toto\" |}\nhome.Name" with
+        | VString "toto" -> ()
+        | _ -> Assert.Fail("Expected structural update to add Name field")
+
+    [<Test>]
     member _.``Evaluates match on list`` () =
         let src = "match [1;2] with\n    | x::xs -> x\n    | [] -> 0"
         Helpers.eval src |> assertInt 1L

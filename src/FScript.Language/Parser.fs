@@ -715,33 +715,71 @@ module Parser =
                     if stream.Match(Bar) then
                         if stream.Peek().Kind = Bar then
                             raise (ParseException { Message = "Structural record literal must define at least one field"; Span = stream.Peek().Span })
-                        let fields = ResizeArray<string * Expr>()
-                        let parseField () =
-                            let nameTok = stream.ExpectIdent("Expected field name in structural record literal")
-                            let name =
-                                match nameTok.Kind with
-                                | Ident n -> n
-                                | _ -> ""
+                        let mark = stream.Mark()
+                        let tryStructuralRecordUpdate () =
+                            let baseExpr = parseExpr()
                             stream.SkipNewlines()
-                            stream.Expect(Equals, "Expected '=' in structural record field") |> ignore
-                            let value = parseEntryExpr()
-                            fields.Add(name, value)
-                        parseField()
-                        let mutable keepParsing = true
-                        while keepParsing do
-                            let hasSeparator =
-                                if stream.Match(Semicolon) then
-                                    consumeLayoutSeparators() |> ignore
-                                    true
-                                else
-                                    consumeLayoutSeparators()
-                            if hasSeparator && stream.Peek().Kind <> Bar then
-                                parseField()
+                            if not (stream.Match(With)) then
+                                stream.Restore(mark)
+                                None
                             else
-                                keepParsing <- false
-                        stream.Expect(Bar, "Expected '|' in structural record literal") |> ignore
-                        let rb = stream.Expect(RBrace, "Expected '}' in structural record literal")
-                        EStructuralRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                                let updates = ResizeArray<string * Expr>()
+                                let parseUpdateField () =
+                                    let nameTok = stream.ExpectIdent("Expected field name in structural record update")
+                                    let name =
+                                        match nameTok.Kind with
+                                        | Ident n -> n
+                                        | _ -> ""
+                                    stream.SkipNewlines()
+                                    stream.Expect(Equals, "Expected '=' in structural record update field") |> ignore
+                                    let value = parseEntryExpr()
+                                    updates.Add(name, value)
+                                parseUpdateField()
+                                let mutable keepParsing = true
+                                while keepParsing do
+                                    let hasSeparator =
+                                        if stream.Match(Semicolon) then
+                                            consumeLayoutSeparators() |> ignore
+                                            true
+                                        else
+                                            consumeLayoutSeparators()
+                                    if hasSeparator && stream.Peek().Kind <> Bar then
+                                        parseUpdateField()
+                                    else
+                                        keepParsing <- false
+                                stream.Expect(Bar, "Expected '|' in structural record update") |> ignore
+                                let rb = stream.Expect(RBrace, "Expected '}' in structural record update")
+                                Some (EStructuralRecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
+                        match tryStructuralRecordUpdate() with
+                        | Some updateExpr -> updateExpr
+                        | None ->
+                            let fields = ResizeArray<string * Expr>()
+                            let parseField () =
+                                let nameTok = stream.ExpectIdent("Expected field name in structural record literal")
+                                let name =
+                                    match nameTok.Kind with
+                                    | Ident n -> n
+                                    | _ -> ""
+                                stream.SkipNewlines()
+                                stream.Expect(Equals, "Expected '=' in structural record field") |> ignore
+                                let value = parseEntryExpr()
+                                fields.Add(name, value)
+                            parseField()
+                            let mutable keepParsing = true
+                            while keepParsing do
+                                let hasSeparator =
+                                    if stream.Match(Semicolon) then
+                                        consumeLayoutSeparators() |> ignore
+                                        true
+                                    else
+                                        consumeLayoutSeparators()
+                                if hasSeparator && stream.Peek().Kind <> Bar then
+                                    parseField()
+                                else
+                                    keepParsing <- false
+                            stream.Expect(Bar, "Expected '|' in structural record literal") |> ignore
+                            let rb = stream.Expect(RBrace, "Expected '}' in structural record literal")
+                            EStructuralRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
                     else
                     if stream.Peek().Kind = LBracket || stream.Peek().Kind = RangeDots then
                         let parseMapEntry () =

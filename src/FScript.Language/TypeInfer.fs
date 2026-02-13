@@ -714,6 +714,31 @@ module TypeInfer =
             let resultFields = baseFields |> Map.map (fun _ t -> applyType sAcc t)
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
+        | EStructuralRecordUpdate (baseExpr, updates, span) ->
+            let sBase, tBase, _ = inferExpr typeDefs constructors env baseExpr
+            let baseFields =
+                match applyType sBase tBase with
+                | TRecord fields -> fields
+                | TNamed name ->
+                    match typeDefs.TryFind name with
+                    | Some (TRecord fields) -> fields
+                    | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
+                | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
+            let mutable sAcc = sBase
+            let mutable resultFields = baseFields
+            for (name, valueExpr) in updates do
+                let envForField = applyEnv sAcc env
+                let sField, tField, _ = inferExpr typeDefs constructors envForField valueExpr
+                let tFieldApplied = applyType sField tField
+                let expected =
+                    match resultFields.TryFind name with
+                    | Some existingFieldType -> applyType sField (applyType sAcc existingFieldType)
+                    | None -> tFieldApplied
+                let sEq = unify typeDefs expected tFieldApplied (Ast.spanOfExpr valueExpr)
+                sAcc <- compose sEq (compose sField sAcc)
+                resultFields <- resultFields |> Map.add name (applyType sAcc tFieldApplied)
+            let tRes = TRecord (resultFields |> Map.map (fun _ t -> applyType sAcc t))
+            sAcc, tRes, asTyped expr tRes
         | EFieldGet (target, fieldName, span) ->
             let inferRecordField s1 tTarget =
                 match applyType s1 tTarget with
