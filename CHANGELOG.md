@@ -2,7 +2,7 @@
 
 All notable changes to FScript are documented in this file.
 
-## [Unreleased]
+## [0.24.0]
 
 ### Tooling
 - Added first-party VS Code extension (`vscode-fscript`) with:
