@@ -12,6 +12,20 @@ module Eval =
           Arity = 1
           Impl = (fun _ _ -> VUnit) }
 
+    let private builtinPrint : ExternalFunction =
+        { Name = "print"
+          Scheme = Forall([], TFun (TString, TUnit))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString text ] ->
+                    System.Console.WriteLine(text)
+                    VUnit
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "print expects (string)"; Span = span })) }
+
     let private literalToValue lit =
         match lit with
         | LInt v -> VInt v
@@ -628,7 +642,7 @@ module Eval =
             { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }
 
         let mutable env : Env =
-            (builtinIgnore :: externs)
+            (builtinIgnore :: builtinPrint :: externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then
                     let value = ext.Impl externContext []

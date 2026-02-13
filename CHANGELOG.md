@@ -4,6 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+### Tooling
+- Added first-party VS Code extension (`vscode-fscript`) with:
+  - FScript syntax highlighting.
+  - Language Server features: diagnostics, completion, hover, symbols, go-to-definition, type-definition, references, rename, inlay hints, semantic tokens, quick fixes, and include-path navigation.
+  - Extension status bar + output channel integration.
+- Added automatic .NET runtime acquisition support for the extension via `.NET Install Tool` integration (with PATH fallback).
+- Added tag-only publish workflow to distribute the extension to VS Code Marketplace and Open VSX.
+
 ### Documentation
 - Added dedicated map matching reference: `docs/map-matching-reference.md`.
 - Added include-resolution details (path normalization, root confinement, include deduplication, file-aware errors) in `docs/syntax-and-indentation.md`.

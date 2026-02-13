@@ -1,0 +1,101 @@
+{
+  "name": "vscode-fscript",
+  "displayName": "FScript",
+  "description": "Syntax highlighting and language-server integration for FScript (*.fss).",
+  "version": "0.1.0",
+  "publisher": "MagnusOpera",
+  "icon": "assets/FScriptIcon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MagnusOpera/FScript.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "extensionDependencies": [
+    "ms-dotnettools.vscode-dotnet-runtime"
+  ],
+  "keywords": [
+    "fscript",
+    "language",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:fscript"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "fscript",
+        "aliases": [
+          "FScript",
+          "fscript"
+        ],
+        "extensions": [
+          ".fss"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fscript",
+        "scopeName": "source.fscript",
+        "path": "./syntaxes/fscript.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "fscript.showLanguageServerOutput",
+        "title": "FScript: Show Language Server Output",
+        "category": "FScript"
+      }
+    ],
+    "configuration": {
+      "title": "FScript",
+      "properties": {
+        "fscript.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints)."
+        },
+        "fscript.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints provided by the FScript language server."
+        },
+        "fscript.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the first workspace folder."
+        },
+        "fscript.server.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
+          "description": "Requested language server log level sent through initialization options."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "echo \"No lint configured\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.2"
+  }
+}

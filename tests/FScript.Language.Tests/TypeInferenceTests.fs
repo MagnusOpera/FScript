@@ -18,6 +18,13 @@ type TypeInferenceTests () =
         check "\"a\"" TString
 
     [<Test>]
+    member _.``Infers print as built-in function`` () =
+        let typed = Helpers.infer "print \"hello\""
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TUnit
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers polymorphic identity function`` () =
         let typed = Helpers.infer "let id x = x"
         match typed.[0] with

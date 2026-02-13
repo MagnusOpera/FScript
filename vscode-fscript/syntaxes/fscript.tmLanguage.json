@@ -1,0 +1,171 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FScript",
+  "scopeName": "source.fscript",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#directives" },
+    { "include": "#attributes" },
+    { "include": "#constructors" },
+    { "include": "#operators" },
+    { "include": "#variables" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.fscript",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.fscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.fscript",
+              "match": "\\\\[\\\"nrt]"
+            },
+            {
+              "name": "meta.interpolation.fscript",
+              "begin": "\\\\{",
+              "end": "}",
+              "patterns": [
+                { "include": "$self" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.fscript",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.fscript",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.fscript",
+          "match": "\\b(let|rec|and|if|then|elif|else|match|with|when|for|in|do|fun|raise|type|module)\\b"
+        },
+        {
+          "name": "constant.language.fscript",
+          "match": "\\b(true|false|None|Some)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.fscript",
+          "match": "\\b(int|float|string|bool|unit|list|option|map)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.let.binding.fscript",
+          "match": "\\b(let)\\s+(rec\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.fscript" },
+            "2": { "name": "keyword.control.fscript" },
+            "3": { "name": "entity.name.function.fscript" }
+          }
+        },
+        {
+          "name": "meta.type.declaration.fscript",
+          "match": "\\b(type)\\s+(rec\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.fscript" },
+            "2": { "name": "keyword.control.fscript" },
+            "3": { "name": "entity.name.type.fscript" }
+          }
+        },
+        {
+          "name": "meta.module.declaration.fscript",
+          "match": "\\b(module)\\s+([A-Za-z_][A-Za-z0-9_.]*)",
+          "captures": {
+            "1": { "name": "keyword.control.fscript" },
+            "2": { "name": "entity.name.namespace.fscript" }
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "meta.directive.include.fscript",
+          "match": "^\\s*(#include)\\s+(\"[^\"]+\")",
+          "captures": {
+            "1": { "name": "keyword.control.directive.fscript" },
+            "2": { "name": "string.quoted.double.fscript" }
+          }
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "meta.attribute.fscript",
+          "begin": "(\\[<)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.attribute.begin.fscript" },
+            "2": { "name": "entity.other.attribute-name.fscript" }
+          },
+          "end": "(>\\])",
+          "endCaptures": {
+            "1": { "name": "punctuation.definition.attribute.end.fscript" }
+          },
+          "patterns": [
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#variables" },
+            { "include": "#operators" }
+          ]
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.fscript",
+          "match": "\\|>|::|->|<-|=|<>|<=|>=|<|>|\\+|-|\\*|/|%|&&|\\|\\||\\^|@|\\.\\."
+        }
+      ]
+    },
+    "constructors": {
+      "patterns": [
+        {
+          "name": "entity.name.type.variant.fscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*(?:\\.[A-Z][A-Za-z0-9_]*)?\\b"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.fscript",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

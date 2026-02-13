@@ -1,0 +1,6 @@
+.vscode/**
+.vscode-test/**
+**/*.ts
+**/*.map
+node_modules/.cache/**
+**/TestResults/**

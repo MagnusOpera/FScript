@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run VS Code (FScript Extension Dev)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-fscript"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/vscode-fscript/**/*.js"
+      ]
+    }
+  ]
+}

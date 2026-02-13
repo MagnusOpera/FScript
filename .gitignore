@@ -12,7 +12,9 @@ obj/
 
 # VS/VS Code
 .vs/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+vscode-fscript/node_modules/
 
 # Rider
 .idea/

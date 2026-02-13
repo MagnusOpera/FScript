@@ -25,9 +25,6 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 
 ## Built-in extern catalog
 
-### Console
-- `print : string -> unit`
-
 ### Filesystem
 - `Fs.readText : string -> string option`
 - `Fs.exists : string -> bool`
@@ -51,6 +48,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 
 ### Collections and prelude
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
+- `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
 - See `docs/stdlib-functions.md` for the full stdlib function reference.
 

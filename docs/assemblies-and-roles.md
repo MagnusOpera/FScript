@@ -44,7 +44,7 @@ Role:
 
 Responsibilities:
 - Host context model (`RootDirectory` and related host constraints).
-- Built-in external function modules (filesystem, JSON/XML, regex, hash, GUID, print).
+- Built-in external function modules (filesystem, JSON/XML, regex, hash, GUID).
 - Extern registry composition.
 - Host-oriented decoding helpers and sandbox-aware path checks.
 

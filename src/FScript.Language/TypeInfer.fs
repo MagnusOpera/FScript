@@ -747,7 +747,8 @@ module TypeInfer =
 
     let private envFromExterns (externs: ExternalFunction list) : Map<string, Scheme> =
         let builtins =
-            [ "ignore", Forall([ 0 ], TFun (TVar 0, TUnit)) ]
+            [ "ignore", Forall([ 0 ], TFun (TVar 0, TUnit))
+              "print", Forall([], TFun (TString, TUnit)) ]
             |> Map.ofList
 
         externs
