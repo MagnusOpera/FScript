@@ -2,7 +2,7 @@
 
 All notable changes to FScript are documented in this file.
 
-## [unreleased]
+## [0.25.0]
 
 ### Extension
 - Fix nullness warnings.
