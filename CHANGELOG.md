@@ -2,6 +2,12 @@
 
 All notable changes to FScript are documented in this file.
 
+## [unreleased]
+
+### Extension
+- Fix nullness warnings.
+- Implemented analysis state.
+
 ## [0.24.0]
 
 ### Tooling

@@ -9,6 +9,10 @@ let languageClientModule;
 let outputChannel;
 let statusItem;
 let showOutputCommandSubscription;
+let diagnosticsSubscription;
+let textChangeSubscription;
+let textOpenSubscription;
+const pendingAnalysis = new Map();
 
 function getConfig() {
   const cfg = vscode.workspace.getConfiguration('fscript');
@@ -128,6 +132,10 @@ async function stopClient() {
     client = undefined;
     await current.stop();
   }
+  for (const timeout of pendingAnalysis.values()) {
+    clearTimeout(timeout);
+  }
+  pendingAnalysis.clear();
 }
 
 function ensureUi(context) {
@@ -162,6 +170,14 @@ function setStatusReady() {
   }
 }
 
+function setStatusAnalyzing() {
+  if (statusItem) {
+    statusItem.text = '$(sync~spin) FScript: analyzing...';
+    statusItem.tooltip = 'FScript Language Server is analyzing current script';
+    statusItem.show();
+  }
+}
+
 function setStatusDisabled() {
   if (statusItem) {
     statusItem.text = '$(circle-slash) FScript';
@@ -175,6 +191,42 @@ function setStatusError(message) {
     statusItem.text = '$(error) FScript';
     statusItem.tooltip = `FScript Language Server error: ${message}`;
     statusItem.show();
+  }
+}
+
+function queueAnalysis(uri) {
+  if (!client || !uri) {
+    return;
+  }
+
+  const key = uri.toString();
+  const existing = pendingAnalysis.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+
+  const timeout = setTimeout(() => {
+    pendingAnalysis.delete(key);
+    if (pendingAnalysis.size === 0 && client) {
+      setStatusReady();
+    }
+  }, 5000);
+
+  pendingAnalysis.set(key, timeout);
+  setStatusAnalyzing();
+}
+
+function completeAnalysis(uri) {
+  const key = uri.toString();
+  const timeout = pendingAnalysis.get(key);
+  if (!timeout) {
+    return;
+  }
+
+  clearTimeout(timeout);
+  pendingAnalysis.delete(key);
+  if (pendingAnalysis.size === 0 && client) {
+    setStatusReady();
   }
 }
 
@@ -240,6 +292,27 @@ function activate(context) {
   });
   context.subscriptions.push(showOutputCommandSubscription);
 
+  diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
+    for (const uri of event.uris) {
+      completeAnalysis(uri);
+    }
+  });
+  context.subscriptions.push(diagnosticsSubscription);
+
+  textChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
+    if (event.document.languageId === 'fscript') {
+      queueAnalysis(event.document.uri);
+    }
+  });
+  context.subscriptions.push(textChangeSubscription);
+
+  textOpenSubscription = vscode.workspace.onDidOpenTextDocument((doc) => {
+    if (doc.languageId === 'fscript') {
+      queueAnalysis(doc.uri);
+    }
+  });
+  context.subscriptions.push(textOpenSubscription);
+
   startClient(context);
 
   configSubscription = vscode.workspace.onDidChangeConfiguration(async (event) => {
@@ -260,6 +333,18 @@ async function deactivate() {
   if (showOutputCommandSubscription) {
     showOutputCommandSubscription.dispose();
     showOutputCommandSubscription = undefined;
+  }
+  if (diagnosticsSubscription) {
+    diagnosticsSubscription.dispose();
+    diagnosticsSubscription = undefined;
+  }
+  if (textChangeSubscription) {
+    textChangeSubscription.dispose();
+    textChangeSubscription = undefined;
+  }
+  if (textOpenSubscription) {
+    textOpenSubscription.dispose();
+    textOpenSubscription = undefined;
   }
   if (configSubscription) {
     configSubscription.dispose();
