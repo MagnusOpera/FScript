@@ -273,9 +273,9 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses top-level import directive`` () =
-        let p = Helpers.parse "import \"shared.fss\"\nlet x = 1"
+        let p = Helpers.parse "import \"shared.fss\" as Shared\nlet x = 1"
         match p.[0] with
-        | SImport ("shared.fss", _) -> ()
+        | SImport ("Shared", "shared.fss", _) -> ()
         | _ -> Assert.Fail("Expected top-level import directive")
 
     [<Test>]
@@ -285,7 +285,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Rejects import directive in nested block`` () =
-        let act () = Helpers.parse "let x = (\n    import \"shared.fss\"\n    1\n)" |> ignore
+        let act () = Helpers.parse "let x = (\n    import \"shared.fss\" as Shared\n    1\n)" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]

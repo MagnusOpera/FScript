@@ -88,7 +88,7 @@ Useful samples:
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
 - [`samples/tree.fss`](samples/tree.fss)
 - [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
-- [`samples/includes-and-exports.fss`](samples/includes-and-exports.fss)
+- [`samples/imports-and-exports.fss`](samples/imports-and-exports.fss)
 
 ## Interpreter Architecture
 

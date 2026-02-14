@@ -1,6 +1,7 @@
 namespace FScript.Language
 
 open System
+open System.Collections.Generic
 open System.IO
 
 module IncludeResolver =
@@ -38,6 +39,22 @@ module IncludeResolver =
 
         ensureWithinRoot rootDirectoryWithSeparator candidate span
 
+    let private isValidAliasName (name: string) =
+        let startsValid c = Char.IsLetter(c) || c = '_'
+        let partValid c = Char.IsLetterOrDigit(c) || c = '_'
+        not (String.IsNullOrWhiteSpace(name))
+        && startsValid name[0]
+        && (name |> Seq.forall partValid)
+
+    let private tryGetSourceModulePrefix (sourceName: string) =
+        let stem =
+            try
+                Path.GetFileNameWithoutExtension(sourceName)
+            with
+            | _ -> sourceName
+
+        if isValidAliasName stem then Some stem else None
+
     let private collectPatternBindings (pattern: Pattern) : Set<string> =
         let rec loop acc pat =
             match pat with
@@ -64,27 +81,96 @@ module IncludeResolver =
             | PTypeRef _ -> acc
         loop Set.empty pattern
 
-    let private qualifyName (moduleName: string) (name: string) = $"{moduleName}.{name}"
+    let private parseDotted (name: string) = name.Split('.') |> Array.toList
+    let private joinDotted (parts: string list) = String.concat "." parts
 
-    let private isValidModuleName (name: string) =
-        let startsValid c = Char.IsLetter(c) || c = '_'
-        let partValid c = Char.IsLetterOrDigit(c) || c = '_'
-        not (String.IsNullOrWhiteSpace(name))
-        && startsValid name[0]
-        && (name |> Seq.forall partValid)
+    let private rewriteNameWithAliases (aliases: Map<string, string>) (name: string) =
+        match parseDotted name with
+        | first :: rest when aliases.ContainsKey(first) && not rest.IsEmpty ->
+            let prefix = aliases[first]
+            prefix + "." + joinDotted rest
+        | _ -> name
 
-    let private deriveModuleNameFromFilePath (filePath: string) (span: Span) =
-        let stem = Path.GetFileNameWithoutExtension(filePath)
-        if isValidModuleName stem then
-            stem
+    let private rewriteNameWithSelfPrefix (selfPrefix: string option) (selfNames: Set<string>) (boundNames: Set<string>) (name: string) =
+        match selfPrefix with
+        | Some prefix when selfNames.Contains(name) && not (boundNames.Contains(name)) ->
+            $"{prefix}.{name}"
+        | _ -> name
+
+    let private rewriteTypeName (aliases: Map<string, string>) (selfPrefix: string option) (selfTypeNames: Set<string>) (name: string) =
+        let aliasRewritten = rewriteNameWithAliases aliases name
+        if aliasRewritten <> name then
+            aliasRewritten
         else
-            raise (ParseException {
-                Message = $"Imported filename stem '{stem}' is not a valid module name. Rename the file to a valid identifier."
-                Span = span
-            })
+            match selfPrefix with
+            | Some prefix when selfTypeNames.Contains(name) -> $"{prefix}.{name}"
+            | _ -> name
 
-    let private rewriteModuleScopedStatements (moduleName: string) (statements: Stmt list) : Stmt list =
-        let topLevelNames =
+    let private rewriteTypeQualifier (aliases: Map<string, string>) (selfPrefix: string option) (selfTypeNames: Set<string>) (qualifier: string option) =
+        match qualifier with
+        | None -> None
+        | Some q ->
+            let rewritten = rewriteTypeName aliases selfPrefix selfTypeNames q
+            Some rewritten
+
+    let rec private rewriteTypeRef (aliases: Map<string, string>) (selfPrefix: string option) (selfTypeNames: Set<string>) (tref: TypeRef) : TypeRef =
+        match tref with
+        | TRName name ->
+            TRName (rewriteTypeName aliases selfPrefix selfTypeNames name)
+        | TRTuple ts ->
+            TRTuple (ts |> List.map (rewriteTypeRef aliases selfPrefix selfTypeNames))
+        | TRFun (a, b) ->
+            TRFun(rewriteTypeRef aliases selfPrefix selfTypeNames a, rewriteTypeRef aliases selfPrefix selfTypeNames b)
+        | TRPostfix (inner, suffix) ->
+            TRPostfix(rewriteTypeRef aliases selfPrefix selfTypeNames inner, suffix)
+        | TRRecord fields ->
+            TRRecord (fields |> List.map (fun (name, t) -> name, rewriteTypeRef aliases selfPrefix selfTypeNames t))
+        | TRStructuralRecord fields ->
+            TRStructuralRecord (fields |> List.map (fun (name, t) -> name, rewriteTypeRef aliases selfPrefix selfTypeNames t))
+
+    let rec private rewritePattern (aliases: Map<string, string>) (selfPrefix: string option) (selfTypeNames: Set<string>) (pat: Pattern) : Pattern =
+        match pat with
+        | PWildcard _
+        | PLiteral _
+        | PNil _
+        | PNone _
+        | PVar _ -> pat
+        | PCons (head, tail, span) ->
+            PCons(rewritePattern aliases selfPrefix selfTypeNames head, rewritePattern aliases selfPrefix selfTypeNames tail, span)
+        | PTuple (patterns, span) ->
+            PTuple(patterns |> List.map (rewritePattern aliases selfPrefix selfTypeNames), span)
+        | PRecord (fields, span) ->
+            PRecord(fields |> List.map (fun (name, p) -> name, rewritePattern aliases selfPrefix selfTypeNames p), span)
+        | PMap (clauses, tailPattern, span) ->
+            PMap(
+                clauses
+                |> List.map (fun (k, v) -> rewritePattern aliases selfPrefix selfTypeNames k, rewritePattern aliases selfPrefix selfTypeNames v),
+                tailPattern |> Option.map (rewritePattern aliases selfPrefix selfTypeNames),
+                span)
+        | PSome (inner, span) ->
+            PSome(rewritePattern aliases selfPrefix selfTypeNames inner, span)
+        | PUnionCase (qualifier, caseName, payload, span) ->
+            PUnionCase(
+                rewriteTypeQualifier aliases selfPrefix selfTypeNames qualifier,
+                caseName,
+                payload |> Option.map (rewritePattern aliases selfPrefix selfTypeNames),
+                span)
+        | PTypeRef (tref, span) ->
+            PTypeRef(rewriteTypeRef aliases selfPrefix selfTypeNames tref, span)
+
+    let private tryFlattenExprPath (expr: Expr) : string list option =
+        let rec loop acc current =
+            match current with
+            | EVar (name, _) ->
+                let parts = parseDotted name
+                Some (parts @ acc)
+            | EFieldGet (target, fieldName, _) ->
+                loop (fieldName :: acc) target
+            | _ -> None
+        loop [] expr
+
+    let private rewriteModuleScopedStatements (selfPrefix: string option) (aliases: Map<string, string>) (statements: Stmt list) : Stmt list =
+        let topLevelValueNames =
             statements
             |> List.collect (function
                 | SLet(name, _, _, _, _, _) -> [ name ]
@@ -92,23 +178,35 @@ module IncludeResolver =
                 | _ -> [])
             |> Set.ofList
 
-        let maybeQualify (boundNames: Set<string>) (name: string) =
-            if Set.contains name topLevelNames && not (Set.contains name boundNames) then
-                qualifyName moduleName name
+        let topLevelTypeNames =
+            statements
+            |> List.choose (function | SType def -> Some def.Name | _ -> None)
+            |> Set.ofList
+
+        let rewriteValueName boundNames name =
+            let aliasRewritten = rewriteNameWithAliases aliases name
+            if aliasRewritten <> name then
+                aliasRewritten
             else
-                name
+                rewriteNameWithSelfPrefix selfPrefix topLevelValueNames boundNames name
 
         let rec rewriteExpr (boundNames: Set<string>) (expr: Expr) : Expr =
             match expr with
             | EUnit _
             | ELiteral _
-            | ENone _
-            | ETypeOf _ -> expr
-            | EVar (name, span) -> EVar(maybeQualify boundNames name, span)
-            | ENameOf (name, span) -> ENameOf(maybeQualify boundNames name, span)
-            | EParen (inner, span) -> EParen(rewriteExpr boundNames inner, span)
+            | ENone _ -> expr
+            | EVar (name, span) ->
+                EVar(rewriteValueName boundNames name, span)
+            | ENameOf (name, span) ->
+                ENameOf(rewriteValueName boundNames name, span)
+            | ETypeOf (name, span) ->
+                ETypeOf(rewriteTypeName aliases selfPrefix topLevelTypeNames name, span)
+            | EParen (inner, span) ->
+                EParen(rewriteExpr boundNames inner, span)
             | ELambda (param, body, span) ->
-                ELambda(param, rewriteExpr (Set.add param.Name boundNames) body, span)
+                let rewrittenParam =
+                    { param with Annotation = param.Annotation |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames) }
+                ELambda(rewrittenParam, rewriteExpr (Set.add param.Name boundNames) body, span)
             | EApply (fn, arg, span) ->
                 EApply(rewriteExpr boundNames fn, rewriteExpr boundNames arg, span)
             | EIf (cond, thenExpr, elseExpr, span) ->
@@ -121,8 +219,9 @@ module IncludeResolver =
                 let rewrittenCases =
                     cases
                     |> List.map (fun (pattern, guard, body, caseSpan) ->
-                        let boundWithPattern = Set.union boundNames (collectPatternBindings pattern)
-                        pattern, guard |> Option.map (rewriteExpr boundWithPattern), rewriteExpr boundWithPattern body, caseSpan)
+                        let rewrittenPattern = rewritePattern aliases selfPrefix topLevelTypeNames pattern
+                        let boundWithPattern = Set.union boundNames (collectPatternBindings rewrittenPattern)
+                        rewrittenPattern, guard |> Option.map (rewriteExpr boundWithPattern), rewriteExpr boundWithPattern body, caseSpan)
                 EMatch(rewriteExpr boundNames scrutinee, rewrittenCases, span)
             | ELet (name, valueExpr, bodyExpr, isRec, span) ->
                 if isRec then
@@ -136,8 +235,12 @@ module IncludeResolver =
                 let rewrittenBindings =
                     bindings
                     |> List.map (fun (name, args, valueExpr, bindingSpan) ->
-                        let boundWithArgs = args |> List.fold (fun s p -> Set.add p.Name s) recursiveBound
-                        name, args, rewriteExpr boundWithArgs valueExpr, bindingSpan)
+                        let rewrittenArgs =
+                            args
+                            |> List.map (fun p ->
+                                { p with Annotation = p.Annotation |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames) })
+                        let boundWithArgs = rewrittenArgs |> List.fold (fun s p -> Set.add p.Name s) recursiveBound
+                        name, rewrittenArgs, rewriteExpr boundWithArgs valueExpr, bindingSpan)
                 ELetRecGroup(rewrittenBindings, rewriteExpr recursiveBound body, span)
             | EList (items, span) ->
                 EList(items |> List.map (rewriteExpr boundNames), span)
@@ -161,7 +264,12 @@ module IncludeResolver =
             | EStructuralRecordUpdate (target, updates, span) ->
                 EStructuralRecordUpdate(rewriteExpr boundNames target, updates |> List.map (fun (name, valueExpr) -> name, rewriteExpr boundNames valueExpr), span)
             | EFieldGet (target, fieldName, span) ->
-                EFieldGet(rewriteExpr boundNames target, fieldName, span)
+                match tryFlattenExprPath target with
+                | Some (root :: rest) when aliases.ContainsKey root ->
+                    let rewritten = aliases[root] + "." + joinDotted (rest @ [ fieldName ])
+                    EVar(rewritten, span)
+                | _ ->
+                    EFieldGet(rewriteExpr boundNames target, fieldName, span)
             | EIndexGet (target, keyExpr, span) ->
                 EIndexGet(rewriteExpr boundNames target, rewriteExpr boundNames keyExpr, span)
             | ECons (head, tail, span) ->
@@ -180,72 +288,95 @@ module IncludeResolver =
                         | IPExpr valueExpr -> IPExpr (rewriteExpr boundNames valueExpr))
                 EInterpolatedString(rewrittenParts, span)
 
+        let qualifySelfName name =
+            match selfPrefix with
+            | Some prefix -> $"{prefix}.{name}"
+            | None -> name
+
+        let rewriteParam (param: Param) =
+            { param with Annotation = param.Annotation |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames) }
+
+        let rewriteTypeDef (def: TypeDef) =
+            { def with
+                Name = qualifySelfName def.Name
+                Fields =
+                    def.Fields
+                    |> List.map (fun (name, t) -> name, rewriteTypeRef aliases selfPrefix topLevelTypeNames t)
+                Cases =
+                    def.Cases
+                    |> List.map (fun (name, payload) -> name, payload |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames)) }
+
         statements
         |> List.map (function
+            | SType def ->
+                SType (rewriteTypeDef def)
             | SLet(name, args, valueExpr, isRec, isExported, span) ->
-                let qualifiedName = qualifyName moduleName name
-                let bound = args |> List.fold (fun s p -> Set.add p.Name s) Set.empty
-                let bodyBound = if isRec then Set.add qualifiedName bound else bound
-                SLet(qualifiedName, args, rewriteExpr bodyBound valueExpr, isRec, isExported, span)
+                let rewrittenName = qualifySelfName name
+                let rewrittenArgs = args |> List.map rewriteParam
+                let bound = rewrittenArgs |> List.fold (fun s p -> Set.add p.Name s) Set.empty
+                let bodyBound = if isRec then Set.add rewrittenName bound else bound
+                SLet(rewrittenName, rewrittenArgs, rewriteExpr bodyBound valueExpr, isRec, isExported, span)
             | SLetRecGroup(bindings, isExported, span) ->
-                let names = bindings |> List.map (fun (name, _, _, _) -> qualifyName moduleName name) |> Set.ofList
+                let names = bindings |> List.map (fun (name, _, _, _) -> qualifySelfName name) |> Set.ofList
                 let rewrittenBindings =
                     bindings
                     |> List.map (fun (name, args, valueExpr, bindingSpan) ->
-                        let qualifiedName = qualifyName moduleName name
-                        let bound = args |> List.fold (fun s p -> Set.add p.Name s) names
-                        qualifiedName, args, rewriteExpr bound valueExpr, bindingSpan)
+                        let rewrittenName = qualifySelfName name
+                        let rewrittenArgs = args |> List.map rewriteParam
+                        let bound = rewrittenArgs |> List.fold (fun s p -> Set.add p.Name s) names
+                        rewrittenName, rewrittenArgs, rewriteExpr bound valueExpr, bindingSpan)
                 SLetRecGroup(rewrittenBindings, isExported, span)
-            | SExpr expr -> SExpr (rewriteExpr Set.empty expr)
-            | stmt -> stmt)
+            | SExpr expr ->
+                SExpr (rewriteExpr Set.empty expr)
+            | SImport _ -> failwith "Unexpected unresolved import directive")
 
     let private expandProgram
         (rootDirectoryWithSeparator: string)
         (fileSpan: string -> Span)
-        (moduleToFile: System.Collections.Generic.Dictionary<string, string>)
-        (loadFileRef: (string list -> bool -> string -> Program) ref)
+        (getOrCreatePrefix: string -> string)
+        (loadFileRef: (string list -> bool -> string -> string option -> Program) ref)
         (stack: string list)
         (isMainFile: bool)
         (currentFile: string)
+        (currentPrefix: string option)
         (program: Program)
         : Program =
         let mutable seenCode = false
-        let imports = ResizeArray<string * Span>()
+        let imports = ResizeArray<string * string * Span>()
         let localCode = ResizeArray<Stmt>()
 
         for stmt in program do
             match stmt with
-            | SImport(importPath, span) ->
+            | SImport(alias, importPath, span) ->
                 if seenCode then
                     raise (ParseException { Message = "'import' directives must appear before code"; Span = span })
-                imports.Add(importPath, span)
+                imports.Add(alias, importPath, span)
             | _ ->
                 seenCode <- true
                 localCode.Add(stmt)
 
+        let aliasMappings =
+            imports
+            |> Seq.fold (fun (acc: Map<string, string>) (alias, importPath, span) ->
+                if not (isValidAliasName alias) then
+                    raise (ParseException { Message = $"Invalid import alias '{alias}'"; Span = span })
+                if acc.ContainsKey(alias) then
+                    raise (ParseException { Message = $"Duplicate import alias '{alias}'"; Span = span })
+                let resolvedPath = resolveImportPath currentFile importPath rootDirectoryWithSeparator span
+                let fullPrefix = getOrCreatePrefix resolvedPath
+                acc |> Map.add alias fullPrefix) Map.empty
+
         let importedStatements =
             imports
             |> Seq.toList
-            |> List.collect (fun (importPath, span) ->
+            |> List.collect (fun (alias, importPath, span) ->
                 let resolvedPath = resolveImportPath currentFile importPath rootDirectoryWithSeparator span
-                (!loadFileRef) stack false resolvedPath)
+                let childPrefix = aliasMappings[alias]
+                (!loadFileRef) stack false resolvedPath (Some childPrefix))
 
         let localStatements = localCode |> Seq.toList
         let rewrittenLocalStatements =
-            if isMainFile then
-                localStatements
-            else
-                let span = fileSpan currentFile
-                let moduleName = deriveModuleNameFromFilePath currentFile span
-                match moduleToFile.TryGetValue(moduleName) with
-                | true, existingPath when not (String.Equals(existingPath, currentFile, StringComparison.OrdinalIgnoreCase)) ->
-                    raise (ParseException {
-                        Message = $"Module name collision: '{moduleName}' is derived from both '{existingPath}' and '{currentFile}'"
-                        Span = span
-                    })
-                | _ ->
-                    moduleToFile[moduleName] <- currentFile
-                    rewriteModuleScopedStatements moduleName localStatements
+            rewriteModuleScopedStatements (if isMainFile then None else currentPrefix) aliasMappings localStatements
 
         importedStatements @ rewrittenLocalStatements
 
@@ -255,25 +386,48 @@ module IncludeResolver =
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
-        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        let loadRef = ref (fun (_: string list) (_: bool) (_: string) -> ([]: Program))
+        let mutable counter = 0
+        let nextPrefixSegment () =
+            counter <- counter + 1
+            $"__imp{counter}"
+        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let getOrCreatePrefix (path: string) =
+            match pathPrefixes.TryGetValue(path) with
+            | true, prefix -> prefix
+            | false, _ ->
+                let prefix = nextPrefixSegment ()
+                pathPrefixes[path] <- prefix
+                prefix
+        let loadRef = ref (fun (_: string list) (_: bool) (_: string) (_: string option) -> ([]: Program))
         if program |> List.exists (function | SImport _ -> true | _ -> false) then
             let importSpan =
                 program
-                |> List.choose (function | SImport(_, span) -> Some span | _ -> None)
+                |> List.choose (function | SImport(_, _, span) -> Some span | _ -> None)
                 |> List.head
             raise (ParseException { Message = "Embedded stdlib source does not support 'import'"; Span = importSpan })
-        expandProgram dummyRoot fileSpan moduleToFile loadRef [] false sourceName program
+        let prefix = tryGetSourceModulePrefix sourceName
+        expandProgram dummyRoot fileSpan getOrCreatePrefix loadRef [] false sourceName prefix program
 
     let parseProgramFromFile (rootDirectory: string) (entryFile: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
-        let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
+        let mutable counter = 0
+        let nextPrefixSegment () =
+            counter <- counter + 1
+            $"__imp{counter}"
+        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let getOrCreatePrefix (path: string) =
+            match pathPrefixes.TryGetValue(path) with
+            | true, prefix -> prefix
+            | false, _ ->
+                let prefix = nextPrefixSegment ()
+                pathPrefixes[path] <- prefix
+                prefix
+        let emittedFiles = HashSet<string>(StringComparer.OrdinalIgnoreCase)
 
-        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) : Program =
+        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) (prefix: string option) : Program =
             let fullFilePath = Path.GetFullPath(filePath)
             let initialSpan = fileSpan fullFilePath
             ensureFssPath fullFilePath initialSpan
@@ -283,32 +437,45 @@ module IncludeResolver =
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
                 let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
-
-            if visited.Contains(sandboxedPath) then
+            elif not isMainFile && emittedFiles.Contains(sandboxedPath) then
                 []
             else
-                visited.Add(sandboxedPath) |> ignore
+                if not isMainFile then
+                    emittedFiles.Add(sandboxedPath) |> ignore
+
                 let source = File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
-                expandProgram rootDirectoryWithSeparator fileSpan moduleToFile loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
+                expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
-        loadFile [] true entryFile
+        loadFile [] true entryFile None
 
     let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
-        let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
+
+        let mutable counter = 0
+        let nextPrefixSegment () =
+            counter <- counter + 1
+            $"__imp{counter}"
+        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let getOrCreatePrefix (path: string) =
+            match pathPrefixes.TryGetValue(path) with
+            | true, prefix -> prefix
+            | false, _ ->
+                let prefix = nextPrefixSegment ()
+                pathPrefixes[path] <- prefix
+                prefix
+        let emittedFiles = HashSet<string>(StringComparer.OrdinalIgnoreCase)
 
         let entryFullPath = Path.GetFullPath(entryFile)
         let entrySpan = fileSpan entryFullPath
         ensureFssPath entryFullPath entrySpan
         let entrySandboxedPath = ensureWithinRoot rootDirectoryWithSeparator entryFullPath entrySpan
 
-        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) : Program =
+        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) (prefix: string option) : Program =
             let fullFilePath = Path.GetFullPath(filePath)
             let initialSpan = fileSpan fullFilePath
             ensureFssPath fullFilePath initialSpan
@@ -318,11 +485,12 @@ module IncludeResolver =
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
                 let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
-
-            if visited.Contains(sandboxedPath) then
+            elif not isMainFile && emittedFiles.Contains(sandboxedPath) then
                 []
             else
-                visited.Add(sandboxedPath) |> ignore
+                if not isMainFile then
+                    emittedFiles.Add(sandboxedPath) |> ignore
+
                 let source =
                     if String.Equals(sandboxedPath, entrySandboxedPath, StringComparison.OrdinalIgnoreCase) then
                         entrySource
@@ -330,6 +498,6 @@ module IncludeResolver =
                         File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
-                expandProgram rootDirectoryWithSeparator fileSpan moduleToFile loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
+                expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
-        loadFile [] true entrySandboxedPath
+        loadFile [] true entrySandboxedPath None

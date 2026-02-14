@@ -72,7 +72,7 @@ type ScriptHostTests () =
             let sharedPath = Path.Combine(tempDir, "shared.fss")
             let mainPath = Path.Combine(tempDir, "main.fss")
             File.WriteAllText(sharedPath, "let increment x = x + 1")
-            File.WriteAllText(mainPath, "import \"shared.fss\"\n[<export>] let add2 x = shared.increment (shared.increment x)")
+            File.WriteAllText(mainPath, "import \"shared.fss\" as Shared\n[<export>] let add2 x = Shared.increment (Shared.increment x)")
             let externs = Registry.all { RootDirectory = tempDir }
             let loaded = ScriptHost.loadFile externs mainPath
             match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
@@ -85,5 +85,5 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host loadSource rejects import directives`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let act () = ScriptHost.loadSource externs "import \"shared.fss\"\nlet x = 1" |> ignore
+        let act () = ScriptHost.loadSource externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
         Assert.Throws<EvalException>(TestDelegate act) |> ignore

@@ -1316,7 +1316,7 @@ module Parser =
                     ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
                 | SType def :: _ ->
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
-                | SImport (_, span) :: _ ->
+                | SImport (_, _, span) :: _ ->
                     raise (ParseException { Message = "'import' is only supported at top level"; Span = span })
             desugar (statements |> Seq.toList)
 
@@ -1406,11 +1406,11 @@ module Parser =
                 let hashTok = stream.Next()
                 match stream.Next().Kind with
                 | Include ->
-                    raise (ParseException { Message = "'#include' was removed in 0.32.0; use 'import \"file.fss\"'"; Span = hashTok.Span })
+                    raise (ParseException { Message = "'#include' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
                 | Import ->
-                    raise (ParseException { Message = "'#import' was removed in 0.32.0; use 'import \"file.fss\"'"; Span = hashTok.Span })
+                    raise (ParseException { Message = "'#import' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
                 | _ ->
-                    raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\"'"; Span = hashTok.Span })
+                    raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
             | Import ->
                 if hasAttributes || isExported then
                     raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
@@ -1418,13 +1418,19 @@ module Parser =
                 let pathTok = stream.Next()
                 match pathTok.Kind with
                 | StringLit path when not (System.String.IsNullOrWhiteSpace path) ->
-                    SImport(path, mkSpanFrom importTok.Span pathTok.Span)
+                    stream.Expect(As, "Expected 'as' in import directive. Use: import \"file.fss\" as Alias") |> ignore
+                    let aliasTok = stream.ExpectIdent("Expected module alias after 'as'")
+                    let alias =
+                        match aliasTok.Kind with
+                        | Ident value -> value
+                        | _ -> ""
+                    SImport(alias, path, mkSpanFrom importTok.Span aliasTok.Span)
                 | StringLit _ ->
                     raise (ParseException { Message = "Import path cannot be empty"; Span = pathTok.Span })
                 | _ ->
                     raise (ParseException { Message = "Expected string literal import path after 'import'"; Span = pathTok.Span })
             | Module ->
-                raise (ParseException { Message = "'module' declarations were removed; module names are derived from imported filenames"; Span = stream.Peek().Span })
+                raise (ParseException { Message = "'module' declarations are not supported in scripts"; Span = stream.Peek().Span })
             | Type ->
                 if isExported then
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })

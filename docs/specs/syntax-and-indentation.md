@@ -6,7 +6,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 ## File and program structure
 - A program is a sequence of top-level statements.
 - Top-level statements are:
-  - `import "relative/path/file.fss"` directives
+  - `import "relative/path/file.fss" as Alias` directives
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
   - `[<export>] let` / `[<export>] let rec` bindings
@@ -206,16 +206,16 @@ All of the following map literal layouts are valid:
 - Inline record annotation fields are `;`-separated in single-line form.
 
 ## Import directive
-- Import uses preprocessor-style syntax:
-  - `import "shared/helpers.fss"`
+- Import uses explicit alias syntax:
+  - `import "shared/helpers.fss" as Helpers`
 - Imports are top-level only.
-- Imported files are wrapped in an implicit module derived from the imported file name.
-  - `import "shared/helpers.fss"` exposes symbols under `helpers.*`.
+- Imported symbols are available only through the alias selected by the importer.
+  - `import "shared/helpers.fss" as Helpers` exposes symbols under `Helpers.*`.
 - Import loading is recursive.
 - Cycles are fatal and reported as parse errors.
 - File paths in imports must be `.fss`.
 - Import resolution is file-relative:
-  - `import "x.fss"` resolves from the directory of the file containing the directive.
+  - `import "x.fss" as X` resolves from the directory of the file containing the directive.
 - Paths are normalized before loading:
   - relative segments like `.` and `..` are collapsed.
 - Resolved files must stay inside the configured sandbox root (`RootDirectory`).

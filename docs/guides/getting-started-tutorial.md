@@ -330,8 +330,8 @@ You can split scripts using `import`.
 `main.fss`:
 
 ```fsharp
-import "shared/math.fss"
-print $"{math.sum 20 22}"
+import "shared/math.fss" as Math
+print $"{Math.sum 20 22}"
 ```
 
 `shared/math.fss`:
@@ -343,7 +343,7 @@ let sum a b = a + b
 Notes:
 - imported files are `.fss`,
 - import cycles are fatal,
-- imported files are namespaced by filename stem (`math.sum`, `common.join`, ...).
+- imported symbols must be accessed through the explicit alias (`Math.sum`, `Common.join`, ...).
 
 ## 11. Hosting, exports, and sandboxing (advanced)
 FScript is designed to be embedded.
@@ -379,7 +379,7 @@ When embedding, keep this mindset:
   - [`samples/types-showcase.fss`](../../samples/types-showcase.fss)
   - [`samples/patterns-and-collections.fss`](../../samples/patterns-and-collections.fss)
   - [`samples/map-matching.fss`](../../samples/map-matching.fss)
-  - [`samples/includes-and-exports.fss`](../../samples/includes-and-exports.fss)
+  - [`samples/imports-and-exports.fss`](../../samples/imports-and-exports.fss)
 - Specifications index: [`docs/specs/README.md`](../specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](../architecture/README.md)
 - [`samples/`](../../samples/)

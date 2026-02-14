@@ -74,6 +74,8 @@ module LspModel =
           InjectedFunctionSignatures: Map<string, string>
           InjectedFunctionParameterNames: Map<string, string list>
           InjectedFunctionDefinitions: Map<string, (string * Span)>
+          ImportAliasToInternal: Map<string, string>
+          ImportInternalToAlias: Map<string, string>
           // Variable occurrences keyed by identifier, sourced from AST spans.
           // This avoids text-based false positives (for example record field labels).
           VariableOccurrences: Map<string, Span list> }

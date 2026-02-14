@@ -378,6 +378,99 @@ let mapPreview =
         }
     }
 
+    [Test]
+    public void CSharp_server_displays_alias_types_and_navigates_alias_qualified_type_annotations()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-alias-types-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var commonPath = Path.Combine(tempDir, "common.fss");
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            File.WriteAllText(commonPath, "type ProjectInfo = { Name: string; Language: string }\n");
+            var source = """
+import "common.fss" as Common
+
+[<export>] let summary (project: Common.ProjectInfo) =
+    project.Name
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var commonUri = new Uri(commonPath).AbsoluteUri;
+
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var inlayParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 2, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 2, ["character"] = 80 }
+                }
+            };
+            LspClient.SendRequest(client, 81, "textDocument/inlayHint", inlayParams);
+            var inlayResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 81);
+            var inlayLabels = (inlayResponse["result"] as JsonArray ?? new JsonArray())
+                .OfType<JsonObject>()
+                .Select(item => item["label"]?.GetValue<string>() ?? string.Empty)
+                .Where(label => !string.IsNullOrWhiteSpace(label))
+                .ToList();
+
+            Assert.That(inlayLabels.Any(label => label.Contains("__imp", StringComparison.Ordinal)), Is.False, string.Join(", ", inlayLabels));
+
+            var hoverParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = 2, ["character"] = 31 }
+            };
+            LspClient.SendRequest(client, 83, "textDocument/hover", hoverParams);
+            var hoverResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 83);
+            var hoverResult = hoverResponse["result"] as JsonObject ?? throw new Exception("Expected hover result.");
+            var contents = hoverResult["contents"] as JsonObject ?? throw new Exception("Expected hover contents.");
+            var hoverText = contents["value"]?.GetValue<string>() ?? string.Empty;
+            Assert.That(hoverText.Contains("Common.ProjectInfo", StringComparison.Ordinal), Is.True, hoverText);
+            Assert.That(hoverText.Contains("__imp", StringComparison.Ordinal), Is.False, hoverText);
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = 2, ["character"] = 41 }
+            };
+            LspClient.SendRequest(client, 82, "textDocument/typeDefinition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 82);
+            var result = definitionResponse["result"] as JsonObject ?? throw new Exception("Expected typeDefinition location.");
+            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo(commonUri));
+            var range = result["range"] as JsonObject ?? throw new Exception("Expected range.");
+            var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+            Assert.That(start["line"]?.GetValue<int>(), Is.EqualTo(0));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

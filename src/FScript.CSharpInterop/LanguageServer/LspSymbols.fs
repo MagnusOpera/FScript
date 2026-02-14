@@ -3,6 +3,7 @@ namespace FScript.LanguageServer
 open System
 open System.Collections.Generic
 open System.IO
+open System.Text.RegularExpressions
 open System.Text.Json.Nodes
 open FScript.Language
 open FScript.CSharpInterop
@@ -145,6 +146,71 @@ module LspSymbols =
             |> List.map (fun (name, t) -> sprintf "%s: %s" name (typeRefToString t))
             |> String.concat "; "
             |> sprintf "{| %s |}"
+
+    let private tryBuildImportAliasMaps (sourcePath: string) (text: string) : Map<string, string> * Map<string, string> =
+        try
+            let parsed = Parser.parseProgramWithSourceName (Some sourcePath) text
+            let imports =
+                parsed
+                |> List.takeWhile (function | SImport _ -> true | _ -> false)
+                |> List.choose (function | SImport(alias, importPath, _) -> Some (alias, importPath) | _ -> None)
+
+            let sourceDirectory =
+                try
+                    match Path.GetDirectoryName(sourcePath) with
+                    | null
+                    | "" -> Directory.GetCurrentDirectory()
+                    | dir -> dir
+                with _ ->
+                    Directory.GetCurrentDirectory()
+
+            let pathToPrefix = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            let mutable prefixCounter = 0
+            let mutable aliasToInternal = Map.empty<string, string>
+            let mutable internalToAlias = Map.empty<string, string>
+
+            for (alias, importPath) in imports do
+                let resolvedPath =
+                    if Path.IsPathRooted(importPath) then
+                        Path.GetFullPath(importPath)
+                    else
+                        Path.GetFullPath(Path.Combine(sourceDirectory, importPath))
+
+                let internalPrefix =
+                    match pathToPrefix.TryGetValue(resolvedPath) with
+                    | true, existing -> existing
+                    | false, _ ->
+                        prefixCounter <- prefixCounter + 1
+                        let created = $"__imp{prefixCounter}"
+                        pathToPrefix[resolvedPath] <- created
+                        created
+
+                aliasToInternal <- aliasToInternal |> Map.add alias internalPrefix
+                if not (internalToAlias.ContainsKey(internalPrefix)) then
+                    internalToAlias <- internalToAlias |> Map.add internalPrefix alias
+
+            aliasToInternal, internalToAlias
+        with _ ->
+            Map.empty, Map.empty
+
+    let private mapInternalQualifiedName (internalToAlias: Map<string, string>) (name: string) =
+        if String.IsNullOrWhiteSpace(name) then name
+        else
+            match name.Split('.') |> Array.toList with
+            | head :: tail when internalToAlias.ContainsKey(head) ->
+                let alias = internalToAlias[head]
+                match tail with
+                | [] -> alias
+                | _ -> alias + "." + (String.concat "." tail)
+            | _ -> name
+
+    let private mapTypeTextForDisplay (internalToAlias: Map<string, string>) (typeText: string) =
+        if Map.isEmpty internalToAlias then typeText
+        else
+            internalToAlias
+            |> Map.fold (fun current internalPrefix alias ->
+                let pattern = @"\b" + Regex.Escape(internalPrefix) + @"\b"
+                Regex.Replace(current, pattern, alias)) typeText
 
     let private canonicalRecordSignatureFromFields (fields: (string * string) list) =
         fields
@@ -1395,6 +1461,11 @@ module LspSymbols =
                 Uri(uri).LocalPath
             else
                 uri
+        let importAliasToInternal, importInternalToAlias =
+            if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
+                tryBuildImportAliasMaps sourceName text
+            else
+                Map.empty, Map.empty
         let runtimeExterns = LspRuntimeExterns.forSourcePath sourceName
 
         let diagnostics = ResizeArray<JsonNode>()
@@ -1511,6 +1582,39 @@ module LspSymbols =
         | ParseException err ->
             diagnostics.Add(diagnostic 1 "parse" err.Span err.Message)
 
+        let displayTypeText (typeText: string) = mapTypeTextForDisplay importInternalToAlias typeText
+
+        let symbols =
+            symbols
+            |> List.map (fun sym ->
+                { sym with
+                    TypeText = sym.TypeText |> Option.map displayTypeText })
+
+        let recordParamFields =
+            recordParamFields
+            |> Map.map (fun _ fields ->
+                fields |> List.map (fun (fieldName, fieldType) -> fieldName, displayTypeText fieldType))
+
+        let functionAnnotationTypes =
+            functionAnnotationTypes
+            |> Map.map (fun _ typeTexts -> typeTexts |> List.map displayTypeText)
+
+        let parameterTypeHints =
+            parameterTypeHints
+            |> List.map (fun (span, label) -> span, displayTypeText label)
+
+        let functionReturnTypeHints =
+            functionReturnTypeHints
+            |> List.map (fun (span, label) -> span, displayTypeText label)
+
+        let patternTypeHints =
+            patternTypeHints
+            |> List.map (fun (span, label) -> span, displayTypeText label)
+
+        let localVariableTypeHints =
+            localVariableTypeHints
+            |> List.map (fun (span, name, typeText) -> span, name, displayTypeText typeText)
+
         documents[uri] <-
             { SourcePath = sourceName
               Text = text
@@ -1529,6 +1633,8 @@ module LspSymbols =
               InjectedFunctionSignatures = injectedFunctionSignatures
               InjectedFunctionParameterNames = injectedFunctionParameterNames
               InjectedFunctionDefinitions = injectedFunctionDefinitions
+              ImportAliasToInternal = importAliasToInternal
+              ImportInternalToAlias = importInternalToAlias
               VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
@@ -1853,7 +1959,12 @@ module LspSymbols =
                 let idx = word.LastIndexOf('.')
                 if idx > 0 then
                     let qualifier = word.Substring(0, idx)
-                    tryResolveTypeNameForQualifier doc qualifier
+                    let memberName = word.Substring(idx + 1)
+                    match doc.ImportAliasToInternal |> Map.tryFind qualifier with
+                    | Some internalPrefix when not (String.IsNullOrWhiteSpace(memberName)) ->
+                        Some $"{internalPrefix}.{memberName}"
+                    | _ ->
+                        tryResolveTypeNameForQualifier doc qualifier
                 else
                     None
             | Some word ->

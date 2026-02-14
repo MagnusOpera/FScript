@@ -41,6 +41,7 @@ type TokenKind =
     | RangeDots
     | Hash
     | Import
+    | As
     | Include
     | Module
     | LBrace

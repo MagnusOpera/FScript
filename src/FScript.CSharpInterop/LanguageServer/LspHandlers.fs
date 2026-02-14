@@ -266,6 +266,18 @@ module LspHandlers =
         else
             typeText
 
+    let private displayTypeName (doc: DocumentState) (name: string) =
+        if String.IsNullOrWhiteSpace(name) then name
+        else
+            let parts = name.Split('.') |> Array.toList
+            match parts with
+            | head :: tail when doc.ImportInternalToAlias.ContainsKey(head) ->
+                let alias = doc.ImportInternalToAlias[head]
+                match tail with
+                | [] -> alias
+                | _ -> alias + "." + (String.concat "." tail)
+            | _ -> name
+
     let private formatFunctionSignature (doc: DocumentState) (sym: TopLevelSymbol) =
         let paramNames = doc.FunctionParameters |> Map.tryFind sym.Name |> Option.defaultValue []
 
@@ -276,7 +288,7 @@ module LspHandlers =
                 let effectiveParts =
                     match sym.TypeTargetName with
                     | Some returnName when parts.Length > 0 ->
-                        (parts |> List.take (parts.Length - 1)) @ [ returnName ]
+                        (parts |> List.take (parts.Length - 1)) @ [ displayTypeName doc returnName ]
                     | _ -> parts
                 let arrowText =
                     if effectiveParts.Length = (paramNames.Length + 1) then
@@ -298,6 +310,7 @@ module LspHandlers =
                     doc.FunctionDeclaredReturnTargets
                     |> Map.tryFind sym.Name
                     |> Option.defaultValue "unknown"
+                    |> displayTypeName doc
                 let parts = annotated @ [ returnType ]
                 let arrowText =
                     if parts.Length = (paramNames.Length + 1) then

@@ -31,6 +31,7 @@ module Lexer =
         | "raise" -> Some Raise
         | "for" -> Some For
         | "import" -> Some Import
+        | "as" -> Some As
         | "include" -> Some Include
         | "module" -> Some Module
         // 'in' is intentionally not a keyword in FScript layout-style let expressions.
