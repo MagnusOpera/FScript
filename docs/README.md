@@ -2,15 +2,15 @@
 
 This folder is organized into three layers:
 
-- Getting started and comparative docs (this folder)
+- Getting started and comparative docs (`docs/guides/`)
 - Language behavior specifications: [`docs/specs/`](./specs/README.md)
 - Internal structure and component design: [`docs/architecture/`](./architecture/README.md)
 
 ## Start here
 
-- Tutorial: [`getting-started-tutorial.md`](./getting-started-tutorial.md)
-- FScript vs F# / OCaml: [`fsharp-ocaml-differences.md`](./fsharp-ocaml-differences.md)
-- Language rationale: [`language-choices.md`](./language-choices.md)
+- Tutorial: [`guides/getting-started-tutorial.md`](./guides/getting-started-tutorial.md)
+- FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)
+- Language rationale: [`guides/language-choices.md`](./guides/language-choices.md)
 
 ## Deep dives
 

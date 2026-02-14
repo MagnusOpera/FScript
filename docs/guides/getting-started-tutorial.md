@@ -322,7 +322,7 @@ let hasA = m |> Map.containsKey "a"
 ```
 
 Full reference:
-- [`docs/specs/stdlib-functions.md`](./specs/stdlib-functions.md)
+- [`docs/specs/stdlib-functions.md`](../specs/stdlib-functions.md)
 
 ## 10. Includes and modules
 You can split scripts using `#include`.
@@ -372,16 +372,16 @@ When embedding, keep this mindset:
 - expose only needed externs,
 - keep filesystem/network boundaries explicit,
 - use host-level timeout/cancellation/resource limits.
-- see [`docs/specs/embedding-fscript-language.md`](./specs/embedding-fscript-language.md) for the embedding API,
-- see [`docs/specs/external-functions.md`](./specs/external-functions.md) for extern design/registration,
-- see [`docs/specs/sandbox-and-security.md`](./specs/sandbox-and-security.md) for the full security model.
+- see [`docs/specs/embedding-fscript-language.md`](../specs/embedding-fscript-language.md) for the embedding API,
+- see [`docs/specs/external-functions.md`](../specs/external-functions.md) for extern design/registration,
+- see [`docs/specs/sandbox-and-security.md`](../specs/sandbox-and-security.md) for the full security model.
 
 ## 12. Next steps
 - Sample scripts:
-  - [`samples/types-showcase.fss`](../samples/types-showcase.fss)
-  - [`samples/patterns-and-collections.fss`](../samples/patterns-and-collections.fss)
-  - [`samples/map-matching.fss`](../samples/map-matching.fss)
-  - [`samples/includes-and-exports.fss`](../samples/includes-and-exports.fss)
-- Specifications index: [`docs/specs/README.md`](./specs/README.md)
-- Architecture index: [`docs/architecture/README.md`](./architecture/README.md)
-- [`samples/`](../samples/)
+  - [`samples/types-showcase.fss`](../../samples/types-showcase.fss)
+  - [`samples/patterns-and-collections.fss`](../../samples/patterns-and-collections.fss)
+  - [`samples/map-matching.fss`](../../samples/map-matching.fss)
+  - [`samples/includes-and-exports.fss`](../../samples/includes-and-exports.fss)
+- Specifications index: [`docs/specs/README.md`](../specs/README.md)
+- Architecture index: [`docs/architecture/README.md`](../architecture/README.md)
+- [`samples/`](../../samples/)

@@ -36,7 +36,7 @@ FScript currently includes:
 
 If you are new to FScript, start with the progressive tutorial:
 
-- [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
+- [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
 
 It covers installation, syntax basics, flow control, collections, pattern matching, stdlib usage, includes, and host/export concepts.
 
@@ -129,10 +129,10 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 ## Documentation
 
 - Documentation portal: [`docs/README.md`](docs/README.md)
-- Tutorial: [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
+- Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
-- FScript vs F# / OCaml: [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
+- FScript vs F# / OCaml: [`docs/guides/fsharp-ocaml-differences.md`](docs/guides/fsharp-ocaml-differences.md)
 
 ## Changelog
 
