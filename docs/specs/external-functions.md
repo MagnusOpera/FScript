@@ -18,6 +18,10 @@ Interpreter integration:
 - Extern schemes are injected into type inference environment.
 - Extern values are injected into runtime environment as curried `VExternal`.
 
+LSP integration:
+- The language server injects runtime extern schemes (`Registry.all`) during document inference.
+- Hover/completion/signature help expose callable signatures for injected runtime functions and prelude stdlib functions.
+
 ## Higher-order extern execution
 Higher-order externs are implemented in runtime extern modules and receive an `ExternalCallContext`.
 

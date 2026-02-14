@@ -9,6 +9,8 @@
   <ItemGroup>
     <Compile Include="LspProtocol.fs" />
     <Compile Include="LspModel.fs" />
+    <Compile Include="LspRuntimeExterns.fs" />
+    <Compile Include="AstJson.fs" />
     <Compile Include="LspSymbols.fs" />
     <Compile Include="LspHandlers.fs" />
     <Compile Include="LspServer.fs" />
@@ -17,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
+    <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
   </ItemGroup>
 
 </Project>

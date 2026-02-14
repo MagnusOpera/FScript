@@ -135,3 +135,23 @@ type IncludeResolverTests () =
             File.WriteAllText(mainPath, "#include \"helper.fss\"\nlet ok = 1")
             let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
             act |> should throw typeof<ParseException>)
+
+    [<Test>]
+    member _.``Include resolver can parse in-memory main source with on-disk includes`` () =
+        withTempDir (fun dir ->
+            let helperPath = Path.Combine(dir, "_protocol.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+            File.WriteAllText(helperPath, "type ActionContext = { Name: string }\n")
+
+            let source =
+                "#include \"_protocol.fss\"\n"
+                + "let defaults (context: ActionContext) = context.Name\n"
+
+            let program = IncludeResolver.parseProgramFromSourceWithIncludes dir mainPath source
+            let letNames =
+                program
+                |> List.choose (function
+                    | SLet(name, _, _, _, _, _) -> Some name
+                    | _ -> None)
+
+            letNames |> should contain "defaults")

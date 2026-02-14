@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const cp = require('child_process');
 const vscode = require('vscode');
 
@@ -9,6 +10,8 @@ let languageClientModule;
 let outputChannel;
 let statusItem;
 let showOutputCommandSubscription;
+let viewAstCommandSubscription;
+let viewInferredAstCommandSubscription;
 let diagnosticsSubscription;
 let textChangeSubscription;
 let textOpenSubscription;
@@ -136,6 +139,65 @@ async function stopClient() {
     clearTimeout(timeout);
   }
   pendingAnalysis.clear();
+}
+
+function getActiveFscriptFileUri() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage('FScript extension: no active editor.');
+    return null;
+  }
+
+  const document = editor.document;
+  if (document.languageId !== 'fscript') {
+    vscode.window.showErrorMessage('FScript extension: active editor is not an FScript file.');
+    return null;
+  }
+
+  if (document.isUntitled || document.uri.scheme !== 'file') {
+    vscode.window.showErrorMessage('FScript extension: save the FScript file before viewing AST.');
+    return null;
+  }
+
+  return document.uri;
+}
+
+async function openJsonInTempFile(prefix, data) {
+  const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const tempPath = path.join(os.tmpdir(), `${prefix}-${nonce}.json`);
+  fs.writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tempPath));
+  await vscode.languages.setTextDocumentLanguage(doc, 'json');
+  await vscode.window.showTextDocument(doc, { preview: false });
+}
+
+async function runAstCommand(methodName, tempPrefix) {
+  if (!client) {
+    vscode.window.showErrorMessage('FScript extension: language server is not running. Enable fscript.lsp.enabled.');
+    return;
+  }
+
+  const uri = getActiveFscriptFileUri();
+  if (!uri) {
+    return;
+  }
+
+  try {
+    const result = await client.sendRequest(methodName, {
+      textDocument: { uri: uri.toString() }
+    });
+
+    if (!result || result.ok !== true) {
+      const message = result?.error?.message || 'Unknown AST command error.';
+      vscode.window.showErrorMessage(`FScript extension: ${message}`);
+      return;
+    }
+
+    await openJsonInTempFile(tempPrefix, result.data);
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    vscode.window.showErrorMessage(`FScript extension: failed to execute AST command. ${msg}`);
+  }
 }
 
 function ensureUi(context) {
@@ -292,6 +354,16 @@ function activate(context) {
   });
   context.subscriptions.push(showOutputCommandSubscription);
 
+  viewAstCommandSubscription = vscode.commands.registerCommand('fscript.viewAst', async () => {
+    await runAstCommand('fscript/viewAst', 'fscript-ast');
+  });
+  context.subscriptions.push(viewAstCommandSubscription);
+
+  viewInferredAstCommandSubscription = vscode.commands.registerCommand('fscript.viewInferredAst', async () => {
+    await runAstCommand('fscript/viewInferredAst', 'fscript-inferred-ast');
+  });
+  context.subscriptions.push(viewInferredAstCommandSubscription);
+
   diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
     for (const uri of event.uris) {
       completeAnalysis(uri);
@@ -333,6 +405,14 @@ async function deactivate() {
   if (showOutputCommandSubscription) {
     showOutputCommandSubscription.dispose();
     showOutputCommandSubscription = undefined;
+  }
+  if (viewAstCommandSubscription) {
+    viewAstCommandSubscription.dispose();
+    viewAstCommandSubscription = undefined;
+  }
+  if (viewInferredAstCommandSubscription) {
+    viewInferredAstCommandSubscription.dispose();
+    viewInferredAstCommandSubscription = undefined;
   }
   if (diagnosticsSubscription) {
     diagnosticsSubscription.dispose();

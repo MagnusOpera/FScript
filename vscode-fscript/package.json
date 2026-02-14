@@ -52,7 +52,17 @@
     "commands": [
       {
         "command": "fscript.showLanguageServerOutput",
-        "title": "FScript: Show Language Server Output",
+        "title": "Show Language Server Output",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.viewAst",
+        "title": "View AST",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.viewInferredAst",
+        "title": "View Inferred AST",
         "category": "FScript"
       }
     ],

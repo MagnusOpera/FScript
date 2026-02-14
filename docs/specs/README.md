@@ -22,3 +22,4 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 ## Editor/LSP behavior
 
 - LSP inlay hints: [`lsp-inlay-hints.md`](./lsp-inlay-hints.md)
+- LSP uses runtime extern schemes for typing/signatures and resolves navigation to included-file declarations.

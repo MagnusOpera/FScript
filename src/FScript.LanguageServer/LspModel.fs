@@ -50,15 +50,27 @@ module LspModel =
           TypeTargetName: string option
           Span: Span }
 
+    type LocalBindingInfo =
+        { Name: string
+          DeclSpan: Span
+          ScopeSpan: Span
+          AnnotationType: string option }
+
     type DocumentState =
         { Text: string
           Symbols: TopLevelSymbol list
           RecordParameterFields: Map<string, (string * string) list>
           ParameterTypeTargets: Map<string, string>
           FunctionParameters: Map<string, string list>
+          FunctionAnnotationTypes: Map<string, string list>
+          FunctionDeclaredReturnTargets: Map<string, string>
+          CallArgumentHints: (Span * string) list
+          FunctionReturnTypeHints: (Span * string) list
           ParameterTypeHints: (Span * string) list
           PatternTypeHints: (Span * string) list
           LocalVariableTypeHints: (Span * string * string) list
+          LocalBindings: LocalBindingInfo list
+          InjectedFunctionSignatures: Map<string, string>
           // Variable occurrences keyed by identifier, sourced from AST spans.
           // This avoids text-based false positives (for example record field labels).
           VariableOccurrences: Map<string, Span list> }

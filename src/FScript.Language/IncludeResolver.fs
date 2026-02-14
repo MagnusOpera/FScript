@@ -274,3 +274,41 @@ module IncludeResolver =
                 expandProgram rootDirectoryWithSeparator fileSpan loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
 
         loadFile [] true entryFile
+
+    let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
+        let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
+        let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let fileSpan path =
+            let p = Span.posInFile path 1 1
+            Span.mk p p
+
+        let entryFullPath = Path.GetFullPath(entryFile)
+        let entrySpan = fileSpan entryFullPath
+        ensureFssPath entryFullPath entrySpan
+        let entrySandboxedPath = ensureWithinRoot rootDirectoryWithSeparator entryFullPath entrySpan
+
+        let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) : Program =
+            let fullFilePath = Path.GetFullPath(filePath)
+            let initialSpan = fileSpan fullFilePath
+            ensureFssPath fullFilePath initialSpan
+            let sandboxedPath = ensureWithinRoot rootDirectoryWithSeparator fullFilePath initialSpan
+
+            if stack |> List.exists (fun p -> String.Equals(p, sandboxedPath, StringComparison.OrdinalIgnoreCase)) then
+                let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
+                let message = sprintf "Include cycle detected: %s" (String.concat " -> " cycleChain)
+                raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
+
+            if visited.Contains(sandboxedPath) then
+                []
+            else
+                visited.Add(sandboxedPath) |> ignore
+                let source =
+                    if String.Equals(sandboxedPath, entrySandboxedPath, StringComparison.OrdinalIgnoreCase) then
+                        entrySource
+                    else
+                        File.ReadAllText(sandboxedPath)
+                let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
+                let loadRef = ref loadFile
+                expandProgram rootDirectoryWithSeparator fileSpan loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
+
+        loadFile [] true entrySandboxedPath

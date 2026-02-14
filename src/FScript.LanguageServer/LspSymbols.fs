@@ -2,6 +2,7 @@ namespace FScript.LanguageServer
 
 open System
 open System.Collections.Generic
+open System.IO
 open System.Text.Json.Nodes
 open FScript.Language
 
@@ -61,6 +62,45 @@ module LspSymbols =
     let private lspTypeToString (t: Type) =
         let keyDomainVars = collectMapKeyDomainVars t
         lspTypeToStringWithKeyDomainVars keyDomainVars t
+
+    let private schemeTypeToString (scheme: Scheme) =
+        match scheme with
+        | Forall (_, t) -> Types.typeToString t
+
+    let private stdlibFunctionSignatures : Lazy<Map<string, string>> =
+        lazy
+            let typedStdlib = TypeInfer.inferProgramWithExternsRaw [] (Stdlib.loadProgram())
+            typedStdlib
+            |> List.collect (function
+                | TypeInfer.TSLet(name, _, t, _, _, _) ->
+                    match t with
+                    | TFun _ -> [ name, Types.typeToString t ]
+                    | _ -> []
+                | TypeInfer.TSLetRecGroup(bindings, _, _) ->
+                    bindings
+                    |> List.choose (fun (name, _, t, _) ->
+                        match t with
+                        | TFun _ -> Some (name, Types.typeToString t)
+                        | _ -> None)
+                | _ -> [])
+            |> Map.ofList
+
+    let private buildInjectedFunctionSignatures (externs: ExternalFunction list) =
+        let fromExterns =
+            externs
+            |> List.map (fun ext -> ext.Name, schemeTypeToString ext.Scheme)
+            |> Map.ofList
+
+        let builtins =
+            [ "ignore", "'a -> unit"
+              "print", "string -> unit"
+              "nameof", "string -> string"
+              "typeof", "string -> type" ]
+            |> Map.ofList
+
+        stdlibFunctionSignatures.Value
+        |> Map.fold (fun acc name signature -> acc |> Map.add name signature) fromExterns
+        |> Map.fold (fun acc name signature -> acc |> Map.add name signature) builtins
 
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with
@@ -134,11 +174,12 @@ module LspSymbols =
                     | _ -> None
                 | _ -> None
 
-            let typeTargetFromType (t: Type) =
+            let rec typeTargetFromType (t: Type) =
                 match t with
                 | TNamed name -> Some name
                 | TUnion (name, _) -> Some name
                 | TRecord _ -> tryResolveRecordTarget t
+                | TFun (_, ret) -> typeTargetFromType ret
                 | _ -> None
 
             match typedByName.TryGetValue(name) with
@@ -216,6 +257,133 @@ module LspSymbols =
                 bindings
                 |> List.map (fun (name, args, _, span) -> mkFromTyped name span (declarationKindFromArgs args))
             | _ -> [])
+
+    let private buildTopLevelTypeTargetFromProgram (program: Program) =
+        let recordTypeBySignature =
+            program
+            |> List.choose (function
+                | SType typeDef when typeDef.Cases.IsEmpty ->
+                    let fields =
+                        typeDef.Fields
+                        |> List.map (fun (fieldName, t) -> fieldName, typeRefToString t)
+                    Some (canonicalRecordSignatureFromFields fields, typeDef.Name)
+                | _ -> None)
+            |> List.groupBy fst
+            |> List.choose (fun (signature, entries) ->
+                let names = entries |> List.map snd |> List.distinct
+                match names with
+                | [ single ] -> Some (signature, single)
+                | _ -> None)
+            |> Map.ofList
+
+        let canonicalRecordSignatureFromType (t: Type) =
+            match t with
+            | TRecord fields ->
+                fields
+                |> Map.toList
+                |> List.map (fun (name, ty) -> name, Types.typeToString ty)
+                |> canonicalRecordSignatureFromFields
+                |> Some
+            | _ -> None
+
+        let rec resolveTypeTarget (t: Type) =
+            match t with
+            | TNamed name -> Some name
+            | TUnion (name, _) -> Some name
+            | TRecord _ ->
+                match canonicalRecordSignatureFromType t with
+                | Some signature -> recordTypeBySignature |> Map.tryFind signature
+                | None -> None
+            | TFun (_, ret) -> resolveTypeTarget ret
+            | _ -> None
+
+        resolveTypeTarget
+
+    let private inferTopLevelTypesBestEffort (externs: ExternalFunction list) (program: Program) : Map<string, Type> =
+        let mutable accepted: Program = []
+        let mutable result: Map<string, Type> = Map.empty
+
+        let tryInferWithCurrent (candidate: Program) =
+            try
+                let typed, _ = TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs candidate
+                Some typed
+            with
+            | _ -> None
+
+        let extractTypeForName (typed: TypeInfer.TypedProgram) (targetName: string) =
+            typed
+            |> List.tryPick (fun stmt ->
+                match stmt with
+                | TypeInfer.TSLet (name, _, t, _, _, _) when name = targetName ->
+                    Some t
+                | TypeInfer.TSLetRecGroup (bindings, _, _) ->
+                    bindings
+                    |> List.tryPick (fun (name, _, t, _) ->
+                        if name = targetName then Some t else None)
+                | _ -> None)
+
+        for stmt in program do
+            match stmt with
+            | SType _
+            | SModuleDecl _ ->
+                accepted <- accepted @ [ stmt ]
+            | SLet (name, _, _, _, _, _) ->
+                let candidate = accepted @ [ stmt ]
+                match tryInferWithCurrent candidate with
+                | Some typed ->
+                    accepted <- candidate
+                    match extractTypeForName typed name with
+                    | Some t -> result <- result |> Map.add name t
+                    | None -> ()
+                | None -> ()
+            | SLetRecGroup (bindings, _, _) ->
+                let candidate = accepted @ [ stmt ]
+                match tryInferWithCurrent candidate with
+                | Some typed ->
+                    accepted <- candidate
+                    for (name, _, _, _) in bindings do
+                        match extractTypeForName typed name with
+                        | Some t -> result <- result |> Map.add name t
+                        | None -> ()
+                | None -> ()
+            | SExpr _ ->
+                ()
+
+        result
+
+    let private inferLocalVariableTypesBestEffort (externs: ExternalFunction list) (program: Program) : TypeInfer.LocalVariableTypeInfo list =
+        let mutable accepted: Program = []
+        let collected = Dictionary<(string * int * int * int * int * string), TypeInfer.LocalVariableTypeInfo>()
+
+        let tryInferWithCurrent (candidate: Program) =
+            try
+                let _, localTypes = TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs candidate
+                Some localTypes
+            with
+            | _ -> None
+
+        let keyOf (entry: TypeInfer.LocalVariableTypeInfo) =
+            let file = entry.Span.Start.File |> Option.defaultValue ""
+            (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column, file)
+
+        for stmt in program do
+            match stmt with
+            | SType _
+            | SModuleDecl _ ->
+                accepted <- accepted @ [ stmt ]
+            | SLet _
+            | SLetRecGroup _ ->
+                let candidate = accepted @ [ stmt ]
+                match tryInferWithCurrent candidate with
+                | Some localTypes ->
+                    accepted <- candidate
+                    for entry in localTypes do
+                        collected[keyOf entry] <- entry
+                | None -> ()
+            | SExpr _ ->
+                ()
+
+        collected.Values |> Seq.toList
 
     let collectVariableOccurrences (program: Program) : Map<string, Span list> =
         let addOccurrence name span (acc: Map<string, Span list>) =
@@ -326,12 +494,6 @@ module LspSymbols =
         withDeclsAndExprs
         |> Map.map (fun _ spans -> spans |> List.rev)
 
-    let private isIncludeProgram (program: Program) =
-        program
-        |> List.exists (function
-            | SInclude _ -> true
-            | _ -> false)
-
     let private buildRecordParameterFields (program: Program) =
         let typeRecordFields =
             program
@@ -436,6 +598,379 @@ module LspSymbols =
             | _ ->
                 state) Map.empty
 
+    let private buildFunctionAnnotationTypes (program: Program) =
+        let addBinding name (args: Param list) (acc: Map<string, string list>) =
+            let hasAnnotation = args |> List.exists (fun p -> p.Annotation.IsSome)
+            if not hasAnnotation then acc
+            else
+                let annotated =
+                    args
+                    |> List.map (fun p ->
+                        match p.Annotation with
+                        | Some t -> typeRefToString t
+                        | None -> "unknown")
+                acc |> Map.add name annotated
+
+        program
+        |> List.fold (fun state stmt ->
+            match stmt with
+            | SLet (name, args, _, _, _, _) ->
+                addBinding name args state
+            | SLetRecGroup (bindings, _, _) ->
+                bindings
+                |> List.fold (fun inner (name, args, _, _) -> addBinding name args inner) state
+            | _ ->
+                state) Map.empty
+
+    let private buildFunctionDeclaredReturnTargets (program: Program) =
+        let recordTypeByFieldNames =
+            program
+            |> List.choose (function
+                | SType typeDef when typeDef.Cases.IsEmpty ->
+                    let signature =
+                        typeDef.Fields
+                        |> List.map fst
+                        |> List.sort
+                        |> String.concat ";"
+                    Some (signature, typeDef.Name)
+                | _ -> None)
+            |> List.groupBy fst
+            |> List.choose (fun (signature, entries) ->
+                let names = entries |> List.map snd |> List.distinct
+                match names with
+                | [ one ] -> Some (signature, one)
+                | _ -> None)
+            |> Map.ofList
+
+        let rec terminalExpr (expr: Expr) =
+            match expr with
+            | ELet (_, _, body, _, _) -> terminalExpr body
+            | ELetRecGroup (_, body, _) -> terminalExpr body
+            | EParen (inner, _) -> terminalExpr inner
+            | _ -> expr
+
+        let tryResolve expr =
+            match terminalExpr expr with
+            | ERecord (fields, _)
+            | EStructuralRecord (fields, _) ->
+                let signature =
+                    fields
+                    |> List.map fst
+                    |> List.sort
+                    |> String.concat ";"
+                recordTypeByFieldNames |> Map.tryFind signature
+            | _ -> None
+
+        program
+        |> List.fold (fun state stmt ->
+            match stmt with
+            | SLet (name, args, expr, _, _, _) when not args.IsEmpty ->
+                match tryResolve expr with
+                | Some returnType -> state |> Map.add name returnType
+                | None -> state
+            | SLetRecGroup (bindings, _, _) ->
+                bindings
+                |> List.fold (fun inner (name, args, expr, _) ->
+                    if args.IsEmpty then inner
+                    else
+                        match tryResolve expr with
+                        | Some returnType -> inner |> Map.add name returnType
+                        | None -> inner) state
+            | _ -> state) Map.empty
+
+    let private buildRecordTypeFieldTypeMap (program: Program) =
+        program
+        |> List.choose (function
+            | SType typeDef when typeDef.Cases.IsEmpty ->
+                let fields =
+                    typeDef.Fields
+                    |> List.map (fun (fieldName, t) -> fieldName, typeRefToString t)
+                    |> Map.ofList
+                Some (typeDef.Name, fields)
+            | _ -> None)
+        |> Map.ofList
+
+    let private spanContainsPosition1Based (span: Span) (line: int) (column: int) =
+        let sameFile =
+            match span.Start.File, span.End.File with
+            | Some sf, Some ef when not (String.Equals(sf, ef, StringComparison.OrdinalIgnoreCase)) -> false
+            | _ -> true
+        let startsBefore =
+            line > span.Start.Line
+            || (line = span.Start.Line && column >= span.Start.Column)
+        let endsAfter =
+            line < span.End.Line
+            || (line = span.End.Line && column <= span.End.Column)
+        sameFile && startsBefore && endsAfter
+
+    let private spanStartAtOrBefore (candidate: Span) (line: int) (column: int) =
+        candidate.Start.Line < line
+        || (candidate.Start.Line = line && candidate.Start.Column <= column)
+
+    let private inferLocalTypesFromReturnedRecordFields
+        (program: Program)
+        (functionDeclaredReturnTargets: Map<string, string>)
+        (localBindings: LocalBindingInfo list)
+        : (Span * string * string) list =
+
+        let recordFieldTypesByType = buildRecordTypeFieldTypeMap program
+
+        let pickNearestBinding (name: string) (usageSpan: Span) =
+            localBindings
+            |> List.filter (fun binding ->
+                String.Equals(binding.Name, name, StringComparison.Ordinal)
+                && spanContainsPosition1Based binding.ScopeSpan usageSpan.Start.Line usageSpan.Start.Column
+                && spanStartAtOrBefore binding.DeclSpan usageSpan.Start.Line usageSpan.Start.Column)
+            |> List.sortByDescending (fun binding -> binding.DeclSpan.Start.Line, binding.DeclSpan.Start.Column)
+            |> List.tryHead
+
+        let rec collectFieldVarUses (fieldTypes: Map<string, string>) (expr: Expr) : (string * Span * string) list =
+            let nested =
+                match expr with
+                | EApply (f, a, _) -> collectFieldVarUses fieldTypes f @ collectFieldVarUses fieldTypes a
+                | EIf (c, t, f, _) ->
+                    collectFieldVarUses fieldTypes c
+                    @ collectFieldVarUses fieldTypes t
+                    @ collectFieldVarUses fieldTypes f
+                | ERaise (inner, _)
+                | ESome (inner, _)
+                | EParen (inner, _) -> collectFieldVarUses fieldTypes inner
+                | EFor (_, source, body, _) ->
+                    collectFieldVarUses fieldTypes source @ collectFieldVarUses fieldTypes body
+                | EMatch (scrutinee, cases, _) ->
+                    let inScrutinee = collectFieldVarUses fieldTypes scrutinee
+                    let inCases =
+                        cases
+                        |> List.collect (fun (_, guard, body, _) ->
+                            let inGuard =
+                                match guard with
+                                | Some g -> collectFieldVarUses fieldTypes g
+                                | None -> []
+                            inGuard @ collectFieldVarUses fieldTypes body)
+                    inScrutinee @ inCases
+                | ELet (_, value, body, _, _) ->
+                    collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
+                | ELetRecGroup (bindings, body, _) ->
+                    let inBindings =
+                        bindings
+                        |> List.collect (fun (_, _, valueExpr, _) -> collectFieldVarUses fieldTypes valueExpr)
+                    inBindings @ collectFieldVarUses fieldTypes body
+                | ELambda (_, body, _) ->
+                    collectFieldVarUses fieldTypes body
+                | EList (items, _)
+                | ETuple (items, _) ->
+                    items |> List.collect (collectFieldVarUses fieldTypes)
+                | ERange (a, b, _) ->
+                    collectFieldVarUses fieldTypes a @ collectFieldVarUses fieldTypes b
+                | ERecord (fields, _)
+                | EStructuralRecord (fields, _) ->
+                    fields |> List.collect (fun (_, valueExpr) -> collectFieldVarUses fieldTypes valueExpr)
+                | EMap (entries, _) ->
+                    entries
+                    |> List.collect (function
+                        | MEKeyValue (k, v) -> collectFieldVarUses fieldTypes k @ collectFieldVarUses fieldTypes v
+                        | MESpread e -> collectFieldVarUses fieldTypes e)
+                | ERecordUpdate (target, fields, _)
+                | EStructuralRecordUpdate (target, fields, _) ->
+                    collectFieldVarUses fieldTypes target
+                    @ (fields |> List.collect (fun (_, v) -> collectFieldVarUses fieldTypes v))
+                | EFieldGet (target, _, _) ->
+                    collectFieldVarUses fieldTypes target
+                | EIndexGet (a, b, _)
+                | ECons (a, b, _)
+                | EAppend (a, b, _)
+                | EBinOp (_, a, b, _) ->
+                    collectFieldVarUses fieldTypes a @ collectFieldVarUses fieldTypes b
+                | EInterpolatedString (parts, _) ->
+                    parts
+                    |> List.collect (function
+                        | IPText _ -> []
+                        | IPExpr embedded -> collectFieldVarUses fieldTypes embedded)
+                | EUnit _
+                | ELiteral _
+                | EVar _
+                | ENone _
+                | ETypeOf _
+                | ENameOf _ -> []
+
+            let fromRecord =
+                match expr with
+                | ERecord (fields, _)
+                | EStructuralRecord (fields, _) ->
+                    fields
+                    |> List.choose (fun (fieldName, valueExpr) ->
+                        match valueExpr, fieldTypes |> Map.tryFind fieldName with
+                        | EVar (localName, usageSpan), Some fieldType ->
+                            Some (localName, usageSpan, fieldType)
+                        | _ -> None)
+                | _ -> []
+
+            fromRecord @ nested
+
+        let fromBinding name expr =
+            match functionDeclaredReturnTargets |> Map.tryFind name with
+            | Some returnTypeName ->
+                match recordFieldTypesByType |> Map.tryFind returnTypeName with
+                | Some fieldTypes ->
+                    collectFieldVarUses fieldTypes expr
+                    |> List.choose (fun (localName, usageSpan, fieldType) ->
+                        pickNearestBinding localName usageSpan
+                        |> Option.map (fun binding -> binding.DeclSpan, binding.Name, fieldType))
+                | None -> []
+            | None -> []
+
+        program
+        |> List.collect (function
+            | SLet (name, args, expr, _, _, _) when not args.IsEmpty ->
+                fromBinding name expr
+            | SLetRecGroup (bindings, _, _) ->
+                bindings
+                |> List.collect (fun (name, args, expr, _) ->
+                    if args.IsEmpty then [] else fromBinding name expr)
+            | _ -> [])
+        |> List.distinctBy (fun (span, name, _) ->
+            let file = span.Start.File |> Option.defaultValue ""
+            name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column, file)
+
+    let private buildLocalBindings (program: Program) =
+        let mkBinding (name: string) (declSpan: Span) (scopeSpan: Span) (annotation: string option) =
+            { Name = name
+              DeclSpan = declSpan
+              ScopeSpan = scopeSpan
+              AnnotationType = annotation }
+
+        let rec collectPatternBindings (scopeSpan: Span) (pattern: Pattern) =
+            match pattern with
+            | PVar (name, span) ->
+                [ mkBinding name span scopeSpan None ]
+            | PCons (head, tail, _) ->
+                collectPatternBindings scopeSpan head @ collectPatternBindings scopeSpan tail
+            | PTuple (items, _) ->
+                items |> List.collect (collectPatternBindings scopeSpan)
+            | PRecord (fields, _) ->
+                fields |> List.collect (fun (_, p) -> collectPatternBindings scopeSpan p)
+            | PMap (clauses, tailOpt, _) ->
+                let fromClauses =
+                    clauses
+                    |> List.collect (fun (k, v) ->
+                        collectPatternBindings scopeSpan k @ collectPatternBindings scopeSpan v)
+                let fromTail =
+                    match tailOpt with
+                    | Some tail -> collectPatternBindings scopeSpan tail
+                    | None -> []
+                fromClauses @ fromTail
+            | PSome (inner, _) ->
+                collectPatternBindings scopeSpan inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some p -> collectPatternBindings scopeSpan p
+                | None -> []
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _
+            | PTypeRef _ -> []
+
+        let rec collectExprBindings (expr: Expr) : LocalBindingInfo list =
+            match expr with
+            | ELambda (param, body, _) ->
+                let annotation = param.Annotation |> Option.map typeRefToString
+                mkBinding param.Name param.Span (Ast.spanOfExpr body) annotation
+                :: collectExprBindings body
+            | EFor (name, source, body, span) ->
+                mkBinding name span (Ast.spanOfExpr body) None
+                :: (collectExprBindings source @ collectExprBindings body)
+            | EMatch (scrutinee, cases, _) ->
+                let inScrutinee = collectExprBindings scrutinee
+                let inCases =
+                    cases
+                    |> List.collect (fun (pat, guard, body, _) ->
+                        let scope = Ast.spanOfExpr body
+                        let fromPattern = collectPatternBindings scope pat
+                        let fromGuard =
+                            match guard with
+                            | Some g -> collectExprBindings g
+                            | None -> []
+                        fromPattern @ fromGuard @ collectExprBindings body)
+                inScrutinee @ inCases
+            | ELet (name, value, body, _, span) ->
+                mkBinding name span (Ast.spanOfExpr body) None
+                :: (collectExprBindings value @ collectExprBindings body)
+            | ELetRecGroup (bindings, body, _) ->
+                let fromBindings =
+                    bindings
+                    |> List.collect (fun (name, args, valueExpr, bindingSpan) ->
+                        let argBindings =
+                            args
+                            |> List.map (fun p ->
+                                let annotation = p.Annotation |> Option.map typeRefToString
+                                mkBinding p.Name p.Span (Ast.spanOfExpr valueExpr) annotation)
+                        mkBinding name bindingSpan (Ast.spanOfExpr body) None
+                        :: (argBindings @ collectExprBindings valueExpr))
+                fromBindings @ collectExprBindings body
+            | EApply (f, a, _) ->
+                collectExprBindings f @ collectExprBindings a
+            | EIf (c, t, f, _) ->
+                collectExprBindings c @ collectExprBindings t @ collectExprBindings f
+            | ERaise (inner, _)
+            | ESome (inner, _)
+            | EParen (inner, _) ->
+                collectExprBindings inner
+            | EList (items, _)
+            | ETuple (items, _) ->
+                items |> List.collect collectExprBindings
+            | ERange (a, b, _) ->
+                collectExprBindings a @ collectExprBindings b
+            | ERecord (fields, _)
+            | EStructuralRecord (fields, _) ->
+                fields |> List.collect (fun (_, e) -> collectExprBindings e)
+            | EMap (entries, _) ->
+                entries
+                |> List.collect (function
+                    | MEKeyValue (k, v) -> collectExprBindings k @ collectExprBindings v
+                    | MESpread e -> collectExprBindings e)
+            | ERecordUpdate (target, fields, _)
+            | EStructuralRecordUpdate (target, fields, _) ->
+                collectExprBindings target @ (fields |> List.collect (fun (_, e) -> collectExprBindings e))
+            | EFieldGet (target, _, _) ->
+                collectExprBindings target
+            | EIndexGet (a, b, _)
+            | ECons (a, b, _)
+            | EAppend (a, b, _)
+            | EBinOp (_, a, b, _) ->
+                collectExprBindings a @ collectExprBindings b
+            | EInterpolatedString (parts, _) ->
+                parts
+                |> List.collect (function
+                    | IPText _ -> []
+                    | IPExpr embedded -> collectExprBindings embedded)
+            | EUnit _
+            | ELiteral _
+            | EVar _
+            | ENone _
+            | ETypeOf _
+            | ENameOf _ -> []
+
+        let fromTopLevelFunction (args: Param list) (body: Expr) =
+            let argBindings =
+                args
+                |> List.map (fun p ->
+                    let annotation = p.Annotation |> Option.map typeRefToString
+                    mkBinding p.Name p.Span (Ast.spanOfExpr body) annotation)
+            argBindings @ collectExprBindings body
+
+        program
+        |> List.collect (fun stmt ->
+            match stmt with
+            | SLet (_, args, body, _, _, _) ->
+                fromTopLevelFunction args body
+            | SLetRecGroup (bindings, _, _) ->
+                bindings
+                |> List.collect (fun (_, args, body, _) -> fromTopLevelFunction args body)
+            | SExpr expr ->
+                collectExprBindings expr
+            | _ -> [])
+
     let private buildParameterTypeHints (program: Program) (typed: TypeInfer.TypedProgram option) =
         let typedByName = Dictionary<string, Type>(StringComparer.Ordinal)
 
@@ -499,6 +1034,75 @@ module LspSymbols =
                     emitHints name allParams)
             | _ ->
                 [])
+
+    let private buildFunctionReturnTypeHints (program: Program) (typed: TypeInfer.TypedProgram option) =
+        let typedByName = Dictionary<string, Type>(StringComparer.Ordinal)
+
+        match typed with
+        | Some typedProgram ->
+            for stmt in typedProgram do
+                match stmt with
+                | TypeInfer.TSLet(name, _, t, _, _, _) ->
+                    typedByName[name] <- t
+                | TypeInfer.TSLetRecGroup(bindings, _, _) ->
+                    for (name, _, t, _) in bindings do
+                        typedByName[name] <- t
+                | _ -> ()
+        | None -> ()
+
+        let rec collectLambdaParams (expr: Expr) =
+            match expr with
+            | ELambda (param, body, _) ->
+                param :: collectLambdaParams body
+            | EParen (inner, _) ->
+                collectLambdaParams inner
+            | _ ->
+                []
+
+        let rec takeReturnType t argCount =
+            if argCount <= 0 then t
+            else
+                match t with
+                | TFun (_, rest) -> takeReturnType rest (argCount - 1)
+                | _ -> t
+
+        let emitHint (name: string) (parameters: Param list) =
+            if parameters.IsEmpty then
+                None
+            else
+                match typedByName.TryGetValue(name) with
+                | true, t ->
+                    let returnType = takeReturnType t parameters.Length
+                    let anchor = parameters[parameters.Length - 1].Span
+                    Some (anchor, $": {lspTypeToString returnType}")
+                | _ ->
+                    None
+
+        let fromLet =
+            program
+            |> List.choose (fun stmt ->
+                match stmt with
+                | SLet (name, args, expr, _, _, _) ->
+                    let allParams =
+                        if args.IsEmpty then collectLambdaParams expr else args
+                    emitHint name allParams
+                | _ ->
+                    None)
+
+        let fromLetRec =
+            program
+            |> List.collect (fun stmt ->
+                match stmt with
+                | SLetRecGroup (bindings, _, _) ->
+                    bindings
+                    |> List.choose (fun (name, args, expr, _) ->
+                        let allParams =
+                            if args.IsEmpty then collectLambdaParams expr else args
+                        emitHint name allParams)
+                | _ ->
+                    [])
+
+        fromLet @ fromLetRec
 
     let private collectPatternVariableSpans (program: Program) =
         let rec collectPattern (acc: (string * Span) list) (pattern: Pattern) =
@@ -628,12 +1232,139 @@ module LspSymbols =
             |> Map.tryFind key
             |> Option.map (fun t -> span, $": {lspTypeToString t}"))
 
+    let private buildCallArgumentHints (program: Program) (functionParameters: Map<string, string list>) =
+        let tryParameterNames (name: string) =
+            match functionParameters |> Map.tryFind name with
+            | Some names -> Some names
+            | None ->
+                let segments = name.Split('.')
+                if segments.Length > 1 then
+                    functionParameters |> Map.tryFind segments[segments.Length - 1]
+                else
+                    None
+
+        let rec decomposeApply (expr: Expr) (argsRev: Expr list) =
+            match expr with
+            | EApply (fn, arg, _) -> decomposeApply fn (arg :: argsRev)
+            | _ -> expr, (argsRev |> List.rev)
+
+        let tryCalledName (expr: Expr) =
+            match expr with
+            | EVar (name, _) -> Some name
+            | _ -> None
+
+        let rec collectExpr (acc: (Span * string) list) (isApplySpineParent: bool) (expr: Expr) =
+            let withChildren =
+                match expr with
+                | EApply (f, a, _) ->
+                    collectExpr (collectExpr acc true f) false a
+                | EIf (c, t, f, _) ->
+                    collectExpr (collectExpr (collectExpr acc false c) false t) false f
+                | ERaise (inner, _) ->
+                    collectExpr acc false inner
+                | EFor (_, source, body, _) ->
+                    collectExpr (collectExpr acc false source) false body
+                | EMatch (scrutinee, cases, _) ->
+                    let withScrutinee = collectExpr acc false scrutinee
+                    cases
+                    |> List.fold (fun state (_, guard, body, _) ->
+                        let withGuard =
+                            match guard with
+                            | Some g -> collectExpr state false g
+                            | None -> state
+                        collectExpr withGuard false body) withScrutinee
+                | ELet (_, value, body, _, _) ->
+                    collectExpr (collectExpr acc false value) false body
+                | ELetRecGroup (bindings, body, _) ->
+                    let withBindings =
+                        bindings |> List.fold (fun state (_, _, value, _) -> collectExpr state false value) acc
+                    collectExpr withBindings false body
+                | ELambda (_, body, _) ->
+                    collectExpr acc false body
+                | EList (items, _)
+                | ETuple (items, _) ->
+                    items |> List.fold (fun state item -> collectExpr state false item) acc
+                | ERange (startExpr, endExpr, _) ->
+                    collectExpr (collectExpr acc false startExpr) false endExpr
+                | ERecord (fields, _)
+                | EStructuralRecord (fields, _) ->
+                    fields |> List.fold (fun state (_, value) -> collectExpr state false value) acc
+                | EMap (entries, _) ->
+                    entries
+                    |> List.fold (fun state entry ->
+                        match entry with
+                        | MEKeyValue (k, v) ->
+                            collectExpr (collectExpr state false k) false v
+                        | MESpread spread ->
+                            collectExpr state false spread) acc
+                | ERecordUpdate (baseExpr, fields, _)
+                | EStructuralRecordUpdate (baseExpr, fields, _) ->
+                    let withBase = collectExpr acc false baseExpr
+                    fields |> List.fold (fun state (_, value) -> collectExpr state false value) withBase
+                | EFieldGet (target, _, _) ->
+                    collectExpr acc false target
+                | EIndexGet (target, key, _)
+                | ECons (target, key, _)
+                | EAppend (target, key, _)
+                | EBinOp (_, target, key, _) ->
+                    collectExpr (collectExpr acc false target) false key
+                | ESome (inner, _)
+                | EParen (inner, _) ->
+                    collectExpr acc false inner
+                | EInterpolatedString (parts, _) ->
+                    parts
+                    |> List.fold (fun state part ->
+                        match part with
+                        | IPText _ -> state
+                        | IPExpr embedded -> collectExpr state false embedded) acc
+                | EUnit _
+                | ELiteral _
+                | EVar _
+                | ENone _
+                | ETypeOf _
+                | ENameOf _ -> acc
+
+            if isApplySpineParent then
+                withChildren
+            else
+                match expr with
+                | EApply _ ->
+                    let calledExpr, callArgs = decomposeApply expr []
+                    match tryCalledName calledExpr |> Option.bind tryParameterNames with
+                    | Some parameterNames ->
+                        let normalizedArgs =
+                            match callArgs with
+                            | [ ETuple (items, _) ] when parameterNames.Length > 1 && items.Length > 1 -> items
+                            | _ -> callArgs
+                        let count = min normalizedArgs.Length parameterNames.Length
+                        [ 0 .. count - 1 ]
+                        |> List.fold (fun state index ->
+                            (Ast.spanOfExpr normalizedArgs[index], $"{parameterNames[index]}:") :: state) withChildren
+                    | None ->
+                        withChildren
+                | _ ->
+                    withChildren
+
+        program
+        |> List.fold (fun state stmt ->
+            match stmt with
+            | SLet (_, _, expr, _, _, _) ->
+                collectExpr state false expr
+            | SLetRecGroup (bindings, _, _) ->
+                bindings |> List.fold (fun inner (_, _, expr, _) -> collectExpr inner false expr) state
+            | SExpr expr ->
+                collectExpr state false expr
+            | _ ->
+                state) []
+        |> List.rev
+
     let analyzeDocument (uri: string) (text: string) =
         let sourceName =
             if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
                 Uri(uri).LocalPath
             else
                 uri
+        let runtimeExterns = LspRuntimeExterns.forSourcePath sourceName
 
         let diagnostics = ResizeArray<JsonNode>()
         let mutable symbols : TopLevelSymbol list = []
@@ -641,42 +1372,109 @@ module LspSymbols =
         let mutable recordParamFields : Map<string, (string * string) list> = Map.empty
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
+        let mutable functionAnnotationTypes : Map<string, string list> = Map.empty
+        let mutable functionDeclaredReturnTargets : Map<string, string> = Map.empty
+        let mutable callArgumentHints : (Span * string) list = []
+        let mutable functionReturnTypeHints : (Span * string) list = []
         let mutable parameterTypeHints : (Span * string) list = []
         let mutable patternTypeHints : (Span * string) list = []
         let mutable localVariableTypeHints : (Span * string * string) list = []
+        let mutable localBindings : LocalBindingInfo list = []
+        let mutable injectedFunctionSignatures : Map<string, string> = Map.empty
 
         let mutable parsedProgram : Program option = None
 
         try
-            let program = FScript.parseWithSourceName (Some sourceName) text
+            let program =
+                if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
+                    let directory =
+                        match System.IO.Path.GetDirectoryName(sourceName) with
+                        | null
+                        | "" -> "."
+                        | dir -> dir
+                    IncludeResolver.parseProgramFromSourceWithIncludes directory sourceName text
+                else
+                    FScript.parseWithSourceName (Some sourceName) text
             parsedProgram <- Some program
+            injectedFunctionSignatures <- buildInjectedFunctionSignatures runtimeExterns
             occurrences <- collectVariableOccurrences program
             recordParamFields <- buildRecordParameterFields program
             parameterTypeTargets <- buildParameterTypeTargets program
             functionParameters <- buildFunctionParameters program
-            if isIncludeProgram program then
+            functionAnnotationTypes <- buildFunctionAnnotationTypes program
+            functionDeclaredReturnTargets <- buildFunctionDeclaredReturnTargets program
+            callArgumentHints <- buildCallArgumentHints program functionParameters
+            localBindings <- buildLocalBindings program
+            try
+                let typed, localTypes = TypeInfer.inferProgramWithExternsAndLocalVariableTypes runtimeExterns program
+                symbols <- buildSymbolsFromProgram program (Some typed)
+                parameterTypeHints <- buildParameterTypeHints program (Some typed)
+                functionReturnTypeHints <- buildFunctionReturnTypeHints program (Some typed)
+                patternTypeHints <- buildPatternTypeHints program localTypes
+                localVariableTypeHints <-
+                    localTypes
+                    |> List.filter (fun entry ->
+                        match entry.Span.Start.File with
+                        | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
+                        | None -> true)
+                    |> List.map (fun entry -> entry.Span, entry.Name, lspTypeToString entry.Type)
+            with
+            | TypeException err ->
+                diagnostics.Add(diagnostic 1 "type" err.Span err.Message)
                 symbols <- buildSymbolsFromProgram program None
+                let bestEffortTypes = inferTopLevelTypesBestEffort runtimeExterns program
+                let bestEffortLocalTypes = inferLocalVariableTypesBestEffort runtimeExterns program
+                let localTypesFromReturnedRecords =
+                    inferLocalTypesFromReturnedRecordFields program functionDeclaredReturnTargets localBindings
+                let resolveTypeTarget = buildTopLevelTypeTargetFromProgram program
+                symbols <-
+                    symbols
+                    |> List.map (fun sym ->
+                        match bestEffortTypes |> Map.tryFind sym.Name with
+                        | Some t ->
+                            { sym with
+                                Kind = symbolKindForType t
+                                TypeText = Some (lspTypeToString t)
+                                TypeTargetName = resolveTypeTarget t }
+                        | None -> sym)
                 parameterTypeHints <- buildParameterTypeHints program None
-                patternTypeHints <- []
-            else
-                try
-                    let typed, localTypes = TypeInfer.inferProgramWithLocalVariableTypes program
-                    symbols <- buildSymbolsFromProgram program (Some typed)
-                    parameterTypeHints <- buildParameterTypeHints program (Some typed)
-                    patternTypeHints <- buildPatternTypeHints program localTypes
-                    localVariableTypeHints <-
-                        localTypes
-                        |> List.filter (fun entry ->
-                            match entry.Span.Start.File with
-                            | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
-                            | None -> true)
-                        |> List.map (fun entry -> entry.Span, entry.Name, lspTypeToString entry.Type)
-                with
-                | TypeException err ->
-                    diagnostics.Add(diagnostic 1 "type" err.Span err.Message)
-                    symbols <- buildSymbolsFromProgram program None
-                    parameterTypeHints <- buildParameterTypeHints program None
-                    patternTypeHints <- []
+                functionReturnTypeHints <- []
+                patternTypeHints <- buildPatternTypeHints program bestEffortLocalTypes
+                let baseLocalHints =
+                    bestEffortLocalTypes
+                    |> List.filter (fun entry ->
+                        match entry.Span.Start.File with
+                        | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
+                        | None -> true)
+                    |> List.map (fun entry -> entry.Span, entry.Name, lspTypeToString entry.Type)
+
+                let refinedLocalHints =
+                    localTypesFromReturnedRecords
+                    |> List.filter (fun (span, _, _) ->
+                        match span.Start.File with
+                        | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
+                        | None -> true)
+
+                let keyOf (span: Span, name: string, _) =
+                    let file = span.Start.File |> Option.defaultValue ""
+                    name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column, file
+
+                let merged = Dictionary<string * int * int * int * int * string, Span * string * string>()
+
+                for hint in baseLocalHints do
+                    merged[keyOf hint] <- hint
+
+                for hint in refinedLocalHints do
+                    let key = keyOf hint
+                    match merged.TryGetValue(key) with
+                    | true, (_, _, existingType) when existingType.Contains("unknown", StringComparison.Ordinal) ->
+                        merged[key] <- hint
+                    | false, _ ->
+                        merged[key] <- hint
+                    | _ ->
+                        ()
+
+                localVariableTypeHints <- merged.Values |> Seq.toList
 
         with
         | ParseException err ->
@@ -684,6 +1482,13 @@ module LspSymbols =
 
         match parsedProgram with
         | Some program ->
+            let isIncludeStyleHelperFile =
+                match Path.GetFileName(sourceName) with
+                | null -> false
+                | fileName ->
+                    not (String.IsNullOrWhiteSpace(fileName))
+                    && fileName.StartsWith("_", StringComparison.Ordinal)
+
             let topLevelBindings =
                 program
                 |> List.collect (function
@@ -691,15 +1496,20 @@ module LspSymbols =
                     | SLetRecGroup(bindings, isExported, _) ->
                         bindings |> List.map (fun (name, _, _, span) -> name, span, isExported)
                     | _ -> [])
+                |> List.filter (fun (_, span, _) ->
+                    match span.Start.File with
+                    | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
+                    | None -> true)
 
-            for (name, span, isExported) in topLevelBindings do
-                if not isExported && not (name.StartsWith("_", StringComparison.Ordinal)) then
-                    let refs = occurrences |> Map.tryFind name |> Option.defaultValue []
-                    if refs.Length <= 1 then
-                        diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
+            if not isIncludeStyleHelperFile then
+                for (name, span, isExported) in topLevelBindings do
+                    if not isExported && not (name.StartsWith("_", StringComparison.Ordinal)) then
+                        let refs = occurrences |> Map.tryFind name |> Option.defaultValue []
+                        if refs.Length <= 1 then
+                            diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
         | None -> ()
 
-        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; PatternTypeHints = patternTypeHints; LocalVariableTypeHints = localVariableTypeHints; VariableOccurrences = occurrences }
+        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; FunctionAnnotationTypes = functionAnnotationTypes; FunctionDeclaredReturnTargets = functionDeclaredReturnTargets; CallArgumentHints = callArgumentHints; FunctionReturnTypeHints = functionReturnTypeHints; ParameterTypeHints = parameterTypeHints; PatternTypeHints = patternTypeHints; LocalVariableTypeHints = localVariableTypeHints; LocalBindings = localBindings; InjectedFunctionSignatures = injectedFunctionSignatures; VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
@@ -1028,9 +1838,82 @@ module LspSymbols =
         startsBefore && endsAfter
 
     let tryGetLocalVariableHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
-        doc.LocalVariableTypeHints
-        |> List.tryFind (fun (span, _, _) -> spanContainsPosition span line character)
-        |> Option.map (fun (_, name, typeText) -> name, typeText)
+        let bySpan =
+            doc.LocalVariableTypeHints
+            |> List.tryFind (fun (span, _, _) -> spanContainsPosition span line character)
+            |> Option.map (fun (_, name, typeText) -> name, typeText)
+
+        match bySpan with
+        | Some _ -> bySpan
+        | None ->
+            match tryGetWordAtPosition doc.Text line character with
+            | Some word ->
+                let isOnTopLevelSymbol =
+                    doc.Symbols
+                    |> List.exists (fun sym ->
+                        String.Equals(sym.Name, word, StringComparison.Ordinal)
+                        && spanContainsPosition sym.Span line character)
+
+                if isOnTopLevelSymbol then
+                    None
+                else
+                    let candidates =
+                        doc.LocalBindings
+                        |> List.filter (fun binding ->
+                            String.Equals(binding.Name, word, StringComparison.Ordinal)
+                            && (spanContainsPosition binding.ScopeSpan line character
+                                || spanContainsPosition binding.DeclSpan line character))
+
+                    let scoreBinding (binding: LocalBindingInfo) =
+                        let line1 = line + 1
+                        let col1 = character + 1
+                        let lineDistance = abs (binding.DeclSpan.Start.Line - line1)
+                        let colDistance = abs (binding.DeclSpan.Start.Column - col1)
+                        let startsBefore =
+                            binding.DeclSpan.Start.Line < line1
+                            || (binding.DeclSpan.Start.Line = line1 && binding.DeclSpan.Start.Column <= col1)
+                        if startsBefore then (0, lineDistance, colDistance) else (1, lineDistance, colDistance)
+
+                    let nearestBinding =
+                        candidates
+                        |> List.sortBy scoreBinding
+                        |> List.tryHead
+
+                    let inferredTypeForBinding (binding: LocalBindingInfo) =
+                        let byDeclSpan =
+                            doc.LocalVariableTypeHints
+                            |> List.tryFind (fun (span, name, _) ->
+                                String.Equals(name, binding.Name, StringComparison.Ordinal)
+                                && span.Start.Line = binding.DeclSpan.Start.Line
+                                && span.Start.Column = binding.DeclSpan.Start.Column
+                                && span.End.Line = binding.DeclSpan.End.Line
+                                && span.End.Column = binding.DeclSpan.End.Column)
+                            |> Option.map (fun (_, _, t) -> t)
+
+                        match byDeclSpan with
+                        | Some _ -> byDeclSpan
+                        | None ->
+                            doc.LocalVariableTypeHints
+                            |> List.choose (fun (span, name, t) ->
+                                if String.Equals(name, binding.Name, StringComparison.Ordinal)
+                                   && spanContainsPosition binding.ScopeSpan (span.Start.Line - 1) (span.Start.Column - 1) then
+                                    Some t
+                                else
+                                    None)
+                            |> List.distinct
+                            |> function
+                                | [ one ] -> Some one
+                                | _ -> None
+
+                    nearestBinding
+                    |> Option.map (fun binding ->
+                        let typeText =
+                            inferredTypeForBinding binding
+                            |> Option.orElse binding.AnnotationType
+                            |> Option.defaultValue "unknown"
+                        binding.Name, typeText)
+            | None ->
+                None
 
     let private tryMemberCompletionItems (doc: DocumentState) (prefix: string option) =
         match prefix with
@@ -1092,6 +1975,7 @@ module LspSymbols =
 
             let namePool =
                 [ for s in symbols -> s.Name
+                  for kv in doc.InjectedFunctionSignatures -> kv.Key
                   yield! stdlibNames
                   yield! builtinNames ]
                 |> List.distinct
@@ -1116,10 +2000,12 @@ module LspSymbols =
                 filteredNames
                 |> List.map (fun name ->
                     let symbolType = symbols |> List.tryFind (fun s -> s.Name = name) |> Option.bind (fun s -> s.TypeText)
+                    let injectedType = doc.InjectedFunctionSignatures |> Map.tryFind name
                     let kind =
                         match symbols |> List.tryFind (fun s -> s.Name = name) with
                         | Some s -> s.Kind
-                        | None -> 3
+                        | None ->
+                            if doc.InjectedFunctionSignatures.ContainsKey(name) then 12 else 3
                     let item = JsonObject()
                     item["label"] <- JsonValue.Create(name)
                     item["kind"] <- JsonValue.Create(kind)
@@ -1131,7 +2017,10 @@ module LspSymbols =
                     | _ -> ()
                     match symbolType with
                     | Some t -> item["detail"] <- JsonValue.Create(t)
-                    | None -> ()
+                    | None ->
+                        match injectedType with
+                        | Some t -> item["detail"] <- JsonValue.Create(t)
+                        | None -> ()
                     item)
 
             let rankedItems =

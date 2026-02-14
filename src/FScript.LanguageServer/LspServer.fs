@@ -73,6 +73,10 @@ module LspServer =
                                 LspHandlers.handleCodeAction idNode paramsObj
                             | Some "textDocument/inlayHint", Some idNode, Some paramsObj ->
                                 LspHandlers.handleInlayHints idNode paramsObj
+                            | Some "fscript/viewAst", Some idNode, Some paramsObj ->
+                                LspHandlers.handleViewAst idNode paramsObj
+                            | Some "fscript/viewInferredAst", Some idNode, Some paramsObj ->
+                                LspHandlers.handleViewInferredAst idNode paramsObj
                             | Some _, Some idNode, _ ->
                                 LspProtocol.sendError idNode -32601 "Method not found"
                             | _ -> ()
