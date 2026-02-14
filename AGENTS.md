@@ -42,6 +42,16 @@ Targeted test suites (when working on specific areas):
   - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
 - When publishing the GitHub release, include that same compare link in the release notes body.
 
+## Commit Gate (Hard Requirement)
+
+- Every commit that targets `main` must update `CHANGELOG.md`.
+- Required format for regular commits:
+  - add at least one short, single-line bullet under `## [Unreleased]`.
+- Scope is strict (no exceptions for docs/process/policy/chore/dependency-only commits).
+- Local preflight command:
+  - `make verify-changelog`
+- CI enforces this on both PRs and direct pushes to `main`.
+
 ## Release Process (Tags and GitHub Draft)
 
 Follow this exact sequence for every release:
@@ -81,5 +91,4 @@ Rules:
 - Committing directly to `main` follows the same quality bar as a PR.
 - All checklist items above still apply (build/test/spec/docs/changelog).
 - Documentation and release notes must be updated in the same change set.
-- Every direct-to-main commit must add at least one `CHANGELOG.md` `## [Unreleased]` bullet in the same commit.
-- This includes documentation/process/policy-only commits (not just runtime/language code changes).
+- Direct-to-main commits are blocked by the changelog gate if `CHANGELOG.md` is not updated.

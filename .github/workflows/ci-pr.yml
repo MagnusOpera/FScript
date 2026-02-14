@@ -20,6 +20,8 @@ jobs:
           fetch-depth: 0
 
       - name: Enforce unreleased changelog updates
+        env:
+          REQUIRE_CHANGELOG_ALWAYS: "true"
         run: .github/scripts/check-unreleased-changelog.sh
 
       - name: Setup .NET

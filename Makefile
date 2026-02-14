@@ -1,4 +1,4 @@
-.PHONY: build test smoke-tests clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
+.PHONY: build test smoke-tests verify-changelog clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
 
 build:
 	dotnet build FScript.sln -c Release
@@ -13,6 +13,9 @@ smoke-tests:
 		dotnet run --project src/FScript -- "$$script" > /dev/null; \
 	done; \
 	echo "All smoke tests passed."
+
+verify-changelog:
+	REQUIRE_CHANGELOG_ALWAYS=true .github/scripts/check-unreleased-changelog.sh
 
 clean:
 	dotnet clean FScript.sln -c Release

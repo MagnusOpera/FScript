@@ -5,6 +5,7 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - Updated runtime/test project package versions after NuGet publish verification.
+- Enforced strict changelog gates in CI (PR + main) and added `make verify-changelog` local preflight.
 
 ## [0.32.0]
 
