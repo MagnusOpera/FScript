@@ -43,4 +43,4 @@ pack-nuget:
 	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript.Language
 	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript.Runtime
 
-publish-all: clean build test publish publish-darwin publish-linux publish-windows pack-nuget
+publish-all: build test publish publish-darwin publish-linux publish-windows pack-nuget

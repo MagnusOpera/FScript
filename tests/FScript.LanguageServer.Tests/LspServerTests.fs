@@ -7,7 +7,6 @@ open System.Text.Json
 open System.Text.Json.Nodes
 open System.Diagnostics
 open System.Threading
-open System.Collections.Generic
 open NUnit.Framework
 open FsUnit
 
@@ -97,8 +96,7 @@ module private LspClient =
     type Client =
         { Process: Process
           Input: Stream
-          Output: Stream
-          OpenDocuments: HashSet<string> }
+          Output: Stream }
 
     let private findRepoRoot () =
         let mutable current : DirectoryInfo option = Some (DirectoryInfo(AppContext.BaseDirectory))
@@ -159,8 +157,7 @@ module private LspClient =
 
         { Process = proc
           Input = proc.StandardInput.BaseStream
-          Output = proc.StandardOutput.BaseStream
-          OpenDocuments = HashSet<string>(StringComparer.OrdinalIgnoreCase) }
+          Output = proc.StandardOutput.BaseStream }
 
     let stop (client: Client) =
         if not client.Process.HasExited then
@@ -184,35 +181,6 @@ module private LspClient =
         payload["params"] <- (parameters |> Option.defaultValue (JsonObject()))
         LspWire.writeMessage client.Input (payload.ToJsonString())
 
-        let tryGetTextDocumentUri (node: JsonNode option) =
-            match node with
-            | Some (:? JsonObject as obj) ->
-                match obj["textDocument"] with
-                | :? JsonObject as td ->
-                    match td["uri"] with
-                    | :? JsonValue as uv ->
-                        try Some (uv.GetValue<string>()) with _ -> None
-                    | _ -> None
-                | _ -> None
-            | _ -> None
-
-        match methodName, tryGetTextDocumentUri parameters with
-        | "textDocument/didOpen", Some uri ->
-            client.OpenDocuments.Add(uri) |> ignore
-        | "textDocument/didClose", Some uri ->
-            client.OpenDocuments.Remove(uri) |> ignore
-        | _ ->
-            ()
-
-    let closeAllOpenDocuments (client: Client) =
-        let openUris = client.OpenDocuments |> Seq.toArray
-        for uri in openUris do
-            let textDoc = JsonObject()
-            textDoc["uri"] <- JsonValue.Create(uri)
-            let didCloseParams = JsonObject()
-            didCloseParams["textDocument"] <- textDoc
-            sendNotification client "textDocument/didClose" (Some didCloseParams)
-
     let readUntil (client: Client) (timeoutMs: int) (predicate: JsonObject -> bool) =
         let deadline = DateTime.UtcNow.AddMilliseconds(float timeoutMs)
         let mutable found: JsonObject option = None
@@ -233,8 +201,6 @@ module private LspClient =
 
 [<TestFixture>]
 type LspServerTests () =
-    let mutable sharedClient: LspClient.Client option = None
-
     let initializeWith (client: LspClient.Client) (initializationOptions: JsonObject option) =
         let initializeParams = JsonObject()
         initializeParams["processId"] <- JsonValue.Create<int option>(None)
@@ -270,36 +236,11 @@ type LspServerTests () =
 
         LspClient.sendNotification client "exit" None
 
-    let getClient () =
-        match sharedClient with
-        | Some client -> client
-        | None -> failwith "Shared LSP client is not initialized."
-
-    [<OneTimeSetUp>]
-    member _.SetupSharedClient () =
-        let client = LspClient.start ()
-        initialize client
-        sharedClient <- Some client
-
-    [<OneTimeTearDown>]
-    member _.TeardownSharedClient () =
-        match sharedClient with
-        | Some client ->
-            try shutdown client with _ -> ()
-            LspClient.stop client
-            sharedClient <- None
-        | None -> ()
-
-    [<TearDown>]
-    member _.CleanupOpenDocuments () =
-        match sharedClient with
-        | Some client -> LspClient.closeAllOpenDocuments client
-        | None -> ()
-
     [<Test>]
     member _.``Initialize returns capabilities`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let completionProbe = JsonObject()
             let textDocument = JsonObject()
@@ -343,11 +284,15 @@ type LspServerTests () =
                     | _ -> false)
 
             inlayResp["result"] |> should not' (equal null)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Semantic tokens full returns token data`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/semantic-tokens-test.fss"
             let td = JsonObject()
@@ -390,11 +335,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasTokenData |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Semantic tokens classify attribute keyword and module-qualified function`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/semantic-tokens-classification-test.fss"
             let source = "[<export>]\nlet values = List.map (fun n -> n + 1) [1]"
@@ -473,11 +422,15 @@ type LspServerTests () =
 
             hasExportKeyword |> should equal true
             hasListMapFunction |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints return parameter labels for function calls`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-params-test.fss"
             let source = "let add x y = x + y\nlet z = add(1, 2)"
@@ -539,11 +492,15 @@ type LspServerTests () =
 
             labels |> should contain "x:"
             labels |> should contain "y:"
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints do not show parameter labels on typed function declarations`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-typed-declaration-test.fss"
             let source =
@@ -606,11 +563,15 @@ type LspServerTests () =
                 | _ -> []
 
             labels |> should not' (contain "context:")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints include inferred type for value bindings`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-types-test.fss"
             let source = "let answer = 42\nanswer"
@@ -670,11 +631,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasTypeHint |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints include inferred type for lambda parameter`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-lambda-param-test.fss"
             let source = "let inc = fun x -> x + 1\ninc 2"
@@ -734,11 +699,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasLambdaParamTypeHint |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints include inferred return type for function declarations`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-function-return-test.fss"
             let source = "let is_empty values = values = []\nis_empty []"
@@ -798,11 +767,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasBoolReturnHint |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints show map key union and unknown for unresolved map signature`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-map-unknown-test.fss"
             let source =
@@ -868,11 +841,15 @@ type LspServerTests () =
 
             labels |> should contain ": int|string"
             labels |> should contain ": unknown map"
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints include inferred type for option pattern variable`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/inlay-hints-option-pattern-var-test.fss"
             let source =
@@ -936,6 +913,9 @@ type LspServerTests () =
                 | _ -> false
 
             hasPatternVarTypeHint |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Inlay hints can be disabled through initialization options`` () =
@@ -1000,8 +980,9 @@ type LspServerTests () =
 
     [<Test>]
     member _.``DidOpen publishes diagnostics on parse error`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/diagnostic-test.fss"
             let td = JsonObject()
@@ -1057,11 +1038,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasExpectedDiagnosticMetadata |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``DidOpen does not publish unused binding warning`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/unused-binding-test.fss"
             let td = JsonObject()
@@ -1104,11 +1089,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasUnusedWarning |> should equal false
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``DidOpen does not publish unused warning for exported binding`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/unused-exported-test.fss"
             let td = JsonObject()
@@ -1159,11 +1148,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasUnusedWarning |> should equal false
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``DidOpen does not publish unused warnings from included files`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-unused-include-{Guid.NewGuid():N}")
             Directory.CreateDirectory(tempRoot) |> ignore
@@ -1220,11 +1213,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasIncludedUnusedWarning |> should equal false
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``DidOpen does not publish unused warnings for underscore helper files`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let helperFile = Path.Combine(Path.GetTempPath(), $"_helpers-{Guid.NewGuid():N}.fss")
             File.WriteAllText(helperFile, "let append_part part acc = acc\n")
@@ -1270,11 +1267,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasUnusedWarning |> should equal false
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``DidOpen does not report unbound variable for intrinsic print`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/print-intrinsic-test.fss"
             let td = JsonObject()
@@ -1312,11 +1313,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasUnboundPrint |> should equal false
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover shows signature for injected runtime extern function`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-injected-extern-test.fss"
             let source = "let ok = Fs.exists \".\"\nok"
@@ -1372,11 +1377,15 @@ type LspServerTests () =
                 && hoverValue.Contains("injected-function", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHover, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover shows named arguments for injected stdlib function`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-injected-stdlib-test.fss"
             let source = "let value = Option.map (fun x -> x + 1) (Some 1)\nvalue"
@@ -1433,11 +1442,15 @@ type LspServerTests () =
                 && hoverValue.Contains("injected-function", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHover, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Code action suggests quick fix for unbound variable typo`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/code-action-typo-test.fss"
             let td = JsonObject()
@@ -1512,11 +1525,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasAlphaSuggestion |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion includes local bindings and filters by prefix`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/completion-test.fss"
             let source = "let alpha = 1\nlet beta = 2\nal"
@@ -1574,11 +1591,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasAlpha |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion supports module-qualified stdlib symbols`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/module-completion-test.fss"
             let source = "List.ma"
@@ -1635,11 +1656,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasListMap |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion proposes record fields after dot`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/record-field-completion-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
@@ -1698,11 +1723,15 @@ type LspServerTests () =
 
             labels |> should contain "City"
             labels |> should contain "Zip"
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion filters record fields by dotted member prefix`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/record-field-prefix-completion-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
@@ -1760,11 +1789,15 @@ type LspServerTests () =
                 | _ -> []
 
             labels |> should equal [ "City" ]
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion proposes fields for annotated function parameters`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/record-param-completion-test.fss"
             let source =
@@ -1823,11 +1856,15 @@ type LspServerTests () =
                 | _ -> []
 
             labels |> should equal [ "City" ]
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion ranks symbol matches before keywords for non-empty prefix`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/completion-ranking-test.fss"
             let source = "let alpha = 1\nlet alphabet = 2\nal"
@@ -1882,11 +1919,15 @@ type LspServerTests () =
                 | _ -> None
 
             firstLabel |> should equal (Some "alpha")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Completion marks exact symbol match as preselected and provides sort metadata`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/completion-preselect-test.fss"
             let source = "let alpha = 1\nalpha"
@@ -1951,11 +1992,15 @@ type LspServerTests () =
                 | _ -> None
 
             alphaMeta |> should equal (Some (Some true, true))
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``References returns all occurrences for a top-level binding`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/references-test.fss"
             let source = "let alpha x = x + 1\nlet v = alpha 41\nalpha v"
@@ -2003,11 +2048,15 @@ type LspServerTests () =
                 | _ -> 0
 
             count |> should be (greaterThanOrEqualTo 3)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``References returns occurrences across opened documents`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let openDoc (uri: string) (source: string) =
                 let td = JsonObject()
@@ -2069,11 +2118,15 @@ type LspServerTests () =
 
             uris.Contains(sourceUri) |> should equal true
             uris.Contains(usageUri) |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``References honors includeDeclaration false across opened documents`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let openDoc (uri: string) (source: string) =
                 let td = JsonObject()
@@ -2135,11 +2188,15 @@ type LspServerTests () =
 
             uris.Contains(sourceUri) |> should equal false
             uris.Contains(usageUri) |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Document highlight returns local occurrences for selected symbol`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/document-highlight-test.fss"
             let source = "let alpha x = x + 1\nlet v = alpha 41\nalpha v"
@@ -2184,11 +2241,15 @@ type LspServerTests () =
                 | _ -> 0
 
             count |> should be (greaterThanOrEqualTo 3)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Workspace symbol returns matches across opened documents`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let openDoc (uri: string) (source: string) =
                 let td = JsonObject()
@@ -2237,11 +2298,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasAlpha |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Signature help returns function signature for call target`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/signature-help-test.fss"
             let source = "let add x y = x + y\nadd(1, 2)"
@@ -2301,11 +2366,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasAddSignature |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Signature help sets active parameter index from cursor position`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/signature-help-active-parameter-test.fss"
             let source = "let add3 x y z = x + y + z\nadd3(1, 2, 3)"
@@ -2357,11 +2426,15 @@ type LspServerTests () =
                 | _ -> None
 
             activeParameter |> should equal (Some 2)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves top-level binding usage`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/definition-test.fss"
             let source = "let inc x = x + 1\nlet y = inc 41"
@@ -2422,11 +2495,15 @@ type LspServerTests () =
                 | _ -> false
 
             isDefinitionOnFirstLine |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves injected stdlib function to virtual stdlib source`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/definition-injected-stdlib-test.fss"
             let source = "let value = Option.map (fun x -> x + 1) (Some 1)\nvalue"
@@ -2475,11 +2552,15 @@ type LspServerTests () =
                 | _ -> None
 
             resolvedUri |> should equal (Some "fscript-stdlib:///Option.fss")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves symbol across opened documents`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let openDoc (uri: string) (source: string) =
                 let td = JsonObject()
@@ -2531,11 +2612,15 @@ type LspServerTests () =
                 | _ -> None
 
             resolvedUri |> should equal (Some defUri)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves include path to target file`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-include-{Guid.NewGuid():N}")
             Directory.CreateDirectory(tempRoot) |> ignore
@@ -2590,11 +2675,15 @@ type LspServerTests () =
                 | _ -> None
 
             resolvedUri |> should equal (Some expectedUri)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition on included record field usage opens included file`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-include-field-{Guid.NewGuid():N}")
             Directory.CreateDirectory(tempRoot) |> ignore
@@ -2650,11 +2739,15 @@ type LspServerTests () =
                 | _ -> None
 
             resolvedUri |> should equal (Some expectedUri)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Type definition resolves record value to declared record type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/type-definition-record-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nlet zip = home.Zip"
@@ -2714,11 +2807,15 @@ type LspServerTests () =
                     uriOk && startLineOk
                 | _ -> false
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Type definition resolves inline nominal record annotation to declared type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/type-definition-inline-annotation-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet format_address (address: { City: string; Zip: int }) = $\"{address.City} ({address.Zip})\""
@@ -2778,11 +2875,15 @@ type LspServerTests () =
                 | _ -> false
 
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Type definition resolves annotated parameter usage to declared type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/type-definition-parameter-usage-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet format_address (address: { City: string; Zip: int }) = address.City"
@@ -2842,11 +2943,15 @@ type LspServerTests () =
                 | _ -> false
 
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Type definition resolves record literal call-argument field label to declared type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/type-definition-record-call-arg-field-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet make_office_address (address: Address) = address\nlet officeAddress = make_office_address { City = \"London\"; Zip = 12345 }"
@@ -2906,11 +3011,15 @@ type LspServerTests () =
                 | _ -> false
 
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves record literal call-argument field label to declared type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/definition-record-call-arg-field-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet make_address (address: Address) = address\nlet office = make_address { City = \"London\"; Zip = 12345 }"
@@ -2970,11 +3079,15 @@ type LspServerTests () =
                 | _ -> false
 
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Type definition resolves record literal binding field label to declared type`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/type-definition-record-binding-field-test.fss"
             let source = "type Contact = { Name: string; City: string; Zip: int; Country: string }\nlet contact = { Name = \"Ada\"; City = \"Paris\"; Zip = 75000; Country = \"FR\" }"
@@ -3034,11 +3147,15 @@ type LspServerTests () =
                 | _ -> false
 
             pointsToTypeDecl |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover returns markdown signature and kind`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-test.fss"
             let source = "let double x = x * 2\nlet result = double 21"
@@ -3093,11 +3210,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasExpectedHoverValue |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover shows function parameters when type inference is unavailable`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-function-params-fallback-test.fss"
             let source =
@@ -3156,11 +3277,15 @@ type LspServerTests () =
                 && hoverValue.Contains("->", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover shows typed signature for inferable function even when another binding has a type error`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-best-effort-type-signature-test.fss"
             let source =
@@ -3221,11 +3346,15 @@ type LspServerTests () =
                 hoverValue.Contains("tool: (context: ActionContext) -> (args: string option) -> ShellOperation list", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Definition resolves function return record field label to declared type in include file`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-type-definition-return-field-{Guid.NewGuid():N}")
             Directory.CreateDirectory(tempRoot) |> ignore
@@ -3281,11 +3410,15 @@ type LspServerTests () =
                 | _ -> None
 
             resolvedUri |> should equal (Some expectedUri)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover shows typed signature for include-based script functions`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-hover-include-{Guid.NewGuid():N}")
             Directory.CreateDirectory(tempRoot) |> ignore
@@ -3348,11 +3481,15 @@ type LspServerTests () =
                 | _ -> false
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover returns record field information for dotted access`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-record-field-test.fss"
             let source = "type Address = { City: string; Zip: int }\nlet home = { City = \"Paris\"; Zip = 75000 }\nhome.City"
@@ -3406,11 +3543,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasFieldHover |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover returns inferred type for local lambda variables`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-local-variables-test.fss"
             let source =
@@ -3476,11 +3617,15 @@ type LspServerTests () =
 
             Assert.That(hasLocalHoverType hoverIText "i" "int", Is.True, $"Unexpected hover for i: {hoverIText}")
             Assert.That(hasLocalHoverType hoverXText "x" "int", Is.True, $"Unexpected hover for x: {hoverXText}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover returns local binding type even when another top-level binding has a type error`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-local-binding-best-effort-test.fss"
             let source =
@@ -3540,11 +3685,15 @@ type LspServerTests () =
                 && hoverValue.Contains("local-variable", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover on top-level function is not shadowed by same-name local binding`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-top-level-not-shadowed-by-local-test.fss"
             let source =
@@ -3603,11 +3752,15 @@ type LspServerTests () =
                 && hoverValue.Contains("local-variable", StringComparison.Ordinal) |> not
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover resolves nearest local binding when name is reused across functions`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-nearest-local-reused-name-test.fss"
             let source =
@@ -3669,11 +3822,15 @@ type LspServerTests () =
                 && hoverValue.Contains("local-variable", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover resolves local let declaration identifier`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-local-let-declaration-test.fss"
             let source =
@@ -3733,11 +3890,15 @@ type LspServerTests () =
                 && hoverValue.Contains("local-variable", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Hover infers local let type from returned record field when best-effort falls back`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/hover-local-let-return-record-field-test.fss"
             let source =
@@ -3801,11 +3962,15 @@ type LspServerTests () =
                 && hoverValue.Contains("local-variable", StringComparison.Ordinal)
 
             Assert.That(hasExpectedHoverValue, Is.True, $"Unexpected hover text: {hoverValue}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Custom request viewAst returns parsed program as JSON`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/view-ast-test.fss"
             let source = "let value = 42\nvalue\n"
@@ -3862,11 +4027,15 @@ type LspServerTests () =
 
             Assert.That(okValue, Is.True)
             Assert.That(kindValue, Is.EqualTo("program"))
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Custom request viewInferredAst returns typed program as JSON`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/view-inferred-ast-test.fss"
             let source = "let inc x = x + 1\ninc 1\n"
@@ -3923,11 +4092,15 @@ type LspServerTests () =
 
             Assert.That(okValue, Is.True)
             Assert.That(kindValue, Is.EqualTo("typedProgram"))
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Custom request stdlibSource returns embedded source text`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let requestParams = JsonObject()
             requestParams["uri"] <- JsonValue.Create("fscript-stdlib:///Option.fss")
@@ -3963,11 +4136,15 @@ type LspServerTests () =
 
             Assert.That(okValue, Is.True)
             Assert.That(sourceText.Contains("let map mapper value", StringComparison.Ordinal), Is.True)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Custom AST requests reject non-file URIs`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let requestParams = JsonObject()
             requestParams["uri"] <- JsonValue.Create("untitled:ast-test")
@@ -4003,11 +4180,15 @@ type LspServerTests () =
 
             Assert.That(okValue, Is.False)
             Assert.That(message.Contains("file-based scripts only", StringComparison.Ordinal), Is.True)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Language server typing includes runtime externs`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/runtime-externs-typing-test.fss"
             let source = "let ok = Fs.exists \".\"\nok\n"
@@ -4038,11 +4219,15 @@ type LspServerTests () =
                 | _ -> -1
 
             Assert.That(diagnosticsCount, Is.EqualTo(0))
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Rename returns workspace edit for all symbol occurrences`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/rename-test.fss"
             let source = "let value = 1\nlet x = value + 2\nvalue"
@@ -4103,11 +4288,15 @@ type LspServerTests () =
                 | _ -> 0
 
             renameCount |> should be (greaterThanOrEqualTo 3)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Rename returns workspace edits across opened documents`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let openDoc (uri: string) (source: string) =
                 let td = JsonObject()
@@ -4163,11 +4352,15 @@ type LspServerTests () =
 
             changedUris.Contains(sourceUri) |> should equal true
             changedUris.Contains(usageUri) |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Rename does not rename record field labels when renaming variable`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/rename-field-label-test.fss"
             let source = "let value = 1\nlet recd = { value = value }\nvalue"
@@ -4220,11 +4413,15 @@ type LspServerTests () =
 
             // declaration + variable usage in record value + final usage
             editCount |> should equal 3
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``Rename rejects invalid identifier target`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/rename-invalid-test.fss"
             let source = "let value = 1\nvalue"
@@ -4281,11 +4478,15 @@ type LspServerTests () =
                 | _ -> false
 
             hasInvalidParamsError |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
 
     [<Test>]
     member _.``PrepareRename returns placeholder and range for valid symbol`` () =
-        let client = getClient ()
-        do
+        let client = LspClient.start ()
+        try
+            initialize client
 
             let uri = "file:///tmp/prepare-rename-test.fss"
             let source = "let total = 1\ntotal"
@@ -4333,3 +4534,6 @@ type LspServerTests () =
                 | _ -> false
 
             hasPlaceholder |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
