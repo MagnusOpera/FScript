@@ -627,6 +627,152 @@ type LspServerTests () =
             LspClient.stop client
 
     [<Test>]
+    member _.``Inlay hints show map key union and unknown for unresolved map signature`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/inlay-hints-map-unknown-test.fss"
+            let source =
+                "let remove k m =\n"
+                + "    match m with\n"
+                + "    | { [key] = _; ..rest } when key = k -> rest\n"
+                + "    | _ -> m\n"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let req = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            req["textDocument"] <- textDocument
+            let range = JsonObject()
+            let startPos = JsonObject()
+            startPos["line"] <- JsonValue.Create(0)
+            startPos["character"] <- JsonValue.Create(0)
+            let endPos = JsonObject()
+            endPos["line"] <- JsonValue.Create(0)
+            endPos["character"] <- JsonValue.Create(30)
+            range["start"] <- startPos
+            range["end"] <- endPos
+            req["range"] <- range
+
+            LspClient.sendRequest client 43 "textDocument/inlayHint" (Some req)
+            let resp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 43 with _ -> false
+                    | _ -> false)
+
+            let labels =
+                match resp["result"] with
+                | :? JsonArray as hints ->
+                    hints
+                    |> Seq.choose (fun hint ->
+                        match hint with
+                        | :? JsonObject as h ->
+                            match h["label"] with
+                            | :? JsonValue as v ->
+                                try Some (v.GetValue<string>()) with _ -> None
+                            | _ -> None
+                        | _ -> None)
+                    |> Seq.toList
+                | _ -> []
+
+            labels |> should contain ": int|string"
+            labels |> should contain ": unknown map"
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
+    member _.``Inlay hints include inferred type for option pattern variable`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/inlay-hints-option-pattern-var-test.fss"
+            let source =
+                "let firstEven = Some 2\n"
+                + "match firstEven with\n"
+                + "| Some x -> x\n"
+                + "| None -> 0\n"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let req = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            req["textDocument"] <- textDocument
+            let range = JsonObject()
+            let startPos = JsonObject()
+            startPos["line"] <- JsonValue.Create(2)
+            startPos["character"] <- JsonValue.Create(0)
+            let endPos = JsonObject()
+            endPos["line"] <- JsonValue.Create(2)
+            endPos["character"] <- JsonValue.Create(20)
+            range["start"] <- startPos
+            range["end"] <- endPos
+            req["range"] <- range
+
+            LspClient.sendRequest client 44 "textDocument/inlayHint" (Some req)
+            let resp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 44 with _ -> false
+                    | _ -> false)
+
+            let hasPatternVarTypeHint =
+                match resp["result"] with
+                | :? JsonArray as hints ->
+                    hints
+                    |> Seq.exists (fun hint ->
+                        match hint with
+                        | :? JsonObject as h ->
+                            match h["label"] with
+                            | :? JsonValue as v ->
+                                try v.GetValue<string>() = ": int" with _ -> false
+                            | _ -> false
+                        | _ -> false)
+                | _ -> false
+
+            hasPatternVarTypeHint |> should equal true
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
     member _.``Inlay hints can be disabled through initialization options`` () =
         let client = LspClient.start ()
         try

@@ -2,6 +2,12 @@
 
 All notable changes to FScript are documented in this file.
 
+## [0.29.0]
+
+- Improved LSP inlay/type rendering for map-related inference (`int|string` map-key domain and `unknown map` display).
+- Added LSP inlay type hints for pattern-bound variables (for example `| Some x ->` now shows `x: int`).
+- Added regression coverage for map-key/type inlay rendering and option-pattern variable inlay hints.
+
 ## [0.28.0]
 
 - Added local variable type hover in LSP.

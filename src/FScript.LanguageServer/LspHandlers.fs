@@ -266,6 +266,22 @@ module LspHandlers =
                         hint["paddingLeft"] <- JsonValue.Create(true)
                         hints.Add(hint :> JsonNode))
 
+                // Type hints for pattern-bound variables (for example: `Some x`).
+                doc.PatternTypeHints
+                |> List.iter (fun (span, label) ->
+                    let hintLine = max 0 (span.End.Line - 1)
+                    let hintChar = max 0 (span.End.Column - 1)
+                    if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                        let hint = JsonObject()
+                        let pos = JsonObject()
+                        pos["line"] <- JsonValue.Create(hintLine)
+                        pos["character"] <- JsonValue.Create(hintChar)
+                        hint["position"] <- pos
+                        hint["label"] <- JsonValue.Create(label)
+                        hint["kind"] <- JsonValue.Create(1)
+                        hint["paddingLeft"] <- JsonValue.Create(true)
+                        hints.Add(hint :> JsonNode))
+
                 for lineIndex = 0 to lines.Length - 1 do
                     let lineText = lines[lineIndex].TrimEnd('\r')
                     let mutable i = 0

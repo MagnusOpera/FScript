@@ -57,6 +57,7 @@ module LspModel =
           ParameterTypeTargets: Map<string, string>
           FunctionParameters: Map<string, string list>
           ParameterTypeHints: (Span * string) list
+          PatternTypeHints: (Span * string) list
           LocalVariableTypeHints: (Span * string * string) list
           // Variable occurrences keyed by identifier, sourced from AST spans.
           // This avoids text-based false positives (for example record field labels).

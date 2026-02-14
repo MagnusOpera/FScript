@@ -348,6 +348,7 @@ module TypeInfer =
         | PWildcard _ -> Map.empty, Types.freshVar()
         | PVar (name, _) ->
             let tv = Types.freshVar()
+            recordLocalVariableDeclaration name (Ast.spanOfPattern pat) tv
             Map.ofList [ name, tv ], tv
         | PLiteral (lit, _) ->
             let t =
@@ -691,13 +692,15 @@ module TypeInfer =
                 let caseBoundNames = envPat |> Map.toList |> List.map fst
                 let sBody, tBody, _ =
                     withLocalBindings caseBoundNames (fun () ->
+                        let mutable envBodyCase = envCase'
                         match guard with
                         | Some guardExpr ->
-                            let sGuard, tGuard, _ = inferExpr typeDefs constructors envCase' guardExpr
+                            let sGuard, tGuard, _ = inferExpr typeDefs constructors envBodyCase guardExpr
                             let sGuardBool = unify typeDefs (applyType sGuard tGuard) TBool caseSpan
                             sAcc <- compose sGuardBool (compose sGuard sAcc)
+                            envBodyCase <- applyEnv (compose sGuardBool sGuard) envBodyCase
                         | None -> ()
-                        inferExpr typeDefs constructors envCase' body)
+                        inferExpr typeDefs constructors envBodyCase body)
                 let tBody' = applyType sBody tBody
                 resultTypeOpt <-
                     match resultTypeOpt with
@@ -1069,10 +1072,11 @@ module TypeInfer =
                         let s1, t1, _ = inferExpr typeDefs constructors env exprVal
                         applySubstToCapturedLocals startIndex s1
                         let env' = applyEnv s1 env
-                        validateMapKeyTypes span t1
-                        let scheme = Types.generalize env' t1
+                        let inferred = applyType s1 t1
+                        validateMapKeyTypes span inferred
+                        let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
-                        typed.Add(TSLet(name, exprVal, t1, false, isExported, span))
+                        typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
                 | SLetRecGroup(bindings, isExported, span) ->
                     let startIndex =
                         match telemetry with

@@ -8,6 +8,60 @@ open FScript.Language
 module LspSymbols =
     open LspModel
 
+    let private collectMapKeyDomainVars (t: Type) =
+        let rec collect acc ty =
+            match ty with
+            | TMap (TVar v, valueType) ->
+                collect (Set.add v acc) valueType
+            | TMap (keyType, valueType) ->
+                collect (collect acc keyType) valueType
+            | TList inner
+            | TOption inner -> collect acc inner
+            | TTuple items ->
+                items |> List.fold collect acc
+            | TRecord fields ->
+                fields |> Map.values |> Seq.fold collect acc
+            | TFun (a, b) ->
+                collect (collect acc a) b
+            | _ -> acc
+
+        collect Set.empty t
+
+    let private lspTypeToStringWithKeyDomainVars (keyDomainVars: Set<int>) (t: Type) =
+        let rec go t =
+            match t with
+            | TUnit -> "unit"
+            | TInt -> "int"
+            | TFloat -> "float"
+            | TBool -> "bool"
+            | TString -> "string"
+            | TList t1 -> sprintf "%s list" (postfixArg t1)
+            | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
+            | TRecord fields ->
+                fields
+                |> Map.toList
+                |> List.map (fun (name, fieldType) -> sprintf "%s: %s" name (go fieldType))
+                |> String.concat "; "
+                |> sprintf "{ %s }"
+            | TMap (_, tv) ->
+                sprintf "%s map" (postfixArg tv)
+            | TOption t1 -> sprintf "%s option" (postfixArg t1)
+            | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
+            | TNamed n -> n
+            | TUnion (name, _) -> name
+            | TTypeToken -> "type"
+            | TVar v when Set.contains v keyDomainVars -> "int|string"
+            | TVar _ -> "unknown"
+        and postfixArg t =
+            match t with
+            | TFun _ | TTuple _ | TRecord _ -> sprintf "(%s)" (go t)
+            | _ -> go t
+        go t
+
+    let private lspTypeToString (t: Type) =
+        let keyDomainVars = collectMapKeyDomainVars t
+        lspTypeToStringWithKeyDomainVars keyDomainVars t
+
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with
         | TRName name -> name
@@ -91,7 +145,7 @@ module LspSymbols =
             | true, TypeInfer.TSLet(_, _, t, _, _, _) ->
                 { Name = name
                   Kind = symbolKindForType t
-                  TypeText = Some (Types.typeToString t)
+                  TypeText = Some (lspTypeToString t)
                   TypeTargetName = typeTargetFromType t
                   Span = span }
             | true, TypeInfer.TSLetRecGroup(bindings, _, _) ->
@@ -99,7 +153,7 @@ module LspSymbols =
                 | Some (_, _, t, _) ->
                     { Name = name
                       Kind = symbolKindForType t
-                      TypeText = Some (Types.typeToString t)
+                      TypeText = Some (lspTypeToString t)
                       TypeTargetName = typeTargetFromType t
                       Span = span }
                 | None ->
@@ -419,13 +473,14 @@ module LspSymbols =
             match typedByName.TryGetValue(name) with
             | true, t when not parameters.IsEmpty ->
                 let argTypes = takeParamTypes t parameters.Length
+                let keyDomainVars = collectMapKeyDomainVars t
                 (parameters, argTypes)
                 ||> List.zip
                 |> List.choose (fun (param, argType) ->
                     if param.Annotation.IsSome then
                         None
                     else
-                        Some (param.Span, $": {Types.typeToString argType}"))
+                        Some (param.Span, $": {lspTypeToStringWithKeyDomainVars keyDomainVars argType}"))
             | _ ->
                 []
 
@@ -445,6 +500,134 @@ module LspSymbols =
             | _ ->
                 [])
 
+    let private collectPatternVariableSpans (program: Program) =
+        let rec collectPattern (acc: (string * Span) list) (pattern: Pattern) =
+            match pattern with
+            | PVar (name, span) ->
+                (name, span) :: acc
+            | PCons (head, tail, _) ->
+                collectPattern (collectPattern acc head) tail
+            | PTuple (items, _) ->
+                items |> List.fold collectPattern acc
+            | PRecord (fields, _) ->
+                fields |> List.fold (fun state (_, p) -> collectPattern state p) acc
+            | PMap (clauses, tailOpt, _) ->
+                let withClauses =
+                    clauses
+                    |> List.fold (fun state (k, v) ->
+                        let withKey = collectPattern state k
+                        collectPattern withKey v) acc
+                match tailOpt with
+                | Some tail -> collectPattern withClauses tail
+                | None -> withClauses
+            | PSome (inner, _) ->
+                collectPattern acc inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some p -> collectPattern acc p
+                | None -> acc
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _
+            | PTypeRef _ -> acc
+
+        let rec collectExpr (acc: (string * Span) list) (expr: Expr) =
+            match expr with
+            | EMatch (scrutinee, cases, _) ->
+                let withScrutinee = collectExpr acc scrutinee
+                cases
+                |> List.fold (fun state (pat, guard, body, _) ->
+                    let withPattern = collectPattern state pat
+                    let withGuard =
+                        match guard with
+                        | Some g -> collectExpr withPattern g
+                        | None -> withPattern
+                    collectExpr withGuard body) withScrutinee
+            | ELambda (_, body, _) ->
+                collectExpr acc body
+            | EApply (f, a, _) ->
+                collectExpr (collectExpr acc f) a
+            | EIf (c, t, f, _) ->
+                collectExpr (collectExpr (collectExpr acc c) t) f
+            | ERaise (inner, _) ->
+                collectExpr acc inner
+            | EFor (_, source, body, _) ->
+                collectExpr (collectExpr acc source) body
+            | ELet (_, value, body, _, _) ->
+                collectExpr (collectExpr acc value) body
+            | ELetRecGroup (bindings, body, _) ->
+                let withBindings =
+                    bindings |> List.fold (fun state (_, _, value, _) -> collectExpr state value) acc
+                collectExpr withBindings body
+            | EList (items, _)
+            | ETuple (items, _) ->
+                items |> List.fold collectExpr acc
+            | ERange (startExpr, endExpr, _) ->
+                collectExpr (collectExpr acc startExpr) endExpr
+            | ERecord (fields, _)
+            | EStructuralRecord (fields, _) ->
+                fields |> List.fold (fun state (_, value) -> collectExpr state value) acc
+            | EMap (entries, _) ->
+                entries
+                |> List.fold (fun state entry ->
+                    match entry with
+                    | MEKeyValue (k, v) ->
+                        collectExpr (collectExpr state k) v
+                    | MESpread spread ->
+                        collectExpr state spread) acc
+            | ERecordUpdate (baseExpr, fields, _)
+            | EStructuralRecordUpdate (baseExpr, fields, _) ->
+                let withBase = collectExpr acc baseExpr
+                fields |> List.fold (fun state (_, value) -> collectExpr state value) withBase
+            | EFieldGet (target, _, _) ->
+                collectExpr acc target
+            | EIndexGet (target, key, _)
+            | ECons (target, key, _)
+            | EAppend (target, key, _)
+            | EBinOp (_, target, key, _) ->
+                collectExpr (collectExpr acc target) key
+            | ESome (inner, _)
+            | EParen (inner, _) ->
+                collectExpr acc inner
+            | EInterpolatedString (parts, _) ->
+                parts
+                |> List.fold (fun state part ->
+                    match part with
+                    | IPText _ -> state
+                    | IPExpr embedded -> collectExpr state embedded) acc
+            | EUnit _
+            | ELiteral _
+            | EVar _
+            | ENone _
+            | ETypeOf _
+            | ENameOf _ -> acc
+
+        program
+        |> List.fold (fun state stmt ->
+            match stmt with
+            | SLet (_, _, expr, _, _, _) ->
+                collectExpr state expr
+            | SLetRecGroup (bindings, _, _) ->
+                bindings |> List.fold (fun inner (_, _, expr, _) -> collectExpr inner expr) state
+            | SExpr expr ->
+                collectExpr state expr
+            | _ -> state) []
+        |> List.rev
+
+    let private buildPatternTypeHints (program: Program) (localTypes: TypeInfer.LocalVariableTypeInfo list) =
+        let localByNameAndSpan =
+            localTypes
+            |> List.map (fun entry -> (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column), entry.Type)
+            |> Map.ofList
+
+        collectPatternVariableSpans program
+        |> List.choose (fun (name, span) ->
+            let key = (name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column)
+            localByNameAndSpan
+            |> Map.tryFind key
+            |> Option.map (fun t -> span, $": {lspTypeToString t}"))
+
     let analyzeDocument (uri: string) (text: string) =
         let sourceName =
             if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
@@ -459,6 +642,7 @@ module LspSymbols =
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
         let mutable parameterTypeHints : (Span * string) list = []
+        let mutable patternTypeHints : (Span * string) list = []
         let mutable localVariableTypeHints : (Span * string * string) list = []
 
         let mutable parsedProgram : Program option = None
@@ -473,23 +657,26 @@ module LspSymbols =
             if isIncludeProgram program then
                 symbols <- buildSymbolsFromProgram program None
                 parameterTypeHints <- buildParameterTypeHints program None
+                patternTypeHints <- []
             else
                 try
                     let typed, localTypes = TypeInfer.inferProgramWithLocalVariableTypes program
                     symbols <- buildSymbolsFromProgram program (Some typed)
                     parameterTypeHints <- buildParameterTypeHints program (Some typed)
+                    patternTypeHints <- buildPatternTypeHints program localTypes
                     localVariableTypeHints <-
                         localTypes
                         |> List.filter (fun entry ->
                             match entry.Span.Start.File with
                             | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
                             | None -> true)
-                        |> List.map (fun entry -> entry.Span, entry.Name, Types.typeToString entry.Type)
+                        |> List.map (fun entry -> entry.Span, entry.Name, lspTypeToString entry.Type)
                 with
                 | TypeException err ->
                     diagnostics.Add(diagnostic 1 "type" err.Span err.Message)
                     symbols <- buildSymbolsFromProgram program None
                     parameterTypeHints <- buildParameterTypeHints program None
+                    patternTypeHints <- []
 
         with
         | ParseException err ->
@@ -512,7 +699,7 @@ module LspSymbols =
                         diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
         | None -> ()
 
-        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; LocalVariableTypeHints = localVariableTypeHints; VariableOccurrences = occurrences }
+        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; PatternTypeHints = patternTypeHints; LocalVariableTypeHints = localVariableTypeHints; VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
