@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed LSP completion insertion for dotted prefixes so selecting `Option.map` after `Option.` no longer duplicates the qualifier.
+
 ## [0.34.0]
 
 - Removed F# sources from `src/FScript.LanguageServer*` by moving LSP semantic modules into `FScript.CSharpInterop` and keeping `FScript.LanguageServer` as C# host.

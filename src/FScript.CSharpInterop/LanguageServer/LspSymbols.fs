@@ -2019,6 +2019,14 @@ module LspSymbols =
         match tryMemberCompletionItems doc prefix with
         | Some memberItems -> memberItems
         | None ->
+            let dottedPrefixQualifier =
+                match prefix with
+                | Some p when p.Contains('.') ->
+                    let idx = p.LastIndexOf('.')
+                    if idx > 0 then Some (p.Substring(0, idx))
+                    else None
+                | _ -> None
+
             let symbols = doc.Symbols
             let keywords =
                 [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
@@ -2074,6 +2082,12 @@ module LspSymbols =
                     item["label"] <- JsonValue.Create(name)
                     item["kind"] <- JsonValue.Create(kind)
                     item["filterText"] <- JsonValue.Create(name)
+                    match dottedPrefixQualifier with
+                    | Some qualifier when name.StartsWith($"{qualifier}.", StringComparison.Ordinal) ->
+                        let memberSuffix = name.Substring(qualifier.Length + 1)
+                        if not (String.IsNullOrEmpty(memberSuffix)) then
+                            item["insertText"] <- JsonValue.Create(memberSuffix)
+                    | _ -> ()
                     let sortPrefix = if name.Contains('.') then "1" else "0"
                     item["sortText"] <- JsonValue.Create($"{sortPrefix}_{name}")
                     match prefix with

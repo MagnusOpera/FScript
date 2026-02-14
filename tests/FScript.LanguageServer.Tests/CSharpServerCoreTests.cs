@@ -209,6 +209,53 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_completion_uses_member_insertText_for_dotted_prefix()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-completion-dotted-prefix.fss";
+            var source = "let _ = Option.map\n";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var requestParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 0, ["character"] = 15 }
+            };
+
+            LspClient.SendRequest(client, 60, "textDocument/completion", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 60);
+            var items = ((response["result"] as JsonObject)?["items"] as JsonArray) ?? new JsonArray();
+
+            var optionMapItem = items
+                .OfType<JsonObject>()
+                .FirstOrDefault(item => string.Equals(item["label"]?.GetValue<string>(), "Option.map", StringComparison.Ordinal));
+
+            Assert.That(optionMapItem, Is.Not.Null, "Expected Option.map completion item at dotted prefix.");
+            Assert.That(optionMapItem!["insertText"]?.GetValue<string>(), Is.EqualTo("map"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_inlayHints_do_not_pollute_type_declaration_lines()
     {
         var client = LspClient.StartCSharp();
