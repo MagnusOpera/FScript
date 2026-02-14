@@ -17,7 +17,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Runtime", "src\FScr
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Runtime.Tests", "tests\FScript.Runtime.Tests\FScript.Runtime.Tests.fsproj", "{1E2C7B34-04B8-42C9-880D-CC47DEC156A7}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.LanguageServer.Tests", "tests\FScript.LanguageServer.Tests\FScript.LanguageServer.Tests.fsproj", "{B734E1E1-59C2-47E0-8D19-A9C5C95938F1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FScript.LanguageServer.Tests", "tests\FScript.LanguageServer.Tests\FScript.LanguageServer.Tests.csproj", "{B734E1E1-59C2-47E0-8D19-A9C5C95938F1}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.CSharpInterop", "src\FScript.CSharpInterop\FScript.CSharpInterop.fsproj", "{8A28B784-F90B-469C-91BE-F96F63ACEA32}"
 EndProject
