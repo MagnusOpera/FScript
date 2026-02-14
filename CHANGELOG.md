@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- _No entries yet._
+- Updated runtime/test project package versions after NuGet publish verification.
 
 ## [0.32.0]
 
