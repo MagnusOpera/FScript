@@ -1250,12 +1250,15 @@ module LspSymbols =
     let private buildPatternTypeHints (program: Program) (localTypes: TypeInfer.LocalVariableTypeInfo list) =
         let localByNameAndSpan =
             localTypes
-            |> List.map (fun entry -> (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column), entry.Type)
+            |> List.map (fun entry ->
+                let file = entry.Span.Start.File |> Option.defaultValue ""
+                (entry.Name, file, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column), entry.Type)
             |> Map.ofList
 
         collectPatternVariableSpans program
         |> List.choose (fun (name, span) ->
-            let key = (name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column)
+            let file = span.Start.File |> Option.defaultValue ""
+            let key = (name, file, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column)
             localByNameAndSpan
             |> Map.tryFind key
             |> Option.map (fun t -> span, $": {lspTypeToString t}"))

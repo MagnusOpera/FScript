@@ -270,6 +270,67 @@ public sealed class CSharpServerCoreTests
         }
     }
 
+    [Test]
+    public void CSharp_server_inlayHints_infer_map_pattern_binding_types()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-map-pattern-inlay-test.fss";
+            var source = """
+let scores = { ["a"] = 1; ["b"] = 2 }
+let mapPreview =
+    match scores with
+    | {} ->
+        "empty"
+    | { [subject] = score; ..remaining } ->
+        $"{subject}:{score}:{Map.count remaining}"
+""";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var requestParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 5, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 5, ["character"] = 80 }
+                }
+            };
+            LspClient.SendRequest(client, 48, "textDocument/inlayHint", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 48);
+
+            var result = response["result"] as JsonArray ?? new JsonArray();
+            var labels = result
+                .Select(node => (node as JsonObject)?["label"]?.GetValue<string>() ?? string.Empty)
+                .Where(label => !string.IsNullOrWhiteSpace(label))
+                .ToList();
+
+            Assert.That(labels.Contains(": string"), Is.True, string.Join(", ", labels));
+            Assert.That(labels.Contains(": int"), Is.True, string.Join(", ", labels));
+            Assert.That(labels.Contains(": int map"), Is.True, string.Join(", ", labels));
+            Assert.That(labels.Contains(": unknown"), Is.False, string.Join(", ", labels));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

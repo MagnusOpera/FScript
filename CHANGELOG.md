@@ -19,6 +19,7 @@ All notable changes to FScript are documented in this file.
 - Fixed imported qualified type annotations (for example `common.ProjectInfo`) in parser/type inference to prevent false type mismatches.
 - Fixed LSP inlay hints to ignore spans from other files so included symbols no longer leak labels into unrelated declarations.
 - Enforced string-only map keys across type inference, evaluation, samples, and LSP type rendering (removed `int|string` key-domain displays).
+- Fixed map-pattern inlay hints to infer key/value/tail bindings (`string`, `int`, `int map`) instead of `unknown`.
 
 ## [0.33.0]
 

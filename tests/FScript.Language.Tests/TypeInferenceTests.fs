@@ -321,6 +321,37 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers local variable types for map pattern bindings`` () =
+        let src =
+            "let scores = { [\"a\"] = 1; [\"b\"] = 2 }\n" +
+            "let mapPreview =\n" +
+            "    match scores with\n" +
+            "    | {} ->\n" +
+            "        \"empty\"\n" +
+            "    | { [subject] = score; ..remaining } ->\n" +
+            "        $\"{subject}:{score}:{Map.count remaining}\""
+
+        let program = Helpers.parse src
+        let _, locals = TypeInfer.inferProgramWithLocalVariableTypes program
+
+        let typesFor name =
+            locals
+            |> List.filter (fun entry -> entry.Name = name && entry.Span.Start.File.IsNone)
+            |> List.map (fun entry -> entry.Type)
+
+        let subjectTypes = typesFor "subject"
+        let scoreTypes = typesFor "score"
+        let remainingTypes = typesFor "remaining"
+
+        subjectTypes |> should not' (be Empty)
+        scoreTypes |> should not' (be Empty)
+        remainingTypes |> should not' (be Empty)
+
+        subjectTypes |> List.iter (fun t -> t |> should equal TString)
+        scoreTypes |> List.iter (fun t -> t |> should equal TInt)
+        remainingTypes |> List.iter (fun t -> t |> should equal (TMap (TString, TInt)))
+
+    [<Test>]
     member _.``Infers match on map literal-key pattern without tail`` () =
         let typed =
             Helpers.infer
