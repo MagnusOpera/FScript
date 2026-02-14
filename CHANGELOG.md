@@ -5,6 +5,8 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - _No entries yet._
+- Enforced warning-as-error globally via `Directory.Build.props` (`TreatWarningsAsErrors=true`).
+- Fixed LSP compiler warnings (exhaustive `SInclude` matches and null-safe stdlib resource stream handling).
 
 ## [0.30.0]
 
