@@ -113,7 +113,7 @@ Each extern declares:
 Built-in host extern families include `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
 `List.*`, `Map.*`, and `Option.*` are provided by the embedded stdlib prelude.
 
-For details and extension workflow, see [`docs/external-functions.md`](docs/external-functions.md).
+For details and extension workflow, see [`docs/specs/external-functions.md`](docs/specs/external-functions.md).
 
 ## Sandbox and Security
 
@@ -124,20 +124,15 @@ FScript runs in-process. Security is capability-based:
 
 Operational controls (timeouts, cancellation, resource limits, process/container isolation) are host responsibilities.
 
-See [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md) for the full model and checklist.
+See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) for the full model and checklist.
 
 ## Documentation
 
-- [`docs/syntax-and-indentation.md`](docs/syntax-and-indentation.md)
-- [`docs/supported-types.md`](docs/supported-types.md)
-- [`docs/map-matching-reference.md`](docs/map-matching-reference.md)
-- [`docs/function-annotations.md`](docs/function-annotations.md)
-- [`docs/external-functions.md`](docs/external-functions.md)
-- [`docs/stdlib-functions.md`](docs/stdlib-functions.md)
-- [`docs/embedding-fscript-language.md`](docs/embedding-fscript-language.md)
-- [`docs/sandbox-and-security.md`](docs/sandbox-and-security.md)
-- [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
-- [`docs/assemblies-and-roles.md`](docs/assemblies-and-roles.md)
+- Documentation portal: [`docs/README.md`](docs/README.md)
+- Tutorial: [`docs/getting-started-tutorial.md`](docs/getting-started-tutorial.md)
+- Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
+- Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
+- FScript vs F# / OCaml: [`docs/fsharp-ocaml-differences.md`](docs/fsharp-ocaml-differences.md)
 
 ## Changelog
 

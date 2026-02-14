@@ -6,6 +6,9 @@ All notable changes to FScript are documented in this file.
 
 - Added contributor policy in `AGENTS.md` for build/test/non-regression workflow.
 - Added CI changelog gate requiring one-line `## [Unreleased]` entries for functional PR changes.
+- Reorganized documentation into `docs/specs`, `docs/architecture`, and curated root `docs/` guides.
+- Added docs indexes (`docs/README.md`, `docs/specs/README.md`, `docs/architecture/README.md`) and linked README/tutorial to the new structure.
+- Added `docs/specs/lsp-inlay-hints.md` and mandated specification maintenance in `AGENTS.md`.
 
 ## [0.29.0]
 

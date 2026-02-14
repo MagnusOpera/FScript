@@ -50,7 +50,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
 - `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
-- See `docs/stdlib-functions.md` for the full stdlib function reference.
+- See [`stdlib-functions.md`](./stdlib-functions.md) for the full stdlib function reference.
 
 ### Typed decoders
 - `Json.deserialize : type -> string -> 'a option`

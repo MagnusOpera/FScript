@@ -88,5 +88,5 @@ let describe values =
   - `{ ["k"] = v }`
   - `{ [1] = v }`
   - `{ ["k"] = v; ..tail }`
-- For map construction/update rules, see `docs/supported-types.md`.
-- For full syntax/layout rules, see `docs/syntax-and-indentation.md`.
+- For map construction/update rules, see [`supported-types.md`](./supported-types.md).
+- For full syntax/layout rules, see [`syntax-and-indentation.md`](./syntax-and-indentation.md).

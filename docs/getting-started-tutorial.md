@@ -322,7 +322,7 @@ let hasA = m |> Map.containsKey "a"
 ```
 
 Full reference:
-- [`docs/stdlib-functions.md`](./stdlib-functions.md)
+- [`docs/specs/stdlib-functions.md`](./specs/stdlib-functions.md)
 
 ## 10. Includes and modules
 You can split scripts using `#include`.
@@ -372,9 +372,9 @@ When embedding, keep this mindset:
 - expose only needed externs,
 - keep filesystem/network boundaries explicit,
 - use host-level timeout/cancellation/resource limits.
-- see [`docs/embedding-fscript-language.md`](./embedding-fscript-language.md) for the embedding API,
-- see [`docs/external-functions.md`](./external-functions.md) for extern design/registration,
-- see [`docs/sandbox-and-security.md`](./sandbox-and-security.md) for the full security model.
+- see [`docs/specs/embedding-fscript-language.md`](./specs/embedding-fscript-language.md) for the embedding API,
+- see [`docs/specs/external-functions.md`](./specs/external-functions.md) for extern design/registration,
+- see [`docs/specs/sandbox-and-security.md`](./specs/sandbox-and-security.md) for the full security model.
 
 ## 12. Next steps
 - Sample scripts:
@@ -382,6 +382,6 @@ When embedding, keep this mindset:
   - [`samples/patterns-and-collections.fss`](../samples/patterns-and-collections.fss)
   - [`samples/map-matching.fss`](../samples/map-matching.fss)
   - [`samples/includes-and-exports.fss`](../samples/includes-and-exports.fss)
-- [`docs/syntax-and-indentation.md`](./syntax-and-indentation.md)
-- [`docs/supported-types.md`](./supported-types.md)
+- Specifications index: [`docs/specs/README.md`](./specs/README.md)
+- Architecture index: [`docs/architecture/README.md`](./architecture/README.md)
 - [`samples/`](../samples/)

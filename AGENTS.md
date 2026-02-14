@@ -38,6 +38,13 @@ Targeted test suites (when working on specific areas):
 - Write entries in user-facing terms (what changed), not implementation detail.
 - At release time, move unreleased entries to the versioned section and reset `Unreleased`.
 
+## Specification Maintenance (Mandatory)
+
+- Any behavioral change in language, runtime, hosting, sandbox, or LSP must update the corresponding spec in `docs/specs/`.
+- Any architectural change must update `docs/architecture/`.
+- If docs are reorganized or files are moved, all internal links must be updated in the same PR.
+- Spec updates are required for feature PRs; they are not optional.
+
 ## PR Checklist
 
 - Build passes.
@@ -45,3 +52,4 @@ Targeted test suites (when working on specific areas):
 - New behavior is test covered.
 - Regression risk is covered by tests (including smoke tests when relevant).
 - `CHANGELOG.md` `## [Unreleased]` has concise one-line entries for the change.
+- Relevant specification/architecture documentation has been updated.
