@@ -7,12 +7,12 @@
 
   <ItemGroup>
     <Compile Include="InteropServices.fs" />
-    <Compile Include="LanguageServerLegacy\LspProtocol.fs" />
-    <Compile Include="LanguageServerLegacy\LspModel.fs" />
-    <Compile Include="LanguageServerLegacy\LspRuntimeExterns.fs" />
-    <Compile Include="LanguageServerLegacy\AstJson.fs" />
-    <Compile Include="LanguageServerLegacy\LspSymbols.fs" />
-    <Compile Include="LanguageServerLegacy\LspHandlers.fs" />
+    <Compile Include="LanguageServer\LspProtocol.fs" />
+    <Compile Include="LanguageServer\LspModel.fs" />
+    <Compile Include="LanguageServer\LspRuntimeExterns.fs" />
+    <Compile Include="LanguageServer\AstJson.fs" />
+    <Compile Include="LanguageServer\LspSymbols.fs" />
+    <Compile Include="LanguageServer\LspHandlers.fs" />
   </ItemGroup>
 
   <ItemGroup>
