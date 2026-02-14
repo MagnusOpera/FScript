@@ -188,8 +188,8 @@ Each error contains:
 
 ## Embedding cookbook
 
-### 1. Parse/eval a file with `#include`
-Use include-aware parsing when executing scripts from disk.
+### 1. Parse/eval a file with `import`
+Use import-aware parsing when executing scripts from disk.
 
 ```fsharp
 open FScript.Language

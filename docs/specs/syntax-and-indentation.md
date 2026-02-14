@@ -6,7 +6,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
 ## File and program structure
 - A program is a sequence of top-level statements.
 - Top-level statements are:
-  - `#include "relative/path/file.fss"` directives
+  - `import "relative/path/file.fss"` directives
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
   - `[<export>] let` / `[<export>] let rec` bindings
@@ -207,21 +207,22 @@ All of the following map literal layouts are valid:
   - declared-type-by-shape: `let say_hello (person: { Name: string }) = ...`
 - Inline record annotation fields are `;`-separated in single-line form.
 
-## Include directive
-- Include uses preprocessor-style syntax:
-  - `#include "shared/helpers.fss"`
-- Includes are top-level only.
-- Included files are merged into the same global namespace as the current script.
-- Include loading is recursive.
+## Import directive
+- Import uses preprocessor-style syntax:
+  - `import "shared/helpers.fss"`
+- Imports are top-level only.
+- Imported files are wrapped in an implicit module derived from the imported file name.
+  - `import "shared/helpers.fss"` exposes symbols under `helpers.*`.
+- Import loading is recursive.
 - Cycles are fatal and reported as parse errors.
-- File paths in includes must be `.fss`.
-- Include resolution is file-relative:
-  - `#include "x.fss"` resolves from the directory of the file containing the directive.
+- File paths in imports must be `.fss`.
+- Import resolution is file-relative:
+  - `import "x.fss"` resolves from the directory of the file containing the directive.
 - Paths are normalized before loading:
   - relative segments like `.` and `..` are collapsed.
 - Resolved files must stay inside the configured sandbox root (`RootDirectory`).
   - escaping the root is a parse error.
-- A file already loaded once in the include graph is skipped on subsequent includes.
-  - includes are effectively deduplicated.
-- `#include` must appear before module declarations and executable/type code in a file.
-- Parse/type/eval errors include file-aware spans (`file`, `line`, `column`) so failures in included files point to the offending source.
+- A file already loaded once in the import graph is skipped on subsequent imports.
+  - imports are effectively deduplicated.
+- `import` must appear before executable/type code in a file.
+- Parse/type/eval errors include file-aware spans (`file`, `line`, `column`) so failures in imported files point to the offending source.

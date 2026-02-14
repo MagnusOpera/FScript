@@ -1,5 +1,3 @@
-module Option
-
 let defaultValue fallback value =
     match value with
     | Some current -> current

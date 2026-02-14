@@ -1,5 +1,3 @@
-module Map
-
 let empty = {}
 
 let tryGet key values =

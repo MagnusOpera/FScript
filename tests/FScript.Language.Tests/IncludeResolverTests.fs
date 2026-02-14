@@ -18,7 +18,7 @@ type IncludeResolverTests () =
                 Directory.Delete(path, true)
 
     [<Test>]
-    member _.``Include resolver expands includes once`` () =
+    member _.``Import resolver expands imports once`` () =
         withTempDir (fun dir ->
             let commonPath = Path.Combine(dir, "common.fss")
             let aPath = Path.Combine(dir, "a.fss")
@@ -26,46 +26,46 @@ type IncludeResolverTests () =
             let mainPath = Path.Combine(dir, "main.fss")
 
             File.WriteAllText(commonPath, "let common = 40")
-            File.WriteAllText(aPath, "#include \"common.fss\"\nlet a = 1")
-            File.WriteAllText(bPath, "#include \"common.fss\"\nlet b = 2")
-            File.WriteAllText(mainPath, "#include \"a.fss\"\n#include \"b.fss\"\nlet total = common + a + b")
+            File.WriteAllText(aPath, "import \"common.fss\"\nlet a = 1")
+            File.WriteAllText(bPath, "import \"common.fss\"\nlet b = 2")
+            File.WriteAllText(mainPath, "import \"a.fss\"\nimport \"b.fss\"\nlet total = common.common + a.a + b.b")
 
             let program = IncludeResolver.parseProgramFromFile dir mainPath
             let lets =
                 program
                 |> List.choose (function | SLet(name, _, _, _, _, _) -> Some name | _ -> None)
-            lets |> should equal [ "common"; "a"; "b"; "total" ])
+            lets |> should equal [ "common.common"; "a.a"; "b.b"; "total" ])
 
     [<Test>]
-    member _.``Include resolver detects include cycles`` () =
+    member _.``Import resolver detects import cycles`` () =
         withTempDir (fun dir ->
             let aPath = Path.Combine(dir, "a.fss")
             let bPath = Path.Combine(dir, "b.fss")
             let mainPath = Path.Combine(dir, "main.fss")
 
-            File.WriteAllText(aPath, "#include \"b.fss\"\nlet a = 1")
-            File.WriteAllText(bPath, "#include \"a.fss\"\nlet b = 1")
-            File.WriteAllText(mainPath, "#include \"a.fss\"\nlet x = 1")
+            File.WriteAllText(aPath, "import \"b.fss\"\nlet a = 1")
+            File.WriteAllText(bPath, "import \"a.fss\"\nlet b = 1")
+            File.WriteAllText(mainPath, "import \"a.fss\"\nlet x = 1")
 
             let mutable err : ParseError option = None
             try
                 IncludeResolver.parseProgramFromFile dir mainPath |> ignore
-                Assert.Fail("Expected include cycle parse failure")
+                Assert.Fail("Expected import cycle parse failure")
             with
             | ParseException parseError ->
                 err <- Some parseError
             match err with
-            | Some parseError -> parseError.Message |> should contain "Include cycle detected"
+            | Some parseError -> parseError.Message |> should contain "Import cycle detected"
             | None -> Assert.Fail("Expected ParseException"))
 
     [<Test>]
-    member _.``Include resolver blocks paths outside root`` () =
+    member _.``Import resolver blocks paths outside root`` () =
         withTempDir (fun dir ->
             let externalFile = Path.Combine(Path.GetTempPath(), $"fscript-include-external-{Guid.NewGuid():N}.fss")
             try
                 File.WriteAllText(externalFile, "let outside = 1")
                 let mainPath = Path.Combine(dir, "main.fss")
-                File.WriteAllText(mainPath, "#include \"../" + Path.GetFileName(externalFile) + "\"\nlet x = 1")
+                File.WriteAllText(mainPath, "import \"../" + Path.GetFileName(externalFile) + "\"\nlet x = 1")
                 let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
                 act |> should throw typeof<ParseException>
             finally
@@ -73,22 +73,22 @@ type IncludeResolverTests () =
                     File.Delete(externalFile))
 
     [<Test>]
-    member _.``Include resolver rejects non fss extension`` () =
+    member _.``Import resolver rejects non fss extension`` () =
         withTempDir (fun dir ->
             let txtPath = Path.Combine(dir, "shared.txt")
             let mainPath = Path.Combine(dir, "main.fss")
             File.WriteAllText(txtPath, "let x = 1")
-            File.WriteAllText(mainPath, "#include \"shared.txt\"\nlet y = 1")
+            File.WriteAllText(mainPath, "import \"shared.txt\"\nlet y = 1")
             let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
             act |> should throw typeof<ParseException>)
 
     [<Test>]
-    member _.``Include parse errors report offending file`` () =
+    member _.``Import parse errors report offending file`` () =
         withTempDir (fun dir ->
             let badPath = Path.Combine(dir, "bad.fss")
             let mainPath = Path.Combine(dir, "main.fss")
             File.WriteAllText(badPath, "let = 1")
-            File.WriteAllText(mainPath, "#include \"bad.fss\"\nlet x = 1")
+            File.WriteAllText(mainPath, "import \"bad.fss\"\nlet x = 1")
 
             let mutable err : ParseError option = None
             try
@@ -103,48 +103,50 @@ type IncludeResolverTests () =
             | None -> Assert.Fail("Expected ParseException"))
 
     [<Test>]
-    member _.``Include resolver rejects module declaration in main script`` () =
+    member _.``Import resolver rejects module declarations in imported files`` () =
         withTempDir (fun dir ->
+            let helperPath = Path.Combine(dir, "helper.fss")
             let mainPath = Path.Combine(dir, "main.fss")
-            File.WriteAllText(mainPath, "module Root\nlet x = 1")
+            File.WriteAllText(helperPath, "module Root\nlet x = 1")
+            File.WriteAllText(mainPath, "import \"helper.fss\"\nlet ok = 1")
             let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
             act |> should throw typeof<ParseException>)
 
     [<Test>]
-    member _.``Include resolver allows module declaration in included script and qualifies bindings`` () =
+    member _.``Import resolver derives module name from file name`` () =
         withTempDir (fun dir ->
             let helperPath = Path.Combine(dir, "helper.fss")
             let mainPath = Path.Combine(dir, "main.fss")
-            File.WriteAllText(helperPath, "module Helper\nlet add1 x = x + 1")
-            File.WriteAllText(mainPath, "#include \"helper.fss\"\nlet value = Helper.add1 41")
+            File.WriteAllText(helperPath, "let add1 x = x + 1")
+            File.WriteAllText(mainPath, "import \"helper.fss\"\nlet value = helper.add1 41")
             let program = IncludeResolver.parseProgramFromFile dir mainPath
             let names =
                 program
                 |> List.choose (function
                     | SLet(name, _, _, _, _, _) -> Some name
                     | _ -> None)
-            names |> should contain "Helper.add1"
+            names |> should contain "helper.add1"
             names |> should contain "value")
 
     [<Test>]
-    member _.``Include resolver enforces include then module then code ordering`` () =
+    member _.``Import resolver enforces import then code ordering`` () =
         withTempDir (fun dir ->
             let helperPath = Path.Combine(dir, "helper.fss")
             let mainPath = Path.Combine(dir, "main.fss")
-            File.WriteAllText(helperPath, "let x = 1\n#include \"other.fss\"")
-            File.WriteAllText(mainPath, "#include \"helper.fss\"\nlet ok = 1")
+            File.WriteAllText(helperPath, "let x = 1\nimport \"other.fss\"")
+            File.WriteAllText(mainPath, "import \"helper.fss\"\nlet ok = 1")
             let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
             act |> should throw typeof<ParseException>)
 
     [<Test>]
-    member _.``Include resolver can parse in-memory main source with on-disk includes`` () =
+    member _.``Import resolver can parse in-memory main source with on-disk imports`` () =
         withTempDir (fun dir ->
             let helperPath = Path.Combine(dir, "_protocol.fss")
             let mainPath = Path.Combine(dir, "main.fss")
             File.WriteAllText(helperPath, "type ActionContext = { Name: string }\n")
 
             let source =
-                "#include \"_protocol.fss\"\n"
+                "import \"_protocol.fss\"\n"
                 + "let defaults (context: ActionContext) = context.Name\n"
 
             let program = IncludeResolver.parseProgramFromSourceWithIncludes dir mainPath source
@@ -155,3 +157,32 @@ type IncludeResolverTests () =
                     | _ -> None)
 
             letNames |> should contain "defaults")
+
+    [<Test>]
+    member _.``Import resolver rejects invalid imported filename stem`` () =
+        withTempDir (fun dir ->
+            let helperPath = Path.Combine(dir, "bad-name.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+            File.WriteAllText(helperPath, "let add1 x = x + 1")
+            File.WriteAllText(mainPath, "import \"bad-name.fss\"\nlet value = 1")
+            let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
+            act |> should throw typeof<ParseException>)
+
+    [<Test>]
+    member _.``Import resolver rejects module name collisions`` () =
+        withTempDir (fun dir ->
+            let leftDir = Path.Combine(dir, "left")
+            let rightDir = Path.Combine(dir, "right")
+            Directory.CreateDirectory(leftDir) |> ignore
+            Directory.CreateDirectory(rightDir) |> ignore
+
+            let helperLeft = Path.Combine(leftDir, "helper.fss")
+            let helperRight = Path.Combine(rightDir, "helper.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+
+            File.WriteAllText(helperLeft, "let x = 1")
+            File.WriteAllText(helperRight, "let y = 2")
+            File.WriteAllText(mainPath, "import \"left/helper.fss\"\nimport \"right/helper.fss\"\nlet total = helper.x")
+
+            let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
+            act |> should throw typeof<ParseException>)

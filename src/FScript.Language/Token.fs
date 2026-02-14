@@ -40,6 +40,7 @@ type TokenKind =
     | Dot
     | RangeDots
     | Hash
+    | Import
     | Include
     | Module
     | LBrace

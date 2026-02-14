@@ -7,7 +7,7 @@ You will learn:
 - how to run a script,
 - how to model data with records/lists/maps/options/unions,
 - how to use pattern matching,
-- how to split scripts with `#include`,
+- how to split scripts with `import`,
 - how to expose host-callable functions with `[<export>]`.
 
 ## Get FScript
@@ -33,7 +33,7 @@ make build
 Then run scripts with:
 
 ```bash
-dotnet run --project src/FScript -- your-script.fss
+./src/FScript/bin/Debug/net10.0/fscript your-script.fss
 ```
 
 ## 1. Run your first script
@@ -324,28 +324,26 @@ let hasA = m |> Map.containsKey "a"
 Full reference:
 - [`docs/specs/stdlib-functions.md`](../specs/stdlib-functions.md)
 
-## 10. Includes and modules
-You can split scripts using `#include`.
+## 10. Imports and file modules
+You can split scripts using `import`.
 
 `main.fss`:
 
 ```fsharp
-#include "shared/math.fss"
-print $"{sum 20 22}"
+import "shared/math.fss"
+print $"{math.sum 20 22}"
 ```
 
 `shared/math.fss`:
 
 ```fsharp
-module Math
-
 let sum a b = a + b
 ```
 
 Notes:
-- included files are `.fss`,
-- include cycles are fatal,
-- modules are supported in included files.
+- imported files are `.fss`,
+- import cycles are fatal,
+- imported files are namespaced by filename stem (`math.sum`, `common.join`, ...).
 
 ## 11. Hosting, exports, and sandboxing (advanced)
 FScript is designed to be embedded.

@@ -76,7 +76,7 @@ module LspHandlers =
     let private keywordSet =
         [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
           "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some"
-          "fun"; "raise"; "include"; "export"; "qualified" ]
+          "fun"; "raise"; "import"; "export"; "qualified" ]
         |> Set.ofList
 
     let private classifyToken (line: string) (startIndex: int) (token: string) =
@@ -619,7 +619,7 @@ module LspHandlers =
         | None -> None
         | Some lineText ->
             let trimmed = lineText.TrimStart()
-            if not (trimmed.StartsWith("#include", StringComparison.Ordinal)) then
+            if not (trimmed.StartsWith("import", StringComparison.Ordinal)) then
                 None
             else
                 let firstQuote = lineText.IndexOf('"')

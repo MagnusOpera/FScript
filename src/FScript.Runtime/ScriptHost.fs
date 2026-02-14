@@ -75,8 +75,8 @@ module ScriptHost =
 
     let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
         let program = FScript.parse source
-        if program |> List.exists (function SInclude _ -> true | _ -> false) then
-            raise (HostCommon.evalError "'#include' is only supported when loading scripts from files")
+        if program |> List.exists (function SImport _ -> true | _ -> false) then
+            raise (HostCommon.evalError "'import' is only supported when loading scripts from files")
         let typed = FScript.inferWithExterns externs program
         let state = Eval.evalProgramWithExternsState externs typed
         let exportedNames =

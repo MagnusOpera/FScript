@@ -87,9 +87,9 @@ module LspSymbols =
 
     let private tryStdlibVirtualUriFromSource (sourceFile: string option) =
         match sourceFile with
-        | Some file when file.EndsWith("Stdlib.Option.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Option.fss"
-        | Some file when file.EndsWith("Stdlib.List.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///List.fss"
-        | Some file when file.EndsWith("Stdlib.Map.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Map.fss"
+        | Some file when file.EndsWith("Stdlib.Option.fss", StringComparison.Ordinal) || file.EndsWith("Option.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Option.fss"
+        | Some file when file.EndsWith("Stdlib.List.fss", StringComparison.Ordinal) || file.EndsWith("List.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///List.fss"
+        | Some file when file.EndsWith("Stdlib.Map.fss", StringComparison.Ordinal) || file.EndsWith("Map.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Map.fss"
         | _ -> None
 
     let private stdlibFunctionParameterNames : Lazy<Map<string, string list>> =
@@ -374,8 +374,7 @@ module LspSymbols =
 
         for stmt in program do
             match stmt with
-            | SType _
-            | SModuleDecl _ ->
+            | SType _ ->
                 accepted <- accepted @ [ stmt ]
             | SLet (name, _, _, _, _, _) ->
                 let candidate = accepted @ [ stmt ]
@@ -398,7 +397,7 @@ module LspSymbols =
                 | None -> ()
             | SExpr _ ->
                 ()
-            | SInclude _ ->
+            | SImport _ ->
                 ()
 
         result
@@ -420,8 +419,7 @@ module LspSymbols =
 
         for stmt in program do
             match stmt with
-            | SType _
-            | SModuleDecl _ ->
+            | SType _ ->
                 accepted <- accepted @ [ stmt ]
             | SLet _
             | SLetRecGroup _ ->
@@ -434,7 +432,7 @@ module LspSymbols =
                 | None -> ()
             | SExpr _ ->
                 ()
-            | SInclude _ ->
+            | SImport _ ->
                 ()
 
         collected.Values |> Seq.toList
@@ -1538,35 +1536,6 @@ module LspSymbols =
         with
         | ParseException err ->
             diagnostics.Add(diagnostic 1 "parse" err.Span err.Message)
-
-        match parsedProgram with
-        | Some program ->
-            let isIncludeStyleHelperFile =
-                match Path.GetFileName(sourceName) with
-                | null -> false
-                | fileName ->
-                    not (String.IsNullOrWhiteSpace(fileName))
-                    && fileName.StartsWith("_", StringComparison.Ordinal)
-
-            let topLevelBindings =
-                program
-                |> List.collect (function
-                    | SLet(name, _, _, _, isExported, span) -> [ name, span, isExported ]
-                    | SLetRecGroup(bindings, isExported, _) ->
-                        bindings |> List.map (fun (name, _, _, span) -> name, span, isExported)
-                    | _ -> [])
-                |> List.filter (fun (_, span, _) ->
-                    match span.Start.File with
-                    | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
-                    | None -> true)
-
-            if not isIncludeStyleHelperFile then
-                for (name, span, isExported) in topLevelBindings do
-                    if not isExported && not (name.StartsWith("_", StringComparison.Ordinal)) then
-                        let refs = occurrences |> Map.tryFind name |> Option.defaultValue []
-                        if refs.Length <= 1 then
-                            diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
-        | None -> ()
 
         documents[uri] <-
             { Text = text

@@ -1044,10 +1044,8 @@ module TypeInfer =
                 match stmt with
                 | SType def ->
                     typed.Add(TSType def)
-                | SInclude (_, span) ->
-                    raise (TypeException { Message = "'#include' must be resolved before type inference"; Span = span })
-                | SModuleDecl (_, span) ->
-                    raise (TypeException { Message = "'module' must be resolved before type inference"; Span = span })
+                | SImport (_, span) ->
+                    raise (TypeException { Message = "'import' must be resolved before type inference"; Span = span })
                 | SLet(name, args, expr, isRec, isExported, span) ->
                     let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                     let startIndex =

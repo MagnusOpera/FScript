@@ -1270,10 +1270,12 @@ module Parser =
                 | EOF -> doneBlock <- true
                 | Let ->
                     statements.Add(parseLetStmt false)
-                | Hash when stream.PeekAt(1).Kind = Include ->
-                    raise (ParseException { Message = "'#include' is only supported at top level"; Span = stream.Peek().Span })
+                | Import ->
+                    raise (ParseException { Message = "'import' is only supported at top level"; Span = stream.Peek().Span })
+                | Hash when stream.PeekAt(1).Kind = Import || stream.PeekAt(1).Kind = Include ->
+                    raise (ParseException { Message = "Use 'import \"file.fss\"' at top level"; Span = stream.Peek().Span })
                 | Module ->
-                    raise (ParseException { Message = "'module' is only supported at top level"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "'module' declarations were removed; module names are derived from imported filenames"; Span = stream.Peek().Span })
                 | LBracket when stream.PeekAt(1).Kind = Less ->
                     raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
@@ -1297,10 +1299,8 @@ module Parser =
                     ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
                 | SType def :: _ ->
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
-                | SInclude (_, span) :: _ ->
-                    raise (ParseException { Message = "'#include' is only supported at top level"; Span = span })
-                | SModuleDecl (_, span) :: _ ->
-                    raise (ParseException { Message = "'module' is only supported at top level"; Span = span })
+                | SImport (_, span) :: _ ->
+                    raise (ParseException { Message = "'import' is only supported at top level"; Span = span })
             desugar (statements |> Seq.toList)
 
         and parseLetStmt (isExported: bool) : Stmt =
@@ -1385,27 +1385,29 @@ module Parser =
             match stream.Peek().Kind with
             | Hash ->
                 if hasAttributes || isExported then
-                    raise (ParseException { Message = "Attributes are not supported on '#include'"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
                 let hashTok = stream.Next()
-                stream.Expect(Include, "Expected '#include'") |> ignore
+                match stream.Next().Kind with
+                | Include ->
+                    raise (ParseException { Message = "'#include' was removed in 0.32.0; use 'import \"file.fss\"'"; Span = hashTok.Span })
+                | Import ->
+                    raise (ParseException { Message = "'#import' was removed in 0.32.0; use 'import \"file.fss\"'"; Span = hashTok.Span })
+                | _ ->
+                    raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\"'"; Span = hashTok.Span })
+            | Import ->
+                if hasAttributes || isExported then
+                    raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
+                let importTok = stream.Next()
                 let pathTok = stream.Next()
                 match pathTok.Kind with
                 | StringLit path when not (System.String.IsNullOrWhiteSpace path) ->
-                    SInclude(path, mkSpanFrom hashTok.Span pathTok.Span)
+                    SImport(path, mkSpanFrom importTok.Span pathTok.Span)
                 | StringLit _ ->
-                    raise (ParseException { Message = "Include path cannot be empty"; Span = pathTok.Span })
+                    raise (ParseException { Message = "Import path cannot be empty"; Span = pathTok.Span })
                 | _ ->
-                    raise (ParseException { Message = "Expected string literal include path after '#include'"; Span = pathTok.Span })
+                    raise (ParseException { Message = "Expected string literal import path after 'import'"; Span = pathTok.Span })
             | Module ->
-                if hasAttributes || isExported then
-                    raise (ParseException { Message = "Attributes are not supported on 'module'"; Span = stream.Peek().Span })
-                let moduleTok = stream.Next()
-                let nameTok = stream.ExpectIdent("Expected module name after 'module'")
-                let name =
-                    match nameTok.Kind with
-                    | Ident n -> n
-                    | _ -> ""
-                SModuleDecl(name, mkSpanFrom moduleTok.Span nameTok.Span)
+                raise (ParseException { Message = "'module' declarations were removed; module names are derived from imported filenames"; Span = stream.Peek().Span })
             | Type ->
                 if isExported then
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })

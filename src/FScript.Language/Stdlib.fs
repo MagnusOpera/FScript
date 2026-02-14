@@ -4,10 +4,10 @@ open System.IO
 open System.Reflection
 
 module Stdlib =
-    let private stdlibResourceNames =
-        [ "FScript.Language.Stdlib.List.fss"
-          "FScript.Language.Stdlib.Option.fss"
-          "FScript.Language.Stdlib.Map.fss" ]
+    let private stdlibResources =
+        [ "FScript.Language.Stdlib.List.fss", "List.fss"
+          "FScript.Language.Stdlib.Option.fss", "Option.fss"
+          "FScript.Language.Stdlib.Map.fss", "Map.fss" ]
 
     let private readResourceText (assembly: Assembly) (resourceName: string) =
         use stream = assembly.GetManifestResourceStream(resourceName)
@@ -18,10 +18,10 @@ module Stdlib =
 
     let loadProgram () : Program =
         let assembly = typeof<Span>.Assembly
-        stdlibResourceNames
-        |> List.collect (fun resourceName ->
+        stdlibResources
+        |> List.collect (fun (resourceName, logicalSourceName) ->
             let source = readResourceText assembly resourceName
-            IncludeResolver.parseIncludedSource resourceName source)
+            IncludeResolver.parseIncludedSource logicalSourceName source)
 
     let reservedNames () : Set<string> =
         loadProgram ()

@@ -13,7 +13,7 @@ module IncludeResolver =
 
     let private ensureFssPath (path: string) (span: Span) =
         if not (path.EndsWith(".fss", StringComparison.OrdinalIgnoreCase)) then
-            raise (ParseException { Message = "Only '.fss' files can be used with '#include'"; Span = span })
+            raise (ParseException { Message = "Only '.fss' files can be used with 'import'"; Span = span })
 
     let private ensureWithinRoot (rootDirectoryWithSeparator: string) (path: string) (span: Span) =
         let fullPath = Path.GetFullPath(path)
@@ -21,20 +21,20 @@ module IncludeResolver =
         let isRootItself = String.Equals(fullPath, fullRoot, StringComparison.OrdinalIgnoreCase)
         let isUnderRoot = fullPath.StartsWith(rootDirectoryWithSeparator, StringComparison.OrdinalIgnoreCase)
         if not (isRootItself || isUnderRoot) then
-            raise (ParseException { Message = $"Included file '{fullPath}' is outside of sandbox root"; Span = span })
+            raise (ParseException { Message = $"Imported file '{fullPath}' is outside of sandbox root"; Span = span })
         fullPath
 
-    let private resolveIncludePath (currentFile: string) (includePath: string) (rootDirectoryWithSeparator: string) (span: Span) =
-        if String.IsNullOrWhiteSpace(includePath) then
-            raise (ParseException { Message = "Include path cannot be empty"; Span = span })
+    let private resolveImportPath (currentFile: string) (importPath: string) (rootDirectoryWithSeparator: string) (span: Span) =
+        if String.IsNullOrWhiteSpace(importPath) then
+            raise (ParseException { Message = "Import path cannot be empty"; Span = span })
 
-        ensureFssPath includePath span
+        ensureFssPath importPath span
 
         let currentDirectory = Path.GetDirectoryName(currentFile)
         let candidate =
-            if Path.IsPathRooted(includePath) then includePath
-            elif String.IsNullOrEmpty(currentDirectory) then includePath
-            else Path.Combine(currentDirectory, includePath)
+            if Path.IsPathRooted(importPath) then importPath
+            elif String.IsNullOrEmpty(currentDirectory) then importPath
+            else Path.Combine(currentDirectory, importPath)
 
         ensureWithinRoot rootDirectoryWithSeparator candidate span
 
@@ -65,6 +65,23 @@ module IncludeResolver =
         loop Set.empty pattern
 
     let private qualifyName (moduleName: string) (name: string) = $"{moduleName}.{name}"
+
+    let private isValidModuleName (name: string) =
+        let startsValid c = Char.IsLetter(c) || c = '_'
+        let partValid c = Char.IsLetterOrDigit(c) || c = '_'
+        not (String.IsNullOrWhiteSpace(name))
+        && startsValid name[0]
+        && (name |> Seq.forall partValid)
+
+    let private deriveModuleNameFromFilePath (filePath: string) (span: Span) =
+        let stem = Path.GetFileNameWithoutExtension(filePath)
+        if isValidModuleName stem then
+            stem
+        else
+            raise (ParseException {
+                Message = $"Imported filename stem '{stem}' is not a valid module name. Rename the file to a valid identifier."
+                Span = span
+            })
 
     let private rewriteModuleScopedStatements (moduleName: string) (statements: Stmt list) : Stmt list =
         let topLevelNames =
@@ -185,6 +202,7 @@ module IncludeResolver =
     let private expandProgram
         (rootDirectoryWithSeparator: string)
         (fileSpan: string -> Span)
+        (moduleToFile: System.Collections.Generic.Dictionary<string, string>)
         (loadFileRef: (string list -> bool -> string -> Program) ref)
         (stack: string list)
         (isMainFile: bool)
@@ -192,44 +210,44 @@ module IncludeResolver =
         (program: Program)
         : Program =
         let mutable seenCode = false
-        let mutable moduleDecl: (string * Span) option = None
-        let includes = ResizeArray<string * Span>()
+        let imports = ResizeArray<string * Span>()
         let localCode = ResizeArray<Stmt>()
 
         for stmt in program do
             match stmt with
-            | SInclude(includePath, span) ->
-                if seenCode || moduleDecl.IsSome then
-                    raise (ParseException { Message = "'#include' directives must appear before module declaration and code"; Span = span })
-                includes.Add(includePath, span)
-            | SModuleDecl(moduleName, span) ->
-                if isMainFile then
-                    raise (ParseException { Message = "'module' is not allowed in the main script"; Span = span })
+            | SImport(importPath, span) ->
                 if seenCode then
-                    raise (ParseException { Message = "'module' declaration must appear before code"; Span = span })
-                match moduleDecl with
-                | Some (_, previousSpan) ->
-                    raise (ParseException { Message = "Only one 'module' declaration is allowed per file"; Span = previousSpan })
-                | None ->
-                    moduleDecl <- Some(moduleName, span)
+                    raise (ParseException { Message = "'import' directives must appear before code"; Span = span })
+                imports.Add(importPath, span)
             | _ ->
                 seenCode <- true
                 localCode.Add(stmt)
 
-        let includedStatements =
-            includes
+        let importedStatements =
+            imports
             |> Seq.toList
-            |> List.collect (fun (includePath, span) ->
-                let resolvedPath = resolveIncludePath currentFile includePath rootDirectoryWithSeparator span
+            |> List.collect (fun (importPath, span) ->
+                let resolvedPath = resolveImportPath currentFile importPath rootDirectoryWithSeparator span
                 (!loadFileRef) stack false resolvedPath)
 
         let localStatements = localCode |> Seq.toList
         let rewrittenLocalStatements =
-            match moduleDecl with
-            | Some (moduleName, _) -> rewriteModuleScopedStatements moduleName localStatements
-            | None -> localStatements
+            if isMainFile then
+                localStatements
+            else
+                let span = fileSpan currentFile
+                let moduleName = deriveModuleNameFromFilePath currentFile span
+                match moduleToFile.TryGetValue(moduleName) with
+                | true, existingPath when not (String.Equals(existingPath, currentFile, StringComparison.OrdinalIgnoreCase)) ->
+                    raise (ParseException {
+                        Message = $"Module name collision: '{moduleName}' is derived from both '{existingPath}' and '{currentFile}'"
+                        Span = span
+                    })
+                | _ ->
+                    moduleToFile[moduleName] <- currentFile
+                    rewriteModuleScopedStatements moduleName localStatements
 
-        includedStatements @ rewrittenLocalStatements
+        importedStatements @ rewrittenLocalStatements
 
     let parseIncludedSource (sourceName: string) (source: string) : Program =
         let program = Parser.parseProgramWithSourceName (Some sourceName) source
@@ -237,18 +255,20 @@ module IncludeResolver =
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
+        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         let loadRef = ref (fun (_: string list) (_: bool) (_: string) -> ([]: Program))
-        if program |> List.exists (function | SInclude _ -> true | _ -> false) then
-            let includeSpan =
+        if program |> List.exists (function | SImport _ -> true | _ -> false) then
+            let importSpan =
                 program
-                |> List.choose (function | SInclude(_, span) -> Some span | _ -> None)
+                |> List.choose (function | SImport(_, span) -> Some span | _ -> None)
                 |> List.head
-            raise (ParseException { Message = "Embedded stdlib source does not support '#include'"; Span = includeSpan })
-        expandProgram dummyRoot fileSpan loadRef [] false sourceName program
+            raise (ParseException { Message = "Embedded stdlib source does not support 'import'"; Span = importSpan })
+        expandProgram dummyRoot fileSpan moduleToFile loadRef [] false sourceName program
 
     let parseProgramFromFile (rootDirectory: string) (entryFile: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
@@ -261,7 +281,7 @@ module IncludeResolver =
 
             if stack |> List.exists (fun p -> String.Equals(p, sandboxedPath, StringComparison.OrdinalIgnoreCase)) then
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
-                let message = sprintf "Include cycle detected: %s" (String.concat " -> " cycleChain)
+                let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
 
             if visited.Contains(sandboxedPath) then
@@ -271,13 +291,14 @@ module IncludeResolver =
                 let source = File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
-                expandProgram rootDirectoryWithSeparator fileSpan loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
+                expandProgram rootDirectoryWithSeparator fileSpan moduleToFile loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
 
         loadFile [] true entryFile
 
     let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let visited = System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let moduleToFile = System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         let fileSpan path =
             let p = Span.posInFile path 1 1
             Span.mk p p
@@ -295,7 +316,7 @@ module IncludeResolver =
 
             if stack |> List.exists (fun p -> String.Equals(p, sandboxedPath, StringComparison.OrdinalIgnoreCase)) then
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
-                let message = sprintf "Include cycle detected: %s" (String.concat " -> " cycleChain)
+                let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
 
             if visited.Contains(sandboxedPath) then
@@ -309,6 +330,6 @@ module IncludeResolver =
                         File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
-                expandProgram rootDirectoryWithSeparator fileSpan loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
+                expandProgram rootDirectoryWithSeparator fileSpan moduleToFile loadRef (sandboxedPath :: stack) isMainFile sandboxedPath program
 
         loadFile [] true entrySandboxedPath

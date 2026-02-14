@@ -1,10 +1,10 @@
-#include "includes/common.fss"
+import "includes/common.fss"
 
 [<export>] let extension_name = "demo"
 
-[<export>] let summary (project: ProjectInfo) =
-    let steps = [ "build"; "test"; "publish" ] |> List.map describe_command
-    $"{describe_project project}: {join_with_comma steps}"
+[<export>] let summary (project: common.ProjectInfo) =
+    let steps = [ "build"; "test"; "publish" ] |> List.map common.describe_command
+    $"{common.describe_project project}: {common.join_with_comma steps}"
 
 let main =
     let project = { Name = "Terrabuild"; Language = "F#" }

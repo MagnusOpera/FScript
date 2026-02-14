@@ -82,8 +82,7 @@ and MapEntry =
 
 and Stmt =
     | SType of TypeDef
-    | SInclude of string * Span
-    | SModuleDecl of string * Span
+    | SImport of string * Span
     | SLet of string * Param list * Expr * bool * bool * Span
     | SLetRecGroup of (string * Param list * Expr * Span) list * bool * Span
     | SExpr of Expr

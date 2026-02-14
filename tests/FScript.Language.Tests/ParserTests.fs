@@ -272,22 +272,20 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated let parameter")
 
     [<Test>]
-    member _.``Parses top-level include directive`` () =
-        let p = Helpers.parse "#include \"shared.fss\"\nlet x = 1"
+    member _.``Parses top-level import directive`` () =
+        let p = Helpers.parse "import \"shared.fss\"\nlet x = 1"
         match p.[0] with
-        | SInclude ("shared.fss", _) -> ()
-        | _ -> Assert.Fail("Expected top-level include directive")
+        | SImport ("shared.fss", _) -> ()
+        | _ -> Assert.Fail("Expected top-level import directive")
 
     [<Test>]
-    member _.``Parses top-level module declaration`` () =
-        let p = Helpers.parse "module Helpers\nlet x = 1"
-        match p.[0] with
-        | SModuleDecl ("Helpers", _) -> ()
-        | _ -> Assert.Fail("Expected top-level module declaration")
+    member _.``Rejects module declarations`` () =
+        let act () = Helpers.parse "module Helpers\nlet x = 1" |> ignore
+        act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects include directive in nested block`` () =
-        let act () = Helpers.parse "let x = (\n    #include \"shared.fss\"\n    1\n)" |> ignore
+    member _.``Rejects import directive in nested block`` () =
+        let act () = Helpers.parse "let x = (\n    import \"shared.fss\"\n    1\n)" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]

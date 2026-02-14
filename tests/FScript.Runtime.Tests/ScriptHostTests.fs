@@ -65,25 +65,25 @@ type ScriptHostTests () =
         | _ -> Assert.Fail("Expected even 4 to be true")
 
     [<Test>]
-    member _.``script_host loadFile resolves includes`` () =
+    member _.``script_host loadFile resolves imports`` () =
         let tempDir = Path.Combine(Path.GetTempPath(), $"fscript-runtime-include-{System.Guid.NewGuid():N}")
         Directory.CreateDirectory(tempDir) |> ignore
         try
             let sharedPath = Path.Combine(tempDir, "shared.fss")
             let mainPath = Path.Combine(tempDir, "main.fss")
             File.WriteAllText(sharedPath, "let increment x = x + 1")
-            File.WriteAllText(mainPath, "#include \"shared.fss\"\n[<export>] let add2 x = increment (increment x)")
+            File.WriteAllText(mainPath, "import \"shared.fss\"\n[<export>] let add2 x = shared.increment (shared.increment x)")
             let externs = Registry.all { RootDirectory = tempDir }
             let loaded = ScriptHost.loadFile externs mainPath
             match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
             | VInt 12L -> ()
-            | _ -> Assert.Fail("Expected included function to be available")
+            | _ -> Assert.Fail("Expected imported function to be available")
         finally
             if Directory.Exists(tempDir) then
                 Directory.Delete(tempDir, true)
 
     [<Test>]
-    member _.``script_host loadSource rejects include directives`` () =
+    member _.``script_host loadSource rejects import directives`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
-        let act () = ScriptHost.loadSource externs "#include \"shared.fss\"\nlet x = 1" |> ignore
+        let act () = ScriptHost.loadSource externs "import \"shared.fss\"\nlet x = 1" |> ignore
         Assert.Throws<EvalException>(TestDelegate act) |> ignore

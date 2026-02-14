@@ -1037,7 +1037,7 @@ type LspServerTests () =
             LspClient.stop client
 
     [<Test>]
-    member _.``DidOpen publishes unused binding warning`` () =
+    member _.``DidOpen does not publish unused binding warning`` () =
         let client = LspClient.start ()
         try
             initialize client
@@ -1082,7 +1082,7 @@ type LspServerTests () =
                     | _ -> false
                 | _ -> false
 
-            hasUnusedWarning |> should equal true
+            hasUnusedWarning |> should equal false
         finally
             try shutdown client with _ -> ()
             LspClient.stop client
@@ -1157,7 +1157,7 @@ type LspServerTests () =
             let includeFile = Path.Combine(tempRoot, "_helpers.fss")
             let mainFile = Path.Combine(tempRoot, "main.fss")
             File.WriteAllText(includeFile, "let with_flag x = x\n")
-            File.WriteAllText(mainFile, "#include \"_helpers.fss\"\nlet first_project_file x = x\nlet result = first_project_file 1\nresult\n")
+            File.WriteAllText(mainFile, "import \"_helpers.fss\"\nlet first_project_file x = x\nlet result = first_project_file 1\nresult\n")
 
             let uri = Uri(mainFile).AbsoluteUri
             let td = JsonObject()
@@ -2621,7 +2621,7 @@ type LspServerTests () =
             let includeFile = Path.Combine(tempRoot, "_helpers.fss")
             let mainFile = Path.Combine(tempRoot, "main.fss")
             File.WriteAllText(includeFile, "let helper = 42\n")
-            File.WriteAllText(mainFile, "#include \"_helpers.fss\"\nlet x = helper\n")
+            File.WriteAllText(mainFile, "import \"_helpers.fss\"\nlet x = helper\n")
 
             let uri = Uri(mainFile).AbsoluteUri
             let td = JsonObject()
@@ -2685,7 +2685,7 @@ type LspServerTests () =
             let mainFile = Path.Combine(tempRoot, "main.fss")
 
             File.WriteAllText(includeFile, "type ActionContext = { Command: string }\n")
-            File.WriteAllText(mainFile, "#include \"_protocol.fss\"\nlet dispatch (context: ActionContext) = context.Command\n")
+            File.WriteAllText(mainFile, "import \"_protocol.fss\"\nlet dispatch (context: ActionContext) = context.Command\n")
 
             let uri = Uri(mainFile).AbsoluteUri
             let td = JsonObject()
@@ -3356,7 +3356,7 @@ type LspServerTests () =
             let mainFile = Path.Combine(tempRoot, "main.fss")
 
             File.WriteAllText(includeFile, "type ActionContext = { Directory: string }\ntype ProjectInfo = { Id: string option; Outputs: string list; Dependencies: string list }\n")
-            File.WriteAllText(mainFile, "#include \"_protocol.fss\"\n[<export>] let defaults (context: ActionContext) =\n  let id = None\n  { Id = id; Outputs = [\"dist/**\"]; Dependencies = [] }\n")
+            File.WriteAllText(mainFile, "import \"_protocol.fss\"\n[<export>] let defaults (context: ActionContext) =\n  let id = None\n  { Id = id; Outputs = [\"dist/**\"]; Dependencies = [] }\n")
 
             let uri = Uri(mainFile).AbsoluteUri
             let td = JsonObject()
@@ -3419,7 +3419,7 @@ type LspServerTests () =
             let includeFile = Path.Combine(tempRoot, "_protocol.fss")
             let mainFile = Path.Combine(tempRoot, "main.fss")
             File.WriteAllText(includeFile, "type ActionContext = { Name: string }\ntype ProjectInfo = { Ok: bool }\n")
-            File.WriteAllText(mainFile, "#include \"_protocol.fss\"\n[<export>]\nlet defaults (context: ActionContext) =\n    { Ok = true }\n")
+            File.WriteAllText(mainFile, "import \"_protocol.fss\"\n[<export>]\nlet defaults (context: ActionContext) =\n    { Ok = true }\n")
 
             let uri = Uri(mainFile).AbsoluteUri
             let td = JsonObject()
@@ -4129,7 +4129,6 @@ type LspServerTests () =
                 | _ -> ""
 
             Assert.That(okValue, Is.True)
-            Assert.That(sourceText.Contains("module Option", StringComparison.Ordinal), Is.True)
             Assert.That(sourceText.Contains("let map mapper value", StringComparison.Ordinal), Is.True)
         finally
             try shutdown client with _ -> ()
