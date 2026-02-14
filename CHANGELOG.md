@@ -11,6 +11,7 @@ All notable changes to FScript are documented in this file.
 - Added `docs/specs/lsp-inlay-hints.md` and mandated specification maintenance in `AGENTS.md`.
 - LSP now injects runtime extern schemes for document typing, enabling host functions (`Fs.*`, `Regex.*`, etc.) and showing injected signatures in hover/completion/signature help.
 - LSP definition/type-definition navigation now targets included declaration files (URI derived from symbol source span) instead of always the current file.
+- LSP now resolves record field labels inside function return record literals to the function’s declared/inferred return type (including include-provided type definitions).
 - Suppressed misleading top-level `unused` diagnostics for underscore helper/include files (for example `_helpers.fss`).
 
 ## [0.29.0]

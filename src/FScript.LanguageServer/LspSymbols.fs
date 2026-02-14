@@ -1769,6 +1769,47 @@ module LspSymbols =
                                     |> Option.bind (tryResolveTypeNameFromSymbol doc)
         | None -> None
 
+    let private tryResolveRecordLiteralFunctionReturnTypeTarget (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | None -> None
+        | Some lineText ->
+            let pos = max 0 (min character lineText.Length)
+            let leftBrace = lineText.LastIndexOf('{', max 0 (pos - 1))
+            let rightBrace = if pos < lineText.Length then lineText.IndexOf('}', pos) else -1
+            if leftBrace < 0 || rightBrace <= leftBrace then
+                None
+            else
+                let segment = lineText.Substring(leftBrace, rightBrace - leftBrace + 1)
+                if not (segment.Contains('='))
+                   || segment.Contains(':') then
+                    None
+                else
+                    let isInsideSpan (span: Span) =
+                        let line1 = line + 1
+                        let col1 = character + 1
+                        let startsBefore =
+                            line1 > span.Start.Line
+                            || (line1 = span.Start.Line && col1 >= span.Start.Column)
+                        let endsAfter =
+                            line1 < span.End.Line
+                            || (line1 = span.End.Line && col1 <= span.End.Column)
+                        startsBefore && endsAfter
+
+                    let spansContainingPosition =
+                        doc.Symbols
+                        |> List.filter (fun sym ->
+                            sym.Kind = 12
+                            && isInsideSpan sym.Span)
+                        |> List.sortByDescending (fun sym -> sym.Span.Start.Line, sym.Span.Start.Column)
+
+                    spansContainingPosition
+                    |> List.tryPick (fun sym ->
+                        match sym.TypeTargetName with
+                        | Some typeName -> Some typeName
+                        | None ->
+                            doc.FunctionDeclaredReturnTargets
+                            |> Map.tryFind sym.Name)
+
     let private tryExtractInlineRecordAnnotationAtPosition (doc: DocumentState) (line: int) (character: int) =
         match getLineText doc.Text line with
         | None -> None
@@ -1808,7 +1849,10 @@ module LspSymbols =
             | None ->
                 match tryResolveRecordLiteralCallArgTypeTarget doc line character with
                 | Some t -> Some t
-                | None -> tryResolveRecordLiteralBindingTypeTarget doc line character
+                | None ->
+                    match tryResolveRecordLiteralBindingTypeTarget doc line character with
+                    | Some t -> Some t
+                    | None -> tryResolveRecordLiteralFunctionReturnTypeTarget doc line character
 
     let tryGetRecordFieldHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         match tryGetWordAtPosition doc.Text line character with

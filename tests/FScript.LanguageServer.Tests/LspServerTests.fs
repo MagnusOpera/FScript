@@ -3223,6 +3223,70 @@ type LspServerTests () =
             LspClient.stop client
 
     [<Test>]
+    member _.``Definition resolves function return record field label to declared type in include file`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-lsp-type-definition-return-field-{Guid.NewGuid():N}")
+            Directory.CreateDirectory(tempRoot) |> ignore
+            let includeFile = Path.Combine(tempRoot, "_protocol.fss")
+            let mainFile = Path.Combine(tempRoot, "main.fss")
+
+            File.WriteAllText(includeFile, "type ActionContext = { Directory: string }\ntype ProjectInfo = { Id: string option; Outputs: string list; Dependencies: string list }\n")
+            File.WriteAllText(mainFile, "#include \"_protocol.fss\"\n[<export>] let defaults (context: ActionContext) =\n  let id = None\n  { Id = id; Outputs = [\"dist/**\"]; Dependencies = [] }\n")
+
+            let uri = Uri(mainFile).AbsoluteUri
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(File.ReadAllText(mainFile))
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let defParams = JsonObject()
+            let textDocument = JsonObject()
+            textDocument["uri"] <- JsonValue.Create(uri)
+            let position = JsonObject()
+            position["line"] <- JsonValue.Create(3)
+            position["character"] <- JsonValue.Create(4)
+            defParams["textDocument"] <- textDocument
+            defParams["position"] <- position
+
+            LspClient.sendRequest client 364 "textDocument/definition" (Some defParams)
+            let defResp =
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = 364 with _ -> false
+                    | _ -> false)
+
+            let expectedUri = Uri(includeFile).AbsoluteUri
+            let resolvedUri =
+                match defResp["result"] with
+                | :? JsonObject as result ->
+                    match result["uri"] with
+                    | :? JsonValue as v ->
+                        try Some (v.GetValue<string>()) with _ -> None
+                    | _ -> None
+                | _ -> None
+
+            resolvedUri |> should equal (Some expectedUri)
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
     member _.``Hover shows typed signature for include-based script functions`` () =
         let client = LspClient.start ()
         try

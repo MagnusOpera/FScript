@@ -23,3 +23,4 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 
 - LSP inlay hints: [`lsp-inlay-hints.md`](./lsp-inlay-hints.md)
 - LSP uses runtime extern schemes for typing/signatures and resolves navigation to included-file declarations.
+- Definition/type-definition from record field labels in function return record literals resolves to the declared return type (including include-provided types).
