@@ -4,10 +4,16 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- _No entries yet._
+
+## [0.32.0]
+
 - Replaced `#include` with `import` and removed script-level `module` declarations.
 - Imported files are now exposed through filename-derived modules (for example `shared.fss` -> `shared.*`).
 - Updated parser/runtime/LSP/docs/tests for the new import/module semantics.
 - Removed `unused` top-level binding diagnostics from LSP.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.31.0...0.32.0
 
 ## [0.31.0]
 
