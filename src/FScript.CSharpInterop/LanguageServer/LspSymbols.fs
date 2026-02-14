@@ -1534,7 +1534,8 @@ module LspSymbols =
             diagnostics.Add(diagnostic 1 "parse" err.Span err.Message)
 
         documents[uri] <-
-            { Text = text
+            { SourcePath = sourceName
+              Text = text
               Symbols = symbols
               RecordParameterFields = recordParamFields
               ParameterTypeTargets = parameterTypeTargets

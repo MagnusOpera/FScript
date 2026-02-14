@@ -57,7 +57,8 @@ module LspModel =
           AnnotationType: string option }
 
     type DocumentState =
-        { Text: string
+        { SourcePath: string
+          Text: string
           Symbols: TopLevelSymbol list
           RecordParameterFields: Map<string, (string * string) list>
           ParameterTypeTargets: Map<string, string>

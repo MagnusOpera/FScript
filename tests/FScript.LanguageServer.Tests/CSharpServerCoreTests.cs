@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using NUnit.Framework;
+using System.IO;
 
 namespace FScript.LanguageServer.Tests;
 
@@ -205,5 +206,84 @@ public sealed class CSharpServerCoreTests
             try { LspTestFixture.Shutdown(client); } catch { }
             LspClient.Stop(client);
         }
+    }
+
+    [Test]
+    public void CSharp_server_inlayHints_do_not_pollute_type_declaration_lines()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var repoRoot = FindRepoRoot();
+            var samplePath = Path.Combine(repoRoot, "samples", "types-showcase.fss");
+            var source = File.ReadAllText(samplePath);
+            var uri = new Uri(samplePath).AbsoluteUri;
+
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var requestParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 0, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 3, ["character"] = 0 }
+                }
+            };
+            LspClient.SendRequest(client, 47, "textDocument/inlayHint", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 47);
+
+            var result = response["result"] as JsonArray ?? new JsonArray();
+            var labels = result
+                .Select(node =>
+                {
+                    var obj = node as JsonObject;
+                    var label = obj?["label"]?.GetValue<string>() ?? string.Empty;
+                    var pos = obj?["position"] as JsonObject;
+                    var line = pos?["line"]?.GetValue<int>() ?? -1;
+                    var character = pos?["character"]?.GetValue<int>() ?? -1;
+                    return $"{label}@{line}:{character}";
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            Assert.That(labels.Any(label => label.Contains("address:", StringComparison.OrdinalIgnoreCase)), Is.False, string.Join(", ", labels));
+            Assert.That(labels.Any(label => label.Contains(": address", StringComparison.OrdinalIgnoreCase)), Is.False, string.Join(", ", labels));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            var candidate = Path.Combine(current.FullName, "FScript.sln");
+            if (File.Exists(candidate))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new Exception("Unable to locate repository root from test base directory");
     }
 }

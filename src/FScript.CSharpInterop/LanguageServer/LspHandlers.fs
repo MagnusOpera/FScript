@@ -331,6 +331,11 @@ module LspHandlers =
                 let doc = documents[uri]
                 let (startLine, startChar, endLine, endChar) =
                     tryGetRange paramsObj |> Option.defaultValue (0, 0, Int32.MaxValue, Int32.MaxValue)
+                let requireExplicitFileMatch = Path.IsPathRooted(doc.SourcePath)
+                let spanInCurrentFile (span: Span) =
+                    match span.Start.File with
+                    | Some file -> String.Equals(file, doc.SourcePath, StringComparison.OrdinalIgnoreCase)
+                    | None -> not requireExplicitFileMatch
 
                 let hints = ResizeArray<JsonNode>()
 
@@ -342,7 +347,8 @@ module LspHandlers =
                         | Some typeText ->
                             let hintLine = max 0 (sym.Span.End.Line - 1)
                             let hintChar = max 0 (sym.Span.End.Column - 1)
-                            if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                            if spanInCurrentFile sym.Span
+                               && positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
                                 let hint = JsonObject()
                                 let pos = JsonObject()
                                 pos["line"] <- JsonValue.Create(hintLine)
@@ -359,7 +365,8 @@ module LspHandlers =
                 |> List.iter (fun (span, label) ->
                     let hintLine = max 0 (span.End.Line - 1)
                     let hintChar = max 0 (span.End.Column - 1)
-                    if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                    if spanInCurrentFile span
+                       && positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
                         let hint = JsonObject()
                         let pos = JsonObject()
                         pos["line"] <- JsonValue.Create(hintLine)
@@ -375,7 +382,8 @@ module LspHandlers =
                 |> List.iter (fun (span, label) ->
                     let hintLine = max 0 (span.End.Line - 1)
                     let hintChar = max 0 (span.End.Column - 1)
-                    if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                    if spanInCurrentFile span
+                       && positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
                         let hint = JsonObject()
                         let pos = JsonObject()
                         pos["line"] <- JsonValue.Create(hintLine)
@@ -391,7 +399,8 @@ module LspHandlers =
                 |> List.iter (fun (span, label) ->
                     let hintLine = max 0 (span.End.Line - 1)
                     let hintChar = max 0 (span.End.Column - 1)
-                    if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                    if spanInCurrentFile span
+                       && positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
                         let hint = JsonObject()
                         let pos = JsonObject()
                         pos["line"] <- JsonValue.Create(hintLine)
@@ -406,7 +415,8 @@ module LspHandlers =
                 |> List.iter (fun (span, label) ->
                     let hintLine = max 0 (span.Start.Line - 1)
                     let hintChar = max 0 (span.Start.Column - 1)
-                    if positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
+                    if spanInCurrentFile span
+                       && positionInRange hintLine hintChar (startLine, startChar, endLine, endChar) then
                         let hint = JsonObject()
                         let pos = JsonObject()
                         pos["line"] <- JsonValue.Create(hintLine)
