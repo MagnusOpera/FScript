@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="InteropServices.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
+    <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
+  </ItemGroup>
+
+</Project>

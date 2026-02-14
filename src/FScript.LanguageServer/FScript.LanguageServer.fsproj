@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
+    <ProjectReference Include="..\FScript.CSharpInterop\FScript.CSharpInterop.fsproj" />
   </ItemGroup>
 
 </Project>

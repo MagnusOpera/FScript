@@ -4,6 +4,7 @@ open System
 open System.IO
 open System.Text.Json.Nodes
 open FScript.Language
+open FScript.CSharpInterop
 
 module LspHandlers =
     open LspModel
@@ -497,12 +498,7 @@ module LspHandlers =
                     | None ->
                         sendCommandError idNode "internal" $"Unable to read source file '{sourcePath}'."
                     | Some sourceText ->
-                        let rootDirectory =
-                            match Path.GetDirectoryName(sourcePath) with
-                            | null
-                            | "" -> "."
-                            | dir -> dir
-                        let program = IncludeResolver.parseProgramFromSourceWithIncludes rootDirectory sourcePath sourceText
+                        let program = InteropServices.parseProgramFromSourceWithIncludes sourcePath sourceText
                         let response = JsonObject()
                         response["ok"] <- JsonValue.Create(true)
                         response["data"] <- AstJson.programToJson sourcePath program
@@ -528,14 +524,9 @@ module LspHandlers =
                     | None ->
                         sendCommandError idNode "internal" $"Unable to read source file '{sourcePath}'."
                     | Some sourceText ->
-                        let rootDirectory =
-                            match Path.GetDirectoryName(sourcePath) with
-                            | null
-                            | "" -> "."
-                            | dir -> dir
-                        let program = IncludeResolver.parseProgramFromSourceWithIncludes rootDirectory sourcePath sourceText
+                        let program = InteropServices.parseProgramFromSourceWithIncludes sourcePath sourceText
                         let runtimeExterns = LspRuntimeExterns.forSourcePath sourcePath
-                        let typedProgram = TypeInfer.inferProgramWithExterns runtimeExterns program
+                        let typedProgram = InteropServices.inferProgramWithExterns runtimeExterns program
                         let response = JsonObject()
                         response["ok"] <- JsonValue.Create(true)
                         response["data"] <- AstJson.typedProgramToJson sourcePath typedProgram
@@ -1103,40 +1094,12 @@ module LspHandlers =
         | _ ->
             LspProtocol.sendResponse idNode None
 
-    let private tryLoadStdlibSourceText (uri: string) =
-        try
-            let parsed = Uri(uri)
-            if not (String.Equals(parsed.Scheme, "fscript-stdlib", StringComparison.OrdinalIgnoreCase)) then
-                None
-            else
-                let fileName = parsed.AbsolutePath.TrimStart('/')
-                let resourceName =
-                    match fileName with
-                    | "Option.fss" -> Some "FScript.Language.Stdlib.Option.fss"
-                    | "List.fss" -> Some "FScript.Language.Stdlib.List.fss"
-                    | "Map.fss" -> Some "FScript.Language.Stdlib.Map.fss"
-                    | _ -> None
-
-                match resourceName with
-                | None -> None
-                | Some name ->
-                    let assembly = typeof<Span>.Assembly
-                    match assembly.GetManifestResourceStream(name) with
-                    | null ->
-                        None
-                    | stream ->
-                        use stream = stream
-                        use reader = new StreamReader(stream)
-                        Some (reader.ReadToEnd())
-        with _ ->
-            None
-
     let handleStdlibSource (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetString paramsObj "uri" with
         | None ->
             sendCommandError idNode "internal" "Missing stdlib URI."
         | Some uri ->
-            match tryLoadStdlibSourceText uri with
+            match InteropServices.tryLoadStdlibSourceText uri with
             | Some sourceText ->
                 let response = JsonObject()
                 response["ok"] <- JsonValue.Create(true)

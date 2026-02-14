@@ -5,6 +5,8 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - Enabled F# preview parallel compilation globally, disabled deterministic builds, and removed global RuntimeIdentifiers to reduce CI build latency.
+- Added `FScript.CSharpInterop` as a stable bridge for parse/infer/runtime-extern/stdlib-source services and wired LanguageServer through it.
+- Added `FScript.LanguageServer.CSharp` host executable as the migration entrypoint for C#-owned LSP startup.
 
 ## [0.33.0]
 

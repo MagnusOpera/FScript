@@ -5,6 +5,7 @@ open System.Collections.Generic
 open System.IO
 open System.Text.Json.Nodes
 open FScript.Language
+open FScript.CSharpInterop
 
 module LspSymbols =
     open LspModel
@@ -69,7 +70,7 @@ module LspSymbols =
 
     let private stdlibFunctionSignatures : Lazy<Map<string, string>> =
         lazy
-            let typedStdlib = TypeInfer.inferProgramWithExternsRaw [] (Stdlib.loadProgram())
+            let typedStdlib = InteropServices.inferStdlibWithExternsRaw []
             typedStdlib
             |> List.collect (function
                 | TypeInfer.TSLet(name, _, t, _, _, _) ->
@@ -94,7 +95,7 @@ module LspSymbols =
 
     let private stdlibFunctionParameterNames : Lazy<Map<string, string list>> =
         lazy
-            Stdlib.loadProgram()
+            InteropServices.stdlibProgram()
             |> List.collect (function
                 | SLet(name, args, _, _, _, _) ->
                     [ name, (args |> List.map (fun p -> p.Name)) ]
@@ -106,7 +107,7 @@ module LspSymbols =
 
     let private stdlibFunctionDefinitions : Lazy<Map<string, (string * Span)>> =
         lazy
-            Stdlib.loadProgram()
+            InteropServices.stdlibProgram()
             |> List.collect (function
                 | SLet(name, _, _, _, _, span) ->
                     match tryStdlibVirtualUriFromSource span.Start.File with
@@ -355,7 +356,7 @@ module LspSymbols =
 
         let tryInferWithCurrent (candidate: Program) =
             try
-                let typed, _ = TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs candidate
+                let typed, _ = InteropServices.inferProgramWithExternsAndLocalVariableTypes externs candidate
                 Some typed
             with
             | _ -> None
@@ -408,7 +409,7 @@ module LspSymbols =
 
         let tryInferWithCurrent (candidate: Program) =
             try
-                let _, localTypes = TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs candidate
+                let _, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes externs candidate
                 Some localTypes
             with
             | _ -> None
@@ -1441,12 +1442,7 @@ module LspSymbols =
         try
             let program =
                 if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
-                    let directory =
-                        match System.IO.Path.GetDirectoryName(sourceName) with
-                        | null
-                        | "" -> "."
-                        | dir -> dir
-                    IncludeResolver.parseProgramFromSourceWithIncludes directory sourceName text
+                    InteropServices.parseProgramFromSourceWithIncludes sourceName text
                 else
                     FScript.parseWithSourceName (Some sourceName) text
             parsedProgram <- Some program
@@ -1463,7 +1459,7 @@ module LspSymbols =
             callArgumentHints <- buildCallArgumentHints program functionParameters
             localBindings <- buildLocalBindings program
             try
-                let typed, localTypes = TypeInfer.inferProgramWithExternsAndLocalVariableTypes runtimeExterns program
+                let typed, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes runtimeExterns program
                 symbols <- buildSymbolsFromProgram program (Some typed)
                 parameterTypeHints <- buildParameterTypeHints program (Some typed)
                 functionReturnTypeHints <- buildFunctionReturnTypeHints program (Some typed)
