@@ -42,6 +42,23 @@ Targeted test suites (when working on specific areas):
   - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
 - When publishing the GitHub release, include that same compare link in the release notes body.
 
+## Release Process (Tags and GitHub Draft)
+
+Follow this exact sequence for every release:
+
+1. Move `## [Unreleased]` entries to `## [X.Y.Z]` in `CHANGELOG.md`.
+2. Add/verify compare link in that version section.
+3. Commit the changelog update to `main`.
+4. Create and push tag `X.Y.Z`.
+5. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
+6. Only after the draft exists, update draft notes from `CHANGELOG.md` if needed.
+7. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
+
+Rules:
+- Tag-triggered CI is the source of truth for release artifacts and draft release creation.
+- Do not bypass the draft step.
+- Release notes must match the `CHANGELOG.md` version section and keep the compare link.
+
 ## Specification Maintenance (Mandatory)
 
 - Any behavioral change in language, runtime, hosting, sandbox, or LSP must update the corresponding spec in `docs/specs/`.
