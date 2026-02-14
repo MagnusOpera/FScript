@@ -11,6 +11,7 @@ All notable changes to FScript are documented in this file.
 - Extended the native C# LSP core with diagnostics publishing and `viewAst`/`viewInferredAst` command handling.
 - Switched C# LSP host to full-method dispatch parity via shared handlers, made it the default test target, and updated extension/tag packaging to use `FScript.LanguageServer.dll`.
 - Replaced the F# LSP server executable with `FScript.LanguageServer` (C#) and moved F# LSP logic into `FScript.LanguageServer.Core`.
+- Fixed imported qualified type annotations (for example `common.ProjectInfo`) in parser/type inference to prevent false type mismatches.
 
 ## [0.33.0]
 

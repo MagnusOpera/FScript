@@ -325,6 +325,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected annotated let parameter with structural inline record type")
 
     [<Test>]
+    member _.``Parses annotated parameter with qualified type name`` () =
+        let p = Helpers.parse "let summary (project: common.ProjectInfo) = project.Name"
+        match p.[0] with
+        | SLet ("summary", [ { Name = "project"; Annotation = Some (TRName "common.ProjectInfo") } ], _, _, _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let parameter with qualified type name")
+
+    [<Test>]
     member _.``Parses structural record literal expression`` () =
         let p = Helpers.parse "let officeAddress = {| City = \"London\"; Zip = 12345 |}"
         match p.[0] with

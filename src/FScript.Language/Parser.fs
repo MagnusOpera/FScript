@@ -183,12 +183,29 @@ module Parser =
         let mutable allowIndentedApplication = true
         let mutable allowBinaryNewlineSkipping = true
 
+        let parseQualifiedTypeName () : string =
+            let first = stream.ExpectIdent("Expected type name")
+            let firstName =
+                match first.Kind with
+                | Ident n -> n
+                | _ -> ""
+            let parts = ResizeArray<string>()
+            parts.Add(firstName)
+            let mutable keepGoing = true
+            while keepGoing && stream.Match(Dot) do
+                let next = stream.ExpectIdent("Expected identifier after '.' in qualified type name")
+                match next.Kind with
+                | Ident n -> parts.Add(n)
+                | _ -> ()
+                keepGoing <- true
+            String.concat "." parts
+
         let rec parseTypeRefAtom () : TypeRef =
             stream.SkipNewlines()
             match stream.Peek().Kind with
-            | Ident name ->
-                stream.Next() |> ignore
-                TRName name
+            | Ident _ ->
+                let qualified = parseQualifiedTypeName()
+                TRName qualified
             | LBrace ->
                 stream.Next() |> ignore
                 let isStructural = stream.Match(Bar)
