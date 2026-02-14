@@ -7,6 +7,7 @@ All notable changes to FScript are documented in this file.
 - Updated runtime/test project package versions after NuGet publish verification.
 - Enforced strict changelog gates in CI (PR + main) and added `make verify-changelog` local preflight.
 - Optimized `FScript.LanguageServer.Tests` startup by building the language server once per run instead of once per test.
+- Reused a single LSP server process across `FScript.LanguageServer.Tests` and added per-test document cleanup for isolation, reducing suite runtime substantially.
 
 ## [0.32.0]
 
