@@ -8,6 +8,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FScript.CSharpInterop\FScript.CSharpInterop.fsproj" />
-    <ProjectReference Include="..\FScript.LanguageServer.Core\FScript.LanguageServer.Core.fsproj" />
   </ItemGroup>
 </Project>

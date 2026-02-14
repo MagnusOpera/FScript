@@ -69,17 +69,6 @@ Use this when:
 - You integrate FScript from C# and want to avoid direct F# compiler/runtime internals.
 - You build tooling services (for example LSP hosts) with a stable boundary.
 
-### `FScript.LanguageServer.Core`
-Role:
-- F# LSP analysis/core module library.
-
-Responsibilities:
-- Keep LSP document state, analysis, symbol, and protocol helper modules.
-- Provide reusable LSP method handlers consumed by the C# host.
-
-Use this when:
-- You need the existing F# LSP analysis/handler implementation without running an F# server executable.
-
 ### `FScript.LanguageServer`
 Role:
 - C# host executable for the Language Server process.
@@ -110,7 +99,7 @@ Use this when:
 - `FScript.Language` has no dependency on `FScript.Runtime`.
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
-- `FScript.LanguageServer` depends on `FScript.LanguageServer.Core`.
+- `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable.
