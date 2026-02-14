@@ -5,8 +5,13 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - _No entries yet._
+
+## [0.31.0]
+
 - Enforced warning-as-error globally via `Directory.Build.props` (`TreatWarningsAsErrors=true`).
 - Fixed LSP compiler warnings (exhaustive `SInclude` matches and null-safe stdlib resource stream handling).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.30.0...0.31.0
 
 ## [0.30.0]
 
