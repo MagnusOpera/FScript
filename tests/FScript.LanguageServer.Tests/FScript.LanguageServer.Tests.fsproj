@@ -18,6 +18,7 @@
     <Compile Include="LspSymbolsAndActionsTests.fs" />
     <Compile Include="LspCustomRequestsTests.fs" />
     <Compile Include="InteropServicesTests.fs" />
+    <Compile Include="CSharpServerCoreTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

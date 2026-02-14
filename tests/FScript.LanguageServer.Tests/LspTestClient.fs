@@ -55,6 +55,32 @@ module internal LspClient =
 
             serverDll)
 
+    let private ensureCSharpServerDllBuilt =
+        lazy (
+            let root = findRepoRoot ()
+            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer.CSharp", "FScript.LanguageServer.CSharp.csproj")
+            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer.CSharp", "bin", "Release", "net10.0", "FScript.LanguageServer.CSharp.dll")
+
+            let buildPsi =
+                ProcessStartInfo(
+                    FileName = "dotnet",
+                    Arguments = $"build \"{serverProject}\" -c Release -nologo -v q",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true)
+
+            use buildProc = new Process(StartInfo = buildPsi)
+            if not (buildProc.Start()) then
+                failwith "Unable to start dotnet build for C# language server test setup."
+            buildProc.WaitForExit()
+            if buildProc.ExitCode <> 0 || not (File.Exists(serverDll)) then
+                let out = buildProc.StandardOutput.ReadToEnd()
+                let err = buildProc.StandardError.ReadToEnd()
+                failwith $"Failed to build C# language server test target. stdout: {out}\nstderr: {err}"
+
+            serverDll)
+
     let start () =
         let serverDll = ensureServerDllBuilt.Value
 
@@ -71,6 +97,27 @@ module internal LspClient =
         let proc = new Process(StartInfo = psi)
         let started = proc.Start()
         if not started then failwith "Unable to start FScript language server process"
+
+        { Process = proc
+          Input = proc.StandardInput.BaseStream
+          Output = proc.StandardOutput.BaseStream }
+
+    let startCSharp () =
+        let serverDll = ensureCSharpServerDllBuilt.Value
+
+        let psi =
+            ProcessStartInfo(
+                FileName = "dotnet",
+                Arguments = $"\"{serverDll}\"",
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true)
+
+        let proc = new Process(StartInfo = psi)
+        let started = proc.Start()
+        if not started then failwith "Unable to start FScript C# language server process"
 
         { Process = proc
           Input = proc.StandardInput.BaseStream

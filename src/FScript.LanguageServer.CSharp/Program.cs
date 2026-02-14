@@ -1,3 +1,4 @@
-using FScript.LanguageServer;
+using FScript.LanguageServer.CSharp;
 
-LspServer.run();
+var server = new LspServer();
+server.Run();
