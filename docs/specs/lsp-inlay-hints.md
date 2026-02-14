@@ -48,10 +48,8 @@ match firstEven with
 Formatting follows LSP-friendly type rendering rules:
 - unknown inferred variable: `unknown`
 - map value type when key domain is unresolved: `unknown map`
-- map key-domain variable constrained by language map rules: `int|string`
 
 Examples:
-- `: int|string`
 - `: unknown map`
 
 ## Configuration

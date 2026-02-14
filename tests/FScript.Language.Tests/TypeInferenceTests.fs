@@ -321,6 +321,37 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers local variable types for map pattern bindings`` () =
+        let src =
+            "let scores = { [\"a\"] = 1; [\"b\"] = 2 }\n" +
+            "let mapPreview =\n" +
+            "    match scores with\n" +
+            "    | {} ->\n" +
+            "        \"empty\"\n" +
+            "    | { [subject] = score; ..remaining } ->\n" +
+            "        $\"{subject}:{score}:{Map.count remaining}\""
+
+        let program = Helpers.parse src
+        let _, locals = TypeInfer.inferProgramWithLocalVariableTypes program
+
+        let typesFor name =
+            locals
+            |> List.filter (fun entry -> entry.Name = name && entry.Span.Start.File.IsNone)
+            |> List.map (fun entry -> entry.Type)
+
+        let subjectTypes = typesFor "subject"
+        let scoreTypes = typesFor "score"
+        let remainingTypes = typesFor "remaining"
+
+        subjectTypes |> should not' (be Empty)
+        scoreTypes |> should not' (be Empty)
+        remainingTypes |> should not' (be Empty)
+
+        subjectTypes |> List.iter (fun t -> t |> should equal TString)
+        scoreTypes |> List.iter (fun t -> t |> should equal TInt)
+        remainingTypes |> List.iter (fun t -> t |> should equal (TMap (TString, TInt)))
+
+    [<Test>]
     member _.``Infers match on map literal-key pattern without tail`` () =
         let typed =
             Helpers.infer
@@ -536,11 +567,9 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Infers map literal type with int keys`` () =
-        let typed = Helpers.infer "{ [1] = 2; [3] = 4 }"
-        match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TInt, TInt))
-        | _ -> Assert.Fail("Expected expression")
+    member _.``Reports type error for int map literal keys`` () =
+        let act () = Helpers.infer "{ [1] = 2; [3] = 4 }" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Reports type error for unsupported map key type`` () =
@@ -562,10 +591,10 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Infers empty map through int-keyed usage`` () =
-        let typed = Helpers.infer "let empty = {}\nlet f x m = Map.add 1 x m\nf 42 empty"
+    member _.``Infers empty map through string-keyed usage`` () =
+        let typed = Helpers.infer "let empty = {}\nlet f x m = Map.add \"a\" x m\nf 42 empty"
         match typed |> List.last with
-        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TInt, TInt))
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap (TString, TInt))
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]

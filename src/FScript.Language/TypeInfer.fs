@@ -8,7 +8,10 @@ module TypeInfer =
 
     let rec private applyType (s: Subst) (t: Type) : Type =
         match t with
-        | TVar v -> s |> Map.tryFind v |> Option.defaultValue t
+        | TVar v ->
+            match s |> Map.tryFind v with
+            | Some mapped -> applyType s mapped
+            | None -> t
         | TList t1 -> TList (applyType s t1)
         | TTuple ts -> TTuple (ts |> List.map (applyType s))
         | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> applyType s t1))
@@ -208,6 +211,11 @@ module TypeInfer =
                 let entry = t.LocalVariableTypes[i]
                 entry.Type <- applyType subst entry.Type
 
+    let private currentTelemetryCaptureCount () =
+        match telemetry with
+        | Some t -> t.LocalVariableTypes.Count
+        | None -> 0
+
     type private ConstructorSig =
         { UnionName: string
           Payload: Type option }
@@ -385,9 +393,11 @@ module TypeInfer =
             let tv = Types.freshVar()
             Map.empty, TList tv
         | PCons (p1, p2, span) ->
+            let startIndex = currentTelemetryCaptureCount ()
             let env1, t1 = inferPattern typeDefs constructors p1
             let env2, t2 = inferPattern typeDefs constructors p2
             let s = unify Map.empty t2 (TList t1) span
+            applySubstToCapturedLocals startIndex s
             let env = Map.fold (fun acc k v -> Map.add k v acc) env1 env2
             env |> Map.map (fun _ ty -> applyType s ty), applyType s (TList t1)
         | PTuple (ps, _) ->
@@ -407,13 +417,13 @@ module TypeInfer =
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
             env, TRecord fieldTypes
         | PMap (clauses, tailPattern, span) ->
+            let startIndex = currentTelemetryCaptureCount ()
             let ensureSupportedMapKeyType (t: Type) =
                 match t with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
 
             let mapKeyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -448,6 +458,7 @@ module TypeInfer =
             | None -> ()
 
             ensureSupportedMapKeyType (applyType sAcc mapKeyType)
+            applySubstToCapturedLocals startIndex sAcc
             envAcc |> Map.map (fun _ t -> applyType sAcc t), TMap (applyType sAcc mapKeyType, applyType sAcc valueType)
         | PSome (p, _) ->
             let env, t = inferPattern typeDefs constructors p
@@ -468,8 +479,10 @@ module TypeInfer =
                 match sigInfo.Payload, payload with
                 | None, None -> Map.empty, unionType
                 | Some expectedPayload, Some payloadPattern ->
+                    let startIndex = currentTelemetryCaptureCount ()
                     let envP, tP = inferPattern typeDefs constructors payloadPattern
                     let s = unify typeDefs tP expectedPayload span
+                    applySubstToCapturedLocals startIndex s
                     envP |> Map.map (fun _ t -> applyType s t), unionType
                 | None, Some _ ->
                     raise (TypeException { Message = sprintf "Union case '%s' does not take a payload" constructorName; Span = span })
@@ -492,10 +505,9 @@ module TypeInfer =
                 loop valueType
                 match keyType with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString keyType}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString keyType}"; Span = span })
             | TList inner -> loop inner
             | TTuple items -> items |> List.iter loop
             | TRecord fields -> fields |> Map.values |> Seq.iter loop
@@ -788,10 +800,9 @@ module TypeInfer =
             let ensureSupportedMapKeyType (t: Type) =
                 match t with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
 
             let keyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -917,10 +928,9 @@ module TypeInfer =
             let s = compose s4 (compose s3 (compose s2 s1))
             match applyType s keyType with
             | TString
-            | TInt
             | TVar _ -> ()
             | t ->
-                raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
             let tRes = TOption (applyType s valueType)
             s, tRes, asTyped expr tRes
         | EBinOp (op, a, b, span) ->

@@ -30,7 +30,7 @@ FScript currently includes:
 - optional type annotations on parameters,
 - type declarations: records and unions (including recursive forms),
 - interpolation, pipeline operator, `typeof` type tokens, and `nameof` identifier tokens for host workflows.
-- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string` or `int`.
+- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string`.
 
 ## Getting Started Tutorial
 

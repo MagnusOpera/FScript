@@ -5,9 +5,9 @@ let values =
       ["gamma"] = 30 }
 
 let indexed =
-    { [1] = "one"
-      [2] = "two"
-      [3] = "three" }
+    { ["1"] = "one"
+      ["2"] = "two"
+      ["3"] = "three" }
 
 match values with
 | { ["alpha"] = v1; ..tail } ->
@@ -25,6 +25,6 @@ match values with
 | _ -> print "no dynamic match"
 
 match indexed with
-| { [1] = first; [2] = second; ..tail } ->
-    print $"int-key match: first={first}, second={second}, tail={tail}"
-| _ -> print "no int-key match"
+| { ["1"] = first; ["2"] = second; ..tail } ->
+    print $"string-key match: first={first}, second={second}, tail={tail}"
+| _ -> print "no string-key match"

@@ -10,26 +10,7 @@ open FScript.CSharpInterop
 module LspSymbols =
     open LspModel
 
-    let private collectMapKeyDomainVars (t: Type) =
-        let rec collect acc ty =
-            match ty with
-            | TMap (TVar v, valueType) ->
-                collect (Set.add v acc) valueType
-            | TMap (keyType, valueType) ->
-                collect (collect acc keyType) valueType
-            | TList inner
-            | TOption inner -> collect acc inner
-            | TTuple items ->
-                items |> List.fold collect acc
-            | TRecord fields ->
-                fields |> Map.values |> Seq.fold collect acc
-            | TFun (a, b) ->
-                collect (collect acc a) b
-            | _ -> acc
-
-        collect Set.empty t
-
-    let private lspTypeToStringWithKeyDomainVars (keyDomainVars: Set<int>) (t: Type) =
+    let private lspTypeToString (t: Type) =
         let rec go t =
             match t with
             | TUnit -> "unit"
@@ -52,17 +33,12 @@ module LspSymbols =
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
-            | TVar v when Set.contains v keyDomainVars -> "int|string"
             | TVar _ -> "unknown"
         and postfixArg t =
             match t with
             | TFun _ | TTuple _ | TRecord _ -> sprintf "(%s)" (go t)
             | _ -> go t
         go t
-
-    let private lspTypeToString (t: Type) =
-        let keyDomainVars = collectMapKeyDomainVars t
-        lspTypeToStringWithKeyDomainVars keyDomainVars t
 
     let private schemeTypeToString (scheme: Scheme) =
         match scheme with
@@ -1061,14 +1037,13 @@ module LspSymbols =
             match typedByName.TryGetValue(name) with
             | true, t when not parameters.IsEmpty ->
                 let argTypes = takeParamTypes t parameters.Length
-                let keyDomainVars = collectMapKeyDomainVars t
                 (parameters, argTypes)
                 ||> List.zip
                 |> List.choose (fun (param, argType) ->
                     if param.Annotation.IsSome then
                         None
                     else
-                        Some (param.Span, $": {lspTypeToStringWithKeyDomainVars keyDomainVars argType}"))
+                        Some (param.Span, $": {lspTypeToString argType}"))
             | _ ->
                 []
 
@@ -1275,12 +1250,15 @@ module LspSymbols =
     let private buildPatternTypeHints (program: Program) (localTypes: TypeInfer.LocalVariableTypeInfo list) =
         let localByNameAndSpan =
             localTypes
-            |> List.map (fun entry -> (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column), entry.Type)
+            |> List.map (fun entry ->
+                let file = entry.Span.Start.File |> Option.defaultValue ""
+                (entry.Name, file, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column), entry.Type)
             |> Map.ofList
 
         collectPatternVariableSpans program
         |> List.choose (fun (name, span) ->
-            let key = (name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column)
+            let file = span.Start.File |> Option.defaultValue ""
+            let key = (name, file, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column)
             localByNameAndSpan
             |> Map.tryFind key
             |> Option.map (fun t -> span, $": {lspTypeToString t}"))
@@ -1534,7 +1512,8 @@ module LspSymbols =
             diagnostics.Add(diagnostic 1 "parse" err.Span err.Message)
 
         documents[uri] <-
-            { Text = text
+            { SourcePath = sourceName
+              Text = text
               Symbols = symbols
               RecordParameterFields = recordParamFields
               ParameterTypeTargets = parameterTypeTargets
