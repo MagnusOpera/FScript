@@ -77,6 +77,8 @@ module LspServer =
                                 LspHandlers.handleViewAst idNode paramsObj
                             | Some "fscript/viewInferredAst", Some idNode, Some paramsObj ->
                                 LspHandlers.handleViewInferredAst idNode paramsObj
+                            | Some "fscript/stdlibSource", Some idNode, Some paramsObj ->
+                                LspHandlers.handleStdlibSource idNode paramsObj
                             | Some _, Some idNode, _ ->
                                 LspProtocol.sendError idNode -32601 "Method not found"
                             | _ -> ()

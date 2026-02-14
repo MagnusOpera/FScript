@@ -255,16 +255,18 @@ module LspHandlers =
                 parts
         flatten typeText
 
+    let private formatNamedArrowSignature (names: string list) (typeText: string) =
+        let parts = flattenArrowParts typeText
+        if parts.Length = (names.Length + 1) then
+            let args =
+                [ 0 .. names.Length - 1 ]
+                |> List.map (fun i -> $"({names[i]}: {parts[i]})")
+            String.concat " -> " (args @ [ parts[parts.Length - 1] ])
+        else
+            typeText
+
     let private formatFunctionSignature (doc: DocumentState) (sym: TopLevelSymbol) =
         let paramNames = doc.FunctionParameters |> Map.tryFind sym.Name |> Option.defaultValue []
-        let formatNamedArrows (names: string list) (parts: string list) =
-            if parts.Length = (names.Length + 1) then
-                let args =
-                    [ 0 .. names.Length - 1 ]
-                    |> List.map (fun i -> $"({names[i]}: {parts[i]})")
-                String.concat " -> " (args @ [ parts[parts.Length - 1] ])
-            else
-                String.concat " -> " parts
 
         match sym.TypeText with
         | Some typeText when sym.Kind = 12 && not paramNames.IsEmpty ->
@@ -275,7 +277,14 @@ module LspHandlers =
                     | Some returnName when parts.Length > 0 ->
                         (parts |> List.take (parts.Length - 1)) @ [ returnName ]
                     | _ -> parts
-                let arrowText = formatNamedArrows paramNames effectiveParts
+                let arrowText =
+                    if effectiveParts.Length = (paramNames.Length + 1) then
+                        let args =
+                            [ 0 .. paramNames.Length - 1 ]
+                            |> List.map (fun i -> $"({paramNames[i]}: {effectiveParts[i]})")
+                        String.concat " -> " (args @ [ effectiveParts[effectiveParts.Length - 1] ])
+                    else
+                        String.concat " -> " effectiveParts
                 $"{sym.Name}: {arrowText}"
             else
                 $"{sym.Name} : {typeText}"
@@ -289,13 +298,28 @@ module LspHandlers =
                     |> Map.tryFind sym.Name
                     |> Option.defaultValue "unknown"
                 let parts = annotated @ [ returnType ]
-                let arrowText = formatNamedArrows paramNames parts
+                let arrowText =
+                    if parts.Length = (paramNames.Length + 1) then
+                        let args =
+                            [ 0 .. paramNames.Length - 1 ]
+                            |> List.map (fun i -> $"({paramNames[i]}: {parts[i]})")
+                        String.concat " -> " (args @ [ parts[parts.Length - 1] ])
+                    else
+                        String.concat " -> " parts
                 $"{sym.Name}: {arrowText}"
             | _ ->
                 let args = paramNames |> List.map (fun name -> $"({name})") |> String.concat " "
                 $"{sym.Name} {args}"
         | None ->
             sym.Name
+
+    let private formatInjectedFunctionSignature (doc: DocumentState) (name: string) (typeText: string) =
+        match doc.InjectedFunctionParameterNames |> Map.tryFind name with
+        | Some parameterNames when not parameterNames.IsEmpty ->
+            let namedSignature = formatNamedArrowSignature parameterNames typeText
+            $"{name}: {namedSignature}"
+        | _ ->
+            $"{name} : {typeText}"
 
     let handleInlayHints (idNode: JsonNode) (paramsObj: JsonObject) =
         if not inlayHintsEnabled then
@@ -578,7 +602,8 @@ module LspHandlers =
                             | Some (name, typeText) ->
                                 let contents = JsonObject()
                                 contents["kind"] <- JsonValue.Create("markdown")
-                                contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\ninjected-function")
+                                let signature = formatInjectedFunctionSignature doc name typeText
+                                contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\ninjected-function")
                                 let result = JsonObject()
                                 result["contents"] <- contents
                                 LspProtocol.sendResponse idNode (Some result)
@@ -677,21 +702,45 @@ module LspHandlers =
                     loc["range"] <- toLspRange sym.Span
                     LspProtocol.sendResponse idNode (Some loc)
                 | None ->
-                    match tryResolveTypeTargetAtPosition doc line character with
-                    | Some typeName ->
-                        match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
-                        | Some typeSym ->
-                            let loc = JsonObject()
-                            let targetUri =
-                                tryUriFromSpanFile uri typeSym.Span
-                                |> Option.defaultValue uri
-                            loc["uri"] <- JsonValue.Create(targetUri)
-                            loc["range"] <- toLspRange typeSym.Span
-                            LspProtocol.sendResponse idNode (Some loc)
+                    let injectedDefinition =
+                        match wordAtCursor with
+                        | Some word ->
+                            let candidates =
+                                if word.Contains('.') then
+                                    [ word; word.Split('.') |> Array.last ]
+                                else
+                                    [ word ]
+
+                            candidates
+                            |> List.tryPick (fun candidate ->
+                                doc.InjectedFunctionDefinitions
+                                |> Map.tryFind candidate
+                                |> Option.map (fun target -> candidate, target))
+                        | None ->
+                            None
+
+                    match injectedDefinition with
+                    | Some (_, (targetUri, targetSpan)) ->
+                        let loc = JsonObject()
+                        loc["uri"] <- JsonValue.Create(targetUri)
+                        loc["range"] <- toLspRange targetSpan
+                        LspProtocol.sendResponse idNode (Some loc)
+                    | None ->
+                        match tryResolveTypeTargetAtPosition doc line character with
+                        | Some typeName ->
+                            match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
+                            | Some typeSym ->
+                                let loc = JsonObject()
+                                let targetUri =
+                                    tryUriFromSpanFile uri typeSym.Span
+                                    |> Option.defaultValue uri
+                                loc["uri"] <- JsonValue.Create(targetUri)
+                                loc["range"] <- toLspRange typeSym.Span
+                                LspProtocol.sendResponse idNode (Some loc)
+                            | None ->
+                                LspProtocol.sendResponse idNode None
                         | None ->
                             LspProtocol.sendResponse idNode None
-                    | None ->
-                        LspProtocol.sendResponse idNode None
         | _ -> LspProtocol.sendResponse idNode None
 
     let handleTypeDefinition (idNode: JsonNode) (paramsObj: JsonObject) =
@@ -1027,8 +1076,20 @@ module LspHandlers =
 
                     match injectedSignature with
                     | Some typeText ->
+                        let signature =
+                            let normalizedTarget =
+                                if target.Contains('.') then target.Split('.') |> Array.last
+                                else target
+
+                            if doc.InjectedFunctionSignatures.ContainsKey(target) then
+                                formatInjectedFunctionSignature doc target typeText
+                            elif doc.InjectedFunctionSignatures.ContainsKey(normalizedTarget) then
+                                formatInjectedFunctionSignature doc normalizedTarget typeText
+                            else
+                                $"{target} : {typeText}"
+
                         let sigInfo = JsonObject()
-                        sigInfo["label"] <- JsonValue.Create($"{target} : {typeText}")
+                        sigInfo["label"] <- JsonValue.Create(signature)
 
                         let signatureHelp = JsonObject()
                         signatureHelp["signatures"] <- JsonArray([| sigInfo :> JsonNode |])
@@ -1041,6 +1102,51 @@ module LspHandlers =
                 LspProtocol.sendResponse idNode None
         | _ ->
             LspProtocol.sendResponse idNode None
+
+    let private tryLoadStdlibSourceText (uri: string) =
+        try
+            let parsed = Uri(uri)
+            if not (String.Equals(parsed.Scheme, "fscript-stdlib", StringComparison.OrdinalIgnoreCase)) then
+                None
+            else
+                let fileName = parsed.AbsolutePath.TrimStart('/')
+                let resourceName =
+                    match fileName with
+                    | "Option.fss" -> Some "FScript.Language.Stdlib.Option.fss"
+                    | "List.fss" -> Some "FScript.Language.Stdlib.List.fss"
+                    | "Map.fss" -> Some "FScript.Language.Stdlib.Map.fss"
+                    | _ -> None
+
+                match resourceName with
+                | None -> None
+                | Some name ->
+                    let assembly = typeof<Span>.Assembly
+                    use stream = assembly.GetManifestResourceStream(name)
+                    if isNull stream then
+                        None
+                    else
+                        use reader = new StreamReader(stream)
+                        Some (reader.ReadToEnd())
+        with _ ->
+            None
+
+    let handleStdlibSource (idNode: JsonNode) (paramsObj: JsonObject) =
+        match tryGetString paramsObj "uri" with
+        | None ->
+            sendCommandError idNode "internal" "Missing stdlib URI."
+        | Some uri ->
+            match tryLoadStdlibSourceText uri with
+            | Some sourceText ->
+                let response = JsonObject()
+                response["ok"] <- JsonValue.Create(true)
+                let data = JsonObject()
+                data["uri"] <- JsonValue.Create(uri)
+                data["text"] <- JsonValue.Create(sourceText)
+                data["languageId"] <- JsonValue.Create("fscript")
+                response["data"] <- data
+                LspProtocol.sendResponse idNode (Some response)
+            | None ->
+                sendCommandError idNode "internal" $"Unable to load stdlib source for '{uri}'."
 
     let handleRename (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj, tryGetString paramsObj "newName" with

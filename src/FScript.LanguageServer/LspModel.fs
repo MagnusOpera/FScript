@@ -71,6 +71,8 @@ module LspModel =
           LocalVariableTypeHints: (Span * string * string) list
           LocalBindings: LocalBindingInfo list
           InjectedFunctionSignatures: Map<string, string>
+          InjectedFunctionParameterNames: Map<string, string list>
+          InjectedFunctionDefinitions: Map<string, (string * Span)>
           // Variable occurrences keyed by identifier, sourced from AST spans.
           // This avoids text-based false positives (for example record field labels).
           VariableOccurrences: Map<string, Span list> }

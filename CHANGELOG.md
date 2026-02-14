@@ -13,6 +13,8 @@ All notable changes to FScript are documented in this file.
 - LSP definition/type-definition navigation now targets included declaration files (URI derived from symbol source span) instead of always the current file.
 - LSP now resolves record field labels inside function return record literals to the function’s declared/inferred return type (including include-provided type definitions).
 - Suppressed misleading top-level `unused` diagnostics for underscore helper/include files (for example `_helpers.fss`).
+- LSP hover/signature for injected stdlib functions now shows named arguments (for example `Option.map` mapper/value labels).
+- LSP definition on injected stdlib functions now opens readonly virtual stdlib sources (`fscript-stdlib:///Option.fss`, `List.fss`, `Map.fss`).
 
 ## [0.29.0]
 

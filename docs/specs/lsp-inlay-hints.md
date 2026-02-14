@@ -8,10 +8,10 @@ Covered in this spec:
 - parameter name hints at call sites,
 - inferred type hints for bindings and parameters,
 - inferred type hints for pattern-bound variables,
-- configuration gate for inlay hints.
+- configuration gate for inlay hints,
+- injected function hover/signature formatting and stdlib definition navigation.
 
 Not covered:
-- hover rendering,
 - semantic token classification,
 - diagnostics.
 
@@ -67,6 +67,16 @@ Behavior:
 
 - Hints are inference-driven; if inference is incomplete or blocked by errors, hints may be missing.
 - Labels are concise and intentionally avoid full generic-style displays beyond FScript surface semantics.
+
+## Injected Function Signature and Definition Behavior
+
+- Runtime externs and stdlib prelude functions are injected into LSP typing/signature data.
+- When injected parameter names are known, hover/signature displays named arrows:
+  - `Option.map: (mapper: 't -> 'u) -> (value: 't option) -> 'u option`
+- Go-to-definition on injected stdlib symbols resolves to virtual readonly documents:
+  - `fscript-stdlib:///Option.fss`
+  - `fscript-stdlib:///List.fss`
+  - `fscript-stdlib:///Map.fss`
 
 ## Related specifications
 

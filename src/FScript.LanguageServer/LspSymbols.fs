@@ -85,22 +85,72 @@ module LspSymbols =
                 | _ -> [])
             |> Map.ofList
 
-    let private buildInjectedFunctionSignatures (externs: ExternalFunction list) =
+    let private tryStdlibVirtualUriFromSource (sourceFile: string option) =
+        match sourceFile with
+        | Some file when file.EndsWith("Stdlib.Option.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Option.fss"
+        | Some file when file.EndsWith("Stdlib.List.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///List.fss"
+        | Some file when file.EndsWith("Stdlib.Map.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Map.fss"
+        | _ -> None
+
+    let private stdlibFunctionParameterNames : Lazy<Map<string, string list>> =
+        lazy
+            Stdlib.loadProgram()
+            |> List.collect (function
+                | SLet(name, args, _, _, _, _) ->
+                    [ name, (args |> List.map (fun p -> p.Name)) ]
+                | SLetRecGroup(bindings, _, _) ->
+                    bindings
+                    |> List.map (fun (name, args, _, _) -> name, (args |> List.map (fun p -> p.Name)))
+                | _ -> [])
+            |> Map.ofList
+
+    let private stdlibFunctionDefinitions : Lazy<Map<string, (string * Span)>> =
+        lazy
+            Stdlib.loadProgram()
+            |> List.collect (function
+                | SLet(name, _, _, _, _, span) ->
+                    match tryStdlibVirtualUriFromSource span.Start.File with
+                    | Some uri -> [ name, (uri, span) ]
+                    | None -> []
+                | SLetRecGroup(bindings, _, _) ->
+                    bindings
+                    |> List.collect (fun (name, _, _, span) ->
+                        match tryStdlibVirtualUriFromSource span.Start.File with
+                        | Some uri -> [ name, (uri, span) ]
+                        | None -> [])
+                | _ -> [])
+            |> Map.ofList
+
+    let private buildInjectedFunctionData (externs: ExternalFunction list) =
         let fromExterns =
             externs
             |> List.map (fun ext -> ext.Name, schemeTypeToString ext.Scheme)
             |> Map.ofList
 
-        let builtins =
+        let builtinSignatures =
             [ "ignore", "'a -> unit"
               "print", "string -> unit"
               "nameof", "string -> string"
               "typeof", "string -> type" ]
             |> Map.ofList
 
-        stdlibFunctionSignatures.Value
-        |> Map.fold (fun acc name signature -> acc |> Map.add name signature) fromExterns
-        |> Map.fold (fun acc name signature -> acc |> Map.add name signature) builtins
+        let builtinParamNames =
+            [ "ignore", [ "value" ]
+              "print", [ "message" ]
+              "nameof", [ "name" ]
+              "typeof", [ "name" ] ]
+            |> Map.ofList
+
+        let signatures =
+            stdlibFunctionSignatures.Value
+            |> Map.fold (fun acc name signature -> acc |> Map.add name signature) fromExterns
+            |> Map.fold (fun acc name signature -> acc |> Map.add name signature) builtinSignatures
+
+        let paramNames =
+            stdlibFunctionParameterNames.Value
+            |> Map.fold (fun acc name names -> acc |> Map.add name names) builtinParamNames
+
+        signatures, paramNames, stdlibFunctionDefinitions.Value
 
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with
@@ -1381,6 +1431,8 @@ module LspSymbols =
         let mutable localVariableTypeHints : (Span * string * string) list = []
         let mutable localBindings : LocalBindingInfo list = []
         let mutable injectedFunctionSignatures : Map<string, string> = Map.empty
+        let mutable injectedFunctionParameterNames : Map<string, string list> = Map.empty
+        let mutable injectedFunctionDefinitions : Map<string, (string * Span)> = Map.empty
 
         let mutable parsedProgram : Program option = None
 
@@ -1396,7 +1448,10 @@ module LspSymbols =
                 else
                     FScript.parseWithSourceName (Some sourceName) text
             parsedProgram <- Some program
-            injectedFunctionSignatures <- buildInjectedFunctionSignatures runtimeExterns
+            let signatures, parameterNames, definitions = buildInjectedFunctionData runtimeExterns
+            injectedFunctionSignatures <- signatures
+            injectedFunctionParameterNames <- parameterNames
+            injectedFunctionDefinitions <- definitions
             occurrences <- collectVariableOccurrences program
             recordParamFields <- buildRecordParameterFields program
             parameterTypeTargets <- buildParameterTypeTargets program
@@ -1509,7 +1564,24 @@ module LspSymbols =
                             diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
         | None -> ()
 
-        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; FunctionAnnotationTypes = functionAnnotationTypes; FunctionDeclaredReturnTargets = functionDeclaredReturnTargets; CallArgumentHints = callArgumentHints; FunctionReturnTypeHints = functionReturnTypeHints; ParameterTypeHints = parameterTypeHints; PatternTypeHints = patternTypeHints; LocalVariableTypeHints = localVariableTypeHints; LocalBindings = localBindings; InjectedFunctionSignatures = injectedFunctionSignatures; VariableOccurrences = occurrences }
+        documents[uri] <-
+            { Text = text
+              Symbols = symbols
+              RecordParameterFields = recordParamFields
+              ParameterTypeTargets = parameterTypeTargets
+              FunctionParameters = functionParameters
+              FunctionAnnotationTypes = functionAnnotationTypes
+              FunctionDeclaredReturnTargets = functionDeclaredReturnTargets
+              CallArgumentHints = callArgumentHints
+              FunctionReturnTypeHints = functionReturnTypeHints
+              ParameterTypeHints = parameterTypeHints
+              PatternTypeHints = patternTypeHints
+              LocalVariableTypeHints = localVariableTypeHints
+              LocalBindings = localBindings
+              InjectedFunctionSignatures = injectedFunctionSignatures
+              InjectedFunctionParameterNames = injectedFunctionParameterNames
+              InjectedFunctionDefinitions = injectedFunctionDefinitions
+              VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =

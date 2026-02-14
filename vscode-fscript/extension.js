@@ -15,6 +15,7 @@ let viewInferredAstCommandSubscription;
 let diagnosticsSubscription;
 let textChangeSubscription;
 let textOpenSubscription;
+let stdlibContentProviderSubscription;
 const pendingAnalysis = new Map();
 
 function getConfig() {
@@ -292,6 +293,31 @@ function completeAnalysis(uri) {
   }
 }
 
+function registerStdlibContentProvider(context) {
+  if (stdlibContentProviderSubscription) {
+    return;
+  }
+
+  const provider = {
+    async provideTextDocumentContent(uri) {
+      if (!client) {
+        throw new Error('FScript language server is not running.');
+      }
+
+      const response = await client.sendRequest('fscript/stdlibSource', { uri: uri.toString() });
+      if (!response || response.ok !== true || !response.data || typeof response.data.text !== 'string') {
+        const message = response?.error?.message || `Unable to load stdlib source for ${uri.toString()}.`;
+        throw new Error(message);
+      }
+
+      return response.data.text;
+    }
+  };
+
+  stdlibContentProviderSubscription = vscode.workspace.registerTextDocumentContentProvider('fscript-stdlib', provider);
+  context.subscriptions.push(stdlibContentProviderSubscription);
+}
+
 async function startClient(context) {
   ensureUi(context);
   try {
@@ -345,6 +371,7 @@ async function startClient(context) {
 
 function activate(context) {
   ensureUi(context);
+  registerStdlibContentProvider(context);
   showOutputCommandSubscription = vscode.commands.registerCommand('fscript.showLanguageServerOutput', () => {
     if (outputChannel) {
       outputChannel.show(true);
@@ -429,6 +456,10 @@ async function deactivate() {
   if (configSubscription) {
     configSubscription.dispose();
     configSubscription = undefined;
+  }
+  if (stdlibContentProviderSubscription) {
+    stdlibContentProviderSubscription.dispose();
+    stdlibContentProviderSubscription = undefined;
   }
   await stopClient();
 }
