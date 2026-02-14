@@ -11,7 +11,8 @@
       ],
       "outFiles": [
         "${workspaceFolder}/vscode-fscript/**/*.js"
-      ]
+      ],
+      "preLaunchTask": "fscript: compile extension"
     }
   ]
 }

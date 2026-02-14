@@ -92,7 +92,8 @@
     "lint": "echo \"No lint configured\"",
     "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package"
+    "package": "vsce package",
+    "postinstall": "npm run compile"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

@@ -115,12 +115,98 @@ module TypeInfer =
         subst t
 
     type TypedExpr = { Expr: Expr; Type: Type; Span: Span }
+    type LocalVariableTypeInfo =
+        { Name: string
+          Span: Span
+          Type: Type }
+
+    type private LocalVariableTypeCapture =
+        { Name: string
+          Span: Span
+          mutable Type: Type }
     type TypedStmt =
         | TSType of TypeDef
         | TSLet of string * Expr * Type * bool * bool * Span
         | TSLetRecGroup of (string * Expr * Type * Span) list * bool * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
+
+    type private InferenceTelemetry =
+        { mutable ScopeStack: Set<string> list
+          LocalVariableTypes: ResizeArray<LocalVariableTypeCapture> }
+
+    let mutable private telemetry: InferenceTelemetry option = None
+
+    let private beginTelemetry () =
+        telemetry <- Some { ScopeStack = [ Set.empty ]; LocalVariableTypes = ResizeArray() }
+
+    let private endTelemetry () =
+        let captured : LocalVariableTypeInfo list =
+            match telemetry with
+            | Some t ->
+                t.LocalVariableTypes
+                |> Seq.map (fun item ->
+                    ({ Name = item.Name
+                       Span = item.Span
+                       Type = item.Type }: LocalVariableTypeInfo))
+                |> Seq.toList
+            | None ->
+                []
+
+        telemetry <- None
+        captured
+
+    let private withLocalBindings (names: string list) (work: unit -> 'T) : 'T =
+        match telemetry with
+        | None -> work ()
+        | Some t ->
+            let current =
+                match t.ScopeStack with
+                | head :: _ -> head
+                | [] -> Set.empty
+
+            let pushed =
+                names
+                |> List.fold (fun acc name ->
+                    if System.String.IsNullOrWhiteSpace(name) || name = "_" then acc
+                    else Set.add name acc) current
+
+            t.ScopeStack <- pushed :: t.ScopeStack
+            try
+                work ()
+            finally
+                match t.ScopeStack with
+                | _ :: tail -> t.ScopeStack <- tail
+                | [] -> ()
+
+    let private recordLocalVariableUse (name: string) (span: Span) (varType: Type) =
+        match telemetry with
+        | None -> ()
+        | Some t ->
+            let current =
+                match t.ScopeStack with
+                | head :: _ -> head
+                | [] -> Set.empty
+
+            if Set.contains name current then
+                t.LocalVariableTypes.Add({ Name = name; Span = span; Type = varType })
+
+    let private recordLocalVariableDeclaration (name: string) (span: Span) (varType: Type) =
+        if System.String.IsNullOrWhiteSpace(name) || name = "_" then
+            ()
+        else
+            match telemetry with
+            | None -> ()
+            | Some t ->
+                t.LocalVariableTypes.Add({ Name = name; Span = span; Type = varType })
+
+    let private applySubstToCapturedLocals (startIndex: int) (subst: Subst) =
+        match telemetry with
+        | None -> ()
+        | Some t ->
+            for i = startIndex to t.LocalVariableTypes.Count - 1 do
+                let entry = t.LocalVariableTypes[i]
+                entry.Type <- applyType subst entry.Type
 
     type private ConstructorSig =
         { UnionName: string
@@ -410,6 +496,7 @@ module TypeInfer =
             match env |> Map.tryFind name with
             | Some scheme ->
                 let t = instantiate scheme
+                recordLocalVariableUse name span t
                 emptySubst, t, asTyped expr t
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EParen (inner, _) ->
@@ -439,8 +526,11 @@ module TypeInfer =
                 match param.Annotation with
                 | Some tref -> annotationTypeFromRef typeDefs param.Span tref
                 | None -> Types.freshVar()
+            recordLocalVariableDeclaration param.Name param.Span tv
             let env' = env |> Map.add param.Name (Forall([], tv))
-            let s1, tBody, _ = inferExpr typeDefs constructors env' body
+            let s1, tBody, _ =
+                withLocalBindings [ param.Name ] (fun () ->
+                    inferExpr typeDefs constructors env' body)
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
             s1, tFun, asTyped expr tFun
@@ -479,7 +569,9 @@ module TypeInfer =
             let envBody =
                 applyEnv sSource env
                 |> Map.add name (Forall([], itemType))
-            let s2, tBody, _ = inferExpr typeDefs constructors envBody body
+            let s2, tBody, _ =
+                withLocalBindings [ name ] (fun () ->
+                    inferExpr typeDefs constructors envBody body)
             let sBodyUnit = unify typeDefs (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
             let s = compose sBodyUnit (compose s2 sSource)
             s, TUnit, asTyped expr TUnit
@@ -487,13 +579,17 @@ module TypeInfer =
             if isRec then
                 let tv = Types.freshVar()
                 let envRec = env |> Map.add name (Forall([], tv))
-                let s1, t1, _ = inferExpr typeDefs constructors envRec value
+                let s1, t1, _ =
+                    withLocalBindings [ name ] (fun () ->
+                        inferExpr typeDefs constructors envRec value)
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
                 let sValue = compose s2 s1
                 let env1 = applyEnv sValue env
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
-                let s3, tBody, _ = inferExpr typeDefs constructors env2 body
+                let s3, tBody, _ =
+                    withLocalBindings [ name ] (fun () ->
+                        inferExpr typeDefs constructors env2 body)
                 let s = compose s3 sValue
                 s, tBody, asTyped expr tBody
             else
@@ -507,7 +603,9 @@ module TypeInfer =
                 let env1 = applyEnv sValue env
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
-                let s2, t2, _ = inferExpr typeDefs constructors env2 body
+                let s2, t2, _ =
+                    withLocalBindings [ name ] (fun () ->
+                        inferExpr typeDefs constructors env2 body)
                 let s = compose s2 sValue
                 s, t2, asTyped expr t2
         | ELetRecGroup (bindings, body, span) ->
@@ -529,12 +627,14 @@ module TypeInfer =
                 |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
 
             let mutable sRec = emptySubst
-            for (name, exprVal, bindingSpan) in foldedBindings do
-                let envForBinding = applyEnv sRec envRec
-                let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
-                let expected = applyType s1 (applyType sRec freshByName.[name])
-                let s2 = unify typeDefs expected t1 bindingSpan
-                sRec <- compose s2 (compose s1 sRec)
+            let recursiveNames = freshByName |> Map.toList |> List.map fst
+            withLocalBindings recursiveNames (fun () ->
+                for (name, exprVal, bindingSpan) in foldedBindings do
+                    let envForBinding = applyEnv sRec envRec
+                    let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
+                    let expected = applyType s1 (applyType sRec freshByName.[name])
+                    let s2 = unify typeDefs expected t1 bindingSpan
+                    sRec <- compose s2 (compose s1 sRec))
 
             let envGeneralize = applyEnv sRec env
             let schemes =
@@ -547,7 +647,9 @@ module TypeInfer =
                 schemes
                 |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
 
-            let sBody, tBody, _ = inferExpr typeDefs constructors envBody body
+            let sBody, tBody, _ =
+                withLocalBindings recursiveNames (fun () ->
+                    inferExpr typeDefs constructors envBody body)
             let s = compose sBody sRec
             s, tBody, asTyped expr tBody
         | EMatch (scrutinee, cases, span) ->
@@ -586,13 +688,16 @@ module TypeInfer =
                         unify typeDefs (applyType sAcc tScrut) tPat caseSpan
                 let envCase = applyEnv (compose sPat sAcc) env
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
-                match guard with
-                | Some guardExpr ->
-                    let sGuard, tGuard, _ = inferExpr typeDefs constructors envCase' guardExpr
-                    let sGuardBool = unify typeDefs (applyType sGuard tGuard) TBool caseSpan
-                    sAcc <- compose sGuardBool (compose sGuard sAcc)
-                | None -> ()
-                let sBody, tBody, _ = inferExpr typeDefs constructors envCase' body
+                let caseBoundNames = envPat |> Map.toList |> List.map fst
+                let sBody, tBody, _ =
+                    withLocalBindings caseBoundNames (fun () ->
+                        match guard with
+                        | Some guardExpr ->
+                            let sGuard, tGuard, _ = inferExpr typeDefs constructors envCase' guardExpr
+                            let sGuardBool = unify typeDefs (applyType sGuard tGuard) TBool caseSpan
+                            sAcc <- compose sGuardBool (compose sGuard sAcc)
+                        | None -> ()
+                        inferExpr typeDefs constructors envCase' body)
                 let tBody' = applyType sBody tBody
                 resultTypeOpt <-
                     match resultTypeOpt with
@@ -881,7 +986,7 @@ module TypeInfer =
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
             | _ -> [])
 
-    let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
+    let private inferProgramWithExternsRawAndLocals (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         let decls =
             program
             |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None)
@@ -928,91 +1033,121 @@ module TypeInfer =
         let mutable env : Map<string, Scheme> =
             (envFromExterns externs, constructorSchemes)
             ||> List.fold (fun acc (name, scheme) -> acc.Add(name, scheme))
-        let typed = ResizeArray<TypedStmt>()
-        for i, stmt in program |> List.indexed do
-            match stmt with
-            | SType def ->
-                typed.Add(TSType def)
-            | SInclude (_, span) ->
-                raise (TypeException { Message = "'#include' must be resolved before type inference"; Span = span })
-            | SModuleDecl (_, span) ->
-                raise (TypeException { Message = "'module' must be resolved before type inference"; Span = span })
-            | SLet(name, args, expr, isRec, isExported, span) ->
-                let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
-                if isRec then
-                    let tv = Types.freshVar()
-                    let envRec = env |> Map.add name (Forall([], tv))
-                    let s1, t1, _ = inferExpr typeDefs constructors envRec exprVal
-                    let s2 = unify typeDefs (applyType s1 tv) t1 span
-                    let s = compose s2 s1
-                    let env' = applyEnv s env
-                    let inferred = applyType s t1
-                    validateMapKeyTypes span inferred
-                    let scheme = Types.generalize env' inferred
-                    env <- env' |> Map.add name scheme
-                    typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
-                else
-                    let s1, t1, _ = inferExpr typeDefs constructors env exprVal
-                    let env' = applyEnv s1 env
-                    validateMapKeyTypes span t1
-                    let scheme = Types.generalize env' t1
-                    env <- env' |> Map.add name scheme
-                    typed.Add(TSLet(name, exprVal, t1, false, isExported, span))
-            | SLetRecGroup(bindings, isExported, span) ->
-                let foldedBindings =
-                    bindings
-                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
-                        if args.IsEmpty then
-                            raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
-                        let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
-                        name, folded, bindingSpan)
 
-                let freshByName =
-                    foldedBindings
-                    |> List.map (fun (name, _, _) -> name, Types.freshVar())
-                    |> Map.ofList
+        beginTelemetry ()
+        try
+            let typed = ResizeArray<TypedStmt>()
+            for i, stmt in program |> List.indexed do
+                match stmt with
+                | SType def ->
+                    typed.Add(TSType def)
+                | SInclude (_, span) ->
+                    raise (TypeException { Message = "'#include' must be resolved before type inference"; Span = span })
+                | SModuleDecl (_, span) ->
+                    raise (TypeException { Message = "'module' must be resolved before type inference"; Span = span })
+                | SLet(name, args, expr, isRec, isExported, span) ->
+                    let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
+                    let startIndex =
+                        match telemetry with
+                        | Some t -> t.LocalVariableTypes.Count
+                        | None -> 0
 
-                let envRec =
-                    freshByName
-                    |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
-
-                let mutable sRec = emptySubst
-                for (name, exprVal, bindingSpan) in foldedBindings do
-                    let envForBinding = applyEnv sRec envRec
-                    let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
-                    let expected = applyType s1 (applyType sRec freshByName.[name])
-                    let s2 = unify typeDefs expected t1 bindingSpan
-                    sRec <- compose s2 (compose s1 sRec)
-
-                let envGeneralize = applyEnv sRec env
-                let schemes =
-                    foldedBindings
-                    |> List.map (fun (name, _, _) ->
-                        let inferred = applyType sRec freshByName.[name]
+                    if isRec then
+                        let tv = Types.freshVar()
+                        let envRec = env |> Map.add name (Forall([], tv))
+                        let s1, t1, _ = inferExpr typeDefs constructors envRec exprVal
+                        let s2 = unify typeDefs (applyType s1 tv) t1 span
+                        let s = compose s2 s1
+                        applySubstToCapturedLocals startIndex s
+                        let env' = applyEnv s env
+                        let inferred = applyType s t1
                         validateMapKeyTypes span inferred
-                        name, Types.generalize envGeneralize inferred)
-
-                let typedBindings =
-                    foldedBindings
-                    |> List.map (fun (name, exprVal, bindingSpan) ->
-                        name, exprVal, applyType sRec freshByName.[name], bindingSpan)
-
-                env <-
-                    schemes
-                    |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
-                typed.Add(TSLetRecGroup(typedBindings, isExported, span))
-            | SExpr expr ->
-                let s1, t1, typedExpr = inferExpr typeDefs constructors env expr
-                let sDiscard =
-                    if i < (program.Length - 1) then
-                        unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr expr)
+                        let scheme = Types.generalize env' inferred
+                        env <- env' |> Map.add name scheme
+                        typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
                     else
-                        emptySubst
-                let s = compose sDiscard s1
-                validateMapKeyTypes (Ast.spanOfExpr expr) (applyType s t1)
-                env <- applyEnv s env
-                typed.Add(TSExpr typedExpr)
-        typed |> Seq.toList
+                        let s1, t1, _ = inferExpr typeDefs constructors env exprVal
+                        applySubstToCapturedLocals startIndex s1
+                        let env' = applyEnv s1 env
+                        validateMapKeyTypes span t1
+                        let scheme = Types.generalize env' t1
+                        env <- env' |> Map.add name scheme
+                        typed.Add(TSLet(name, exprVal, t1, false, isExported, span))
+                | SLetRecGroup(bindings, isExported, span) ->
+                    let startIndex =
+                        match telemetry with
+                        | Some t -> t.LocalVariableTypes.Count
+                        | None -> 0
+
+                    let foldedBindings =
+                        bindings
+                        |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                            if args.IsEmpty then
+                                raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
+                            let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
+                            name, folded, bindingSpan)
+
+                    let freshByName =
+                        foldedBindings
+                        |> List.map (fun (name, _, _) -> name, Types.freshVar())
+                        |> Map.ofList
+
+                    let envRec =
+                        freshByName
+                        |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
+
+                    let mutable sRec = emptySubst
+                    for (name, exprVal, bindingSpan) in foldedBindings do
+                        let envForBinding = applyEnv sRec envRec
+                        let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
+                        let expected = applyType s1 (applyType sRec freshByName.[name])
+                        let s2 = unify typeDefs expected t1 bindingSpan
+                        sRec <- compose s2 (compose s1 sRec)
+
+                    applySubstToCapturedLocals startIndex sRec
+
+                    let envGeneralize = applyEnv sRec env
+                    let schemes =
+                        foldedBindings
+                        |> List.map (fun (name, _, _) ->
+                            let inferred = applyType sRec freshByName.[name]
+                            validateMapKeyTypes span inferred
+                            name, Types.generalize envGeneralize inferred)
+
+                    let typedBindings =
+                        foldedBindings
+                        |> List.map (fun (name, exprVal, bindingSpan) ->
+                            name, exprVal, applyType sRec freshByName.[name], bindingSpan)
+
+                    env <-
+                        schemes
+                        |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
+                    typed.Add(TSLetRecGroup(typedBindings, isExported, span))
+                | SExpr expr ->
+                    let startIndex =
+                        match telemetry with
+                        | Some t -> t.LocalVariableTypes.Count
+                        | None -> 0
+
+                    let s1, t1, typedExpr = inferExpr typeDefs constructors env expr
+                    let sDiscard =
+                        if i < (program.Length - 1) then
+                            unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr expr)
+                        else
+                            emptySubst
+                    let s = compose sDiscard s1
+                    applySubstToCapturedLocals startIndex s
+                    validateMapKeyTypes (Ast.spanOfExpr expr) (applyType s t1)
+                    env <- applyEnv s env
+                    typed.Add(TSExpr typedExpr)
+
+            typed |> Seq.toList, endTelemetry ()
+        with _ ->
+            let _ = endTelemetry ()
+            reraise ()
+
+    let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
+        inferProgramWithExternsRawAndLocals externs program |> fst
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
         let stdlibProgram = Stdlib.loadProgram ()
@@ -1030,6 +1165,28 @@ module TypeInfer =
 
         let typedCombined = inferProgramWithExternsRaw externs (stdlibProgram @ program)
         typedCombined |> List.skip (List.length stdlibProgram)
+
+    let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+        let stdlibProgram = Stdlib.loadProgram ()
+        let reserved = Stdlib.reservedNames ()
+
+        externs
+        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
+        |> Option.iter (fun ext ->
+            raise (TypeException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        topLevelBindingNames program
+        |> List.tryFind (fun name -> Set.contains name reserved)
+        |> Option.iter (fun name ->
+            raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+        let typedCombined, localTypes =
+            inferProgramWithExternsRawAndLocals externs (stdlibProgram @ program)
+
+        typedCombined |> List.skip (List.length stdlibProgram), localTypes
+
+    let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+        inferProgramWithExternsAndLocalVariableTypes [] program
 
     let inferProgram (program: Program) : TypedProgram =
         inferProgramWithExterns [] program

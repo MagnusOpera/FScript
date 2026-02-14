@@ -14,6 +14,7 @@ obj/
 .vs/
 .vscode/*
 !.vscode/launch.json
+!.vscode/tasks.json
 vscode-fscript/node_modules/
 
 # Rider

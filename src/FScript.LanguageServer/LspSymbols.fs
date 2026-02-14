@@ -459,6 +459,7 @@ module LspSymbols =
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
         let mutable parameterTypeHints : (Span * string) list = []
+        let mutable localVariableTypeHints : (Span * string * string) list = []
 
         let mutable parsedProgram : Program option = None
 
@@ -474,9 +475,16 @@ module LspSymbols =
                 parameterTypeHints <- buildParameterTypeHints program None
             else
                 try
-                    let typed = TypeInfer.inferProgram program
+                    let typed, localTypes = TypeInfer.inferProgramWithLocalVariableTypes program
                     symbols <- buildSymbolsFromProgram program (Some typed)
                     parameterTypeHints <- buildParameterTypeHints program (Some typed)
+                    localVariableTypeHints <-
+                        localTypes
+                        |> List.filter (fun entry ->
+                            match entry.Span.Start.File with
+                            | Some file -> String.Equals(file, sourceName, StringComparison.OrdinalIgnoreCase)
+                            | None -> true)
+                        |> List.map (fun entry -> entry.Span, entry.Name, Types.typeToString entry.Type)
                 with
                 | TypeException err ->
                     diagnostics.Add(diagnostic 1 "type" err.Span err.Message)
@@ -504,7 +512,7 @@ module LspSymbols =
                         diagnostics.Add(diagnostic 2 "unused" span $"Unused top-level binding '{name}'")
         | None -> ()
 
-        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; VariableOccurrences = occurrences }
+        documents[uri] <- { Text = text; Symbols = symbols; RecordParameterFields = recordParamFields; ParameterTypeTargets = parameterTypeTargets; FunctionParameters = functionParameters; ParameterTypeHints = parameterTypeHints; LocalVariableTypeHints = localVariableTypeHints; VariableOccurrences = occurrences }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
@@ -820,6 +828,22 @@ module LspSymbols =
                     |> List.tryFind (fun (name, _) -> name = fieldName))
         | _ ->
             None
+
+    let private spanContainsPosition (span: Span) (line: int) (character: int) =
+        let line1 = line + 1
+        let col1 = character + 1
+        let startsBefore =
+            line1 > span.Start.Line
+            || (line1 = span.Start.Line && col1 >= span.Start.Column)
+        let endsAfter =
+            line1 < span.End.Line
+            || (line1 = span.End.Line && col1 <= span.End.Column)
+        startsBefore && endsAfter
+
+    let tryGetLocalVariableHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
+        doc.LocalVariableTypeHints
+        |> List.tryFind (fun (span, _, _) -> spanContainsPosition span line character)
+        |> Option.map (fun (_, name, typeText) -> name, typeText)
 
     let private tryMemberCompletionItems (doc: DocumentState) (prefix: string option) =
         match prefix with

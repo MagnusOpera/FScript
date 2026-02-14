@@ -2617,6 +2617,80 @@ type LspServerTests () =
             LspClient.stop client
 
     [<Test>]
+    member _.``Hover returns inferred type for local lambda variables`` () =
+        let client = LspClient.start ()
+        try
+            initialize client
+
+            let uri = "file:///tmp/hover-local-variables-test.fss"
+            let source =
+                "let rec fib n = if n < 2 then n else fib (n - 1) + fib (n - 2)\n"
+                + "let values =\n"
+                + "    [0..9]\n"
+                + "    |> List.map (fun i ->\n"
+                + "        i |> fib |> fun x ->\n"
+                + "            $\"{x}\")\n"
+
+            let td = JsonObject()
+            td["uri"] <- JsonValue.Create(uri)
+            td["languageId"] <- JsonValue.Create("fscript")
+            td["version"] <- JsonValue.Create(1)
+            td["text"] <- JsonValue.Create(source)
+
+            let didOpenParams = JsonObject()
+            didOpenParams["textDocument"] <- td
+            LspClient.sendNotification client "textDocument/didOpen" (Some didOpenParams)
+
+            LspClient.readUntil client 10000 (fun msg ->
+                match msg["method"] with
+                | :? JsonValue as mv ->
+                    try mv.GetValue<string>() = "textDocument/publishDiagnostics" with _ -> false
+                | _ -> false)
+            |> ignore
+
+            let requestHover (requestId: int) (line: int) (character: int) =
+                let hoverParams = JsonObject()
+                let textDocument = JsonObject()
+                textDocument["uri"] <- JsonValue.Create(uri)
+                let position = JsonObject()
+                position["line"] <- JsonValue.Create(line)
+                position["character"] <- JsonValue.Create(character)
+                hoverParams["textDocument"] <- textDocument
+                hoverParams["position"] <- position
+                LspClient.sendRequest client requestId "textDocument/hover" (Some hoverParams)
+                LspClient.readUntil client 10000 (fun msg ->
+                    match msg["id"] with
+                    | :? JsonValue as idv ->
+                        try idv.GetValue<int>() = requestId with _ -> false
+                    | _ -> false)
+
+            let hoverText (resp: JsonNode) =
+                match resp["result"] with
+                | :? JsonObject as result ->
+                    match result["contents"] with
+                    | :? JsonObject as contents ->
+                        match contents["value"] with
+                        | :? JsonValue as value -> value.GetValue<string>()
+                        | _ -> ""
+                    | _ -> ""
+                | _ -> ""
+
+            let hasLocalHoverType (text: string) (name: string) (typeText: string) =
+                text.Contains($"{name} : {typeText}", StringComparison.Ordinal)
+                && text.Contains("local-variable", StringComparison.Ordinal)
+
+            let hoverI = requestHover 41 3 21
+            let hoverX = requestHover 42 4 24
+            let hoverIText = hoverText hoverI
+            let hoverXText = hoverText hoverX
+
+            Assert.That(hasLocalHoverType hoverIText "i" "int", Is.True, $"Unexpected hover for i: {hoverIText}")
+            Assert.That(hasLocalHoverType hoverXText "x" "int", Is.True, $"Unexpected hover for x: {hoverXText}")
+        finally
+            try shutdown client with _ -> ()
+            LspClient.stop client
+
+    [<Test>]
     member _.``Rename returns workspace edit for all symbol occurrences`` () =
         let client = LspClient.start ()
         try

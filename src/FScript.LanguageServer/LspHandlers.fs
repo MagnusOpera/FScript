@@ -355,24 +355,33 @@ module LspHandlers =
                 result["contents"] <- contents
                 LspProtocol.sendResponse idNode (Some result)
             | None ->
-                match tryResolveSymbol doc line character with
-                | Some sym ->
-                    let signature =
-                        match sym.TypeText with
-                        | Some t -> $"{sym.Name} : {t}"
-                        | None -> sym.Name
-
+                match tryGetLocalVariableHoverInfo doc line character with
+                | Some (name, typeText) ->
                     let contents = JsonObject()
                     contents["kind"] <- JsonValue.Create("markdown")
-                    let kindLine = symbolKindLabel sym.Kind
-                    let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
-                    contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
-
+                    contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\nlocal-variable")
                     let result = JsonObject()
                     result["contents"] <- contents
                     LspProtocol.sendResponse idNode (Some result)
                 | None ->
-                    LspProtocol.sendResponse idNode None
+                    match tryResolveSymbol doc line character with
+                    | Some sym ->
+                        let signature =
+                            match sym.TypeText with
+                            | Some t -> $"{sym.Name} : {t}"
+                            | None -> sym.Name
+
+                        let contents = JsonObject()
+                        contents["kind"] <- JsonValue.Create("markdown")
+                        let kindLine = symbolKindLabel sym.Kind
+                        let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
+                        contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
+
+                        let result = JsonObject()
+                        result["contents"] <- contents
+                        LspProtocol.sendResponse idNode (Some result)
+                    | None ->
+                        LspProtocol.sendResponse idNode None
         | _ -> LspProtocol.sendResponse idNode None
 
 

@@ -2,6 +2,12 @@
 
 All notable changes to FScript are documented in this file.
 
+## [0.28.0]
+
+- Added local variable type hover in LSP.
+- Added local variable type capture in type inference.
+- Added VS Code extension auto-compile for development startup.
+
 ## [0.27.0]
 
 - Added structural update syntax support with `with` inside structural literals: `{| base with Field = value |}`.
