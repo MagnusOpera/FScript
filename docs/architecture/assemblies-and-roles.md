@@ -74,8 +74,9 @@ Role:
 - C# host executable for the Language Server process.
 
 Responsibilities:
-- Provide a C# process entrypoint for LSP startup.
-- Serve as migration anchor while preserving current LSP protocol behavior.
+- Provide the production C# process host for LSP startup/dispatch.
+- Execute the full LSP method surface used by the VS Code extension.
+- Keep protocol behavior aligned with existing language/runtime analysis services.
 
 Use this when:
 - You want C# ownership of the server host process while reusing existing language services.

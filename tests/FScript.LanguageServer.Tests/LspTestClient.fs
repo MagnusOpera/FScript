@@ -81,7 +81,7 @@ module internal LspClient =
 
             serverDll)
 
-    let start () =
+    let startFSharp () =
         let serverDll = ensureServerDllBuilt.Value
 
         let psi =
@@ -102,7 +102,7 @@ module internal LspClient =
           Input = proc.StandardInput.BaseStream
           Output = proc.StandardOutput.BaseStream }
 
-    let startCSharp () =
+    let start () =
         let serverDll = ensureCSharpServerDllBuilt.Value
 
         let psi =
@@ -122,6 +122,9 @@ module internal LspClient =
         { Process = proc
           Input = proc.StandardInput.BaseStream
           Output = proc.StandardOutput.BaseStream }
+
+    let startCSharp () =
+        start ()
 
     let stop (client: Client) =
         if not client.Process.HasExited then

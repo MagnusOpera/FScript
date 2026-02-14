@@ -76,7 +76,7 @@ async function createServerOptions(context, config) {
     );
   }
 
-  const packagedDll = path.join(context.extensionPath, 'server', 'FScript.LanguageServer.dll');
+  const packagedDll = path.join(context.extensionPath, 'server', 'FScript.LanguageServer.CSharp.dll');
 
   if (fs.existsSync(packagedDll)) {
     return {
@@ -92,16 +92,22 @@ async function createServerOptions(context, config) {
     return null;
   }
 
-  const projectPath = path.resolve(context.extensionPath, '..', 'src', 'FScript.LanguageServer', 'FScript.LanguageServer.fsproj');
+  const projectPath = path.resolve(
+    context.extensionPath,
+    '..',
+    'src',
+    'FScript.LanguageServer.CSharp',
+    'FScript.LanguageServer.CSharp.csproj'
+  );
   const outputDll = path.resolve(
     context.extensionPath,
     '..',
     'src',
-    'FScript.LanguageServer',
+    'FScript.LanguageServer.CSharp',
     'bin',
     'Debug',
     'net10.0',
-    'FScript.LanguageServer.dll'
+    'FScript.LanguageServer.CSharp.dll'
   );
 
   if (!hasDotnetSdkOnPath()) {

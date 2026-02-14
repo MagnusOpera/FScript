@@ -9,6 +9,7 @@ All notable changes to FScript are documented in this file.
 - Added `FScript.LanguageServer.CSharp` host executable as the migration entrypoint for C#-owned LSP startup.
 - Added a first native C# LSP server core (JSON-RPC transport, initialize/shutdown, text sync, and stdlib-source request) with dedicated integration tests.
 - Extended the native C# LSP core with diagnostics publishing and `viewAst`/`viewInferredAst` command handling.
+- Switched C# LSP host to full-method dispatch parity via shared handlers, made it the default test target, and updated extension/tag packaging to use `FScript.LanguageServer.CSharp.dll`.
 
 ## [0.33.0]
 
