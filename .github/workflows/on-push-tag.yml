@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           rm -rf vscode-fscript/server
-          dotnet publish src/FScript.LanguageServer.CSharp/FScript.LanguageServer.CSharp.csproj -c Release -p:PublishAot=false -o vscode-fscript/server
+          dotnet publish src/FScript.LanguageServer/FScript.LanguageServer.csproj -c Release -p:PublishAot=false -o vscode-fscript/server
 
       - name: Install extension packaging tool
         run: npm install -g @vscode/vsce@3.5

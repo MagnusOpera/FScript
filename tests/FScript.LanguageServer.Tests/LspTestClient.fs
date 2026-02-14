@@ -32,8 +32,8 @@ module internal LspClient =
     let private ensureServerDllBuilt =
         lazy (
             let root = findRepoRoot ()
-            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.fsproj")
-            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll")
+            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer.Core", "FScript.LanguageServer.Core.fsproj")
+            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer.Core", "bin", "Release", "net10.0", "FScript.LanguageServer.Core.dll")
 
             let buildPsi =
                 ProcessStartInfo(
@@ -58,8 +58,8 @@ module internal LspClient =
     let private ensureCSharpServerDllBuilt =
         lazy (
             let root = findRepoRoot ()
-            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer.CSharp", "FScript.LanguageServer.CSharp.csproj")
-            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer.CSharp", "bin", "Release", "net10.0", "FScript.LanguageServer.CSharp.dll")
+            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.csproj")
+            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll")
 
             let buildPsi =
                 ProcessStartInfo(
