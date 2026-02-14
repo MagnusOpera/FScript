@@ -269,6 +269,26 @@ module TypeInfer =
             let names = String.concat ", " many
             raise (TypeException { Message = $"Ambiguous declared record type for fields {shapeText}: {names}"; Span = span })
 
+    let private resolveReferencedTypeName (knownNames: seq<string>) (name: string) (span: Span) : string =
+        let nameSet = knownNames |> Set.ofSeq
+        if nameSet.Contains(name) then
+            name
+        elif name.Contains(".") then
+            let shortName = name.Split('.') |> Array.last
+            let matches =
+                knownNames
+                |> Seq.filter (fun candidate -> candidate = shortName || candidate.EndsWith("." + shortName, System.StringComparison.Ordinal))
+                |> Seq.distinct
+                |> Seq.toList
+            match matches with
+            | [ single ] -> single
+            | [] -> name
+            | many ->
+                let options = String.concat ", " many
+                raise (TypeException { Message = $"Ambiguous type reference '{name}'. Candidates: {options}"; Span = span })
+        else
+            name
+
     let rec private annotationTypeFromRef (typeDefs: Map<string, Type>) (span: Span) (tref: TypeRef) : Type =
         match tref with
         | TRName "unit" -> TUnit
@@ -276,7 +296,9 @@ module TypeInfer =
         | TRName "float" -> TFloat
         | TRName "bool" -> TBool
         | TRName "string" -> TString
-        | TRName name -> TNamed name
+        | TRName name ->
+            let resolvedName = resolveReferencedTypeName typeDefs.Keys name span
+            TNamed resolvedName
         | TRTuple ts -> ts |> List.map (annotationTypeFromRef typeDefs span) |> TTuple
         | TRFun (a, b) -> TFun(annotationTypeFromRef typeDefs span a, annotationTypeFromRef typeDefs span b)
         | TRPostfix (inner, "list") -> TList (annotationTypeFromRef typeDefs span inner)
@@ -302,25 +324,26 @@ module TypeInfer =
             match builtinType name with
             | Some t -> t
             | None ->
-                match decls.TryFind name with
+                let resolvedName = resolveReferencedTypeName decls.Keys name unknownSpan
+                match decls.TryFind resolvedName with
                 | Some def ->
-                    match stack |> List.tryFindIndex ((=) name) with
+                    match stack |> List.tryFindIndex ((=) resolvedName) with
                     | Some 0 ->
                         if def.IsRecursive then
-                            TNamed name
+                            TNamed resolvedName
                         else
-                            raise (TypeException { Message = $"Recursive type '{name}' requires 'type rec'"; Span = unknownSpan })
+                            raise (TypeException { Message = $"Recursive type '{resolvedName}' requires 'type rec'"; Span = unknownSpan })
                     | Some _ ->
                         raise (TypeException { Message = "Mutual recursive types are not supported"; Span = unknownSpan })
                     | None ->
                         if not def.Cases.IsEmpty then
-                            TNamed name
+                            TNamed resolvedName
                         else
                             def.Fields
-                            |> List.map (fun (field, t) -> field, typeFromRef decls (name :: stack) t)
+                            |> List.map (fun (field, t) -> field, typeFromRef decls (resolvedName :: stack) t)
                             |> Map.ofList
                             |> TRecord
-                | None -> TNamed name
+                | None -> TNamed resolvedName
         | TRTuple ts ->
             ts |> List.map (typeFromRef decls stack) |> TTuple
         | TRFun (a, b) ->

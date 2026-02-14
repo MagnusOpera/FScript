@@ -92,7 +92,13 @@ async function createServerOptions(context, config) {
     return null;
   }
 
-  const projectPath = path.resolve(context.extensionPath, '..', 'src', 'FScript.LanguageServer', 'FScript.LanguageServer.fsproj');
+  const projectPath = path.resolve(
+    context.extensionPath,
+    '..',
+    'src',
+    'FScript.LanguageServer',
+    'FScript.LanguageServer.csproj'
+  );
   const outputDll = path.resolve(
     context.extensionPath,
     '..',

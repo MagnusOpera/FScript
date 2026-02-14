@@ -55,6 +55,32 @@ Use this when:
 NuGet:
 - `MagnusOpera.FScript.Runtime`
 
+### `FScript.CSharpInterop`
+Role:
+- C#-friendly integration facade over language + runtime services.
+
+Responsibilities:
+- Resolve runtime extern catalog from source path/root context.
+- Parse with include/import expansion through a stable interop entry point.
+- Run inference APIs through a single host-facing surface.
+- Expose stdlib virtual source loading for editor integrations.
+
+Use this when:
+- You integrate FScript from C# and want to avoid direct F# compiler/runtime internals.
+- You build tooling services (for example LSP hosts) with a stable boundary.
+
+### `FScript.LanguageServer`
+Role:
+- C# host executable for the Language Server process.
+
+Responsibilities:
+- Provide the production C# process host for LSP startup/dispatch.
+- Execute the full LSP method surface used by the VS Code extension.
+- Keep protocol behavior aligned with existing language/runtime analysis services.
+
+Use this when:
+- You want C# ownership of the server host process while reusing existing language services.
+
 ## Typical composition
 
 ### CLI execution path
@@ -72,6 +98,8 @@ NuGet:
 ## Dependency direction
 - `FScript.Language` has no dependency on `FScript.Runtime`.
 - `FScript.Runtime` depends on `FScript.Language` types.
+- `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
+- `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable.

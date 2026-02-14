@@ -186,3 +186,18 @@ type IncludeResolverTests () =
 
             let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
             act |> should throw typeof<ParseException>)
+
+    [<Test>]
+    member _.``Import inference resolves qualified type annotation to imported type`` () =
+        withTempDir (fun dir ->
+            let commonPath = Path.Combine(dir, "common.fss")
+            let mainPath = Path.Combine(dir, "main.fss")
+
+            File.WriteAllText(commonPath, "type ProjectInfo = { Name: string; Language: string }\nlet describe_project (project: ProjectInfo) = project.Name")
+            File.WriteAllText(mainPath, "import \"common.fss\"\nlet summary (project: common.ProjectInfo) = common.describe_project project\nsummary { Name = \"Terrabuild\"; Language = \"F#\" }")
+
+            let program = IncludeResolver.parseProgramFromFile dir mainPath
+            let typed = TypeInfer.inferProgram program
+            match typed |> List.last with
+            | TypeInfer.TSExpr expr -> expr.Type |> should equal TString
+            | _ -> Assert.Fail("Expected expression"))

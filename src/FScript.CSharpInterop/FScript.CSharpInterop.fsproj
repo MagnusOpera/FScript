@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="InteropServices.fs" />
+    <Compile Include="LanguageServer\LspProtocol.fs" />
+    <Compile Include="LanguageServer\LspModel.fs" />
+    <Compile Include="LanguageServer\LspRuntimeExterns.fs" />
+    <Compile Include="LanguageServer\AstJson.fs" />
+    <Compile Include="LanguageServer\LspSymbols.fs" />
+    <Compile Include="LanguageServer\LspHandlers.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
+    <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
+  </ItemGroup>
+
+</Project>
