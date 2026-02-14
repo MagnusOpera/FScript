@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- _No entries yet._
+
+## [0.30.0]
+
 - Added contributor policy in `AGENTS.md` for build/test/non-regression workflow.
 - Added CI changelog gate requiring one-line `## [Unreleased]` entries for functional PR changes.
 - Reorganized documentation into `docs/specs`, `docs/architecture`, and curated root `docs/` guides.
