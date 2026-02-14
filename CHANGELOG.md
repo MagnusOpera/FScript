@@ -8,6 +8,7 @@ All notable changes to FScript are documented in this file.
 - Replaced `FScript.LanguageServer.Tests` project with a C# test project and C# LSP test harness to remove F# compile cost from LanguageServer test builds.
 - Deleted obsolete F# LanguageServer test sources after C# test project migration.
 - Renamed `FScript.CSharpInterop/LanguageServerLegacy` to `FScript.CSharpInterop/LanguageServer` to reflect the new primary architecture.
+- CI now runs branch update builds on PR `synchronize` events while keeping `ci-main` scoped to `main` pushes to avoid duplicate runs.
 - Enabled F# preview parallel compilation globally, disabled deterministic builds, and removed global RuntimeIdentifiers to reduce CI build latency.
 - Added `FScript.CSharpInterop` as a stable bridge for parse/infer/runtime-extern/stdlib-source services and wired LanguageServer through it.
 - Added `FScript.LanguageServer` host executable as the migration entrypoint for C#-owned LSP startup.
