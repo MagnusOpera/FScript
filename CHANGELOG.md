@@ -13,6 +13,7 @@ All notable changes to FScript are documented in this file.
 - Optimized `FScript.LanguageServer.Tests` startup by building the language server once per run instead of once per test.
 - Reused a single LSP server process across `FScript.LanguageServer.Tests` and added per-test document cleanup for isolation, reducing suite runtime substantially.
 - Removed `clean` from `publish-all` to avoid redundant CI cleanup, restored one LSP process per test for stronger isolation (while keeping build-once), and explicitly disabled AOT for LanguageServer publish.
+- Split `FScript.LanguageServer.Tests` into feature-oriented files with shared wire/client/fixture helpers to reduce CI compile bottlenecks from the previous monolithic test file.
 
 **Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.32.0...0.33.0
 

@@ -9,7 +9,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="LspServerTests.fs" />
+    <Compile Include="LspTestWire.fs" />
+    <Compile Include="LspTestClient.fs" />
+    <Compile Include="LspTestFixture.fs" />
+    <Compile Include="LspCoreTests.fs" />
+    <Compile Include="LspCompletionAndSignatureTests.fs" />
+    <Compile Include="LspHoverAndInlayTests.fs" />
+    <Compile Include="LspNavigationTests.fs" />
+    <Compile Include="LspSymbolsAndActionsTests.fs" />
+    <Compile Include="LspCustomRequestsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
