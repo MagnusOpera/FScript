@@ -18,6 +18,7 @@ All notable changes to FScript are documented in this file.
 - Replaced the F# LSP server executable with `FScript.LanguageServer` (C#) and moved F# LSP logic into `FScript.LanguageServer.Core`.
 - Fixed imported qualified type annotations (for example `common.ProjectInfo`) in parser/type inference to prevent false type mismatches.
 - Fixed LSP inlay hints to ignore spans from other files so included symbols no longer leak labels into unrelated declarations.
+- Enforced string-only map keys across type inference, evaluation, samples, and LSP type rendering (removed `int|string` key-domain displays).
 
 ## [0.33.0]
 

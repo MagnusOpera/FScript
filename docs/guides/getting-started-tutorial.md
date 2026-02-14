@@ -165,10 +165,10 @@ let maybeMath = scores |> Map.tryGet "math"
 print $"{maybeMath}"
 ```
 
-Map keys can be `string` or `int`:
+Map keys are `string`:
 
 ```fsharp
-let status = { [200] = "ok"; [404] = "not-found" }
+let status = { ["200"] = "ok"; ["404"] = "not-found" }
 ```
 
 ### Discriminated union

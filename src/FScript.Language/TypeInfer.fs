@@ -410,10 +410,9 @@ module TypeInfer =
             let ensureSupportedMapKeyType (t: Type) =
                 match t with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
 
             let mapKeyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -492,10 +491,9 @@ module TypeInfer =
                 loop valueType
                 match keyType with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString keyType}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString keyType}"; Span = span })
             | TList inner -> loop inner
             | TTuple items -> items |> List.iter loop
             | TRecord fields -> fields |> Map.values |> Seq.iter loop
@@ -788,10 +786,9 @@ module TypeInfer =
             let ensureSupportedMapKeyType (t: Type) =
                 match t with
                 | TString
-                | TInt
                 | TVar _ -> ()
                 | _ ->
-                    raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
 
             let keyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -917,10 +914,9 @@ module TypeInfer =
             let s = compose s4 (compose s3 (compose s2 s1))
             match applyType s keyType with
             | TString
-            | TInt
             | TVar _ -> ()
             | t ->
-                raise (TypeException { Message = $"Map key type must be string or int, got {Types.typeToString t}"; Span = span })
+                raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
             let tRes = TOption (applyType s valueType)
             s, tRes, asTyped expr tRes
         | EBinOp (op, a, b, span) ->

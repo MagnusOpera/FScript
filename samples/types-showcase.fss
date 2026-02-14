@@ -19,7 +19,7 @@ let scores =
     { ["math"] = 20; ["science"] = 18 }
 
 let statusByCode =
-    { [200] = "ok"; [404] = "not-found" }
+    { ["200"] = "ok"; ["404"] = "not-found" }
 
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
@@ -59,6 +59,7 @@ let mathScore =
 let hasScience = updated.Scores |> Map.containsKey "science"
 let formatAddressKey = "format_address"
 let scienceKey = "science"
+let okCode = "200"
 let patchedScores = { ["science"] = 19; ..updated.Scores }
 
 let mapPreview =
@@ -90,7 +91,7 @@ print $"Subscription price: {monthlyPrice}"
 print $"Structural address from literal: {format_address parisAddress}"
 print $"Structural address from OfficeAddress: {format_address officeAddress}"
 print $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
-print $"HTTP 200: {statusByCode[200] |> Option.defaultValue unknown}"
+print $"HTTP 200: {statusByCode[okCode] |> Option.defaultValue unknown}"
 
 
 updated.Tags |> List.iter print

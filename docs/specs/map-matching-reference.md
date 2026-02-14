@@ -12,13 +12,7 @@ match values with
 | _ -> ""
 ```
 
-Keys can be `string` or `int`:
-
-```fsharp
-match codes with
-| { [200] = label } -> label
-| _ -> "missing"
-```
+Keys must be `string`.
 
 ## Supported forms
 
@@ -86,7 +80,6 @@ let describe values =
 - Map literals:
   - `{}` empty map
   - `{ ["k"] = v }`
-  - `{ [1] = v }`
   - `{ ["k"] = v; ..tail }`
 - For map construction/update rules, see [`supported-types.md`](./supported-types.md).
 - For full syntax/layout rules, see [`syntax-and-indentation.md`](./syntax-and-indentation.md).

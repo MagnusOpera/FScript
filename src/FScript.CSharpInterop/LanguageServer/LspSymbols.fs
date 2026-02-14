@@ -10,26 +10,7 @@ open FScript.CSharpInterop
 module LspSymbols =
     open LspModel
 
-    let private collectMapKeyDomainVars (t: Type) =
-        let rec collect acc ty =
-            match ty with
-            | TMap (TVar v, valueType) ->
-                collect (Set.add v acc) valueType
-            | TMap (keyType, valueType) ->
-                collect (collect acc keyType) valueType
-            | TList inner
-            | TOption inner -> collect acc inner
-            | TTuple items ->
-                items |> List.fold collect acc
-            | TRecord fields ->
-                fields |> Map.values |> Seq.fold collect acc
-            | TFun (a, b) ->
-                collect (collect acc a) b
-            | _ -> acc
-
-        collect Set.empty t
-
-    let private lspTypeToStringWithKeyDomainVars (keyDomainVars: Set<int>) (t: Type) =
+    let private lspTypeToString (t: Type) =
         let rec go t =
             match t with
             | TUnit -> "unit"
@@ -52,17 +33,12 @@ module LspSymbols =
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
-            | TVar v when Set.contains v keyDomainVars -> "int|string"
             | TVar _ -> "unknown"
         and postfixArg t =
             match t with
             | TFun _ | TTuple _ | TRecord _ -> sprintf "(%s)" (go t)
             | _ -> go t
         go t
-
-    let private lspTypeToString (t: Type) =
-        let keyDomainVars = collectMapKeyDomainVars t
-        lspTypeToStringWithKeyDomainVars keyDomainVars t
 
     let private schemeTypeToString (scheme: Scheme) =
         match scheme with
@@ -1061,14 +1037,13 @@ module LspSymbols =
             match typedByName.TryGetValue(name) with
             | true, t when not parameters.IsEmpty ->
                 let argTypes = takeParamTypes t parameters.Length
-                let keyDomainVars = collectMapKeyDomainVars t
                 (parameters, argTypes)
                 ||> List.zip
                 |> List.choose (fun (param, argType) ->
                     if param.Annotation.IsSome then
                         None
                     else
-                        Some (param.Span, $": {lspTypeToStringWithKeyDomainVars keyDomainVars argType}"))
+                        Some (param.Span, $": {lspTypeToString argType}"))
             | _ ->
                 []
 

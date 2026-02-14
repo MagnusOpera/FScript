@@ -56,7 +56,7 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Map.iter : ('k -> 'v -> unit) -> map<'k, 'v> -> unit`
 - `Map.remove : 'k -> map<'k, 'v> -> map<'k, 'v>`
 
-Map key support in FScript currently allows `string` and `int` keys.
+Map keys in FScript are string-only.
 
 ## Quick examples
 ```fsharp
@@ -67,7 +67,6 @@ let maybePort = Some 8080
 let port = maybePort |> Option.defaultValue 80
 
 let m = { ["a"] = 1; ["b"] = 2 }
-let n = { [1] = "one"; [2] = "two" }
 let hasA = Map.containsKey "a" m
-let one = n[1] |> Option.defaultValue "missing"
+let one = m["a"] |> Option.defaultValue 0
 ```

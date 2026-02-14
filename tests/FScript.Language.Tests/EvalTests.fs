@@ -116,10 +116,9 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected None for missing map key")
 
     [<Test>]
-    member _.``Evaluates int keyed map indexer lookup as option`` () =
-        match Helpers.eval "let m = { [1] = 42 }\nm[1]" with
-        | VOption (Some (VInt 42L)) -> ()
-        | _ -> Assert.Fail("Expected Some 42 from int-key map indexer")
+    member _.``Rejects int keyed map indexer lookup`` () =
+        let act () = Helpers.eval "let m = { [1] = 42 }\nm[1]" |> ignore
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Rejects map append via append operator`` () =
