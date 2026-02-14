@@ -25,6 +25,7 @@ Targeted test suites (when working on specific areas):
 
 - Every new feature must include automated test coverage.
 - Every bug fix must include a regression test reproducing the prior failure mode.
+- Build must be warning-free; warnings are treated as errors (`TreatWarningsAsErrors=true`).
 - Add tests in the suite matching the change surface:
   - Parser/type/eval semantics -> `tests/FScript.Language.Tests`
   - Runtime and host behavior -> `tests/FScript.Runtime.Tests`
@@ -51,8 +52,15 @@ Targeted test suites (when working on specific areas):
 ## PR Checklist
 
 - Build passes.
+- Build passes with zero warnings.
 - Relevant test suite(s) pass.
 - New behavior is test covered.
 - Regression risk is covered by tests (including smoke tests when relevant).
 - `CHANGELOG.md` `## [Unreleased]` has concise one-line entries for the change.
 - Relevant specification/architecture documentation has been updated.
+
+## Direct To Main Policy
+
+- Committing directly to `main` follows the same quality bar as a PR.
+- All checklist items above still apply (build/test/spec/docs/changelog).
+- Documentation and release notes must be updated in the same change set.
