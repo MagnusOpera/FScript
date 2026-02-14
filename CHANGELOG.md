@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- _No entries yet._
+- Clarified `AGENTS.md` so every direct commit to `main` must include an `Unreleased` changelog entry, including docs/process/policy updates.
 
 ## [0.32.0]
 

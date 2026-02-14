@@ -81,3 +81,5 @@ Rules:
 - Committing directly to `main` follows the same quality bar as a PR.
 - All checklist items above still apply (build/test/spec/docs/changelog).
 - Documentation and release notes must be updated in the same change set.
+- Every direct-to-main commit must add at least one `CHANGELOG.md` `## [Unreleased]` bullet in the same commit.
+- This includes documentation/process/policy-only commits (not just runtime/language code changes).
