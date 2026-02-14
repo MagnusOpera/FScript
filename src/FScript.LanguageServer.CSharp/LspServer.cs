@@ -46,7 +46,7 @@ internal sealed class LspServer
 
             if (id is null)
             {
-                HandleNotification(method, @params);
+                HandleNotification(output, method, @params);
                 if (_shutdownRequested && string.Equals(method, "exit", StringComparison.Ordinal))
                 {
                     break;
@@ -59,18 +59,18 @@ internal sealed class LspServer
         }
     }
 
-    private void HandleNotification(string method, JsonObject? @params)
+    private void HandleNotification(Stream output, string method, JsonObject? @params)
     {
         switch (method)
         {
             case "textDocument/didOpen":
-                HandleDidOpen(@params);
+                HandleDidOpen(output, @params);
                 break;
             case "textDocument/didChange":
-                HandleDidChange(@params);
+                HandleDidChange(output, @params);
                 break;
             case "textDocument/didClose":
-                HandleDidClose(@params);
+                HandleDidClose(output, @params);
                 break;
             case "exit":
                 break;
@@ -94,13 +94,19 @@ internal sealed class LspServer
             case "fscript/stdlibSource":
                 SendResponse(output, id, LspHandlers.HandleStdlibSource(@params));
                 break;
+            case "fscript/viewAst":
+                SendResponse(output, id, LspHandlers.HandleViewAst(@params, TryLoadSourceForUri));
+                break;
+            case "fscript/viewInferredAst":
+                SendResponse(output, id, LspHandlers.HandleViewInferredAst(@params, TryLoadSourceForUri));
+                break;
             default:
                 SendError(output, id, -32601, $"Method not found: {method}");
                 break;
         }
     }
 
-    private void HandleDidOpen(JsonObject? @params)
+    private void HandleDidOpen(Stream output, JsonObject? @params)
     {
         var textDocument = @params?["textDocument"] as JsonObject;
         var uri = textDocument?["uri"]?.GetValue<string>();
@@ -108,10 +114,11 @@ internal sealed class LspServer
         if (!string.IsNullOrEmpty(uri) && text is not null)
         {
             _documents[uri] = text;
+            PublishDiagnostics(output, uri, text);
         }
     }
 
-    private void HandleDidChange(JsonObject? @params)
+    private void HandleDidChange(Stream output, JsonObject? @params)
     {
         var textDocument = @params?["textDocument"] as JsonObject;
         var uri = textDocument?["uri"]?.GetValue<string>();
@@ -131,17 +138,46 @@ internal sealed class LspServer
         if (text is not null)
         {
             _documents[uri] = text;
+            PublishDiagnostics(output, uri, text);
         }
     }
 
-    private void HandleDidClose(JsonObject? @params)
+    private void HandleDidClose(Stream output, JsonObject? @params)
     {
         var textDocument = @params?["textDocument"] as JsonObject;
         var uri = textDocument?["uri"]?.GetValue<string>();
         if (!string.IsNullOrEmpty(uri))
         {
             _documents.Remove(uri);
+            SendNotification(output, "textDocument/publishDiagnostics", new JsonObject
+            {
+                ["uri"] = uri,
+                ["diagnostics"] = new JsonArray()
+            });
         }
+    }
+
+    private string? TryLoadSourceForUri(string uri)
+    {
+        if (_documents.TryGetValue(uri, out var text))
+        {
+            return text;
+        }
+
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) ||
+            !string.Equals(parsed.Scheme, "file", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var sourcePath = parsed.LocalPath;
+        return File.Exists(sourcePath) ? File.ReadAllText(sourcePath) : null;
+    }
+
+    private static void PublishDiagnostics(Stream output, string uri, string text)
+    {
+        var diagnosticsParams = LspHandlers.CreateDiagnosticsParams(uri, text);
+        SendNotification(output, "textDocument/publishDiagnostics", diagnosticsParams);
     }
 
     private static void SendResponse(Stream output, JsonNode id, JsonNode? result)
@@ -167,6 +203,18 @@ internal sealed class LspServer
                 ["code"] = code,
                 ["message"] = message
             }
+        };
+
+        JsonRpcWire.WriteMessage(output, payload.ToJsonString());
+    }
+
+    private static void SendNotification(Stream output, string method, JsonObject @params)
+    {
+        var payload = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = method,
+            ["params"] = @params
         };
 
         JsonRpcWire.WriteMessage(output, payload.ToJsonString());
