@@ -20,6 +20,8 @@ All notable changes to FScript are documented in this file.
 - LSP hover/signature for injected stdlib functions now shows named arguments (for example `Option.map` mapper/value labels).
 - LSP definition on injected stdlib functions now opens readonly virtual stdlib sources (`fscript-stdlib:///Option.fss`, `List.fss`, `Map.fss`).
 
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.29.0...0.30.0
+
 ## [0.29.0]
 
 - Improved LSP inlay/type rendering for map-related inference (`int|string` map-key domain and `unknown map` display).

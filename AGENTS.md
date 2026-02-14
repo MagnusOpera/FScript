@@ -37,6 +37,9 @@ Targeted test suites (when working on specific areas):
 - Each new feature/fix entry must be a short, single-line bullet.
 - Write entries in user-facing terms (what changed), not implementation detail.
 - At release time, move unreleased entries to the versioned section and reset `Unreleased`.
+- Each released version section should end with a compare link:
+  - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
+- When publishing the GitHub release, include that same compare link in the release notes body.
 
 ## Specification Maintenance (Mandatory)
 
