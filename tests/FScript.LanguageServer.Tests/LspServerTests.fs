@@ -112,28 +112,34 @@ module private LspClient =
 
         found |> Option.defaultWith (fun () -> failwith "Unable to locate repository root from test base directory")
 
+    let private ensureServerDllBuilt =
+        lazy (
+            let root = findRepoRoot ()
+            let serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.fsproj")
+            let serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll")
+
+            let buildPsi =
+                ProcessStartInfo(
+                    FileName = "dotnet",
+                    Arguments = $"build \"{serverProject}\" -c Release -nologo -v q",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true)
+
+            use buildProc = new Process(StartInfo = buildPsi)
+            if not (buildProc.Start()) then
+                failwith "Unable to start dotnet build for language server test setup."
+            buildProc.WaitForExit()
+            if buildProc.ExitCode <> 0 || not (File.Exists(serverDll)) then
+                let out = buildProc.StandardOutput.ReadToEnd()
+                let err = buildProc.StandardError.ReadToEnd()
+                failwith $"Failed to build language server test target. stdout: {out}\nstderr: {err}"
+
+            serverDll)
+
     let start () =
-        let root = findRepoRoot ()
-        let serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.fsproj")
-        let serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll")
-
-        let buildPsi =
-            ProcessStartInfo(
-                FileName = "dotnet",
-                Arguments = $"build \"{serverProject}\" -c Release -nologo -v q",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true)
-
-        use buildProc = new Process(StartInfo = buildPsi)
-        if not (buildProc.Start()) then
-            failwith "Unable to start dotnet build for language server test setup."
-        buildProc.WaitForExit()
-        if buildProc.ExitCode <> 0 || not (File.Exists(serverDll)) then
-            let out = buildProc.StandardOutput.ReadToEnd()
-            let err = buildProc.StandardError.ReadToEnd()
-            failwith $"Failed to build language server test target. stdout: {out}\nstderr: {err}"
+        let serverDll = ensureServerDllBuilt.Value
 
         let psi =
             ProcessStartInfo(
