@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Clarified `AGENTS.md` so every direct commit to `main` must include an `Unreleased` changelog entry, including docs/process/policy updates.
+- _No entries yet._
 
 ## [0.32.0]
 
@@ -12,6 +12,7 @@ All notable changes to FScript are documented in this file.
 - Imported files are now exposed through filename-derived modules (for example `shared.fss` -> `shared.*`).
 - Updated parser/runtime/LSP/docs/tests for the new import/module semantics.
 - Removed `unused` top-level binding diagnostics from LSP.
+- Clarified `AGENTS.md` so every direct commit to `main` must include an `Unreleased` changelog entry, including docs/process/policy updates.
 
 **Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.31.0...0.32.0
 
