@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.34.0]
+
 - Removed F# sources from `src/FScript.LanguageServer*` by moving LSP semantic modules into `FScript.CSharpInterop` and keeping `FScript.LanguageServer` as C# host.
 - Replaced `FScript.LanguageServer.Tests` project with a C# test project and C# LSP test harness to remove F# compile cost from LanguageServer test builds.
 - Deleted obsolete F# LanguageServer test sources after C# test project migration.
@@ -20,6 +22,8 @@ All notable changes to FScript are documented in this file.
 - Fixed LSP inlay hints to ignore spans from other files so included symbols no longer leak labels into unrelated declarations.
 - Enforced string-only map keys across type inference, evaluation, samples, and LSP type rendering (removed `int|string` key-domain displays).
 - Fixed map-pattern inlay hints to infer key/value/tail bindings (`string`, `int`, `int map`) instead of `unknown`.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.33.0...0.34.0
 
 ## [0.33.0]
 
