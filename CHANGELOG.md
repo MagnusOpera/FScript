@@ -4,10 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.35.0]
+
 - Fixed LSP completion insertion for dotted prefixes so selecting `Option.map` after `Option.` no longer duplicates the qualifier.
 - Switched import syntax to `import "path.fss" as Alias` and removed `from` import grammar.
 - Updated LSP type display/navigation to hide internal import prefixes and use source aliases (for example `Common.ProjectInfo`).
 - Renamed sample `includes-and-exports.fss` to `imports-and-exports.fss` and updated docs links.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.34.0...0.35.0
 
 ## [0.34.0]
 
