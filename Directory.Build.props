@@ -11,5 +11,6 @@
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 </Project>

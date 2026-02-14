@@ -1121,10 +1121,11 @@ module LspHandlers =
                 | None -> None
                 | Some name ->
                     let assembly = typeof<Span>.Assembly
-                    use stream = assembly.GetManifestResourceStream(name)
-                    if isNull stream then
+                    match assembly.GetManifestResourceStream(name) with
+                    | null ->
                         None
-                    else
+                    | stream ->
+                        use stream = stream
                         use reader = new StreamReader(stream)
                         Some (reader.ReadToEnd())
         with _ ->

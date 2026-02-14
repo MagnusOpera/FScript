@@ -398,6 +398,8 @@ module LspSymbols =
                 | None -> ()
             | SExpr _ ->
                 ()
+            | SInclude _ ->
+                ()
 
         result
 
@@ -431,6 +433,8 @@ module LspSymbols =
                         collected[keyOf entry] <- entry
                 | None -> ()
             | SExpr _ ->
+                ()
+            | SInclude _ ->
                 ()
 
         collected.Values |> Seq.toList
