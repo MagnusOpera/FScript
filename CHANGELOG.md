@@ -4,8 +4,15 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.38.1]
+
+
 - Fixed release preparation to auto-seed `## [Unreleased]` with a post-release initialization bullet so changelog CI checks continue to pass after tagging.
 - Initialize post-0.38.0 unreleased section.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.38.0...0.38.1
+
+- Initialize post-0.38.1 unreleased section.
 
 ## [0.38.0]
 
