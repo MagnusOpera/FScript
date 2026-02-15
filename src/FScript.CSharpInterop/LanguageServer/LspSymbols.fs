@@ -1644,8 +1644,19 @@ module LspSymbols =
         | Some word ->
             let candidates =
                 if word.Contains('.') then
-                    let segments = word.Split('.') |> Array.toList
-                    word :: segments
+                    let parts = word.Split('.') |> Array.toList
+                    let mapped =
+                        match parts with
+                        | qualifier :: memberName :: [] ->
+                            match doc.ImportAliasToInternal |> Map.tryFind qualifier with
+                            | Some internalPrefix ->
+                                [ $"{internalPrefix}.{memberName}"; internalPrefix ]
+                            | None ->
+                                []
+                        | _ ->
+                            []
+
+                    (word :: parts) @ mapped
                 else
                     [ word ]
                 |> List.distinct

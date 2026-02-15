@@ -762,18 +762,23 @@ module LspHandlers =
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
             let targetTypeName =
-                match tryResolveSymbol doc line character with
-                | Some sym ->
-                    match sym.TypeTargetName with
-                    | Some name -> Some name
+                let fromSymbol =
+                    match tryResolveSymbol doc line character with
+                    | Some sym ->
+                        match sym.TypeTargetName with
+                        | Some name -> Some name
+                        | None ->
+                            sym.TypeText
+                            |> Option.bind (fun t ->
+                                doc.Symbols
+                                |> List.tryFind (fun s -> s.Kind = 5 && s.Name = t)
+                                |> Option.map (fun s -> s.Name))
                     | None ->
-                        sym.TypeText
-                        |> Option.bind (fun t ->
-                            doc.Symbols
-                            |> List.tryFind (fun s -> s.Kind = 5 && s.Name = t)
-                            |> Option.map (fun s -> s.Name))
-                | None ->
-                    tryResolveTypeTargetAtPosition doc line character
+                        None
+
+                match fromSymbol with
+                | Some _ -> fromSymbol
+                | None -> tryResolveTypeTargetAtPosition doc line character
 
             match targetTypeName with
             | Some typeName ->

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed LSP go-to-definition for alias-qualified function calls (for example `Helpers.append_part`).
+
 ## [0.35.0]
 
 - Fixed LSP completion insertion for dotted prefixes so selecting `Option.map` after `Option.` no longer duplicates the qualifier.

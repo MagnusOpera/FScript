@@ -471,6 +471,72 @@ import "common.fss" as Common
         }
     }
 
+    [Test]
+    public void CSharp_server_navigates_alias_qualified_function_calls()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-alias-functions-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var helpersPath = Path.Combine(tempDir, "_helpers.fss");
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            File.WriteAllText(helpersPath, """
+let append_part part acc =
+    if part = "" then acc else $"{acc} {part}"
+""");
+
+            var source = """
+import "_helpers.fss" as Helpers
+
+let append_build_arg acc key value =
+    Helpers.append_part $"--build-arg {key}=\"{value}\"" acc
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var helpersUri = new Uri(helpersPath).AbsoluteUri;
+
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = 3, ["character"] = 17 }
+            };
+            LspClient.SendRequest(client, 84, "textDocument/definition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 84);
+
+            var result = definitionResponse["result"] as JsonObject ?? throw new Exception("Expected definition location.");
+            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo(helpersUri));
+            var range = result["range"] as JsonObject ?? throw new Exception("Expected range.");
+            var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+            Assert.That(start["line"]?.GetValue<int>(), Is.EqualTo(0));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
