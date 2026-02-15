@@ -23,6 +23,14 @@ Then run scripts with:
 fscript your-script.fss
 ```
 
+You can also run from stdin, show version, or start REPL:
+
+```bash
+cat your-script.fss | fscript -r .
+fscript version
+fscript
+```
+
 ### Build from source
 ```bash
 git clone https://github.com/MagnusOpera/FScript.git
@@ -34,6 +42,14 @@ Then run scripts with:
 
 ```bash
 ./src/FScript/bin/Debug/net10.0/fscript your-script.fss
+```
+
+And the same extra CLI modes:
+
+```bash
+cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r .
+./src/FScript/bin/Debug/net10.0/fscript version
+./src/FScript/bin/Debug/net10.0/fscript
 ```
 
 ## 1. Run your first script

@@ -6,6 +6,11 @@ All notable changes to FScript are documented in this file.
 
 - Release tag workflow now populates draft release notes from the matching `CHANGELOG.md` version section and fails fast when it is missing or invalid.
 - Initialize post-0.37.0 unreleased section.
+- Added CLI stdin execution support so scripts can be piped to `fscript` (including `-r/--root` overrides).
+- Added `fscript version` command to print the current CLI version.
+- Added interactive CLI REPL mode when running `fscript` without arguments.
+- Updated REPL multiline submission to require double-Enter for pending blocks and improved function display with typed signatures.
+- Fixed block semantics to reject trailing `let`-only blocks without a final expression (for example `let a = let f x = ...`) and require an explicit return expression.
 
 ## [0.37.0]
 

@@ -11,11 +11,13 @@ This document defines the security model for running FScript programs with host 
 ## Host context and filesystem boundary
 - Host context includes:
   - `RootDirectory : string`
-- The CLI defaults `RootDirectory` to the script file directory.
+- The CLI defaults `RootDirectory` to the script file directory in file mode (`fscript script.fss`).
+- In stdin and REPL modes (`cat script.fss | fscript`, `fscript`), the CLI defaults `RootDirectory` to the current working directory.
 - The CLI allows overriding root with `--root <path>` (or `-r <path>`).
 - `import` file resolution is constrained to `RootDirectory`.
 - Import paths are resolved relative to the current script file.
 - Import cycles are rejected.
+- `import` is only available for file-based execution; stdin source mode rejects `import`.
 
 Filesystem extern behavior:
 - `Fs.readText` and `Fs.enumerateFiles` resolve candidate paths through `HostCommon.tryResolvePath`.

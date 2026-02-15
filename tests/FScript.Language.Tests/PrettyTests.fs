@@ -18,3 +18,12 @@ type PrettyTests () =
     member _.``Formats tuple and record`` () =
         Helpers.evalToString "(1, true)" |> should equal "(1, true)"
         Helpers.evalToString "{| Name = \"a\"; Age = 1 |}" |> should equal "{ Age = 1; Name = \"a\" }"
+
+    [<Test>]
+    member _.``Formats function values with parameter names`` () =
+        Helpers.evalToString "fun x -> x" |> should equal "<fun x>"
+        Helpers.evalToString "fun x -> fun y -> x + y" |> should equal "<fun x y>"
+
+    [<Test>]
+    member _.``Formats extern values with name and application progress`` () =
+        Helpers.evalToString "print" |> should equal "<extern print>"

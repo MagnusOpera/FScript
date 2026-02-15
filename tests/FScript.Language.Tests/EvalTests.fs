@@ -170,6 +170,17 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected [\"workspace:*\"]")
 
     [<Test>]
+    member _.``Evaluates block with explicit final expression after let`` () =
+        let src =
+            "let a =\n" +
+            "  let f x = x >= 10\n" +
+            "  f\n" +
+            "a 3"
+        match Helpers.eval src with
+        | VBool false -> ()
+        | _ -> Assert.Fail("Expected a to evaluate as function int -> bool")
+
+    [<Test>]
     member _.``Evaluates option values`` () =
         match Helpers.eval "Some 4" with
         | VOption (Some (VInt 4L)) -> ()

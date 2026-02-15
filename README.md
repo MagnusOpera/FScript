@@ -83,6 +83,21 @@ Optional sandbox root override:
 dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.fss
 ```
 
+Run a script from stdin:
+```bash
+cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r .
+```
+
+Show CLI version:
+```bash
+dotnet run --project src/FScript -- version
+```
+
+Start REPL:
+```bash
+dotnet run --project src/FScript --
+```
+
 Useful samples:
 - [`samples/types-showcase.fss`](samples/types-showcase.fss)
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)

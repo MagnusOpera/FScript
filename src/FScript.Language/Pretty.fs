@@ -3,6 +3,13 @@ namespace FScript.Language
 module Pretty =
     open Eval
 
+    let private closureParameters (firstArg: string) (body: Expr) =
+        let rec loop (acc: string list) (expr: Expr) =
+            match expr with
+            | ELambda (param, next, _) -> loop (acc @ [ param.Name ]) next
+            | _ -> acc
+        loop [ firstArg ] body
+
     let rec valueToString v =
         match v with
         | VUnit -> "()"
@@ -35,6 +42,12 @@ module Pretty =
         | VUnionCase (_, caseName, None) -> caseName
         | VUnionCase (_, caseName, Some v) -> sprintf "%s %s" caseName (valueToString v)
         | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
-        | VClosure _ -> "<fun>"
+        | VClosure (argName, body, _) ->
+            let args = closureParameters argName body
+            sprintf "<fun %s>" (String.concat " " args)
         | VUnionCtor (_, caseName) -> sprintf "<ctor %s>" caseName
-        | VExternal _ -> "<extern>"
+        | VExternal (ext, args) ->
+            if args.IsEmpty then
+                sprintf "<extern %s>" ext.Name
+            else
+                sprintf "<extern %s (%d/%d)>" ext.Name args.Length ext.Arity

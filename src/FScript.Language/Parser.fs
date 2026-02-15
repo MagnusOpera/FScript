@@ -1302,8 +1302,12 @@ module Parser =
                 raise (ParseException { Message = "Empty block"; Span = stream.Peek().Span })
             let rec desugar (stmts: Stmt list) =
                 match stmts with
-                | [] -> ELiteral(LBool true, stream.Peek().Span)
+                | [] -> EUnit (stream.Peek().Span)
                 | [SExpr e] -> e
+                | [SLet(_, _, _, _, _, span)] ->
+                    raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
+                | [SLetRecGroup(_, _, span)] ->
+                    raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | SLet(name, args, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest

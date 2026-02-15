@@ -547,6 +547,12 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected block-desugared let")
 
     [<Test>]
+    member _.``Rejects block ending with let binding without final expression`` () =
+        let src = "let a =\n    let f x = x >= 10"
+        let act () = Helpers.parse src |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses multiline lambda argument closed by parenthesis on same line`` () =
         let src = "Map.fold (fun acc key value ->\n    match value with\n    | \"workspace:*\" -> key :: acc\n    | _ -> acc) [] { [\"a\"] = \"workspace:*\" }"
         let p = Helpers.parse src
