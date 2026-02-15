@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 <version> [dryrun]"
-  echo "  version: X.Y.Z or X.Y.Z-next"
+  echo "  version: X.Y.Z"
   echo "  dryrun : true|false (default: false)"
   exit 2
 fi
@@ -11,8 +11,8 @@ fi
 version="$1"
 dryrun="${2:-false}"
 
-if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-next)?$ ]]; then
-  echo "ERROR: Invalid version '$version'. Expected X.Y.Z or X.Y.Z-next."
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: Invalid version '$version'. Expected X.Y.Z."
   exit 1
 fi
 
@@ -60,11 +60,7 @@ if ! grep -q '^[[:space:]]*-\s\+' <<<"$unreleased_body"; then
   exit 1
 fi
 
-if [[ "$version" == *-next ]]; then
-  candidate_tags="$(git tag --list '*-next' | sort -Vu)"
-else
-  candidate_tags="$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vu || true)"
-fi
+candidate_tags="$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vu || true)"
 
 previous_tag="$(
   {

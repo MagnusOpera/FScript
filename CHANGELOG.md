@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restricted `make release-prepare` to stable versions only (`major.minor.build`) and removed `-next` support from release docs and validation.
 - Added REPL documentation under guides and architecture, and updated the getting-started tutorial to include a REPL check right after install.
 - Added `make release-prepare` to automate changelog versioning, compare link generation, release commit, and local tag creation.
 - Release tag workflow now populates draft release notes from the matching `CHANGELOG.md` version section and fails fast when it is missing or invalid.

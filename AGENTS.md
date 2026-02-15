@@ -56,8 +56,8 @@ Targeted test suites (when working on specific areas):
 
 Follow this exact sequence for every release:
 
-1. Run `make release-prepare version=X.Y.Z` (stable) or `make release-prepare version=X.Y.Z-next` (preview).
-   - Optional preview mode: `make release-prepare version=X.Y.Z[-next] dryrun=true`
+1. Run `make release-prepare version=X.Y.Z`.
+   - Optional preview mode: `make release-prepare version=X.Y.Z dryrun=true`
 2. Push commit and tag together: `git push origin main --follow-tags`.
 3. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
 4. Confirm the draft notes are sourced from `CHANGELOG.md` `## [X.Y.Z]` (including compare link).
@@ -68,7 +68,7 @@ Rules:
 - Do not bypass the draft step.
 - Tag workflow must fail if `CHANGELOG.md` has no non-empty `## [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
-- `make release-prepare` supports `X.Y.Z` and `X.Y.Z-next` only.
+- `make release-prepare` supports `X.Y.Z` only.
 
 ## Specification Maintenance (Mandatory)
 
