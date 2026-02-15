@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.38.0]
+
+
 - Restricted `make release-prepare` to stable versions only (`major.minor.build`) and removed `-next` support from release docs and validation.
 - Added REPL documentation under guides and architecture, and updated the getting-started tutorial to include a REPL check right after install.
 - Added `make release-prepare` to automate changelog versioning, compare link generation, release commit, and local tag creation.
@@ -14,6 +17,8 @@ All notable changes to FScript are documented in this file.
 - Added interactive CLI REPL mode when running `fscript` without arguments.
 - Updated REPL multiline submission to require double-Enter for pending blocks and improved function display with typed signatures.
 - Fixed block semantics to reject trailing `let`-only blocks without a final expression (for example `let a = let f x = ...`) and require an explicit return expression.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.37.0...0.38.0
 
 ## [0.37.0]
 
