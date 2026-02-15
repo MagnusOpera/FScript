@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.36.0]
+
 - Fixed LSP go-to-definition for alias-qualified function calls (for example `Helpers.append_part`).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.35.0...0.36.0
 
 ## [0.35.0]
 
