@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed release preparation to auto-seed `## [Unreleased]` with a post-release initialization bullet so changelog CI checks continue to pass after tagging.
+- Initialize post-0.38.0 unreleased section.
+
 ## [0.38.0]
 
 
