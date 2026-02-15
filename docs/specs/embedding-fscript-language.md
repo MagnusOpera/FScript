@@ -213,13 +213,39 @@ let hostContext = { RootDirectory = "." }
 let externs = Registry.all hostContext
 
 let loaded =
-    ScriptHost.loadFile externs "./script.fss" "."
+    ScriptHost.loadFile externs "./script.fss"
 
 let r1 = ScriptHost.invoke loaded "run" [ VString "build" ]
 let r2 = ScriptHost.invoke loaded "run" [ VString "test" ]
 ```
 
-### 3. Add one custom extern
+### 3. Load an in-memory script with `import`
+Use resolver-backed loading when the entry script source is in memory and imports must be resolved by the host.
+
+```fsharp
+open System.IO
+open FScript.Language
+open FScript.Runtime
+
+let root = "/virtual/workspace"
+let entryFile = Path.Combine(root, "main.fss")
+let entrySource = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.add1 x"
+
+let embeddedSources =
+    Map [
+        Path.Combine(root, "shared.fss"), "let add1 x = x + 1"
+    ]
+
+let resolver path = embeddedSources |> Map.tryFind path
+
+let externs = Registry.all { RootDirectory = root }
+let loaded =
+    ScriptHost.loadSourceWithIncludes externs root entryFile entrySource resolver
+
+let result = ScriptHost.invoke loaded "run" [ VInt 41L ]
+```
+
+### 4. Add one custom extern
 Define a typed external function and pass it to inference/evaluation.
 
 ```fsharp
@@ -244,7 +270,7 @@ let typed = FScript.inferWithExterns [ envExtern ] program
 let value = FScript.evalWithExterns [ envExtern ] typed
 ```
 
-### 4. Export descriptor discovery
+### 5. Export descriptor discovery
 After inference, get function descriptors to expose callable surface in hosts.
 
 ```fsharp

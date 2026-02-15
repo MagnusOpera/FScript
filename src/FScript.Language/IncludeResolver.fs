@@ -450,7 +450,12 @@ module IncludeResolver =
 
         loadFile [] true entryFile None
 
-    let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
+    let private parseProgramFromSourceWithIncludesCore
+        (rootDirectory: string)
+        (entryFile: string)
+        (entrySource: string)
+        (resolveImportedSource: (string -> string option) option)
+        : Program =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let fileSpan path =
             let p = Span.posInFile path 1 1
@@ -495,9 +500,27 @@ module IncludeResolver =
                     if String.Equals(sandboxedPath, entrySandboxedPath, StringComparison.OrdinalIgnoreCase) then
                         entrySource
                     else
-                        File.ReadAllText(sandboxedPath)
+                        match resolveImportedSource with
+                        | Some resolver ->
+                            match resolver sandboxedPath with
+                            | Some source -> source
+                            | None ->
+                                raise (ParseException { Message = $"Imported file '{sandboxedPath}' could not be resolved"; Span = fileSpan sandboxedPath })
+                        | None ->
+                            File.ReadAllText(sandboxedPath)
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
                 expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
         loadFile [] true entrySandboxedPath None
+
+    let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
+        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource None
+
+    let parseProgramFromSourceWithIncludesResolver
+        (rootDirectory: string)
+        (entryFile: string)
+        (entrySource: string)
+        (resolveImportedSource: string -> string option)
+        : Program =
+        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource (Some resolveImportedSource)

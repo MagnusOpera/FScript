@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added resolver-backed import loading APIs (`parseSourceWithIncludesResolver` and `ScriptHost.loadSourceWithIncludes`) for hosts that load scripts from non-file sources.
+
 ## [0.36.0]
 
 - Fixed LSP go-to-definition for alias-qualified function calls (for example `Helpers.append_part`).

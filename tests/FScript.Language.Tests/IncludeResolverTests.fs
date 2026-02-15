@@ -160,6 +160,47 @@ type IncludeResolverTests () =
             letNames |> should contain "defaults")
 
     [<Test>]
+    member _.``Import resolver can parse in-memory source with resolver-backed imports`` () =
+        withTempDir (fun dir ->
+            let mainPath = Path.Combine(dir, "main.fss")
+            let sharedPath = Path.Combine(dir, "shared.fss")
+            let source = "import \"shared.fss\" as Shared\nlet value = Shared.increment 1\n"
+            let resolve path =
+                if String.Equals(path, sharedPath, StringComparison.OrdinalIgnoreCase) then
+                    Some "let increment x = x + 1"
+                else
+                    None
+
+            let program =
+                IncludeResolver.parseProgramFromSourceWithIncludesResolver
+                    dir
+                    mainPath
+                    source
+                    resolve
+
+            let names =
+                program
+                |> List.choose (function
+                    | SLet(name, _, _, _, _, _) -> Some name
+                    | _ -> None)
+
+            names |> should contain "value")
+
+    [<Test>]
+    member _.``Import resolver reports unresolved imports from resolver`` () =
+        withTempDir (fun dir ->
+            let mainPath = Path.Combine(dir, "main.fss")
+            let source = "import \"missing.fss\" as Missing\nlet value = Missing.any"
+            let act () =
+                IncludeResolver.parseProgramFromSourceWithIncludesResolver
+                    dir
+                    mainPath
+                    source
+                    (fun _ -> None)
+                |> ignore
+            act |> should throw typeof<ParseException>)
+
+    [<Test>]
     member _.``Import resolver rejects invalid alias`` () =
         withTempDir (fun dir ->
             let helperPath = Path.Combine(dir, "bad-name.fss")

@@ -87,3 +87,30 @@ type ScriptHostTests () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory() }
         let act () = ScriptHost.loadSource externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
         Assert.Throws<EvalException>(TestDelegate act) |> ignore
+
+    [<Test>]
+    member _.``script_host loadSourceWithIncludes resolves imports from resolver`` () =
+        let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-{System.Guid.NewGuid():N}")
+        let entryFile = Path.Combine(root, "main.fss")
+        let sharedFile = Path.Combine(root, "shared.fss")
+        let sources =
+            Map [
+                sharedFile, "let increment x = x + 1"
+            ]
+        let resolve path = sources |> Map.tryFind path
+        let source = "import \"shared.fss\" as Shared\n[<export>] let add2 x = Shared.increment (Shared.increment x)"
+        let externs = Registry.all { RootDirectory = root }
+        let loaded = ScriptHost.loadSourceWithIncludes externs root entryFile source resolve
+
+        match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
+        | VInt 12L -> ()
+        | _ -> Assert.Fail("Expected imported function to be available")
+
+    [<Test>]
+    member _.``script_host loadSourceWithIncludes fails when resolver misses import`` () =
+        let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-missing-{System.Guid.NewGuid():N}")
+        let entryFile = Path.Combine(root, "main.fss")
+        let source = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.increment x"
+        let externs = Registry.all { RootDirectory = root }
+        let act () = ScriptHost.loadSourceWithIncludes externs root entryFile source (fun _ -> None) |> ignore
+        Assert.Throws<ParseException>(TestDelegate act) |> ignore
