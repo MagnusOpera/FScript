@@ -56,19 +56,19 @@ Targeted test suites (when working on specific areas):
 
 Follow this exact sequence for every release:
 
-1. Move `## [Unreleased]` entries to `## [X.Y.Z]` in `CHANGELOG.md`.
-2. Add/verify compare link in that version section.
-3. Commit the changelog update to `main`.
-4. Create and push tag `X.Y.Z`.
-5. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-6. Confirm the draft notes are sourced from `CHANGELOG.md` `## [X.Y.Z]` (including compare link).
-7. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
+1. Run `make release-prepare version=X.Y.Z` (stable) or `make release-prepare version=X.Y.Z-next` (preview).
+   - Optional preview mode: `make release-prepare version=X.Y.Z[-next] dryrun=true`
+2. Push commit and tag together: `git push origin main --follow-tags`.
+3. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
+4. Confirm the draft notes are sourced from `CHANGELOG.md` `## [X.Y.Z]` (including compare link).
+5. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and draft release creation.
 - Do not bypass the draft step.
 - Tag workflow must fail if `CHANGELOG.md` has no non-empty `## [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
+- `make release-prepare` supports `X.Y.Z` and `X.Y.Z-next` only.
 
 ## Specification Maintenance (Mandatory)
 

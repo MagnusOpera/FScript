@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added `make release-prepare` to automate changelog versioning, compare link generation, release commit, and local tag creation.
 - Release tag workflow now populates draft release notes from the matching `CHANGELOG.md` version section and fails fast when it is missing or invalid.
 - Initialize post-0.37.0 unreleased section.
 - Added CLI stdin execution support so scripts can be piped to `fscript` (including `-r/--root` overrides).
