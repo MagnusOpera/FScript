@@ -106,12 +106,10 @@ new_section_file="${tmp_dir}/new-section.md"
 updated_changelog="${tmp_dir}/CHANGELOG.md"
 post_release_unreleased_bullet="- Initialize post-${version} unreleased section."
 
-awk -v post_bullet="$post_release_unreleased_bullet" '
+awk '
   BEGIN { skip = 0 }
   $0 == "## [Unreleased]" {
     print
-    print ""
-    print post_bullet
     print ""
     skip = 1
     next
@@ -128,10 +126,12 @@ awk -v post_bullet="$post_release_unreleased_bullet" '
   echo "$compare_link"
 } > "$new_section_file"
 
-awk -v section_file="$new_section_file" '
+awk -v section_file="$new_section_file" -v post_bullet="$post_release_unreleased_bullet" '
   BEGIN { inserted = 0; skip_next_blank = 0 }
   $0 == "## [Unreleased]" && inserted == 0 {
     print
+    print ""
+    print post_bullet
     print ""
     while ((getline line < section_file) > 0) {
       print line
