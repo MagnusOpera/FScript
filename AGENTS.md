@@ -61,12 +61,13 @@ Follow this exact sequence for every release:
 3. Commit the changelog update to `main`.
 4. Create and push tag `X.Y.Z`.
 5. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-6. Only after the draft exists, update draft notes from `CHANGELOG.md` if needed.
+6. Confirm the draft notes are sourced from `CHANGELOG.md` `## [X.Y.Z]` (including compare link).
 7. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and draft release creation.
 - Do not bypass the draft step.
+- Tag workflow must fail if `CHANGELOG.md` has no non-empty `## [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
 
 ## Specification Maintenance (Mandatory)
