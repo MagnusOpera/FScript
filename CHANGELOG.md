@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.38.3]
+
+
 - Updated changelog gating and release preparation so release commits can leave `## [Unreleased]` empty without placeholder bullets.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.38.2...0.38.3
 
 ## [0.38.2]
 
