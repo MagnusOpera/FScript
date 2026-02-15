@@ -4,8 +4,15 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Initialize post-0.38.2 unreleased section.
+
+## [0.38.2]
+
+
 - Fixed `release-prepare` changelog rendering so the post-release initialization bullet stays under `## [Unreleased]` instead of being appended to the released section.
 - Initialize post-0.38.1 unreleased section.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.38.1...0.38.2
 
 ## [0.38.1]
 
