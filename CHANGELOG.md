@@ -4,7 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Initialize post-0.37.0 unreleased section.
+
+## [0.37.0]
+
 - Added resolver-backed import loading APIs (`parseSourceWithIncludesResolver` and `ScriptHost.loadSourceWithIncludes`) for hosts that load scripts from non-file sources.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.36.0...0.37.0
 
 ## [0.36.0]
 
