@@ -100,6 +100,11 @@ UNRELEASED_BLOCK=$(awk '
 ' CHANGELOG.md)
 
 if [[ -z "${UNRELEASED_BLOCK//$'\n'/}" ]]; then
+  HEAD_SUBJECT="$(git log -1 --pretty=%s)"
+  if [[ "$HEAD_SUBJECT" =~ ^chore\(release\):\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Changelog gate passed (release commit allows empty ## [Unreleased])."
+    exit 0
+  fi
   echo "ERROR: ## [Unreleased] section is empty."
   exit 1
 fi

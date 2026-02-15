@@ -48,6 +48,7 @@ Targeted test suites (when working on specific areas):
 - Required format for regular commits:
   - add at least one short, single-line bullet under `## [Unreleased]`.
 - Scope is strict (no exceptions for docs/process/policy/chore/dependency-only commits).
+- Exception: release commits (`chore(release): X.Y.Z`) may leave `## [Unreleased]` empty.
 - Local preflight command:
   - `make verify-changelog`
 - CI enforces this on both PRs and direct pushes to `main`.

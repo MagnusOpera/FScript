@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Initialize post-0.38.2 unreleased section.
+- Updated changelog gating and release preparation so release commits can leave `## [Unreleased]` empty without placeholder bullets.
 
 ## [0.38.2]
 
