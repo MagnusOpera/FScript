@@ -9,6 +9,7 @@ This folder is organized into three layers:
 ## Start here
 
 - Tutorial: [`guides/getting-started-tutorial.md`](./guides/getting-started-tutorial.md)
+- REPL guide: [`guides/repl.md`](./guides/repl.md)
 - FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)
 - Language rationale: [`guides/language-choices.md`](./guides/language-choices.md)
 

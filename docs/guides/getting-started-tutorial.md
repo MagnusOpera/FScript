@@ -31,6 +31,12 @@ fscript version
 fscript
 ```
 
+Try REPL right after install:
+
+```bash
+fscript
+```
+
 ### Build from source
 ```bash
 git clone https://github.com/MagnusOpera/FScript.git
@@ -51,6 +57,14 @@ cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r .
 ./src/FScript/bin/Debug/net10.0/fscript version
 ./src/FScript/bin/Debug/net10.0/fscript
 ```
+
+Quick REPL check after local build:
+
+```bash
+./src/FScript/bin/Debug/net10.0/fscript
+```
+
+For REPL-specific behavior (multiline submission, retained state, exit controls), see [`docs/guides/repl.md`](./repl.md).
 
 ## 1. Run your first script
 Create `hello.fss`:
