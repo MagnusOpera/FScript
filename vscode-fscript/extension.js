@@ -12,11 +12,16 @@ let statusItem;
 let showOutputCommandSubscription;
 let viewAstCommandSubscription;
 let viewInferredAstCommandSubscription;
+let openReplCommandSubscription;
+let sendSelectionToReplCommandSubscription;
+let executeCurrentScriptInReplCommandSubscription;
 let diagnosticsSubscription;
 let textChangeSubscription;
 let textOpenSubscription;
 let stdlibContentProviderSubscription;
+let replTerminal;
 const pendingAnalysis = new Map();
+const REPL_TERMINAL_NAME = 'FScript REPL';
 
 function getConfig() {
   const cfg = vscode.workspace.getConfiguration('fscript');
@@ -24,7 +29,8 @@ function getConfig() {
     lspEnabled: cfg.get('lsp.enabled', true),
     inlayHintsEnabled: cfg.get('inlayHints.enabled', true),
     serverPath: (cfg.get('server.path', '') || '').trim(),
-    logLevel: cfg.get('server.logLevel', 'info')
+    logLevel: cfg.get('server.logLevel', 'info'),
+    replCommand: (cfg.get('repl.command', 'auto') || '').trim() || 'auto'
   };
 }
 
@@ -167,6 +173,190 @@ function getActiveFscriptFileUri() {
   }
 
   return document.uri;
+}
+
+function getActiveFscriptEditor() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage('FScript extension: no active editor.');
+    return null;
+  }
+  if (editor.document.languageId !== 'fscript') {
+    vscode.window.showErrorMessage('FScript extension: active editor is not an FScript file.');
+    return null;
+  }
+  return editor;
+}
+
+function getTerminalWorkingDirectory() {
+  const editor = vscode.window.activeTextEditor;
+  const activeDocDir = editor?.document?.uri?.scheme === 'file'
+    ? path.dirname(editor.document.uri.fsPath)
+    : undefined;
+  return activeDocDir || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+function resolveWorkspaceRoot() {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+function resolveReplLaunchCommand() {
+  const config = getConfig();
+  if (config.replCommand !== 'auto') {
+    return config.replCommand;
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot();
+  if (workspaceRoot) {
+    const localCliProject = path.join(workspaceRoot, 'src', 'FScript', 'FScript.fsproj');
+    if (fs.existsSync(localCliProject)) {
+      return `dotnet run --project "${localCliProject}" --`;
+    }
+  }
+
+  return 'fscript';
+}
+
+function ensureReplTerminal() {
+  if (replTerminal && !replTerminal.exitStatus) {
+    replTerminal.show(true);
+    return replTerminal;
+  }
+
+  const replLaunchCommand = resolveReplLaunchCommand();
+  replTerminal = vscode.window.createTerminal({
+    name: REPL_TERMINAL_NAME,
+    cwd: getTerminalWorkingDirectory()
+  });
+  replTerminal.show(true);
+  replTerminal.sendText(replLaunchCommand, true);
+  return replTerminal;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sendCodeToRepl(terminal, code) {
+  const normalized = code.replace(/\r\n/g, '\n');
+  for (const line of normalized.split('\n')) {
+    terminal.sendText(line, true);
+  }
+  // Force execution for multiline/pending blocks in the REPL.
+  terminal.sendText('', true);
+  terminal.sendText('', true);
+}
+
+function dedentMultilineBlock(code) {
+  const lines = code.replace(/\r\n/g, '\n').split('\n');
+  let minIndent = Number.MAX_SAFE_INTEGER;
+
+  for (const line of lines) {
+    if (line.trim().length === 0) {
+      continue;
+    }
+    const match = line.match(/^(\s*)/);
+    const indent = match ? match[1].length : 0;
+    if (indent < minIndent) {
+      minIndent = indent;
+    }
+  }
+
+  if (!Number.isFinite(minIndent) || minIndent === Number.MAX_SAFE_INTEGER || minIndent === 0) {
+    return lines.join('\n');
+  }
+
+  return lines
+    .map((line) => {
+      if (line.trim().length === 0) {
+        return line;
+      }
+      return line.slice(minIndent);
+    })
+    .join('\n');
+}
+
+function wrapCodeForAtomicReplExecution(code) {
+  const normalized = dedentMultilineBlock(code).trimEnd();
+  const runId = `__vscode_run_${Date.now()}`;
+  const valueId = `__vscode_value_${Date.now()}`;
+  const lines = normalized.split('\n');
+
+  if (lines.length <= 1) {
+    return `let ${runId} =\n  let ${valueId} =\n    ${normalized}\n  ${valueId}`;
+  }
+
+  const body = lines
+    .map((line) => (line.length > 0 ? `    ${line}` : line))
+    .join('\n');
+
+  return `let ${runId} =\n  let ${valueId} =\n${body}\n  ${valueId}`;
+}
+
+function getTopLevelLetBindings(code) {
+  const lines = dedentMultilineBlock(code).split('\n');
+  const bindings = [];
+  const seen = new Set();
+  const pattern = /^\s*let\s+(?:rec\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/;
+  for (const line of lines) {
+    const match = line.match(pattern);
+    if (!match) {
+      continue;
+    }
+    const name = match[1];
+    if (!seen.has(name)) {
+      bindings.push(name);
+      seen.add(name);
+    }
+  }
+  return bindings;
+}
+
+function isSingleTopLevelLetBindingSelection(code, expectedName) {
+  const lines = dedentMultilineBlock(code).split('\n');
+  const nonEmpty = lines.filter((line) => line.trim().length > 0);
+  if (nonEmpty.length === 0) {
+    return false;
+  }
+
+  const first = nonEmpty[0];
+  const firstMatch = first.match(/^\s*let\s+(?:rec\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/);
+  if (!firstMatch || firstMatch[1] !== expectedName) {
+    return false;
+  }
+
+  for (let i = 1; i < nonEmpty.length; i += 1) {
+    const line = nonEmpty[i];
+    const indentMatch = line.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1].length : 0;
+    // Any extra top-level statement means this is not a pure binding selection.
+    if (indent === 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function wrapSelectionForPersistentBindings(code) {
+  const normalized = dedentMultilineBlock(code).trimEnd();
+  const bindings = getTopLevelLetBindings(normalized);
+  if (bindings.length !== 1) {
+    return wrapCodeForAtomicReplExecution(normalized);
+  }
+
+  const [name] = bindings;
+  if (!isSingleTopLevelLetBindingSelection(normalized, name)) {
+    return wrapCodeForAtomicReplExecution(normalized);
+  }
+
+  const runId = `__vscode_run_${Date.now()}`;
+  const indentedBody = normalized
+    .split('\n')
+    .map((line) => (line.length > 0 ? `  ${line}` : line))
+    .join('\n');
+
+  return `let ${runId} =\n${indentedBody}\n  ${name}\nlet ${name} = ${runId}`;
 }
 
 async function openJsonInTempFile(prefix, data) {
@@ -397,6 +587,53 @@ function activate(context) {
   });
   context.subscriptions.push(viewInferredAstCommandSubscription);
 
+  openReplCommandSubscription = vscode.commands.registerCommand('fscript.openRepl', () => {
+    ensureReplTerminal();
+  });
+  context.subscriptions.push(openReplCommandSubscription);
+
+  sendSelectionToReplCommandSubscription = vscode.commands.registerCommand('fscript.sendSelectionToRepl', async () => {
+    const editor = getActiveFscriptEditor();
+    if (!editor) {
+      return;
+    }
+
+    const selectedText = editor.document.getText(editor.selection);
+    if (!selectedText || selectedText.trim().length === 0) {
+      vscode.window.showErrorMessage('FScript extension: selection is empty.');
+      return;
+    }
+
+    const payload = selectedText.includes('\n')
+      ? wrapSelectionForPersistentBindings(selectedText)
+      : selectedText;
+
+    const terminal = ensureReplTerminal();
+    await sleep(150);
+    sendCodeToRepl(terminal, payload);
+  });
+  context.subscriptions.push(sendSelectionToReplCommandSubscription);
+
+  executeCurrentScriptInReplCommandSubscription = vscode.commands.registerCommand('fscript.executeCurrentScriptInRepl', async () => {
+    const editor = getActiveFscriptEditor();
+    if (!editor) {
+      return;
+    }
+
+    const scriptText = editor.document.getText();
+    if (!scriptText || scriptText.trim().length === 0) {
+      vscode.window.showErrorMessage('FScript extension: current script is empty.');
+      return;
+    }
+
+    const payload = wrapCodeForAtomicReplExecution(scriptText);
+
+    const terminal = ensureReplTerminal();
+    await sleep(150);
+    sendCodeToRepl(terminal, payload);
+  });
+  context.subscriptions.push(executeCurrentScriptInReplCommandSubscription);
+
   diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
     for (const uri of event.uris) {
       completeAnalysis(uri);
@@ -447,6 +684,18 @@ async function deactivate() {
     viewInferredAstCommandSubscription.dispose();
     viewInferredAstCommandSubscription = undefined;
   }
+  if (openReplCommandSubscription) {
+    openReplCommandSubscription.dispose();
+    openReplCommandSubscription = undefined;
+  }
+  if (sendSelectionToReplCommandSubscription) {
+    sendSelectionToReplCommandSubscription.dispose();
+    sendSelectionToReplCommandSubscription = undefined;
+  }
+  if (executeCurrentScriptInReplCommandSubscription) {
+    executeCurrentScriptInReplCommandSubscription.dispose();
+    executeCurrentScriptInReplCommandSubscription = undefined;
+  }
   if (diagnosticsSubscription) {
     diagnosticsSubscription.dispose();
     diagnosticsSubscription = undefined;
@@ -466,6 +715,10 @@ async function deactivate() {
   if (stdlibContentProviderSubscription) {
     stdlibContentProviderSubscription.dispose();
     stdlibContentProviderSubscription = undefined;
+  }
+  if (replTerminal) {
+    replTerminal.dispose();
+    replTerminal = undefined;
   }
   await stopClient();
 }

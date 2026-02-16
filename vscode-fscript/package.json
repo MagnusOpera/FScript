@@ -64,8 +64,37 @@
         "command": "fscript.viewInferredAst",
         "title": "View Inferred AST",
         "category": "FScript"
+      },
+      {
+        "command": "fscript.openRepl",
+        "title": "Open REPL",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.sendSelectionToRepl",
+        "title": "Send Selection to REPL",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.executeCurrentScriptInRepl",
+        "title": "Execute Current Script in REPL",
+        "category": "FScript"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "fscript.sendSelectionToRepl",
+          "when": "editorLangId == fscript && editorHasSelection",
+          "group": "navigation@50"
+        },
+        {
+          "command": "fscript.executeCurrentScriptInRepl",
+          "when": "editorLangId == fscript",
+          "group": "navigation@51"
+        }
+      ]
+    },
     "configuration": {
       "title": "FScript",
       "properties": {
@@ -94,6 +123,11 @@
             "debug"
           ],
           "description": "Requested language server log level sent through initialization options."
+        },
+        "fscript.repl.command": {
+          "type": "string",
+          "default": "auto",
+          "description": "Shell command used to launch the FScript REPL terminal. Use 'auto' to prefer local workspace CLI via dotnet run, then fallback to 'fscript'."
         }
       }
     }

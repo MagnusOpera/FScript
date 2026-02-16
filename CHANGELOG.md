@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added VS Code REPL commands to open FScript REPL, send selected code to REPL, and execute the current script in REPL from the editor.
+- Updated VS Code REPL launch to default to `auto`, preferring local workspace CLI (`dotnet run --project src/FScript`) before falling back to `fscript` on PATH.
+- Fixed VS Code REPL script/selection sending to dedent multiline snippets and wrap non-`let` snippets in an inner `let` value block, avoiding premature line-by-line execution and indentation/parser errors for selected inner content while keeping atomic execution and persisting only pure single-`let` selections.
+
 ## [0.38.3]
 
 

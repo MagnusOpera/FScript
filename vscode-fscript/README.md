@@ -41,6 +41,16 @@ The CI workflow validates that tag version and extension version are identical b
 - `fscript.inlayHints.enabled`: toggle inlay hints from the language server.
 - `fscript.server.path`: optional custom path to `FScript.LanguageServer.dll`.
 - `fscript.server.logLevel`: requested server log level (`error`, `warn`, `info`, `debug`).
+- `fscript.repl.command`: shell command used to start REPL in the extension terminal. Default is `auto` (prefer local workspace CLI via `dotnet run`, then fallback to `fscript`).
+
+## Commands
+
+- `FScript: Open REPL`: opens (or reuses) an `FScript REPL` terminal and starts REPL.
+- `FScript: Send Selection to REPL`: sends current selection to the REPL terminal, preserving single top-level `let` bindings for later REPL use.
+- `FScript: Execute Current Script in REPL`: sends full active `.fss` document to the REPL terminal as one atomic block.
+- `FScript: Show Language Server Output`: opens language server logs.
+- `FScript: View AST`: renders AST JSON from the active file.
+- `FScript: View Inferred AST`: renders inferred AST JSON from the active file.
 
 ## Logs and Status
 
