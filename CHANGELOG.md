@@ -3,8 +3,13 @@
 All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
+
+## [0.41.0]
+
 - Added `Int/Float/Bool` conversion helpers in stdlib-style builtins (`*.tryParse` and `*.toString`) for safe scalar parsing and string formatting.
 - Added tuple let destructuring (`let (a, b) = ...`) for top-level, block, and let-expression non-rec bindings.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.40.0...0.41.0
 
 ## [0.40.0]
 
