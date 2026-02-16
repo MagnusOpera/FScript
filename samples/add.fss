@@ -1,0 +1,9 @@
+let result =
+    match Env.Arguments with
+    | first :: second :: _ ->
+        match (Int.tryParse first, Int.tryParse second) with
+        | (Some firstValue, Some secondValue) -> firstValue + secondValue
+        | _ -> raise "Invalid arguments: 2 ints expected"
+    | _ -> raise "Required arguments: first second"
+
+result

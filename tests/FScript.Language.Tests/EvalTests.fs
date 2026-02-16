@@ -190,6 +190,44 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected None")
 
     [<Test>]
+    member _.``Evaluates scalar parse and toString builtins`` () =
+        match Helpers.eval "Int.tryParse \"42\"" with
+        | VOption (Some (VInt 42L)) -> ()
+        | _ -> Assert.Fail("Expected Some 42")
+
+        match Helpers.eval "Int.tryParse \"x\"" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for invalid int")
+
+        match Helpers.eval "Float.tryParse \"3.14\"" with
+        | VOption (Some (VFloat value)) -> value |> should equal 3.14
+        | _ -> Assert.Fail("Expected Some 3.14")
+
+        match Helpers.eval "Float.tryParse \"abc\"" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for invalid float")
+
+        match Helpers.eval "Bool.tryParse \"true\"" with
+        | VOption (Some (VBool true)) -> ()
+        | _ -> Assert.Fail("Expected Some true")
+
+        match Helpers.eval "Bool.tryParse \"nope\"" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for invalid bool")
+
+        match Helpers.eval "Int.toString 42" with
+        | VString "42" -> ()
+        | _ -> Assert.Fail("Expected int to string")
+
+        match Helpers.eval "Bool.toString false" with
+        | VString "false" -> ()
+        | _ -> Assert.Fail("Expected bool to string")
+
+        match Helpers.eval "Float.toString 2.5" with
+        | VString value -> value |> should equal "2.5"
+        | _ -> Assert.Fail("Expected float to string")
+
+    [<Test>]
     member _.``Evaluates match on option`` () =
         let src = "match Some 3 with\n    | Some x -> x + 1\n    | None -> 0"
         Helpers.eval src |> assertInt 4L

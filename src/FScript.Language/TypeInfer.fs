@@ -1009,7 +1009,13 @@ module TypeInfer =
     let private envFromExterns (externs: ExternalFunction list) : Map<string, Scheme> =
         let builtins =
             [ "ignore", Forall([ 0 ], TFun (TVar 0, TUnit))
-              "print", Forall([], TFun (TString, TUnit)) ]
+              "print", Forall([], TFun (TString, TUnit))
+              "Int.tryParse", Forall([], TFun (TString, TOption TInt))
+              "Float.tryParse", Forall([], TFun (TString, TOption TFloat))
+              "Bool.tryParse", Forall([], TFun (TString, TOption TBool))
+              "Int.toString", Forall([], TFun (TInt, TString))
+              "Float.toString", Forall([], TFun (TFloat, TString))
+              "Bool.toString", Forall([], TFun (TBool, TString)) ]
             |> Map.ofList
 
         externs

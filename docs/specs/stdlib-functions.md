@@ -9,6 +9,9 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `List`
 - `Option`
 - `Map`
+- `Int`
+- `Float`
+- `Bool`
 
 ## Notes
 - Functions are curried.
@@ -57,6 +60,18 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Map.remove : 'k -> map<'k, 'v> -> map<'k, 'v>`
 
 Map keys in FScript are string-only.
+
+## Int
+- `Int.tryParse : string -> int option`
+- `Int.toString : int -> string`
+
+## Float
+- `Float.tryParse : string -> float option`
+- `Float.toString : float -> string`
+
+## Bool
+- `Bool.tryParse : string -> bool option`
+- `Bool.toString : bool -> string`
 
 ## Quick examples
 ```fsharp

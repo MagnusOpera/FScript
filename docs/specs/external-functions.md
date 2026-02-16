@@ -54,6 +54,13 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 
 ### Collections and prelude
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
+- Scalar conversion helpers are built into the language runtime:
+  - `Int.tryParse : string -> int option`
+  - `Float.tryParse : string -> float option`
+  - `Bool.tryParse : string -> bool option`
+  - `Int.toString : int -> string`
+  - `Float.toString : float -> string`
+  - `Bool.toString : bool -> string`
 - `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
 - See [`stdlib-functions.md`](./stdlib-functions.md) for the full stdlib function reference.

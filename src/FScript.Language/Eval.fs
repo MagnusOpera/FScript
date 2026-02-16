@@ -1,5 +1,7 @@
 namespace FScript.Language
 
+open System.Globalization
+
 module Eval =
     type ProgramState =
         { TypeDefs: Map<string, Type>
@@ -25,6 +27,88 @@ module Eval =
                 | _ ->
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
                     raise (EvalException { Message = "print expects (string)"; Span = span })) }
+
+    let private builtinIntTryParse : ExternalFunction =
+        { Name = "Int.tryParse"
+          Scheme = Forall([], TFun (TString, TOption TInt))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString text ] ->
+                    match System.Int64.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture) with
+                    | true, value -> VOption (Some (VInt value))
+                    | _ -> VOption None
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Int.tryParse expects (string)"; Span = span })) }
+
+    let private builtinFloatTryParse : ExternalFunction =
+        { Name = "Float.tryParse"
+          Scheme = Forall([], TFun (TString, TOption TFloat))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString text ] ->
+                    match System.Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
+                    | true, value -> VOption (Some (VFloat value))
+                    | _ -> VOption None
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Float.tryParse expects (string)"; Span = span })) }
+
+    let private builtinBoolTryParse : ExternalFunction =
+        { Name = "Bool.tryParse"
+          Scheme = Forall([], TFun (TString, TOption TBool))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString text ] ->
+                    match System.Boolean.TryParse(text) with
+                    | true, value -> VOption (Some (VBool value))
+                    | _ -> VOption None
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Bool.tryParse expects (string)"; Span = span })) }
+
+    let private builtinIntToString : ExternalFunction =
+        { Name = "Int.toString"
+          Scheme = Forall([], TFun (TInt, TString))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VInt value ] -> VString (value.ToString(CultureInfo.InvariantCulture))
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Int.toString expects (int)"; Span = span })) }
+
+    let private builtinFloatToString : ExternalFunction =
+        { Name = "Float.toString"
+          Scheme = Forall([], TFun (TFloat, TString))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VFloat value ] -> VString (value.ToString("G17", CultureInfo.InvariantCulture))
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Float.toString expects (float)"; Span = span })) }
+
+    let private builtinBoolToString : ExternalFunction =
+        { Name = "Bool.toString"
+          Scheme = Forall([], TFun (TBool, TString))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VBool true ] -> VString "true"
+                | [ VBool false ] -> VString "false"
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "Bool.toString expects (bool)"; Span = span })) }
 
     let private literalToValue lit =
         match lit with
@@ -751,7 +835,15 @@ module Eval =
             { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }
 
         let mutable env : Env =
-            (builtinIgnore :: builtinPrint :: externs)
+            (builtinIgnore
+             :: builtinPrint
+             :: builtinIntTryParse
+             :: builtinFloatTryParse
+             :: builtinBoolTryParse
+             :: builtinIntToString
+             :: builtinFloatToString
+             :: builtinBoolToString
+             :: externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then
                     let value = ext.Impl externContext []

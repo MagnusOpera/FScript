@@ -3,6 +3,7 @@
 All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
+- Added `Int/Float/Bool` conversion helpers in stdlib-style builtins (`*.tryParse` and `*.toString`) for safe scalar parsing and string formatting.
 
 ## [0.40.0]
 
