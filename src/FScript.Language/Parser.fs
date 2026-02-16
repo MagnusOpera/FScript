@@ -1197,11 +1197,32 @@ module Parser =
         and parseLetExpr () : Expr =
             let letTok = stream.Expect(Let, "Expected 'let'")
             let isRec = stream.Match(Rec)
-            let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
-            let name = match nameTok.Kind with Ident n -> n | _ -> ""
-            let args = parseParamsAligned()
-            if isRec && args.Count = 0 then
-                raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
+            let parseTupleLetPattern () =
+                let pattern = parsePatternCons()
+                match pattern with
+                | PTuple _ -> pattern
+                | _ ->
+                    raise (ParseException { Message = "Only tuple patterns are supported in let bindings"; Span = Ast.spanOfPattern pattern })
+
+            let bindingName, args, tuplePatternOpt, bindingSpan =
+                if isRec then
+                    if stream.Peek().Kind = LParen then
+                        raise (ParseException { Message = "'let rec' does not support pattern bindings"; Span = stream.Peek().Span })
+                    let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+                    let name = match nameTok.Kind with Ident n -> n | _ -> ""
+                    let args = parseParamsAligned()
+                    if args.Count = 0 then
+                        raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
+                    name, args, None, nameTok.Span
+                else
+                    match stream.Peek().Kind with
+                    | LParen ->
+                        let pattern = parseTupleLetPattern ()
+                        "", ResizeArray<Param>(), Some pattern, Ast.spanOfPattern pattern
+                    | _ ->
+                        let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+                        let name = match nameTok.Kind with Ident n -> n | _ -> ""
+                        name, parseParamsAligned(), None, nameTok.Span
             stream.SkipNewlines()
             if stream.Peek().Kind = Colon then
                 raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
@@ -1209,8 +1230,8 @@ module Parser =
             let value = parseExprOrBlock()
             if isRec then
                 let bindings = ResizeArray<string * Param list * Expr * Span>()
-                let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
-                bindings.Add(name, args |> Seq.toList, value, firstSpan)
+                let firstSpan = mkSpanFrom bindingSpan (Ast.spanOfExpr value)
+                bindings.Add(bindingName, args |> Seq.toList, value, firstSpan)
                 let mutable doneBindings = false
                 while not doneBindings do
                     stream.SkipNewlines()
@@ -1241,7 +1262,7 @@ module Parser =
                         | _ -> parseExprOrBlock()
                     if bindings.Count = 1 then
                         let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                        ELet(name, funValue, body, true, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                        ELet(bindingName, funValue, body, true, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
                     else
                         ELetRecGroup(bindings |> Seq.toList, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
             else
@@ -1256,8 +1277,14 @@ module Parser =
                             stream.Next() |> ignore
                             parseBlock()
                         | _ -> parseExprOrBlock()
-                    let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                    ELet(name, funValue, body, false, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                    match tuplePatternOpt with
+                    | Some pattern when args.Count > 0 ->
+                        raise (ParseException { Message = "Tuple let binding cannot take function parameters"; Span = Ast.spanOfPattern pattern })
+                    | Some pattern ->
+                        ELetPattern(pattern, value, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                    | None ->
+                        let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
+                        ELet(bindingName, funValue, body, false, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
 
         and parseExprOrBlock () : Expr =
             let mutable sawNewline = false
@@ -1306,12 +1333,17 @@ module Parser =
                 | [SExpr e] -> e
                 | [SLet(_, _, _, _, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
+                | [SLetPattern(_, _, _, span)] ->
+                    raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | [SLetRecGroup(_, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | SLet(name, args, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
                     ELet(name, valExpr, body, isRec, mkSpanFrom span (Ast.spanOfExpr body))
+                | SLetPattern(pattern, value, _, span) :: rest ->
+                    let body = desugar rest
+                    ELetPattern(pattern, value, body, mkSpanFrom span (Ast.spanOfExpr body))
                 | SLetRecGroup(bindings, _, span) :: rest ->
                     let body = desugar rest
                     ELetRecGroup(bindings, body, mkSpanFrom span (Ast.spanOfExpr body))
@@ -1327,11 +1359,34 @@ module Parser =
         and parseLetStmt (isExported: bool) : Stmt =
             let letTok = stream.Next()
             let isRec = stream.Match(Rec)
-            let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
-            let name = match nameTok.Kind with Ident n -> n | _ -> ""
-            let args = parseParamsAligned()
-            if isRec && args.Count = 0 then
-                raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
+            let parseTupleLetPattern () =
+                let pattern = parsePatternCons()
+                match pattern with
+                | PTuple _ -> pattern
+                | _ ->
+                    raise (ParseException { Message = "Only tuple patterns are supported in let bindings"; Span = Ast.spanOfPattern pattern })
+
+            let bindingName, args, tuplePatternOpt, bindingSpan =
+                if isRec then
+                    if stream.Peek().Kind = LParen then
+                        raise (ParseException { Message = "'let rec' does not support pattern bindings"; Span = stream.Peek().Span })
+                    let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+                    let name = match nameTok.Kind with Ident n -> n | _ -> ""
+                    let args = parseParamsAligned()
+                    if args.Count = 0 then
+                        raise (ParseException { Message = "'let rec' requires at least one function argument"; Span = nameTok.Span })
+                    name, args, None, nameTok.Span
+                else
+                    match stream.Peek().Kind with
+                    | LParen ->
+                        if isExported then
+                            raise (ParseException { Message = "Exported let binding requires a single identifier, not a tuple pattern"; Span = stream.Peek().Span })
+                        let pattern = parseTupleLetPattern ()
+                        "", ResizeArray<Param>(), Some pattern, Ast.spanOfPattern pattern
+                    | _ ->
+                        let nameTok = stream.ExpectIdent("Expected identifier after 'let'")
+                        let name = match nameTok.Kind with Ident n -> n | _ -> ""
+                        name, parseParamsAligned(), None, nameTok.Span
             stream.SkipNewlines()
             if stream.Peek().Kind = Colon then
                 raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
@@ -1339,8 +1394,8 @@ module Parser =
             let value = parseExprOrBlock()
             if isRec then
                 let bindings = ResizeArray<string * Param list * Expr * Span>()
-                let firstSpan = mkSpanFrom nameTok.Span (Ast.spanOfExpr value)
-                bindings.Add(name, args |> Seq.toList, value, firstSpan)
+                let firstSpan = mkSpanFrom bindingSpan (Ast.spanOfExpr value)
+                bindings.Add(bindingName, args |> Seq.toList, value, firstSpan)
                 let mutable doneBindings = false
                 while not doneBindings do
                     stream.SkipNewlines()
@@ -1360,12 +1415,18 @@ module Parser =
                     else
                         doneBindings <- true
                 if bindings.Count = 1 then
-                    SLet(name, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                    SLet(bindingName, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
                 else
                     let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
                     SLetRecGroup(bindings |> Seq.toList, isExported, mkSpanFrom letTok.Span lastSpan)
             else
-                SLet(name, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                match tuplePatternOpt with
+                | Some pattern when args.Count > 0 ->
+                    raise (ParseException { Message = "Tuple let binding cannot take function parameters"; Span = Ast.spanOfPattern pattern })
+                | Some pattern ->
+                    SLetPattern(pattern, value, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                | None ->
+                    SLet(bindingName, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
 
         and parseAttributeName () =
             stream.Expect(LBracket, "Expected '[' in attribute") |> ignore

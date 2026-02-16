@@ -23,8 +23,11 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `fun (x: int) -> expr`
 - Let expression (layout style):
   - `let x = expr`
+  - `let (a, b) = expr` (tuple destructuring)
   - `let rec f x = ... and g y = ...`
   - nested via blocks
+  - tuple destructuring is supported for non-`rec` `let` bindings only
+  - `[<export>] let` requires a single identifier binding (tuple patterns are rejected)
   - `[<export>]` is only valid on top-level `let` bindings
   - attribute names are case-sensitive (`[<export>]` is valid, `[<Export>]` is not)
 - Conditionals:

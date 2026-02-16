@@ -130,6 +130,7 @@ module TypeInfer =
     type TypedStmt =
         | TSType of TypeDef
         | TSLet of string * Expr * Type * bool * bool * Span
+        | TSLetPattern of Pattern * Expr * Map<string, Type> * bool * Span
         | TSLetRecGroup of (string * Expr * Type * Span) list * bool * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
@@ -644,6 +645,26 @@ module TypeInfer =
                         inferExpr typeDefs constructors env2 body)
                 let s = compose s2 sValue
                 s, t2, asTyped expr t2
+        | ELetPattern (pat, value, body, span) ->
+            let startIndex = currentTelemetryCaptureCount ()
+            let s1, tValue, _ = inferExpr typeDefs constructors env value
+            let envPat, tPat = inferPattern typeDefs constructors pat
+            let s2 = unify typeDefs (applyType s1 tValue) tPat span
+            let sValue = compose s2 s1
+            applySubstToCapturedLocals startIndex sValue
+            let env1 = applyEnv sValue env
+            let envPatTyped = envPat |> Map.map (fun _ ty -> applyType sValue ty)
+            let env2 =
+                envPatTyped
+                |> Map.fold (fun state name bindingType ->
+                    let scheme = Types.generalize env1 bindingType
+                    Map.add name scheme state) env1
+            let boundNames = envPatTyped |> Map.toList |> List.map fst
+            let sBody, tBody, _ =
+                withLocalBindings boundNames (fun () ->
+                    inferExpr typeDefs constructors env2 body)
+            let s = compose sBody sValue
+            s, tBody, asTyped expr tBody
         | ELetRecGroup (bindings, body, span) ->
             let foldedBindings =
                 bindings
@@ -1021,10 +1042,37 @@ module TypeInfer =
         externs
         |> List.fold (fun acc ext -> acc.Add(ext.Name, ext.Scheme)) builtins
 
+    let private patternBindingNames (pat: Pattern) : string list =
+        let rec loop acc pattern =
+            match pattern with
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _
+            | PTypeRef _ -> acc
+            | PVar (name, _) -> name :: acc
+            | PCons (head, tail, _) -> loop (loop acc head) tail
+            | PTuple (items, _) -> items |> List.fold loop acc
+            | PRecord (fields, _) -> fields |> List.fold (fun state (_, p) -> loop state p) acc
+            | PMap (clauses, tailPattern, _) ->
+                let withClauses =
+                    clauses
+                    |> List.fold (fun state (k, v) -> loop (loop state k) v) acc
+                match tailPattern with
+                | Some tail -> loop withClauses tail
+                | None -> withClauses
+            | PSome (inner, _) -> loop acc inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some inner -> loop acc inner
+                | None -> acc
+        loop [] pat
+
     let private topLevelBindingNames (program: Program) : string list =
         program
         |> List.collect (function
             | SLet(name, _, _, _, _, _) -> [ name ]
+            | SLetPattern(pat, _, _, _) -> patternBindingNames pat
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
             | _ -> [])
 
@@ -1114,6 +1162,27 @@ module TypeInfer =
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
+                | SLetPattern(pattern, expr, isExported, span) ->
+                    let startIndex =
+                        match telemetry with
+                        | Some t -> t.LocalVariableTypes.Count
+                        | None -> 0
+
+                    let s1, tValue, _ = inferExpr typeDefs constructors env expr
+                    let envPat, tPat = inferPattern typeDefs constructors pattern
+                    let s2 = unify typeDefs (applyType s1 tValue) tPat span
+                    let s = compose s2 s1
+                    applySubstToCapturedLocals startIndex s
+                    let envBase = applyEnv s env
+                    let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
+                    typedBindings
+                    |> Map.iter (fun _ ty -> validateMapKeyTypes span ty)
+                    env <-
+                        typedBindings
+                        |> Map.fold (fun state name bindingType ->
+                            let scheme = Types.generalize envBase bindingType
+                            Map.add name scheme state) envBase
+                    typed.Add(TSLetPattern(pattern, expr, typedBindings, isExported, span))
                 | SLetRecGroup(bindings, isExported, span) ->
                     let startIndex =
                         match telemetry with

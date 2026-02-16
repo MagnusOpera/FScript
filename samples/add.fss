@@ -1,9 +1,11 @@
-let result =
+let (firstRaw, secondRaw) =
     match Env.Arguments with
-    | first :: second :: _ ->
-        match (Int.tryParse first, Int.tryParse second) with
-        | (Some firstValue, Some secondValue) -> firstValue + secondValue
-        | _ -> raise "Invalid arguments: 2 ints expected"
-    | _ -> raise "Required arguments: first second"
+    | first :: second :: _ -> (first, second)
+    | _ -> ("0", "0")
 
-result
+let (first, second) =
+    match (Int.tryParse firstRaw, Int.tryParse secondRaw) with
+    | (Some firstValue, Some secondValue) -> (firstValue, secondValue)
+    | _ -> raise "Invalid arguments: 2 ints expected"
+
+first + second

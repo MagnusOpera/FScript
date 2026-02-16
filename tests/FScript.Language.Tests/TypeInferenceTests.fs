@@ -154,6 +154,18 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers tuple let binding names`` () =
+        let typed = Helpers.infer "let (a, b) = (1, true)\n(a, b)"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TBool ])
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Reports type error for tuple let mismatch`` () =
+        let act () = Helpers.infer "let (a, b) = 1\na" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers record type and field projection`` () =
         let typed = Helpers.infer "type Person = { Name: string; Age: int }\nlet p = { Name = \"a\"; Age = 1 }\np.Age"
         match typed |> List.last with

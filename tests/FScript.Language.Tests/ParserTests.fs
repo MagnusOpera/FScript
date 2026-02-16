@@ -24,6 +24,30 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected function let")
 
     [<Test>]
+    member _.``Parses top-level tuple let binding`` () =
+        let program = Helpers.parse "let (a, b) = (1, 2)"
+        match program.Head with
+        | SLetPattern (PTuple ([ PVar ("a", _); PVar ("b", _) ], _), ETuple (_, _), _, _) -> ()
+        | _ -> Assert.Fail("Expected tuple let binding")
+
+    [<Test>]
+    member _.``Parses tuple let expression in block`` () =
+        let program = Helpers.parse "let x = (let (a, b) = (1, 2)\n    a + b\n)"
+        match program.Head with
+        | SLet (_, _, EParen (ELetPattern (PTuple (_, _), _, _, _), _), _, _, _) -> ()
+        | _ -> Assert.Fail("Expected tuple let expression")
+
+    [<Test>]
+    member _.``Rejects exported tuple let binding`` () =
+        let act () = Helpers.parse "[<export>] let (a, b) = (1, 2)" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Rejects recursive tuple let binding`` () =
+        let act () = Helpers.parse "let rec (a, b) = (1, 2)" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
     member _.``Parses recursive type declaration`` () =
         let program = Helpers.parse "type rec Node = { Value: int; Left: Node option; Right: Node option }"
         match program.Head with

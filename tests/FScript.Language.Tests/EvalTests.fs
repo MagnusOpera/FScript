@@ -64,6 +64,21 @@ type EvalTests () =
         Helpers.eval "type Person = { Name: string; Age: int }\n{ Name = \"a\"; Age = 42 }.Age" |> assertInt 42L
 
     [<Test>]
+    member _.``Evaluates tuple let bindings`` () =
+        match Helpers.eval "let (a, b) = (1, 2)\na + b" with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected 3")
+
+        match Helpers.eval "(let (left, right) = (10, 3)\n    left - right\n)" with
+        | VInt 7L -> ()
+        | _ -> Assert.Fail("Expected 7")
+
+    [<Test>]
+    member _.``Raises when let tuple pattern does not match`` () =
+        let act () = Helpers.eval "let (1, value) = (2, 3)\nvalue" |> ignore
+        act |> should throw typeof<EvalException>
+
+    [<Test>]
     member _.``Evaluates map literals`` () =
         match Helpers.eval "{ [\"a\"] = 1; [\"b\"] = 2 }" with
         | VMap m ->

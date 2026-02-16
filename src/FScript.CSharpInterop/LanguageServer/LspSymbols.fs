@@ -120,6 +120,12 @@ module LspSymbols =
         let builtinSignatures =
             [ "ignore", "'a -> unit"
               "print", "string -> unit"
+              "Int.tryParse", "string -> int option"
+              "Float.tryParse", "string -> float option"
+              "Bool.tryParse", "string -> bool option"
+              "Int.toString", "int -> string"
+              "Float.toString", "float -> string"
+              "Bool.toString", "bool -> string"
               "nameof", "string -> string"
               "typeof", "string -> type" ]
             |> Map.ofList
@@ -127,6 +133,12 @@ module LspSymbols =
         let builtinParamNames =
             [ "ignore", [ "value" ]
               "print", [ "message" ]
+              "Int.tryParse", [ "value" ]
+              "Float.tryParse", [ "value" ]
+              "Bool.tryParse", [ "value" ]
+              "Int.toString", [ "value" ]
+              "Float.toString", [ "value" ]
+              "Bool.toString", [ "value" ]
               "nameof", [ "name" ]
               "typeof", [ "name" ] ]
             |> Map.ofList
@@ -425,11 +437,39 @@ module LspSymbols =
                 match stmt with
                 | TypeInfer.TSLet (name, _, t, _, _, _) when name = targetName ->
                     Some t
+                | TypeInfer.TSLetPattern (_, _, bindings, _, _) ->
+                    bindings |> Map.tryFind targetName
                 | TypeInfer.TSLetRecGroup (bindings, _, _) ->
                     bindings
                     |> List.tryPick (fun (name, _, t, _) ->
                         if name = targetName then Some t else None)
                 | _ -> None)
+
+        let rec collectPatternNames (pat: Pattern) : string list =
+            match pat with
+            | PVar (name, _) -> [ name ]
+            | PCons (head, tail, _) -> collectPatternNames head @ collectPatternNames tail
+            | PTuple (items, _) -> items |> List.collect collectPatternNames
+            | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> collectPatternNames p)
+            | PMap (clauses, tailOpt, _) ->
+                let fromClauses =
+                    clauses
+                    |> List.collect (fun (k, v) -> collectPatternNames k @ collectPatternNames v)
+                let fromTail =
+                    match tailOpt with
+                    | Some tail -> collectPatternNames tail
+                    | None -> []
+                fromClauses @ fromTail
+            | PSome (inner, _) -> collectPatternNames inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some p -> collectPatternNames p
+                | None -> []
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _
+            | PTypeRef _ -> []
 
         for stmt in program do
             match stmt with
@@ -443,6 +483,16 @@ module LspSymbols =
                     match extractTypeForName typed name with
                     | Some t -> result <- result |> Map.add name t
                     | None -> ()
+                | None -> ()
+            | SLetPattern (pattern, _, _, _) ->
+                let candidate = accepted @ [ stmt ]
+                match tryInferWithCurrent candidate with
+                | Some typed ->
+                    accepted <- candidate
+                    for name in collectPatternNames pattern do
+                        match extractTypeForName typed name with
+                        | Some t -> result <- result |> Map.add name t
+                        | None -> ()
                 | None -> ()
             | SLetRecGroup (bindings, _, _) ->
                 let candidate = accepted @ [ stmt ]
@@ -481,6 +531,7 @@ module LspSymbols =
             | SType _ ->
                 accepted <- accepted @ [ stmt ]
             | SLet _
+            | SLetPattern _
             | SLetRecGroup _ ->
                 let candidate = accepted @ [ stmt ]
                 match tryInferWithCurrent candidate with
@@ -527,6 +578,9 @@ module LspSymbols =
                         | None -> state
                     collectExpr withGuard body) withScrutinee
             | ELet (_, value, body, _, _) ->
+                let withValue = collectExpr acc value
+                collectExpr withValue body
+            | ELetPattern (_, value, body, _) ->
                 let withValue = collectExpr acc value
                 collectExpr withValue body
             | ELetRecGroup (bindings, body, _) ->
@@ -586,6 +640,32 @@ module LspSymbols =
             | ETypeOf _
             | ENameOf _ -> acc
 
+        let rec collectPatternVarSpans (pat: Pattern) : (string * Span) list =
+            match pat with
+            | PVar (name, span) -> [ name, span ]
+            | PCons (head, tail, _) -> collectPatternVarSpans head @ collectPatternVarSpans tail
+            | PTuple (items, _) -> items |> List.collect collectPatternVarSpans
+            | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> collectPatternVarSpans p)
+            | PMap (clauses, tailOpt, _) ->
+                let fromClauses =
+                    clauses
+                    |> List.collect (fun (k, v) -> collectPatternVarSpans k @ collectPatternVarSpans v)
+                let fromTail =
+                    match tailOpt with
+                    | Some tail -> collectPatternVarSpans tail
+                    | None -> []
+                fromClauses @ fromTail
+            | PSome (inner, _) -> collectPatternVarSpans inner
+            | PUnionCase (_, _, payload, _) ->
+                match payload with
+                | Some p -> collectPatternVarSpans p
+                | None -> []
+            | PWildcard _
+            | PLiteral _
+            | PNil _
+            | PNone _
+            | PTypeRef _ -> []
+
         let withDeclsAndExprs =
             program
             |> List.fold (fun state stmt ->
@@ -593,6 +673,11 @@ module LspSymbols =
                 | SLet (name, _, expr, _, _, span) ->
                     let withDecl = addOccurrence name span state
                     collectExpr withDecl expr
+                | SLetPattern (pattern, expr, _, _) ->
+                    let withDecls =
+                        collectPatternVarSpans pattern
+                        |> List.fold (fun inner (name, span) -> addOccurrence name span inner) state
+                    collectExpr withDecls expr
                 | SLetRecGroup (bindings, _, _) ->
                     bindings
                     |> List.fold (fun inner (name, _, expr, span) ->
@@ -861,6 +946,8 @@ module LspSymbols =
                     inScrutinee @ inCases
                 | ELet (_, value, body, _, _) ->
                     collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
+                | ELetPattern (_, value, body, _) ->
+                    collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
                 | ELetRecGroup (bindings, body, _) ->
                     let inBindings =
                         bindings
@@ -1007,6 +1094,10 @@ module LspSymbols =
             | ELet (name, value, body, _, span) ->
                 mkBinding name span (Ast.spanOfExpr body) None
                 :: (collectExprBindings value @ collectExprBindings body)
+            | ELetPattern (pattern, value, body, _) ->
+                let scope = Ast.spanOfExpr body
+                let fromPattern = collectPatternBindings scope pattern
+                fromPattern @ collectExprBindings value @ collectExprBindings body
             | ELetRecGroup (bindings, body, _) ->
                 let fromBindings =
                     bindings
@@ -1270,6 +1361,8 @@ module LspSymbols =
                 collectExpr (collectExpr acc source) body
             | ELet (_, value, body, _, _) ->
                 collectExpr (collectExpr acc value) body
+            | ELetPattern (_, value, body, _) ->
+                collectExpr (collectExpr acc value) body
             | ELetRecGroup (bindings, body, _) ->
                 let withBindings =
                     bindings |> List.fold (fun state (_, _, value, _) -> collectExpr state value) acc
@@ -1321,6 +1414,8 @@ module LspSymbols =
         |> List.fold (fun state stmt ->
             match stmt with
             | SLet (_, _, expr, _, _, _) ->
+                collectExpr state expr
+            | SLetPattern (_, expr, _, _) ->
                 collectExpr state expr
             | SLetRecGroup (bindings, _, _) ->
                 bindings |> List.fold (fun inner (_, _, expr, _) -> collectExpr inner expr) state
@@ -1387,6 +1482,8 @@ module LspSymbols =
                             | None -> state
                         collectExpr withGuard false body) withScrutinee
                 | ELet (_, value, body, _, _) ->
+                    collectExpr (collectExpr acc false value) false body
+                | ELetPattern (_, value, body, _) ->
                     collectExpr (collectExpr acc false value) false body
                 | ELetRecGroup (bindings, body, _) ->
                     let withBindings =

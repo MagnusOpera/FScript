@@ -481,6 +481,14 @@ module Eval =
                 let v = evalExpr typeDefs env value
                 let env' = env |> Map.add name v
                 evalExpr typeDefs env' body
+        | ELetPattern (pattern, value, body, span) ->
+            let v = evalExpr typeDefs env value
+            match patternMatch typeDefs pattern v with
+            | Some bindings ->
+                let env' = Map.fold (fun acc k value -> Map.add k value acc) env bindings
+                evalExpr typeDefs env' body
+            | None ->
+                raise (EvalException { Message = "Let pattern did not match value"; Span = span })
         | ELetRecGroup (bindings, body, span) ->
             if bindings.IsEmpty then
                 evalExpr typeDefs env body
@@ -736,6 +744,11 @@ module Eval =
         program
         |> List.tryPick (function
             | TypeInfer.TSLet(name, _, _, _, _, _) when Set.contains name reserved -> Some name
+            | TypeInfer.TSLetPattern(_, _, bindings, _, _) ->
+                bindings
+                |> Map.toList
+                |> List.tryFind (fun (name, _) -> Set.contains name reserved)
+                |> Option.map fst
             | TypeInfer.TSLetRecGroup(bindings, _, _) ->
                 bindings
                 |> List.tryFind (fun (name, _, _, _) -> Set.contains name reserved)
@@ -872,6 +885,13 @@ module Eval =
                 else
                     let v = evalExpr typeDefs env expr
                     env <- env |> Map.add name v
+            | TypeInfer.TSLetPattern(pattern, expr, _, _, span) ->
+                let v = evalExpr typeDefs env expr
+                match patternMatch typeDefs pattern v with
+                | Some bindings ->
+                    env <- Map.fold (fun acc k value -> Map.add k value acc) env bindings
+                | None ->
+                    raise (EvalException { Message = "Let pattern did not match value"; Span = span })
             | TypeInfer.TSLetRecGroup(bindings, _, span) ->
                 if bindings.IsEmpty then
                     ()

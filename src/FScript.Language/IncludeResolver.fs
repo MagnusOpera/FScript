@@ -174,6 +174,7 @@ module IncludeResolver =
             statements
             |> List.collect (function
                 | SLet(name, _, _, _, _, _) -> [ name ]
+                | SLetPattern(pattern, _, _, _) -> collectPatternBindings pattern |> Set.toList
                 | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
                 | _ -> [])
             |> Set.ofList
@@ -229,6 +230,10 @@ module IncludeResolver =
                     ELet(name, rewriteExpr boundWithName valueExpr, rewriteExpr boundWithName bodyExpr, true, span)
                 else
                     ELet(name, rewriteExpr boundNames valueExpr, rewriteExpr (Set.add name boundNames) bodyExpr, false, span)
+            | ELetPattern (pattern, valueExpr, bodyExpr, span) ->
+                let rewrittenPattern = rewritePattern aliases selfPrefix topLevelTypeNames pattern
+                let boundWithPattern = Set.union boundNames (collectPatternBindings rewrittenPattern)
+                ELetPattern(rewrittenPattern, rewriteExpr boundNames valueExpr, rewriteExpr boundWithPattern bodyExpr, span)
             | ELetRecGroup (bindings, body, span) ->
                 let names = bindings |> List.map (fun (name, _, _, _) -> name) |> Set.ofList
                 let recursiveBound = Set.union boundNames names
@@ -316,6 +321,9 @@ module IncludeResolver =
                 let bound = rewrittenArgs |> List.fold (fun s p -> Set.add p.Name s) Set.empty
                 let bodyBound = if isRec then Set.add rewrittenName bound else bound
                 SLet(rewrittenName, rewrittenArgs, rewriteExpr bodyBound valueExpr, isRec, isExported, span)
+            | SLetPattern(pattern, valueExpr, isExported, span) ->
+                let rewrittenPattern = rewritePattern aliases selfPrefix topLevelTypeNames pattern
+                SLetPattern(rewrittenPattern, rewriteExpr Set.empty valueExpr, isExported, span)
             | SLetRecGroup(bindings, isExported, span) ->
                 let names = bindings |> List.map (fun (name, _, _, _) -> qualifySelfName name) |> Set.ofList
                 let rewrittenBindings =
