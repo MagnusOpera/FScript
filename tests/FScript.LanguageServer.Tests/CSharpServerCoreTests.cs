@@ -180,6 +180,49 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_typeDefinition_resolves_Environment_to_stdlib()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-env-typedef-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = "let size = Env.Arguments |> List.length\nsize\n"
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 0, ["character"] = 11 }
+            };
+            LspClient.SendRequest(client, 142, "textDocument/typeDefinition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000,
+                msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 142);
+
+            var result = definitionResponse["result"] as JsonObject
+                ?? throw new Exception("Expected typeDefinition location.");
+            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo("fscript-stdlib:///Environment.fss"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_viewAst_returns_program_json()
     {
         var client = LspClient.StartCSharp();

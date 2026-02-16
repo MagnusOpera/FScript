@@ -752,7 +752,14 @@ module LspHandlers =
                                 loc["range"] <- toLspRange typeSym.Span
                                 LspProtocol.sendResponse idNode (Some loc)
                             | None ->
-                                LspProtocol.sendResponse idNode None
+                                match tryFindInjectedTypeDefinition typeName with
+                                | Some (targetUri, targetSpan) ->
+                                    let loc = JsonObject()
+                                    loc["uri"] <- JsonValue.Create(targetUri)
+                                    loc["range"] <- toLspRange targetSpan
+                                    LspProtocol.sendResponse idNode (Some loc)
+                                | None ->
+                                    LspProtocol.sendResponse idNode None
                         | None ->
                             LspProtocol.sendResponse idNode None
         | _ -> LspProtocol.sendResponse idNode None
@@ -761,6 +768,7 @@ module LspHandlers =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
+            let wordAtCursor = tryGetWordAtPosition doc.Text line character
             let targetTypeName =
                 let fromSymbol =
                     match tryResolveSymbol doc line character with
@@ -792,9 +800,56 @@ module LspHandlers =
                     loc["range"] <- toLspRange typeSym.Span
                     LspProtocol.sendResponse idNode (Some loc)
                 | None ->
-                    LspProtocol.sendResponse idNode None
+                    match tryFindInjectedTypeDefinition typeName with
+                    | Some (targetUri, targetSpan) ->
+                        let loc = JsonObject()
+                        loc["uri"] <- JsonValue.Create(targetUri)
+                        loc["range"] <- toLspRange targetSpan
+                        LspProtocol.sendResponse idNode (Some loc)
+                    | None ->
+                        let injectedTypeDefinition =
+                            match wordAtCursor with
+                            | Some word ->
+                                let candidates =
+                                    if word.Contains('.') then
+                                        [ word; word.Split('.') |> Array.last ]
+                                    else
+                                        [ word ]
+                                candidates
+                                |> List.tryPick tryFindInjectedTypeDefinition
+                            | None ->
+                                None
+
+                        match injectedTypeDefinition with
+                        | Some (targetUri, targetSpan) ->
+                            let loc = JsonObject()
+                            loc["uri"] <- JsonValue.Create(targetUri)
+                            loc["range"] <- toLspRange targetSpan
+                            LspProtocol.sendResponse idNode (Some loc)
+                        | None ->
+                            LspProtocol.sendResponse idNode None
             | None ->
-                LspProtocol.sendResponse idNode None
+                let injectedTypeDefinition =
+                    match wordAtCursor with
+                    | Some word ->
+                        let candidates =
+                            if word.Contains('.') then
+                                [ word; word.Split('.') |> Array.last ]
+                            else
+                                [ word ]
+                        candidates
+                        |> List.tryPick tryFindInjectedTypeDefinition
+                    | None ->
+                        None
+
+                match injectedTypeDefinition with
+                | Some (targetUri, targetSpan) ->
+                    let loc = JsonObject()
+                    loc["uri"] <- JsonValue.Create(targetUri)
+                    loc["range"] <- toLspRange targetSpan
+                    LspProtocol.sendResponse idNode (Some loc)
+                | None ->
+                    LspProtocol.sendResponse idNode None
         | _ ->
             LspProtocol.sendResponse idNode None
 

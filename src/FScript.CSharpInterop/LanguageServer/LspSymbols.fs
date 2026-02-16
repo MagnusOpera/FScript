@@ -100,6 +100,17 @@ module LspSymbols =
                 | _ -> [])
             |> Map.ofList
 
+    let private stdlibTypeDefinitions : Lazy<Map<string, (string * Span)>> =
+        lazy
+            InteropServices.stdlibProgram()
+            |> List.collect (function
+                | SType typeDef ->
+                    match tryStdlibVirtualUriFromSource typeDef.Span.Start.File with
+                    | Some uri -> [ typeDef.Name, (uri, typeDef.Span) ]
+                    | None -> []
+                | _ -> [])
+            |> Map.ofList
+
     let private buildInjectedFunctionData (externs: ExternalFunction list) =
         let fromExterns =
             externs
@@ -130,6 +141,10 @@ module LspSymbols =
             |> Map.fold (fun acc name names -> acc |> Map.add name names) builtinParamNames
 
         signatures, paramNames, stdlibFunctionDefinitions.Value
+
+    let tryFindInjectedTypeDefinition (typeName: string) =
+        stdlibTypeDefinitions.Value
+        |> Map.tryFind typeName
 
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with
@@ -1781,7 +1796,14 @@ module LspSymbols =
 
         match fromSymbol with
         | Some typeName -> Some typeName
-        | None -> doc.ParameterTypeTargets |> Map.tryFind normalized
+        | None ->
+            match doc.ParameterTypeTargets |> Map.tryFind normalized with
+            | Some typeName -> Some typeName
+            | None ->
+                if String.Equals(normalized, "Env", StringComparison.Ordinal) then
+                    Some "Environment"
+                else
+                    None
 
     let private tryFindSymbolByName (doc: DocumentState) (name: string) =
         let normalized =
