@@ -135,6 +135,51 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_didOpen_accepts_Env_binding_without_unbound_diagnostics()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-env-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = "Env.Arguments |> List.length"
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+
+            var diagMsg = LspClient.ReadUntil(client, 10_000, msg =>
+            {
+                if (msg["method"]?.GetValue<string>() != "textDocument/publishDiagnostics")
+                {
+                    return false;
+                }
+
+                var p = msg["params"] as JsonObject;
+                var u = p?["uri"]?.GetValue<string>();
+                return u == uri;
+            });
+
+            var paramsObj = diagMsg["params"] as JsonObject;
+            var diagnosticsArray = paramsObj?["diagnostics"] as JsonArray;
+            Assert.That(diagnosticsArray, Is.Not.Null);
+            Assert.That(diagnosticsArray!.Count, Is.EqualTo(0));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_viewAst_returns_program_json()
     {
         var client = LspClient.StartCSharp();

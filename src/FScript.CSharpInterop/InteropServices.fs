@@ -19,15 +19,26 @@ module InteropServices =
         let ctx = { HostContext.RootDirectory = resolveRootDirectory sourcePath }
         Registry.all ctx
 
+    let private lspEnvironmentPreludeProgram : Program =
+        FScript.parseWithSourceName
+            (Some "<lsp-environment>")
+            """
+let asEnvironment (value: Environment) = value
+let Env = asEnvironment { ScriptName = None; Arguments = [] }
+"""
+
+    let private withLspEnvironmentPrelude (program: Program) : Program =
+        lspEnvironmentPreludeProgram @ program
+
     let parseProgramFromSourceWithIncludes (sourcePath: string) (sourceText: string) : Program =
         let rootDirectory = resolveRootDirectory sourcePath
         IncludeResolver.parseProgramFromSourceWithIncludes rootDirectory sourcePath sourceText
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypeInfer.TypedProgram =
-        TypeInfer.inferProgramWithExterns externs program
+        TypeInfer.inferProgramWithExterns externs (withLspEnvironmentPrelude program)
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypeInfer.TypedProgram * TypeInfer.LocalVariableTypeInfo list =
-        TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs program
+        TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs (withLspEnvironmentPrelude program)
 
     let inferStdlibWithExternsRaw (externs: ExternalFunction list) : TypeInfer.TypedProgram =
         TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram())
