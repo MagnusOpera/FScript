@@ -4,9 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.40.0]
+
+
 - Fixed VS Code/LSP analysis to inject a default `Env` binding so scripts using `Env` no longer show unbound-variable diagnostics in the editor.
 - Fixed VS Code/LSP type navigation so `Env` and `Environment` resolve to the stdlib `Environment` type definition.
 - Added CLI script argument forwarding with `--` and injected `Env` metadata (`ScriptName`, `Arguments`) for file, stdin, and REPL execution modes, with `Environment` now defined in stdlib for LSP/type visibility.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.39.0...0.40.0
 
 ## [0.39.0]
 
