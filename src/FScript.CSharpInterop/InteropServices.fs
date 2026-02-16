@@ -47,6 +47,7 @@ module InteropServices =
                     | "Option.fss" -> Some "FScript.Language.Stdlib.Option.fss"
                     | "List.fss" -> Some "FScript.Language.Stdlib.List.fss"
                     | "Map.fss" -> Some "FScript.Language.Stdlib.Map.fss"
+                    | "Environment.fss" -> Some "FScript.Language.Stdlib.Environment.fss"
                     | _ -> None
 
                 match resourceName with

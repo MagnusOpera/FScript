@@ -17,20 +17,70 @@ let runTypedProgram (externs: ExternalFunction list) (program: Program) =
     Console.WriteLine(Pretty.valueToString result)
     0
 
-let runFile (rootDirectory: string) (scriptPath: string) =
+let escapeFScriptString (value: string) =
+    value
+        .Replace("\\", "\\\\")
+        .Replace("\"", "\\\"")
+        .Replace("\r", "\\r")
+        .Replace("\n", "\\n")
+        .Replace("\t", "\\t")
+
+let splitScriptArguments (argv: string array) =
+    match argv |> Array.tryFindIndex (fun value -> value = "--") with
+    | None -> argv, []
+    | Some index ->
+        let cliArgs =
+            if index = 0 then [||]
+            else argv.[0 .. index - 1]
+        let scriptArgs =
+            if index + 1 >= argv.Length then []
+            else argv.[index + 1 ..] |> Array.toList
+        cliArgs, scriptArgs
+
+let environmentPrelude (scriptName: string option) (arguments: string list) =
+    let scriptNameExpr =
+        match scriptName with
+        | Some value -> $"Some \"{escapeFScriptString value}\""
+        | None -> "None"
+
+    let argsExpr =
+        arguments
+        |> List.map (fun arg -> $"\"{escapeFScriptString arg}\"")
+        |> String.concat "; "
+        |> fun body -> if String.IsNullOrWhiteSpace(body) then "[]" else $"[{body}]"
+
+    $"""
+let asEnvironment (value: Environment) = value
+
+let Env = asEnvironment {{ ScriptName = {scriptNameExpr}; Arguments = {argsExpr} }}
+"""
+
+let parseEnvironmentPrelude (scriptName: string option) (arguments: string list) =
+    environmentPrelude scriptName arguments
+    |> FScript.parseWithSourceName (Some "<cli-environment>")
+
+let runFile (rootDirectory: string) (scriptPath: string) (arguments: string list) =
     if not (File.Exists scriptPath) then
         Console.Error.WriteLine($"File not found: {scriptPath}")
         1
     else
         let context : HostContext = { RootDirectory = rootDirectory }
         let externs : ExternalFunction list = Registry.all context
-        let program = FScript.parseFileWithIncludes rootDirectory scriptPath
+        let scriptName =
+            match Path.GetFileName(scriptPath) with
+            | null
+            | "" -> scriptPath
+            | value -> value
+        let envProgram = parseEnvironmentPrelude (Some scriptName) arguments
+        let scriptProgram = FScript.parseFileWithIncludes rootDirectory scriptPath
+        let program = envProgram @ scriptProgram
         runTypedProgram externs program
 
-let runSource (rootDirectory: string) (source: string) =
+let runSource (rootDirectory: string) (source: string) (arguments: string list) =
     let context : HostContext = { RootDirectory = rootDirectory }
     let externs : ExternalFunction list = Registry.all context
-    let loaded = ScriptHost.loadSource externs source
+    let combinedSource = $"{environmentPrelude None arguments}\n{source}"
+    let loaded = ScriptHost.loadSource externs combinedSource
     Console.WriteLine(Pretty.valueToString loaded.LastValue)
     0
 
@@ -93,7 +143,7 @@ let printVersion () =
 let runRepl (rootDirectory: string) =
     let context : HostContext = { RootDirectory = rootDirectory }
     let externs : ExternalFunction list = Registry.all context
-    let mutable baseProgram: Program = []
+    let mutable baseProgram: Program = parseEnvironmentPrelude None []
     let mutable pendingLines: string list = []
     let mutable pendingBlankLines = 0
     let mutable running = true
@@ -191,12 +241,13 @@ let runRepl (rootDirectory: string) =
 [<EntryPoint>]
 let main argv =
     let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
+    let cliArgv, scriptArguments = splitScriptArguments argv
     try
-        if argv.Length = 1 && String.Equals(argv.[0], "version", StringComparison.OrdinalIgnoreCase) then
+        if scriptArguments.IsEmpty && cliArgv.Length = 1 && String.Equals(cliArgv.[0], "version", StringComparison.OrdinalIgnoreCase) then
             Console.WriteLine(printVersion ())
             0
         else
-            let args = parser.ParseCommandLine(inputs = argv, raiseOnUsage = true)
+            let args = parser.ParseCommandLine(inputs = cliArgv, raiseOnUsage = true)
 
             let currentDirectory = Directory.GetCurrentDirectory()
             let scriptPath =
@@ -220,12 +271,16 @@ let main argv =
             try
                 match scriptPath with
                 | Some path ->
-                    runFile rootDirectory path
+                    runFile rootDirectory path scriptArguments
                 | None when Console.IsInputRedirected ->
                     let source = Console.In.ReadToEnd()
-                    runSource rootDirectory source
+                    runSource rootDirectory source scriptArguments
                 | None ->
-                    runRepl rootDirectory
+                    if not scriptArguments.IsEmpty then
+                        Console.Error.WriteLine("Script arguments require file or stdin mode. Use 'fscript <script.fss> -- <args...>' or pipe stdin with '--'.")
+                        1
+                    else
+                        runRepl rootDirectory
             with
             | ParseException err ->
                 Console.Error.WriteLine($"Parse error {formatSpan err.Span}: {err.Message}")

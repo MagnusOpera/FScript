@@ -1,0 +1,7 @@
+
+let name =
+    match Env.Arguments with
+    | head :: _ -> head
+    | _ -> "Unknown"
+
+print $"Hello {name} !"

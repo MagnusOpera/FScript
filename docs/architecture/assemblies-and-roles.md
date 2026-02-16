@@ -11,8 +11,9 @@ Role:
 
 Responsibilities:
 - Parse CLI arguments.
-- Resolve execution mode (file, stdin, `version`, REPL) and sandbox root.
+- Resolve execution mode (file, stdin, `version`, REPL), sandbox root, and script arguments after `--`.
 - Build runtime context and extern registry.
+- Inject CLI environment value (`let Env`) into script execution (with stdlib `Environment` type).
 - Execute parse -> type inference -> evaluation pipeline.
 - Print final result and report parse/type/eval errors.
 
@@ -84,10 +85,14 @@ Use this when:
 ## Typical composition
 
 ### CLI execution path
-1. `FScript` reads CLI args and picks mode: file path, piped stdin, `version`, or interactive REPL.
+1. `FScript` reads CLI args, splits script arguments after `--`, and picks mode: file path, piped stdin, `version`, or interactive REPL.
 2. For execution modes, `FScript` builds `HostContext` root and asks `FScript.Runtime` for externs (`Registry.all`).
-3. `FScript` invokes `FScript.Language` parse/infer/eval pipeline.
-4. `FScript` prints result (or version in `version` mode).
+3. `FScript` injects `Environment`/`Env` metadata:
+   - file mode: `ScriptName = Some <file name>`, `Arguments = [..]`
+   - stdin mode: `ScriptName = None`, `Arguments = [..]`
+   - REPL mode: `ScriptName = None`, `Arguments = []`
+4. `FScript` invokes `FScript.Language` parse/infer/eval pipeline.
+5. `FScript` prints result (or version in `version` mode).
 
 ### Embedded host path
 1. Host app references `FScript.Language` and (optionally) `FScript.Runtime`.

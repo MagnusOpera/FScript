@@ -23,6 +23,12 @@ Then run scripts with:
 fscript your-script.fss
 ```
 
+Pass script arguments after `--`:
+
+```bash
+fscript your-script.fss -- arg1 arg2
+```
+
 You can also run from stdin, show version, or start REPL:
 
 ```bash
@@ -54,6 +60,7 @@ And the same extra CLI modes:
 
 ```bash
 cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r .
+cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r . -- arg1 arg2
 ./src/FScript/bin/Debug/net10.0/fscript version
 ./src/FScript/bin/Debug/net10.0/fscript
 ```
@@ -78,6 +85,17 @@ Run it:
 
 ```bash
 fscript hello.fss
+```
+
+CLI-injected environment metadata is available in scripts:
+
+```fsharp
+match Env.ScriptName with
+| Some name -> print name
+| None -> print "stdin"
+
+for arg in Env.Arguments do
+  print arg
 ```
 
 ## 2. Bindings and expressions

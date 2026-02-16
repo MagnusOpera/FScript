@@ -78,6 +78,11 @@ make test
 dotnet run --project src/FScript -- samples/types-showcase.fss
 ```
 
+Run a script with script arguments (after `--`):
+```bash
+dotnet run --project src/FScript -- samples/fibonacci.fss -- 10
+```
+
 Optional sandbox root override:
 ```bash
 dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.fss
@@ -88,10 +93,19 @@ Run a script from stdin:
 cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r .
 ```
 
+Run stdin mode with script arguments:
+```bash
+cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r . -- foo bar
+```
+
 Show CLI version:
 ```bash
 dotnet run --project src/FScript -- version
 ```
+
+In CLI execution modes, scripts get:
+- stdlib `type Environment = { ScriptName: string option; Arguments: string list }`
+- CLI-injected `let Env = ...`
 
 Start REPL:
 ```bash

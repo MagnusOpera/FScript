@@ -97,3 +97,67 @@ type CliTests() =
 
         Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
         Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``File mode exposes Environment script name and arguments`` () =
+        let repoRoot = findRepoRoot ()
+        let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-env-{Guid.NewGuid():N}.fss")
+        let scriptSource =
+            "match Env.ScriptName with\n"
+            + "| Some name -> print name\n"
+            + "| None -> print \"none\"\n"
+            + "type Wrapper = { Value: Environment }\n"
+            + "let wrapped = { Value = Env }\n"
+            + "print $\"{wrapped.Value.Arguments |> List.length}\"\n"
+            + "for arg in Env.Arguments do\n"
+            + "  print arg\n"
+            + "()\n"
+
+        try
+            File.WriteAllText(tempScript, scriptSource)
+
+            let code, stdout, stderr = runCli repoRoot repoRoot [ tempScript; "--"; "10"; "abc" ] None
+            let lines = stdout.Replace("\r\n", "\n").Trim().Split('\n')
+
+            Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+            Assert.That(lines.[0], Is.EqualTo(Path.GetFileName(tempScript)))
+            Assert.That(lines.[1], Is.EqualTo("2"))
+            Assert.That(lines.[2], Is.EqualTo("10"))
+            Assert.That(lines.[3], Is.EqualTo("abc"))
+            Assert.That(lines.[4], Is.EqualTo("()"))
+        finally
+            if File.Exists(tempScript) then File.Delete(tempScript)
+
+    [<Test>]
+    member _.``Stdin mode exposes Environment arguments with separator`` () =
+        let repoRoot = findRepoRoot ()
+        let source =
+            "match Env.ScriptName with\n"
+            + "| Some _ -> print \"unexpected\"\n"
+            + "| None -> print \"none\"\n"
+            + "for arg in Env.Arguments do\n"
+            + "  print arg\n"
+            + "()\n"
+
+        let code, stdout, stderr = runCli repoRoot repoRoot [ "--"; "x"; "y" ] (Some source)
+        let lines = stdout.Replace("\r\n", "\n").Trim().Split('\n')
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(lines.[0], Is.EqualTo("none"))
+        Assert.That(lines.[1], Is.EqualTo("x"))
+        Assert.That(lines.[2], Is.EqualTo("y"))
+        Assert.That(lines.[3], Is.EqualTo("()"))
+
+    [<Test>]
+    member _.``Script arguments require separator`` () =
+        let repoRoot = findRepoRoot ()
+        let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-separator-{Guid.NewGuid():N}.fss")
+
+        try
+            File.WriteAllText(tempScript, "1")
+            let code, _, stderr = runCli repoRoot repoRoot [ tempScript; "10" ] None
+
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(stderr, Does.Contain("parameter '<path>' should appear after all other arguments"))
+        finally
+            if File.Exists(tempScript) then File.Delete(tempScript)

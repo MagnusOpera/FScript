@@ -6,6 +6,11 @@ This document describes the host-facing interface of `FScript.Language`:
 - invoking functions,
 - supported host-visible types and values.
 
+Note on CLI host behavior:
+- The `fscript` CLI injects `let Env` into script execution.
+- The `Environment` type is provided by stdlib.
+- That injection is a CLI host convenience, not part of the `FScript.Language` core API contract.
+
 ## Namespace and entry points
 
 Reference `MagnusOpera.FScript.Language` and use namespace `FScript.Language`.

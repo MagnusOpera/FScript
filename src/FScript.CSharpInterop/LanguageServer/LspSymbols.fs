@@ -68,6 +68,7 @@ module LspSymbols =
         | Some file when file.EndsWith("Stdlib.Option.fss", StringComparison.Ordinal) || file.EndsWith("Option.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Option.fss"
         | Some file when file.EndsWith("Stdlib.List.fss", StringComparison.Ordinal) || file.EndsWith("List.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///List.fss"
         | Some file when file.EndsWith("Stdlib.Map.fss", StringComparison.Ordinal) || file.EndsWith("Map.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Map.fss"
+        | Some file when file.EndsWith("Stdlib.Environment.fss", StringComparison.Ordinal) || file.EndsWith("Environment.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Environment.fss"
         | _ -> None
 
     let private stdlibFunctionParameterNames : Lazy<Map<string, string list>> =
