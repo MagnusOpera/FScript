@@ -710,6 +710,296 @@ module LspSymbols =
         withDeclsAndExprs
         |> Map.map (fun _ spans -> spans |> List.rev)
 
+    let private buildResolvedLocalDefinitions (program: Program) : (Span * Span) list =
+        let addBinding (env: Map<string, Span>) (name: string) (span: Span) =
+            if String.IsNullOrWhiteSpace(name) || name = "_" then env
+            else env |> Map.add name span
+
+        let addPatternBindings (env: Map<string, Span>) (pattern: Pattern) =
+            collectPatternVarSpans pattern
+            |> List.fold (fun state (name, span) -> addBinding state name span) env
+
+        let lookupBinding (scopes: Map<string, Span> list) (name: string) =
+            scopes
+            |> List.tryPick (fun scope -> scope |> Map.tryFind name)
+
+        let withScope (scopes: Map<string, Span> list) (run: Map<string, Span> list -> 'T) =
+            run (Map.empty :: scopes)
+
+        let pushBindings (scopes: Map<string, Span> list) (bindings: (string * Span) list) =
+            match scopes with
+            | head :: tail ->
+                let updated =
+                    bindings
+                    |> List.fold (fun env (name, span) -> addBinding env name span) head
+                updated :: tail
+            | [] ->
+                let env =
+                    bindings
+                    |> List.fold (fun state (name, span) -> addBinding state name span) Map.empty
+                [ env ]
+
+        let rec resolveExpr (scopes: Map<string, Span> list) (expr: Expr) : (Span * Span) list =
+            match expr with
+            | EVar (name, usageSpan) ->
+                match lookupBinding scopes name with
+                | Some declSpan -> [ usageSpan, declSpan ]
+                | None -> []
+            | EParen (inner, _)
+            | ERaise (inner, _)
+            | ESome (inner, _) ->
+                resolveExpr scopes inner
+            | ELambda (param, body, _) ->
+                withScope scopes (fun scoped ->
+                    let scopedWithParam = pushBindings scoped [ param.Name, param.Span ]
+                    resolveExpr scopedWithParam body)
+            | EApply (f, a, _) ->
+                resolveExpr scopes f @ resolveExpr scopes a
+            | EIf (c, t, f, _) ->
+                resolveExpr scopes c @ resolveExpr scopes t @ resolveExpr scopes f
+            | EFor (name, source, body, span) ->
+                let inSource = resolveExpr scopes source
+                let inBody =
+                    withScope scopes (fun scoped ->
+                        let scopedWithLoopVar = pushBindings scoped [ name, span ]
+                        resolveExpr scopedWithLoopVar body)
+                inSource @ inBody
+            | EMatch (scrutinee, cases, _) ->
+                let inScrutinee = resolveExpr scopes scrutinee
+                let inCases =
+                    cases
+                    |> List.collect (fun (pattern, guardOpt, body, _) ->
+                        withScope scopes (fun scoped ->
+                            let scopedWithPattern =
+                                match scoped with
+                                | head :: tail -> (addPatternBindings head pattern) :: tail
+                                | [] -> [ addPatternBindings Map.empty pattern ]
+                            let inGuard =
+                                match guardOpt with
+                                | Some guard -> resolveExpr scopedWithPattern guard
+                                | None -> []
+                            inGuard @ resolveExpr scopedWithPattern body))
+                inScrutinee @ inCases
+            | ELet (name, value, body, isRec, span) ->
+                if isRec then
+                    withScope scopes (fun scoped ->
+                        let scopedWithSelf = pushBindings scoped [ name, span ]
+                        resolveExpr scopedWithSelf value @ resolveExpr scopedWithSelf body)
+                else
+                    let inValue = resolveExpr scopes value
+                    let inBody =
+                        withScope scopes (fun scoped ->
+                            let scopedWithBinding = pushBindings scoped [ name, span ]
+                            resolveExpr scopedWithBinding body)
+                    inValue @ inBody
+            | ELetPattern (pattern, value, body, _) ->
+                let inValue = resolveExpr scopes value
+                let inBody =
+                    withScope scopes (fun scoped ->
+                        let scopedWithPattern =
+                            match scoped with
+                            | head :: tail -> (addPatternBindings head pattern) :: tail
+                            | [] -> [ addPatternBindings Map.empty pattern ]
+                        resolveExpr scopedWithPattern body)
+                inValue @ inBody
+            | ELetRecGroup (bindings, body, _) ->
+                withScope scopes (fun scoped ->
+                    let names =
+                        bindings
+                        |> List.map (fun (name, _, _, bindingSpan) -> name, bindingSpan)
+                    let scopedWithNames = pushBindings scoped names
+                    let inBindings =
+                        bindings
+                        |> List.collect (fun (_, args, valueExpr, _) ->
+                            withScope scopedWithNames (fun scopedBinding ->
+                                let argBindings = args |> List.map (fun p -> p.Name, p.Span)
+                                let scopedWithArgs = pushBindings scopedBinding argBindings
+                                resolveExpr scopedWithArgs valueExpr))
+                    inBindings @ resolveExpr scopedWithNames body)
+            | EList (items, _)
+            | ETuple (items, _) ->
+                items |> List.collect (resolveExpr scopes)
+            | ERange (a, b, _)
+            | EIndexGet (a, b, _)
+            | ECons (a, b, _)
+            | EAppend (a, b, _)
+            | EBinOp (_, a, b, _) ->
+                resolveExpr scopes a @ resolveExpr scopes b
+            | ERecord (fields, _)
+            | EStructuralRecord (fields, _) ->
+                fields |> List.collect (fun (_, e) -> resolveExpr scopes e)
+            | EMap (entries, _) ->
+                entries
+                |> List.collect (function
+                    | MEKeyValue (k, v) -> resolveExpr scopes k @ resolveExpr scopes v
+                    | MESpread e -> resolveExpr scopes e)
+            | ERecordUpdate (target, fields, _)
+            | EStructuralRecordUpdate (target, fields, _) ->
+                resolveExpr scopes target @ (fields |> List.collect (fun (_, e) -> resolveExpr scopes e))
+            | EFieldGet (target, _, _) ->
+                resolveExpr scopes target
+            | EInterpolatedString (parts, _) ->
+                parts
+                |> List.collect (function
+                    | IPText _ -> []
+                    | IPExpr embedded -> resolveExpr scopes embedded)
+            | EUnit _
+            | ELiteral _
+            | ENone _
+            | ETypeOf _
+            | ENameOf _ -> []
+
+        let rec resolveStmts (scopes: Map<string, Span> list) (stmts: Stmt list) (acc: (Span * Span) list) =
+            match stmts with
+            | [] -> acc
+            | stmt :: rest ->
+                match stmt with
+                | SLet (name, args, expr, isRec, _, span) ->
+                    let inExpr =
+                        withScope scopes (fun scoped ->
+                            let baseScope =
+                                if isRec then pushBindings scoped [ name, span ] else scoped
+                            let argBindings = args |> List.map (fun p -> p.Name, p.Span)
+                            let scopedWithArgs = pushBindings baseScope argBindings
+                            resolveExpr scopedWithArgs expr)
+                    let nextScopes = pushBindings scopes [ name, span ]
+                    resolveStmts nextScopes rest (acc @ inExpr)
+                | SLetPattern (pattern, expr, _, _) ->
+                    let inExpr = resolveExpr scopes expr
+                    let bindings = collectPatternVarSpans pattern
+                    let nextScopes = pushBindings scopes bindings
+                    resolveStmts nextScopes rest (acc @ inExpr)
+                | SLetRecGroup (bindings, _, _) ->
+                    let nameBindings =
+                        bindings
+                        |> List.map (fun (name, _, _, bindingSpan) -> name, bindingSpan)
+                    let scopesWithNames = pushBindings scopes nameBindings
+                    let inBindings =
+                        bindings
+                        |> List.collect (fun (_, args, valueExpr, _) ->
+                            withScope scopesWithNames (fun scoped ->
+                                let argBindings = args |> List.map (fun p -> p.Name, p.Span)
+                                let scopedWithArgs = pushBindings scoped argBindings
+                                resolveExpr scopedWithArgs valueExpr))
+                    resolveStmts scopesWithNames rest (acc @ inBindings)
+                | SExpr expr ->
+                    let inExpr = resolveExpr scopes expr
+                    resolveStmts scopes rest (acc @ inExpr)
+                | SType _
+                | SImport _ ->
+                    resolveStmts scopes rest acc
+
+        resolveStmts [ Map.empty ] program []
+        |> List.distinctBy (fun (usage, decl) ->
+            let uf = usage.Start.File |> Option.defaultValue ""
+            let df = decl.Start.File |> Option.defaultValue ""
+            uf, usage.Start.Line, usage.Start.Column, usage.End.Line, usage.End.Column,
+            df, decl.Start.Line, decl.Start.Column, decl.End.Line, decl.End.Column)
+
+    let tryResolveLocalDefinitionAtPosition (doc: DocumentState) (line: int) (character: int) : Span option =
+        let spanContains (span: Span) (line: int) (character: int) =
+            let line1 = line + 1
+            let col1 = character + 1
+            let startsBefore =
+                line1 > span.Start.Line
+                || (line1 = span.Start.Line && col1 >= span.Start.Column)
+            let endsAfter =
+                line1 < span.End.Line
+                || (line1 = span.End.Line && col1 <= span.End.Column)
+            startsBefore && endsAfter
+
+        let positions = [ character; character - 1; character + 1; character - 2; character + 2 ] |> List.distinct
+
+        let matchesAtPosition pos =
+            doc.ResolvedLocalDefinitions
+            |> List.filter (fun (usageSpan, _) ->
+                spanContains usageSpan line pos)
+
+        let exact = matchesAtPosition character
+        let candidates =
+            if not exact.IsEmpty then exact
+            else positions |> List.collect matchesAtPosition
+
+        candidates
+        |> List.tryHead
+        |> Option.map snd
+
+    let tryResolveLocalBindingFromRecordFieldAssignmentAtPosition (doc: DocumentState) (line: int) (character: int) : LocalBindingInfo option =
+        let spanContains (span: Span) (line: int) (character: int) =
+            let line1 = line + 1
+            let col1 = character + 1
+            let startsBefore =
+                line1 > span.Start.Line
+                || (line1 = span.Start.Line && col1 >= span.Start.Column)
+            let endsAfter =
+                line1 < span.End.Line
+                || (line1 = span.End.Line && col1 <= span.End.Column)
+            startsBefore && endsAfter
+
+        let scoreBinding (binding: LocalBindingInfo) =
+            let line1 = line + 1
+            let col1 = character + 1
+            let lineDistance = abs (binding.DeclSpan.Start.Line - line1)
+            let colDistance = abs (binding.DeclSpan.Start.Column - col1)
+            let startsBefore =
+                binding.DeclSpan.Start.Line < line1
+                || (binding.DeclSpan.Start.Line = line1 && binding.DeclSpan.Start.Column <= col1)
+            let isDeclHit = spanContains binding.DeclSpan line character
+            (if isDeclHit then 0 else 1),
+            (if startsBefore then 0 else 1),
+            lineDistance,
+            colDistance
+
+        match getLineText doc.Text line with
+        | None -> None
+        | Some lineText ->
+            let assignmentRegex = Regex(@"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled)
+            let cursor = max 0 character
+
+            let matches =
+                assignmentRegex.Matches(lineText)
+                |> Seq.cast<Match>
+                |> Seq.filter (fun m -> m.Success)
+                |> Seq.toList
+
+            let trySelectRhsStart (m: Match) =
+                let lhs = m.Groups[1]
+                let rhs = m.Groups[2]
+                if not lhs.Success || not rhs.Success then None
+                else
+                    let lhsStart = lhs.Index
+                    let lhsEndExclusive = lhs.Index + lhs.Length
+                    let rhsStart = rhs.Index
+                    let rhsEndExclusive = rhs.Index + rhs.Length
+                    let eqIndex =
+                        let afterLhs = lhsEndExclusive
+                        let mutable idx = afterLhs
+                        let mutable found = -1
+                        while idx < lineText.Length && found < 0 do
+                            if lineText[idx] = '=' then found <- idx
+                            idx <- idx + 1
+                        found
+
+                    let onLhs = cursor >= lhsStart && cursor <= lhsEndExclusive
+                    let onRhs = cursor >= rhsStart && cursor <= rhsEndExclusive
+                    let onEquals = eqIndex >= 0 && cursor = eqIndex
+                    if onLhs || onRhs || onEquals then Some rhsStart else None
+
+            matches
+            |> List.tryPick trySelectRhsStart
+            |> Option.bind (fun rhsStart ->
+                match tryGetWordAtPosition doc.Text line rhsStart with
+                | Some rhsName ->
+                    doc.LocalBindings
+                    |> List.filter (fun binding ->
+                        String.Equals(binding.Name, rhsName, StringComparison.Ordinal)
+                        && (spanContains binding.ScopeSpan line rhsStart
+                            || spanContains binding.DeclSpan line rhsStart))
+                    |> List.sortBy scoreBinding
+                    |> List.tryHead
+                | None ->
+                    None)
+
     let private buildRecordParameterFields (program: Program) =
         let typeRecordFields =
             program
@@ -1607,6 +1897,7 @@ module LspSymbols =
         let diagnostics = ResizeArray<JsonNode>()
         let mutable symbols : TopLevelSymbol list = []
         let mutable occurrences : Map<string, Span list> = Map.empty
+        let mutable resolvedLocalDefinitions : (Span * Span) list = []
         let mutable recordParamFields : Map<string, (string * string) list> = Map.empty
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
@@ -1636,6 +1927,7 @@ module LspSymbols =
             injectedFunctionParameterNames <- parameterNames
             injectedFunctionDefinitions <- definitions
             occurrences <- collectVariableOccurrences program
+            resolvedLocalDefinitions <- buildResolvedLocalDefinitions program
             recordParamFields <- buildRecordParameterFields program
             parameterTypeTargets <- buildParameterTypeTargets program
             functionParameters <- buildFunctionParameters program
@@ -1771,7 +2063,8 @@ module LspSymbols =
               InjectedFunctionDefinitions = injectedFunctionDefinitions
               ImportAliasToInternal = importAliasToInternal
               ImportInternalToAlias = importInternalToAlias
-              VariableOccurrences = occurrences }
+              VariableOccurrences = occurrences
+              ResolvedLocalDefinitions = resolvedLocalDefinitions }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
@@ -2166,6 +2459,22 @@ module LspSymbols =
             || (line1 = span.End.Line && col1 <= span.End.Column)
         startsBefore && endsAfter
 
+    let private occurrenceNamesAtOrAdjacentPosition (doc: DocumentState) (line: int) (character: int) =
+        let candidatePositions =
+            [ character; character - 1; character + 1; character - 2; character + 2 ]
+            |> List.distinct
+
+        doc.VariableOccurrences
+        |> Map.toList
+        |> List.choose (fun (name, spans) ->
+            if spans |> List.exists (fun span ->
+                candidatePositions
+                |> List.exists (fun candidate -> spanContainsPosition span line candidate)) then
+                Some name
+            else
+                None)
+        |> List.distinct
+
     let tryResolveLocalBindingAtPosition (doc: DocumentState) (line: int) (character: int) : LocalBindingInfo option =
         let spanIsInCurrentDocument (span: Span) =
             match span.Start.File with
@@ -2206,23 +2515,32 @@ module LspSymbols =
             lineDistance,
             colDistance
 
-        match tryGetWordAtPosition doc.Text line character with
-        | Some word ->
-            let normalized =
-                if word.Contains('.') then word.Split('.') |> Array.last
-                else word
-            let names =
+        let namesFromOccurrences = occurrenceNamesAtOrAdjacentPosition doc line character
+        let namesFromWord =
+            match tryGetWordAtOrAdjacentPosition doc.Text line character with
+            | Some word ->
+                let normalized =
+                    if word.Contains('.') then word.Split('.') |> Array.last
+                    else word
                 [ word; normalized ]
-                |> List.distinct
+            | None ->
+                []
 
+        let names =
+            if namesFromWord.IsEmpty then
+                namesFromOccurrences |> List.distinct
+            else
+                namesFromWord |> List.distinct
+
+        if names.IsEmpty then
+            None
+        else
             doc.LocalBindings
             |> List.filter (fun binding ->
                 (names |> List.exists (fun name -> String.Equals(binding.Name, name, StringComparison.Ordinal)))
                 && isInBindingScope binding)
             |> List.sortBy scoreBinding
             |> List.tryHead
-        | None ->
-            None
 
     let tryGetLocalVariableHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         let bySpan =

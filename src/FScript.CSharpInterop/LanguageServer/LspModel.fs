@@ -7,6 +7,7 @@ open FScript.Language
 
 module LspModel =
     let mutable inlayHintsEnabled = true
+    let mutable lastDefinitionRequest: (string * int * int * DateTime) option = None
 
     let stdlibNames = Stdlib.reservedNames() |> Set.toList
     let builtinNames = [ "ignore"; "nameof"; "typeof" ]
@@ -85,7 +86,9 @@ module LspModel =
           ImportInternalToAlias: Map<string, string>
           // Variable occurrences keyed by identifier, sourced from AST spans.
           // This avoids text-based false positives (for example record field labels).
-          VariableOccurrences: Map<string, Span list> }
+          VariableOccurrences: Map<string, Span list>
+          // Lexically resolved local-definition targets keyed by variable-usage spans.
+          ResolvedLocalDefinitions: (Span * Span) list }
 
     let documents = Dictionary<string, DocumentState>(StringComparer.Ordinal)
 
@@ -177,6 +180,12 @@ module LspModel =
                     finish <- finish + 1
 
                 if finish > start then Some (lineText.Substring(start, finish - start)) else None
+
+    let tryGetWordAtOrAdjacentPosition (text: string) (line: int) (character: int) : string option =
+        [ character; character - 1; character + 1; character - 2; character + 2 ]
+        |> List.distinct
+        |> List.tryPick (fun candidate ->
+            tryGetWordAtPosition text line candidate)
 
     let tryGetWordPrefixAtPosition (text: string) (line: int) (character: int) : string option =
         match getLineText text line with

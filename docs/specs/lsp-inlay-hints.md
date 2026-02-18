@@ -80,6 +80,7 @@ Behavior:
 
 - Go-to-definition on a local variable usage resolves to the nearest lexical local declaration in scope.
 - This includes function parameters, lambda parameters, local `let` bindings, and pattern-bound variables.
+- Local definition navigation is resolved by lexical AST binding identity (usage span -> declaration span), with boundary-tolerant cursor matching.
 
 ## Related specifications
 

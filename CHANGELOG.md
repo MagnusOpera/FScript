@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Switched LSP local go-to-definition to lexical AST binding resolution so local symbol usages (including record-field values and edge-of-token clicks) resolve to their exact nearest binder.
+
 ## [0.42.0]
 
 
