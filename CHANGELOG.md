@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.43.0]
+
+
 - Switched LSP local go-to-definition to lexical AST binding resolution so local symbol usages (including record-field values and edge-of-token clicks) resolve to their exact nearest binder.
 - Added `fscript.server.logLevel=debug` support to surface detailed definition/references diagnostics and refined definition-follow-up references suppression so declaration clicks still show references while usage clicks navigate reliably.
 - Fixed local match-pattern declaration clicks (for example `Some batch`) to stop jumping to first usage and preserve references-window behavior.
@@ -12,6 +15,8 @@ All notable changes to FScript are documented in this file.
 - Updated top-level function declaration clicks to preserve references-window behavior by keeping declaration entries in immediate follow-up reference results.
 - Fixed LSP reference indexing to include `nameof <symbol>` occurrences so top-level declaration clicks surface `nameof` usages in the references window.
 - Added an independent VS Code/LSP toggle for hover hints so it can be enabled or disabled without disabling the language server.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.42.0...0.43.0
 
 ## [0.42.0]
 
