@@ -81,7 +81,13 @@ Behavior:
 - Go-to-definition on a local variable usage resolves to the nearest lexical local declaration in scope.
 - This includes function parameters, lambda parameters, local `let` bindings, and pattern-bound variables.
 - Local definition navigation is resolved by lexical AST binding identity (usage span -> declaration span), with boundary-tolerant cursor matching.
+- If a client immediately follows a successful definition request with a references request at the same cursor position, the server returns the resolved declaration location as a single-location references response.
+- The immediate follow-up suppression does not apply when the cursor is on the declaration identifier itself; in that case, normal references enumeration is returned.
 
+## LSP Debug Logging
+
+- Verbose definition/references debug logging is controlled by initialization option `debugLoggingEnabled` (default `false`).
+- VS Code forwards this through `fscript.debug.logging`.
 ## Related specifications
 
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)

@@ -25,4 +25,5 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 - LSP uses runtime extern schemes for typing/signatures and resolves navigation to included-file declarations.
 - LSP injected stdlib functions show named-argument signatures when available and resolve definition to readonly virtual stdlib sources (`fscript-stdlib:///...`).
 - LSP go-to-definition resolves local variable usages to their nearest in-scope local declaration by lexical AST binding identity (including function parameters and local `let` bindings), with boundary-tolerant cursor positions.
+- LSP definition/references follow-up suppression returns a single declaration location for immediate references requests after definition on usage sites, while declaration-identifier clicks keep normal references enumeration.
 - Definition/type-definition from record field labels in function return record literals resolves to the declared return type (including import-provided types).

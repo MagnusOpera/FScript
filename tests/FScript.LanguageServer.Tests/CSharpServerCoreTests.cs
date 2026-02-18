@@ -1340,6 +1340,396 @@ summary
         }
     }
 
+    [Test]
+    public void CSharp_server_references_followup_from_usage_returns_definition_location_only()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-references-followup-usage-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+let with_batch_projects context create_command =
+  [ create_command "" ]
+
+let restore context =
+  let create_command project_file = project_file
+  { Batchable = true; Operations = with_batch_projects context create_command }
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var usagePosition = FindTokenPosition(source, "create_command }", false);
+            var declarationPosition = FindTokenPosition(source, "let create_command project_file =", false);
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = usagePosition.line, ["character"] = usagePosition.character }
+            };
+            LspClient.SendRequest(client, 500, "textDocument/definition", definitionParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 500);
+
+            var referencesParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = usagePosition.line, ["character"] = usagePosition.character },
+                ["context"] = new JsonObject { ["includeDeclaration"] = true }
+            };
+            LspClient.SendRequest(client, 501, "textDocument/references", referencesParams);
+            var referencesResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 501);
+
+            var references = referencesResponse["result"] as JsonArray ?? throw new Exception("Expected references result array.");
+            Assert.That(references.Count, Is.EqualTo(1));
+            var location = references[0] as JsonObject ?? throw new Exception("Expected reference location.");
+            var range = location["range"] as JsonObject ?? throw new Exception("Expected range.");
+            var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+            Assert.That(start["line"]?.GetValue<int>(), Is.EqualTo(declarationPosition.line));
+            Assert.That(start["character"]?.GetValue<int>(), Is.EqualTo(declarationPosition.character));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Test]
+    public void CSharp_server_references_followup_from_parameter_declaration_returns_full_references()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-references-followup-parameter-decl-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+let first_project_file directory =
+  let local = directory
+  local
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var declarationPosition = FindTokenPosition(source, "directory =", false);
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character }
+            };
+            LspClient.SendRequest(client, 502, "textDocument/definition", definitionParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 502);
+
+            var referencesParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character },
+                ["context"] = new JsonObject { ["includeDeclaration"] = false }
+            };
+            LspClient.SendRequest(client, 503, "textDocument/references", referencesParams);
+            var referencesResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 503);
+
+            var references = referencesResponse["result"] as JsonArray ?? throw new Exception("Expected references result array.");
+            Assert.That(references.Count, Is.GreaterThanOrEqualTo(1));
+            var sawUsage = false;
+            foreach (var item in references)
+            {
+                var location = item as JsonObject ?? throw new Exception("Expected reference location.");
+                var range = location["range"] as JsonObject ?? throw new Exception("Expected range.");
+                var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+                var line = start["line"]?.GetValue<int>() ?? -1;
+                if (line == declarationPosition.line)
+                    continue;
+                else
+                {
+                    sawUsage = true;
+                }
+            }
+            Assert.That(sawUsage, Is.True);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Test]
+    public void CSharp_server_match_pattern_declaration_click_keeps_references_behavior()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-match-pattern-declaration-click-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+let with_batch_projects (context: Protocol.ActionContext) create_command =
+  match context.Batch with
+  | Some batch ->
+      batch.ProjectPaths
+      |> List.choose first_project_file
+      |> List.map create_command
+  | _ ->
+      [create_command ""]
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var declarationPosition = FindTokenPosition(source, "batch ->", false);
+            var firstUsagePosition = FindTokenPosition(source, "batch.ProjectPaths", false);
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character }
+            };
+            LspClient.SendRequest(client, 504, "textDocument/definition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 504);
+            var definitionResult = definitionResponse["result"] as JsonObject ?? throw new Exception("Expected definition location.");
+            var definitionRange = definitionResult["range"] as JsonObject ?? throw new Exception("Expected definition range.");
+            var definitionStart = definitionRange["start"] as JsonObject ?? throw new Exception("Expected definition start.");
+            Assert.That(definitionStart["line"]?.GetValue<int>(), Is.EqualTo(declarationPosition.line));
+            Assert.That(definitionStart["character"]?.GetValue<int>(), Is.EqualTo(declarationPosition.character));
+
+            var referencesParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character },
+                ["context"] = new JsonObject { ["includeDeclaration"] = false }
+            };
+            LspClient.SendRequest(client, 505, "textDocument/references", referencesParams);
+            var referencesResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 505);
+
+            var references = referencesResponse["result"] as JsonArray ?? throw new Exception("Expected references result array.");
+            Assert.That(references.Count, Is.GreaterThanOrEqualTo(1));
+
+            var containsFirstUsage = false;
+            foreach (var item in references)
+            {
+                var location = item as JsonObject ?? throw new Exception("Expected reference location.");
+                var range = location["range"] as JsonObject ?? throw new Exception("Expected range.");
+                var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+                var line = start["line"]?.GetValue<int>() ?? -1;
+                var character = start["character"]?.GetValue<int>() ?? -1;
+                if (line == firstUsagePosition.line && character == firstUsagePosition.character)
+                {
+                    containsFirstUsage = true;
+                }
+            }
+
+            Assert.That(containsFirstUsage, Is.True);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Test]
+    public void CSharp_server_definition_resolves_member_access_field_via_match_pattern_binding_type()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-member-access-field-definition-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+type Batch = { ProjectPaths: string list }
+
+let values (batchOpt: Batch option) =
+  match batchOpt with
+  | Some batch -> batch.ProjectPaths
+  | None -> []
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var usagePosition = FindTokenPosition(source, "ProjectPaths", false);
+            var typeDeclarationPosition = FindTokenPosition(source, "type Batch", false);
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = usagePosition.line, ["character"] = usagePosition.character }
+            };
+            LspClient.SendRequest(client, 506, "textDocument/definition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 506);
+
+            var result = definitionResponse["result"] as JsonObject ?? throw new Exception("Expected definition location.");
+            var range = result["range"] as JsonObject ?? throw new Exception("Expected range.");
+            var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+            Assert.That(start["line"]?.GetValue<int>(), Is.EqualTo(typeDeclarationPosition.line));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Test]
+    public void CSharp_server_references_for_top_level_declaration_include_nameof_usage()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-top-level-nameof-references-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+let defaults value = value
+
+{
+  [nameof defaults] = [Default]
+}
+""";
+            File.WriteAllText(mainPath, source);
+
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var declarationPosition = FindTokenPosition(source, "defaults value", false);
+            var nameofUsageLine = FindTokenPosition(source, "nameof defaults", false).line;
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character }
+            };
+            LspClient.SendRequest(client, 509, "textDocument/definition", definitionParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 509);
+
+            var referencesParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = declarationPosition.line, ["character"] = declarationPosition.character },
+                ["context"] = new JsonObject { ["includeDeclaration"] = false }
+            };
+            LspClient.SendRequest(client, 510, "textDocument/references", referencesParams);
+            var referencesResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 510);
+
+            var references = referencesResponse["result"] as JsonArray ?? throw new Exception("Expected references result array.");
+            Assert.That(references.Count, Is.GreaterThanOrEqualTo(2));
+
+            var sawNameofUsage = false;
+            foreach (var item in references)
+            {
+                var location = item as JsonObject ?? throw new Exception("Expected reference location.");
+                var range = location["range"] as JsonObject ?? throw new Exception("Expected range.");
+                var start = range["start"] as JsonObject ?? throw new Exception("Expected start range.");
+                var line = start["line"]?.GetValue<int>() ?? -1;
+                if (line == nameofUsageLine)
+                {
+                    sawNameofUsage = true;
+                }
+            }
+
+            Assert.That(sawNameofUsage, Is.True);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
     private static (int line, int character) FindTokenPosition(string source, string token, bool fromEnd)
     {
         var index = fromEnd

@@ -683,8 +683,8 @@ module LspSymbols =
             | EUnit _
             | ELiteral _
             | ENone _
-            | ETypeOf _
-            | ENameOf _ -> acc
+            | ETypeOf _ -> acc
+            | ENameOf (name, span) -> addOccurrence name span acc
 
         let withDeclsAndExprs =
             program
@@ -2196,6 +2196,30 @@ module LspSymbols =
             if qualifier.Contains('.') then qualifier.Split('.') |> Array.last
             else qualifier
 
+        let lastSegment (name: string) =
+            if name.Contains('.') then name.Split('.') |> Array.last else name
+
+        let normalizeImportedTypeName (typeName: string) =
+            if typeName.Contains('.') then
+                let idx = typeName.LastIndexOf('.')
+                if idx > 0 && idx + 1 < typeName.Length then
+                    let prefix = typeName.Substring(0, idx)
+                    let memberName = typeName.Substring(idx + 1)
+                    match doc.ImportAliasToInternal |> Map.tryFind prefix with
+                    | Some internalPrefix -> $"{internalPrefix}.{memberName}"
+                    | None -> typeName
+                else
+                    typeName
+            else
+                typeName
+
+        let trimSimpleWrapper (typeName: string) =
+            let trimmed = typeName.Trim()
+            if trimmed.EndsWith(" option", StringComparison.Ordinal) then
+                trimmed.Substring(0, trimmed.Length - " option".Length).Trim()
+            else
+                trimmed
+
         let fromSymbol =
             doc.Symbols
             |> List.tryFind (fun s -> s.Name = qualifier || s.Name = normalized)
@@ -2213,10 +2237,30 @@ module LspSymbols =
             match doc.ParameterTypeTargets |> Map.tryFind normalized with
             | Some typeName -> Some typeName
             | None ->
-                if String.Equals(normalized, "Env", StringComparison.Ordinal) then
-                    Some "Environment"
-                else
-                    None
+                let fromLocalHints =
+                    doc.LocalVariableTypeHints
+                    |> List.tryFind (fun (_, name, _) -> String.Equals(name, normalized, StringComparison.Ordinal))
+                    |> Option.bind (fun (_, _, typeText) ->
+                        let candidate = typeText |> trimSimpleWrapper |> normalizeImportedTypeName
+                        let byNamedType =
+                            doc.Symbols
+                            |> List.tryFind (fun s -> s.Kind = 5 && (s.Name = candidate || s.Name = lastSegment candidate))
+                            |> Option.map (fun s -> s.Name)
+
+                        match byNamedType with
+                        | Some t -> Some t
+                        | None ->
+                            candidate
+                            |> tryParseRecordFields
+                            |> Option.bind (tryResolveNamedRecordTypeByFields doc))
+
+                match fromLocalHints with
+                | Some typeName -> Some typeName
+                | None ->
+                    if String.Equals(normalized, "Env", StringComparison.Ordinal) then
+                        Some "Environment"
+                    else
+                        None
 
     let private tryFindSymbolByName (doc: DocumentState) (name: string) =
         let normalized =
@@ -2400,6 +2444,42 @@ module LspSymbols =
                     None
 
     let tryResolveTypeTargetAtPosition (doc: DocumentState) (line: int) (character: int) : string option =
+        let tryMemberQualifierAtCursor () =
+            match getLineText doc.Text line with
+            | None -> None
+            | Some lineText when String.IsNullOrEmpty(lineText) -> None
+            | Some lineText ->
+                let candidateChars = [ character; character - 1; character + 1 ] |> List.distinct
+                candidateChars
+                |> List.tryPick (fun c ->
+                    let cursor = max 0 (min c (lineText.Length - 1))
+                    let mutable memberIdx = cursor
+                    while memberIdx > 0 && not (isWordChar lineText[memberIdx]) do
+                        memberIdx <- memberIdx - 1
+
+                    if not (isWordChar lineText[memberIdx]) then
+                        None
+                    else
+                        let mutable memberStart = memberIdx
+                        while memberStart > 0 && isWordChar lineText[memberStart - 1] do
+                            memberStart <- memberStart - 1
+                        let dotIdx = memberStart - 1
+                        if dotIdx < 0 || lineText[dotIdx] <> '.' then
+                            None
+                        else
+                            let mutable qualifierEnd = dotIdx - 1
+                            while qualifierEnd >= 0 && Char.IsWhiteSpace(lineText[qualifierEnd]) do
+                                qualifierEnd <- qualifierEnd - 1
+
+                            if qualifierEnd < 0 || not (isWordChar lineText[qualifierEnd]) then
+                                None
+                            else
+                                let mutable qualifierStart = qualifierEnd
+                                while qualifierStart > 0 && isWordChar lineText[qualifierStart - 1] do
+                                    qualifierStart <- qualifierStart - 1
+                                let qualifier = lineText.Substring(qualifierStart, qualifierEnd - qualifierStart + 1)
+                                if String.IsNullOrWhiteSpace(qualifier) then None else Some qualifier)
+
         let fromWord =
             match tryGetWordAtPosition doc.Text line character with
             | Some word when word.Contains('.') ->
@@ -2421,16 +2501,19 @@ module LspSymbols =
         match fromWord with
         | Some typeName -> Some typeName
         | None ->
-            match tryExtractInlineRecordAnnotationAtPosition doc line character with
-            | Some fields ->
-                tryResolveNamedRecordTypeByFields doc fields
+            match tryMemberQualifierAtCursor () |> Option.bind (tryResolveTypeNameForQualifier doc) with
+            | Some typeName -> Some typeName
             | None ->
-                match tryResolveRecordLiteralCallArgTypeTarget doc line character with
-                | Some t -> Some t
+                match tryExtractInlineRecordAnnotationAtPosition doc line character with
+                | Some fields ->
+                    tryResolveNamedRecordTypeByFields doc fields
                 | None ->
-                    match tryResolveRecordLiteralBindingTypeTarget doc line character with
+                    match tryResolveRecordLiteralCallArgTypeTarget doc line character with
                     | Some t -> Some t
-                    | None -> tryResolveRecordLiteralFunctionReturnTypeTarget doc line character
+                    | None ->
+                        match tryResolveRecordLiteralBindingTypeTarget doc line character with
+                        | Some t -> Some t
+                        | None -> tryResolveRecordLiteralFunctionReturnTypeTarget doc line character
 
     let tryGetRecordFieldHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         match tryGetWordAtPosition doc.Text line character with

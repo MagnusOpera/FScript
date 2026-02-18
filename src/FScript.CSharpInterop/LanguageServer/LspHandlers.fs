@@ -10,17 +10,59 @@ module LspHandlers =
     open LspModel
     open LspSymbols
 
+    let private logDebug (message: string) =
+        if debugLoggingEnabled then
+            let formatted = $"[fscript-lsp][definition] {message}"
+            Console.Error.WriteLine(formatted)
+            let payload = JsonObject()
+            payload["type"] <- JsonValue.Create(4)
+            payload["message"] <- JsonValue.Create(formatted)
+            LspProtocol.sendNotification "window/logMessage" (Some payload)
+
+    let private logInfo (message: string) =
+        let formatted = $"[fscript-lsp] {message}"
+        Console.Error.WriteLine(formatted)
+        let payload = JsonObject()
+        payload["type"] <- JsonValue.Create(3)
+        payload["message"] <- JsonValue.Create(formatted)
+        LspProtocol.sendNotification "window/logMessage" (Some payload)
+
     let handleInitialize (idNode: JsonNode) (paramsObj: JsonObject option) =
         match paramsObj with
         | Some p ->
             match tryGetObject p "initializationOptions" with
             | Some init ->
+                let mutable requestedDebug = false
                 match init["inlayHintsEnabled"] with
                 | :? JsonValue as v ->
                     try inlayHintsEnabled <- v.GetValue<bool>() with _ -> ()
                 | _ -> ()
+                match init["debugLoggingEnabled"] with
+                | :? JsonValue as v ->
+                    try requestedDebug <- v.GetValue<bool>() with _ -> ()
+                | _ -> ()
+                let requestedLogLevel =
+                    match init["logLevel"] with
+                    | :? JsonValue as v ->
+                        try v.GetValue<string>() with _ -> "info"
+                    | _ -> "info"
+
+                let envDebug =
+                    match Environment.GetEnvironmentVariable("FSCRIPT_LSP_DEBUG") with
+                    | null -> false
+                    | value ->
+                        value.Equals("1", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+
+                debugLoggingEnabled <-
+                    requestedDebug
+                    || requestedLogLevel.Equals("debug", StringComparison.OrdinalIgnoreCase)
+                    || envDebug
             | None -> ()
         | None -> ()
+
+        if debugLoggingEnabled then
+            logInfo "debug logging enabled"
 
         let sync = JsonObject()
         sync["openClose"] <- JsonValue.Create(true)
@@ -682,118 +724,324 @@ module LspHandlers =
         | _ ->
             Some fallbackUri
 
+    let private tryTopLevelDeclarationSymbolAtCursor (doc: DocumentState) (line: int) (character: int) =
+        let fromWordAtCursor =
+            let candidateChars = [ character; character - 1; character + 1 ] |> List.distinct
+            candidateChars
+            |> List.tryPick (fun c ->
+                match tryGetWordAtOrAdjacentPosition doc.Text line c with
+                | Some word ->
+                    doc.Symbols
+                    |> List.tryFind (fun s ->
+                        s.Name = word
+                        && s.Span.Start.Line = (line + 1))
+                | None -> None)
+
+        match fromWordAtCursor with
+        | Some sym -> Some sym
+        | None ->
+            let candidateChars = [ character; character - 1; character + 1 ] |> List.distinct
+            candidateChars
+            |> List.tryPick (fun c ->
+                match tryResolveSymbol doc line c with
+                | Some (sym: TopLevelSymbol) when (line + 1) = sym.Span.Start.Line ->
+                    let startCol0 = max 0 (sym.Span.Start.Column - 1)
+                    let endColExclusive = startCol0 + sym.Name.Length
+                    if c >= startCol0 && c < endColExclusive then Some sym else None
+                | _ -> None)
+
     let handleDefinition (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
-            lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+            logDebug $"request uri={uri} line={line} char={character}"
             match tryResolveIncludeLocation uri doc line character with
             | Some includeLoc ->
+                lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                logDebug "resolved include location"
                 LspProtocol.sendResponse idNode (Some includeLoc)
             | None ->
-                match tryResolveLocalDefinitionAtPosition doc line character with
-                | Some declSpan ->
+                logDebug "include resolution miss"
+                let isLikelyLetDeclarationContextAtCursor () =
+                    match getLineText doc.Text line with
+                    | None -> false
+                    | Some lineText ->
+                        if String.IsNullOrEmpty(lineText) then
+                            false
+                        else
+                            let mutable startIdx = max 0 (min character (lineText.Length - 1))
+                            while startIdx > 0 && not (isWordChar lineText[startIdx]) do
+                                startIdx <- startIdx - 1
+
+                            if not (isWordChar lineText[startIdx]) then
+                                false
+                            else
+                                let mutable left = startIdx
+                                while left > 0 && isWordChar lineText[left - 1] do
+                                    left <- left - 1
+                                let mutable right = startIdx
+                                while right + 1 < lineText.Length && isWordChar lineText[right + 1] do
+                                    right <- right + 1
+
+                                let before = lineText.Substring(0, left)
+                                let after =
+                                    if right + 1 < lineText.Length then lineText.Substring(right + 1)
+                                    else String.Empty
+
+                                (before.Contains("let ", StringComparison.Ordinal)
+                                 || before.Contains("and ", StringComparison.Ordinal))
+                                && after.Contains("=", StringComparison.Ordinal)
+
+                let isLikelyMatchPatternDeclarationContextAtCursor () =
+                    match getLineText doc.Text line with
+                    | None -> false
+                    | Some lineText ->
+                        if String.IsNullOrWhiteSpace(lineText) then
+                            false
+                        else
+                            let cursor = max 0 (min character (lineText.Length - 1))
+                            let mutable left = cursor
+                            while left > 0 && isWordChar lineText[left - 1] do
+                                left <- left - 1
+                            let mutable right = cursor
+                            while right + 1 < lineText.Length && isWordChar lineText[right + 1] do
+                                right <- right + 1
+
+                            if left > right || not (isWordChar lineText[left]) then
+                                false
+                            else
+                                let before = lineText.Substring(0, left)
+                                let after =
+                                    if right + 1 < lineText.Length then lineText.Substring(right + 1)
+                                    else String.Empty
+                                before.Contains("|", StringComparison.Ordinal)
+                                && after.Contains("->", StringComparison.Ordinal)
+
+                let declarationLocalBinding =
+                    let candidateChars = [ character; character - 1; character + 1 ] |> List.distinct
+                    candidateChars
+                    |> List.tryPick (fun c ->
+                        match tryResolveLocalBindingAtPosition doc line c with
+                        | Some binding when (line + 1) = binding.DeclSpan.Start.Line ->
+                            let startCol0 = max 0 (binding.DeclSpan.Start.Column - 1)
+                            let endColExclusive = startCol0 + binding.Name.Length
+                            if c >= startCol0 && c <= endColExclusive then
+                                Some binding
+                            else
+                                None
+                        | _ -> None)
+
+                match declarationLocalBinding with
+                | Some binding ->
+                    lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                    logDebug $"declaration click for local-binding name={binding.Name}; returning declaration location"
                     let loc = JsonObject()
                     let targetUri =
-                        tryUriFromSpanFile uri declSpan
+                        tryUriFromSpanFile uri binding.DeclSpan
                         |> Option.defaultValue uri
                     loc["uri"] <- JsonValue.Create(targetUri)
-                    loc["range"] <- toLspRange declSpan
+                    loc["range"] <- toLspRange binding.DeclSpan
                     LspProtocol.sendResponse idNode (Some loc)
                 | None ->
-                    match tryResolveLocalBindingAtPosition doc line character with
-                    | Some localBinding ->
+                    match tryTopLevelDeclarationSymbolAtCursor doc line character with
+                    | Some sym ->
+                        lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                        logDebug $"declaration click for top-level symbol name={sym.Name}; returning declaration location"
                         let loc = JsonObject()
                         let targetUri =
-                            tryUriFromSpanFile uri localBinding.DeclSpan
+                            tryUriFromSpanFile uri sym.Span
                             |> Option.defaultValue uri
                         loc["uri"] <- JsonValue.Create(targetUri)
-                        loc["range"] <- toLspRange localBinding.DeclSpan
+                        loc["range"] <- toLspRange sym.Span
                         LspProtocol.sendResponse idNode (Some loc)
                     | None ->
-                        match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
-                        | Some localBinding ->
-                            let loc = JsonObject()
-                            let targetUri =
-                                tryUriFromSpanFile uri localBinding.DeclSpan
-                                |> Option.defaultValue uri
-                            loc["uri"] <- JsonValue.Create(targetUri)
-                            loc["range"] <- toLspRange localBinding.DeclSpan
-                            LspProtocol.sendResponse idNode (Some loc)
-                        | None ->
-                            let localSymbol = tryResolveSymbol doc line character
-                            let wordAtCursor = tryGetWordAtOrAdjacentPosition doc.Text line character
+                        if isLikelyMatchPatternDeclarationContextAtCursor () || isLikelyLetDeclarationContextAtCursor () then
+                            let declarationByLetLine =
+                                match getLineText doc.Text line with
+                                | Some lineText ->
+                                    let trimmed = lineText.TrimStart()
+                                    let afterKeyword =
+                                        if trimmed.StartsWith("let ", StringComparison.Ordinal) then
+                                            Some (trimmed.Substring(4))
+                                        elif trimmed.StartsWith("and ", StringComparison.Ordinal) then
+                                            Some (trimmed.Substring(4))
+                                        else
+                                            None
 
-                            let symbolAndUri =
-                                match localSymbol with
-                                | Some sym ->
-                                    match tryUriFromSpanFile uri sym.Span with
-                                    | Some targetUri -> Some (targetUri, sym)
-                                    | None -> Some (uri, sym)
+                                    afterKeyword
+                                    |> Option.bind (fun tail ->
+                                        let mutable i = 0
+                                        while i < tail.Length && Char.IsWhiteSpace(tail[i]) do
+                                            i <- i + 1
+                                        if i >= tail.Length || not (isWordChar tail[i]) then
+                                            None
+                                        else
+                                            let start = i
+                                            while i < tail.Length && isWordChar tail[i] do
+                                                i <- i + 1
+                                            let name = tail.Substring(start, i - start)
+                                            doc.Symbols
+                                            |> List.tryFind (fun s -> s.Name = name && s.Span.Start.Line = (line + 1)))
                                 | None ->
-                                    match wordAtCursor with
-                                    | Some word ->
-                                        documents
-                                        |> Seq.tryPick (fun kv ->
-                                            kv.Value.Symbols
-                                            |> List.tryFind (fun s -> s.Name = word)
-                                            |> Option.map (fun s -> kv.Key, s))
-                                    | None -> None
+                                    None
 
-                            match symbolAndUri with
-                            | Some (targetUri, sym) ->
+                            let declarationByWord =
+                                tryGetWordAtOrAdjacentPosition doc.Text line character
+                                |> Option.bind (fun word ->
+                                    doc.Symbols
+                                    |> List.tryFind (fun s -> s.Name = word && s.Span.Start.Line = (line + 1)))
+
+                            match declarationByLetLine with
+                            | Some sym ->
+                                lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                logDebug $"declaration-like let/match context resolved top-level symbol from line name={sym.Name}; returning declaration location"
                                 let loc = JsonObject()
+                                let targetUri =
+                                    tryUriFromSpanFile uri sym.Span
+                                    |> Option.defaultValue uri
                                 loc["uri"] <- JsonValue.Create(targetUri)
                                 loc["range"] <- toLspRange sym.Span
                                 LspProtocol.sendResponse idNode (Some loc)
                             | None ->
-                                let injectedDefinition =
-                                    match wordAtCursor with
-                                    | Some word ->
-                                        let candidates =
-                                            if word.Contains('.') then
-                                                [ word; word.Split('.') |> Array.last ]
-                                            else
-                                                [ word ]
-
-                                        candidates
-                                        |> List.tryPick (fun candidate ->
-                                            doc.InjectedFunctionDefinitions
-                                            |> Map.tryFind candidate
-                                            |> Option.map (fun target -> candidate, target))
-                                    | None ->
-                                        None
-
-                                match injectedDefinition with
-                                | Some (_, (targetUri, targetSpan)) ->
+                                match declarationByWord with
+                                | Some sym ->
+                                    lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                    logDebug $"declaration-like let/match context resolved top-level symbol name={sym.Name}; returning declaration location"
                                     let loc = JsonObject()
+                                    let targetUri =
+                                        tryUriFromSpanFile uri sym.Span
+                                        |> Option.defaultValue uri
                                     loc["uri"] <- JsonValue.Create(targetUri)
-                                    loc["range"] <- toLspRange targetSpan
+                                    loc["range"] <- toLspRange sym.Span
                                     LspProtocol.sendResponse idNode (Some loc)
                                 | None ->
-                                    match tryResolveTypeTargetAtPosition doc line character with
-                                    | Some typeName ->
-                                        match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
-                                        | Some typeSym ->
+                                    lastDefinitionRequest <- None
+                                    logDebug "declaration-like click context; returning no definition"
+                                    LspProtocol.sendResponse idNode None
+                        else
+                            match tryResolveLocalDefinitionAtPosition doc line character with
+                            | Some declSpan ->
+                                lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                logDebug $"resolved via AST local-definition map decl=({declSpan.Start.Line},{declSpan.Start.Column})"
+                                let loc = JsonObject()
+                                let targetUri =
+                                    tryUriFromSpanFile uri declSpan
+                                    |> Option.defaultValue uri
+                                loc["uri"] <- JsonValue.Create(targetUri)
+                                loc["range"] <- toLspRange declSpan
+                                LspProtocol.sendResponse idNode (Some loc)
+                            | None ->
+                                logDebug "AST local-definition map miss"
+                                match tryResolveLocalBindingAtPosition doc line character with
+                                | Some localBinding ->
+                                    lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                    logDebug $"resolved via local-binding fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
+                                    let loc = JsonObject()
+                                    let targetUri =
+                                        tryUriFromSpanFile uri localBinding.DeclSpan
+                                        |> Option.defaultValue uri
+                                    loc["uri"] <- JsonValue.Create(targetUri)
+                                    loc["range"] <- toLspRange localBinding.DeclSpan
+                                    LspProtocol.sendResponse idNode (Some loc)
+                                | None ->
+                                    match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
+                                    | Some localBinding ->
+                                        lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                        logDebug $"resolved via record-field fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
+                                        let loc = JsonObject()
+                                        let targetUri =
+                                            tryUriFromSpanFile uri localBinding.DeclSpan
+                                            |> Option.defaultValue uri
+                                        loc["uri"] <- JsonValue.Create(targetUri)
+                                        loc["range"] <- toLspRange localBinding.DeclSpan
+                                        LspProtocol.sendResponse idNode (Some loc)
+                                    | None ->
+                                        let localSymbol = tryResolveSymbol doc line character
+                                        let wordAtCursor = tryGetWordAtOrAdjacentPosition doc.Text line character
+
+                                        let symbolAndUri =
+                                            match localSymbol with
+                                            | Some sym ->
+                                                match tryUriFromSpanFile uri sym.Span with
+                                                | Some targetUri -> Some (targetUri, sym)
+                                                | None -> Some (uri, sym)
+                                            | None ->
+                                                match wordAtCursor with
+                                                | Some word ->
+                                                    documents
+                                                    |> Seq.tryPick (fun kv ->
+                                                        kv.Value.Symbols
+                                                        |> List.tryFind (fun s -> s.Name = word)
+                                                        |> Option.map (fun s -> kv.Key, s))
+                                                | None -> None
+
+                                        match symbolAndUri with
+                                        | Some (targetUri, sym) ->
+                                            lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                            logDebug $"resolved via symbol lookup name={sym.Name} decl=({sym.Span.Start.Line},{sym.Span.Start.Column})"
                                             let loc = JsonObject()
-                                            let targetUri =
-                                                tryUriFromSpanFile uri typeSym.Span
-                                                |> Option.defaultValue uri
                                             loc["uri"] <- JsonValue.Create(targetUri)
-                                            loc["range"] <- toLspRange typeSym.Span
+                                            loc["range"] <- toLspRange sym.Span
                                             LspProtocol.sendResponse idNode (Some loc)
                                         | None ->
-                                            match tryFindInjectedTypeDefinition typeName with
-                                            | Some (targetUri, targetSpan) ->
+                                            let injectedDefinition =
+                                                match wordAtCursor with
+                                                | Some word ->
+                                                    let candidates =
+                                                        if word.Contains('.') then
+                                                            [ word; word.Split('.') |> Array.last ]
+                                                        else
+                                                            [ word ]
+
+                                                    candidates
+                                                    |> List.tryPick (fun candidate ->
+                                                        doc.InjectedFunctionDefinitions
+                                                        |> Map.tryFind candidate
+                                                        |> Option.map (fun target -> candidate, target))
+                                                | None ->
+                                                    None
+
+                                            match injectedDefinition with
+                                            | Some (_, (targetUri, targetSpan)) ->
+                                                lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                                logDebug $"resolved via injected definition decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
                                                 let loc = JsonObject()
                                                 loc["uri"] <- JsonValue.Create(targetUri)
                                                 loc["range"] <- toLspRange targetSpan
                                                 LspProtocol.sendResponse idNode (Some loc)
                                             | None ->
-                                                LspProtocol.sendResponse idNode None
-                                    | None ->
-                                        LspProtocol.sendResponse idNode None
+                                                match tryResolveTypeTargetAtPosition doc line character with
+                                                | Some typeName ->
+                                                    match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
+                                                    | Some typeSym ->
+                                                        lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                                        logDebug $"resolved via local type definition name={typeSym.Name} decl=({typeSym.Span.Start.Line},{typeSym.Span.Start.Column})"
+                                                        let loc = JsonObject()
+                                                        let targetUri =
+                                                            tryUriFromSpanFile uri typeSym.Span
+                                                            |> Option.defaultValue uri
+                                                        loc["uri"] <- JsonValue.Create(targetUri)
+                                                        loc["range"] <- toLspRange typeSym.Span
+                                                        LspProtocol.sendResponse idNode (Some loc)
+                                                    | None ->
+                                                        match tryFindInjectedTypeDefinition typeName with
+                                                        | Some (targetUri, targetSpan) ->
+                                                            lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                                            logDebug $"resolved via injected type definition name={typeName} decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
+                                                            let loc = JsonObject()
+                                                            loc["uri"] <- JsonValue.Create(targetUri)
+                                                            loc["range"] <- toLspRange targetSpan
+                                                            LspProtocol.sendResponse idNode (Some loc)
+                                                        | None ->
+                                                            lastDefinitionRequest <- None
+                                                            logDebug $"definition miss for type target name={typeName}"
+                                                            LspProtocol.sendResponse idNode None
+                                                | None ->
+                                                    lastDefinitionRequest <- None
+                                                    logDebug "definition miss"
+                                                    LspProtocol.sendResponse idNode None
         | _ ->
+            lastDefinitionRequest <- None
             LspProtocol.sendResponse idNode None
 
     let handleTypeDefinition (idNode: JsonNode) (paramsObj: JsonObject) =
@@ -938,10 +1186,121 @@ module LspHandlers =
                 [ word; normalized ]
             | None -> []
 
+    let private tryFindDeclarationIdentifierRangeOnLine
+        (lineText: string)
+        (declStartColumn1: int)
+        (name: string)
+        : (int * int) option =
+        let findFrom (startIndex: int) =
+            let mutable idx = max 0 startIndex
+            let mutable found: (int * int) option = None
+
+            while found.IsNone && idx >= 0 && idx < lineText.Length do
+                let hit = lineText.IndexOf(name, idx, StringComparison.Ordinal)
+                if hit < 0 then
+                    idx <- -1
+                else
+                    let leftOk =
+                        hit = 0
+                        || not (isWordChar lineText[hit - 1])
+                    let rightPos = hit + name.Length
+                    let rightOk =
+                        rightPos >= lineText.Length
+                        || not (isWordChar lineText[rightPos])
+
+                    if leftOk && rightOk then
+                        found <- Some (hit, rightPos)
+                    else
+                        idx <- hit + 1
+
+            found
+
+        match findFrom (declStartColumn1 - 1) with
+        | Some range -> Some range
+        | None -> findFrom 0
+
+    let private isOnDeclarationIdentifier (doc: DocumentState) (line: int) (character: int) (declSpan: Span) (declName: string option) =
+        match declName, getLineText doc.Text line with
+        | Some name, Some lineText when (line + 1) = declSpan.Start.Line ->
+            match tryFindDeclarationIdentifierRangeOnLine lineText declSpan.Start.Column name with
+            | Some (startIdx, endIdxExclusive) ->
+                character >= startIdx && character < endIdxExclusive
+            | None -> false
+        | _ ->
+            false
+
+    let private isLikelyLetDeclarationContext (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | None -> false
+        | Some lineText ->
+            if String.IsNullOrEmpty(lineText) then
+                false
+            else
+                let mutable startIdx = max 0 (min character (lineText.Length - 1))
+                while startIdx > 0 && not (isWordChar lineText[startIdx]) do
+                    startIdx <- startIdx - 1
+
+                if not (isWordChar lineText[startIdx]) then
+                    false
+                else
+                    let mutable left = startIdx
+                    while left > 0 && isWordChar lineText[left - 1] do
+                        left <- left - 1
+                    let mutable right = startIdx
+                    while right + 1 < lineText.Length && isWordChar lineText[right + 1] do
+                        right <- right + 1
+
+                    let before = lineText.Substring(0, left)
+                    let after =
+                        if right + 1 < lineText.Length then lineText.Substring(right + 1)
+                        else String.Empty
+
+                    (before.Contains("let ", StringComparison.Ordinal)
+                     || before.Contains("and ", StringComparison.Ordinal))
+                    && after.Contains("=", StringComparison.Ordinal)
+
+    let private isLikelyMatchPatternDeclarationContext (doc: DocumentState) (line: int) (character: int) =
+        match getLineText doc.Text line with
+        | None -> false
+        | Some lineText ->
+            if String.IsNullOrWhiteSpace(lineText) then
+                false
+            else
+                let cursor = max 0 (min character (lineText.Length - 1))
+                let mutable left = cursor
+                while left > 0 && isWordChar lineText[left - 1] do
+                    left <- left - 1
+                let mutable right = cursor
+                while right + 1 < lineText.Length && isWordChar lineText[right + 1] do
+                    right <- right + 1
+
+                if left > right || not (isWordChar lineText[left]) then
+                    false
+                else
+                    let before = lineText.Substring(0, left)
+                    let after =
+                        if right + 1 < lineText.Length then lineText.Substring(right + 1)
+                        else String.Empty
+                    before.Contains("|", StringComparison.Ordinal)
+                    && after.Contains("->", StringComparison.Ordinal)
+
     let handleReferences (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
+            logDebug $"references request uri={uri} line={line} char={character}"
+            let localDeclarationBindingAtCursor =
+                let candidateChars = [ character; character - 1; character + 1 ] |> List.distinct
+                candidateChars
+                |> List.tryPick (fun c ->
+                    match tryResolveLocalBindingAtPosition doc line c with
+                    | Some binding when (line + 1) = binding.DeclSpan.Start.Line ->
+                        let startCol0 = max 0 (binding.DeclSpan.Start.Column - 1)
+                        let endColExclusive = startCol0 + binding.Name.Length
+                        if c >= startCol0 && c < endColExclusive then Some binding else None
+                    | _ -> None)
+            let topLevelDeclarationSymbolAtCursor =
+                tryTopLevelDeclarationSymbolAtCursor doc line character
             let shouldSuppressAsFollowup =
                 match lastDefinitionRequest with
                 | Some (lastUri, lastLine, lastChar, ts) ->
@@ -952,37 +1311,77 @@ module LspHandlers =
                 | None ->
                     false
 
+            let mutable handledFollowup = false
+            let mutable declarationClickFollowup =
+                localDeclarationBindingAtCursor.IsSome
+                || topLevelDeclarationSymbolAtCursor.IsSome
+                || isLikelyLetDeclarationContext doc line character
+
             if shouldSuppressAsFollowup then
-                let declSpan =
+                let declSpanAndName =
                     match tryResolveLocalDefinitionAtPosition doc line character with
-                    | Some span -> Some span
+                    | Some span ->
+                        let inferredName =
+                            match tryResolveLocalBindingAtPosition doc line character with
+                            | Some binding -> Some binding.Name
+                            | None ->
+                                match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
+                                | Some binding -> Some binding.Name
+                                | None ->
+                                    match tryResolveSymbol doc line character with
+                                    | Some sym -> Some sym.Name
+                                    | None -> tryGetWordAtOrAdjacentPosition doc.Text line character
+                        Some (span, inferredName)
                     | None ->
                         match tryResolveLocalBindingAtPosition doc line character with
-                        | Some binding -> Some binding.DeclSpan
+                        | Some binding -> Some (binding.DeclSpan, Some binding.Name)
                         | None ->
-                            match tryResolveSymbol doc line character with
-                            | Some sym -> Some sym.Span
+                            match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
+                            | Some binding -> Some (binding.DeclSpan, Some binding.Name)
                             | None ->
-                                match tryGetWordAtOrAdjacentPosition doc.Text line character with
-                                | Some word ->
-                                    doc.Symbols
-                                    |> List.tryFind (fun s -> s.Name = word)
-                                    |> Option.map (fun s -> s.Span)
-                                | None -> None
+                                match tryResolveSymbol doc line character with
+                                | Some sym -> Some (sym.Span, Some sym.Name)
+                                | None ->
+                                    match tryGetWordAtOrAdjacentPosition doc.Text line character with
+                                    | Some word ->
+                                        doc.Symbols
+                                        |> List.tryFind (fun s -> s.Name = word)
+                                        |> Option.map (fun s -> s.Span, Some s.Name)
+                                    | None -> None
 
-                match declSpan with
-                | Some declSpan ->
-                    let targetUri =
-                        tryUriFromSpanFile uri declSpan
-                        |> Option.defaultValue uri
-                    let loc = JsonObject()
-                    loc["uri"] <- JsonValue.Create(targetUri)
-                    loc["range"] <- toLspRange declSpan
-                    LspProtocol.sendResponse idNode (Some (JsonArray([| loc :> JsonNode |])))
+                match declSpanAndName with
+                | Some (declSpan, declName) ->
+                    let isOnLocalBindingDeclarationByName =
+                        match localDeclarationBindingAtCursor with
+                        | Some _ -> true
+                        | _ -> false
+
+                    let isOnDeclaration =
+                        isOnLocalBindingDeclarationByName
+                        ||
+                        isOnDeclarationIdentifier doc line character declSpan declName
+                        || topLevelDeclarationSymbolAtCursor.IsSome
+                        || isLikelyLetDeclarationContext doc line character
+                    if isOnDeclaration then
+                        declarationClickFollowup <- true
+                    if not isOnDeclaration then
+                        let targetUri =
+                            tryUriFromSpanFile uri declSpan
+                            |> Option.defaultValue uri
+                        let loc = JsonObject()
+                        loc["uri"] <- JsonValue.Create(targetUri)
+                        loc["range"] <- toLspRange declSpan
+                        logDebug $"suppressing immediate references follow-up for uri={uri} line={line} char={character}"
+                        LspProtocol.sendResponse idNode (Some (JsonArray([| loc :> JsonNode |])))
+                        handledFollowup <- true
                 | None ->
-                    LspProtocol.sendResponse idNode (Some (JsonArray()))
-            else
+                    ()
+
+            if not handledFollowup then
                 let targetNames = resolveTargetNames doc line character
+                if targetNames.Length > 0 then
+                    let targetNamesText = String.Join(",", targetNames)
+                    logDebug $"references target names={targetNamesText}"
                 let includeDeclaration =
                     match tryGetObject paramsObj "context" with
                     | Some contextObj ->
@@ -991,6 +1390,9 @@ module LspHandlers =
                             try v.GetValue<bool>() with _ -> true
                         | _ -> true
                     | None -> true
+                let effectiveIncludeDeclaration =
+                    includeDeclaration || declarationClickFollowup
+                logDebug $"references includeDeclaration={includeDeclaration} effectiveIncludeDeclaration={effectiveIncludeDeclaration} declarationClickFollowup={declarationClickFollowup}"
 
                 match targetNames with
                 | head :: _ ->
@@ -1034,7 +1436,7 @@ module LspHandlers =
                                     fromOccurrences
 
                             let filteredSpans =
-                                if includeDeclaration then
+                                if effectiveIncludeDeclaration then
                                     spans
                                 else
                                     let decls = declarationSpansByUri |> Map.tryFind docUri |> Option.defaultValue Set.empty
@@ -1048,8 +1450,66 @@ module LspHandlers =
                                 loc :> JsonNode))
                         |> Seq.toArray
 
+                    let locations =
+                        if effectiveIncludeDeclaration then
+                            match localDeclarationBindingAtCursor with
+                            | Some binding ->
+                                logDebug $"references adding local declaration name={binding.Name} decl=({binding.DeclSpan.Start.Line},{binding.DeclSpan.Start.Column})"
+                                let targetUri =
+                                    tryUriFromSpanFile uri binding.DeclSpan
+                                    |> Option.defaultValue uri
+                                let declLoc = JsonObject()
+                                declLoc["uri"] <- JsonValue.Create(targetUri)
+                                declLoc["range"] <- toLspRange binding.DeclSpan
+                                Array.append locations [| declLoc :> JsonNode |]
+                            | None ->
+                                match topLevelDeclarationSymbolAtCursor with
+                                | Some sym ->
+                                    logDebug $"references adding top-level declaration name={sym.Name} decl=({sym.Span.Start.Line},{sym.Span.Start.Column})"
+                                    let targetUri =
+                                        tryUriFromSpanFile uri sym.Span
+                                        |> Option.defaultValue uri
+                                    let declLoc = JsonObject()
+                                    declLoc["uri"] <- JsonValue.Create(targetUri)
+                                    declLoc["range"] <- toLspRange sym.Span
+                                    Array.append locations [| declLoc :> JsonNode |]
+                                | None ->
+                                    let topLevelDecls =
+                                        documents
+                                        |> Seq.collect (fun kv ->
+                                            let docUri = kv.Key
+                                            kv.Value.Symbols
+                                            |> List.choose (fun s ->
+                                                let symbolNormalized =
+                                                    if s.Name.Contains('.') then s.Name.Split('.') |> Array.last
+                                                    else s.Name
+                                                if s.Name = head || s.Name = normalized || symbolNormalized = normalized then
+                                                    let loc = JsonObject()
+                                                    let targetUri =
+                                                        tryUriFromSpanFile docUri s.Span
+                                                        |> Option.defaultValue docUri
+                                                    loc["uri"] <- JsonValue.Create(targetUri)
+                                                    loc["range"] <- toLspRange s.Span
+                                                    Some (loc :> JsonNode)
+                                                else
+                                                    None))
+                                        |> Seq.toArray
+                                    if topLevelDecls.Length > 0 then
+                                        logDebug $"references adding top-level declarations count={topLevelDecls.Length}"
+                                    else
+                                        logDebug "references local/top-level declaration injection miss"
+                                    Array.append locations topLevelDecls
+                        else
+                            locations
+
+                    let locations =
+                        locations
+                        |> Array.distinctBy (fun n -> n.ToJsonString())
+
+                    logDebug $"references response count={locations.Length}"
                     LspProtocol.sendResponse idNode (Some (JsonArray(locations)))
                 | [] ->
+                    logDebug "references response count=0"
                     LspProtocol.sendResponse idNode (Some (JsonArray()))
         | _ ->
             LspProtocol.sendResponse idNode (Some (JsonArray()))

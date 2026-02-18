@@ -108,6 +108,11 @@
           "default": true,
           "description": "Enable inlay hints provided by the FScript language server."
         },
+        "fscript.debug.logging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose debug logs from the FScript language server in the editor output channel."
+        },
         "fscript.server.path": {
           "type": "string",
           "default": "",

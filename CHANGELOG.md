@@ -5,6 +5,12 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - Switched LSP local go-to-definition to lexical AST binding resolution so local symbol usages (including record-field values and edge-of-token clicks) resolve to their exact nearest binder.
+- Added optional `fscript.debug.logging` to surface detailed definition/references diagnostics and refined definition-follow-up references suppression so declaration clicks still show references while usage clicks navigate reliably.
+- Fixed local match-pattern declaration clicks (for example `Some batch`) to stop jumping to first usage and preserve references-window behavior.
+- Updated debug logging output to emit LSP `window/logMessage` entries when `fscript.debug.logging=true`, so logs are visible in editor output.
+- Fixed LSP definition on member-access field names (for example `batch.ProjectPaths`) to resolve via qualifier type inference (including match-pattern-bound locals).
+- Updated top-level function declaration clicks to preserve references-window behavior by keeping declaration entries in immediate follow-up reference results.
+- Fixed LSP reference indexing to include `nameof <symbol>` occurrences so top-level declaration clicks surface `nameof` usages in the references window.
 
 ## [0.42.0]
 
