@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.42.0]
+
+
 - Added LSP go-to-definition support for local and pattern-bound variable bindings so usages navigate to the nearest in-scope declaration (including function parameters and tuple `let` destructuring names).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.41.0...0.42.0
 
 ## [0.41.0]
 
