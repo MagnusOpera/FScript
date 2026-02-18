@@ -32,14 +32,13 @@ module LspHandlers =
         | Some p ->
             match tryGetObject p "initializationOptions" with
             | Some init ->
-                let mutable requestedDebug = false
                 match init["inlayHintsEnabled"] with
                 | :? JsonValue as v ->
                     try inlayHintsEnabled <- v.GetValue<bool>() with _ -> ()
                 | _ -> ()
-                match init["debugLoggingEnabled"] with
+                match init["hoverHintsEnabled"] with
                 | :? JsonValue as v ->
-                    try requestedDebug <- v.GetValue<bool>() with _ -> ()
+                    try hoverHintsEnabled <- v.GetValue<bool>() with _ -> ()
                 | _ -> ()
                 let requestedLogLevel =
                     match init["logLevel"] with
@@ -47,17 +46,8 @@ module LspHandlers =
                         try v.GetValue<string>() with _ -> "info"
                     | _ -> "info"
 
-                let envDebug =
-                    match Environment.GetEnvironmentVariable("FSCRIPT_LSP_DEBUG") with
-                    | null -> false
-                    | value ->
-                        value.Equals("1", StringComparison.OrdinalIgnoreCase)
-                        || value.Equals("true", StringComparison.OrdinalIgnoreCase)
-
                 debugLoggingEnabled <-
-                    requestedDebug
-                    || requestedLogLevel.Equals("debug", StringComparison.OrdinalIgnoreCase)
-                    || envDebug
+                    requestedLogLevel.Equals("debug", StringComparison.OrdinalIgnoreCase)
             | None -> ()
         | None -> ()
 
@@ -81,7 +71,7 @@ module LspHandlers =
         let capabilities = JsonObject()
         capabilities["textDocumentSync"] <- sync
         capabilities["completionProvider"] <- completionProvider
-        capabilities["hoverProvider"] <- JsonValue.Create(true)
+        capabilities["hoverProvider"] <- JsonValue.Create(hoverHintsEnabled)
         capabilities["definitionProvider"] <- JsonValue.Create(true)
         capabilities["typeDefinitionProvider"] <- JsonValue.Create(true)
         capabilities["referencesProvider"] <- JsonValue.Create(true)
@@ -605,69 +595,73 @@ module LspHandlers =
                 sendCommandError idNode "internal" ex.Message
 
     let handleHover (idNode: JsonNode) (paramsObj: JsonObject) =
-        match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
-        | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
-            let doc = documents[uri]
-            match tryGetRecordFieldHoverInfo doc line character with
-            | Some (fieldName, fieldType) ->
-                let contents = JsonObject()
-                contents["kind"] <- JsonValue.Create("markdown")
-                contents["value"] <- JsonValue.Create($"```fscript\n{fieldName} : {fieldType}\n```\nrecord-field")
-                let result = JsonObject()
-                result["contents"] <- contents
-                LspProtocol.sendResponse idNode (Some result)
-            | None ->
-                match tryGetLocalVariableHoverInfo doc line character with
-                | Some (name, typeText) ->
+        if not hoverHintsEnabled then
+            LspProtocol.sendResponse idNode None
+        else
+            match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
+            | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
+                let doc = documents[uri]
+                match tryGetRecordFieldHoverInfo doc line character with
+                | Some (fieldName, fieldType) ->
                     let contents = JsonObject()
                     contents["kind"] <- JsonValue.Create("markdown")
-                    contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\nlocal-variable")
+                    contents["value"] <- JsonValue.Create($"```fscript\n{fieldName} : {fieldType}\n```\nrecord-field")
                     let result = JsonObject()
                     result["contents"] <- contents
                     LspProtocol.sendResponse idNode (Some result)
                 | None ->
-                    match tryResolveSymbol doc line character with
-                    | Some sym ->
-                        let signature = formatFunctionSignature doc sym
-
+                    match tryGetLocalVariableHoverInfo doc line character with
+                    | Some (name, typeText) ->
                         let contents = JsonObject()
                         contents["kind"] <- JsonValue.Create("markdown")
-                        let kindLine = symbolKindLabel sym.Kind
-                        let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
-                        contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
-
+                        contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\nlocal-variable")
                         let result = JsonObject()
                         result["contents"] <- contents
                         LspProtocol.sendResponse idNode (Some result)
                     | None ->
-                        match tryGetWordAtPosition doc.Text line character with
-                        | Some word ->
-                            let candidates =
-                                if word.Contains('.') then
-                                    [ word
-                                      word.Split('.') |> Array.last ]
-                                else
-                                    [ word ]
-                            let injectedMatch =
-                                candidates
-                                |> List.tryPick (fun candidate ->
-                                    doc.InjectedFunctionSignatures
-                                    |> Map.tryFind candidate
-                                    |> Option.map (fun t -> candidate, t))
-                            match injectedMatch with
-                            | Some (name, typeText) ->
-                                let contents = JsonObject()
-                                contents["kind"] <- JsonValue.Create("markdown")
-                                let signature = formatInjectedFunctionSignature doc name typeText
-                                contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\ninjected-function")
-                                let result = JsonObject()
-                                result["contents"] <- contents
-                                LspProtocol.sendResponse idNode (Some result)
+                        match tryResolveSymbol doc line character with
+                        | Some sym ->
+                            let signature = formatFunctionSignature doc sym
+
+                            let contents = JsonObject()
+                            contents["kind"] <- JsonValue.Create("markdown")
+                            let kindLine = symbolKindLabel sym.Kind
+                            let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
+                            contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
+
+                            let result = JsonObject()
+                            result["contents"] <- contents
+                            LspProtocol.sendResponse idNode (Some result)
+                        | None ->
+                            match tryGetWordAtPosition doc.Text line character with
+                            | Some word ->
+                                let candidates =
+                                    if word.Contains('.') then
+                                        [ word
+                                          word.Split('.') |> Array.last ]
+                                    else
+                                        [ word ]
+                                let injectedMatch =
+                                    candidates
+                                    |> List.tryPick (fun candidate ->
+                                        doc.InjectedFunctionSignatures
+                                        |> Map.tryFind candidate
+                                        |> Option.map (fun t -> candidate, t))
+                                match injectedMatch with
+                                | Some (name, typeText) ->
+                                    let contents = JsonObject()
+                                    contents["kind"] <- JsonValue.Create("markdown")
+                                    let signature = formatInjectedFunctionSignature doc name typeText
+                                    contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\ninjected-function")
+                                    let result = JsonObject()
+                                    result["contents"] <- contents
+                                    LspProtocol.sendResponse idNode (Some result)
+                                | None ->
+                                    LspProtocol.sendResponse idNode None
                             | None ->
                                 LspProtocol.sendResponse idNode None
-                        | None ->
-                            LspProtocol.sendResponse idNode None
-        | _ -> LspProtocol.sendResponse idNode None
+            | _ ->
+                LspProtocol.sendResponse idNode None
 
 
     let private tryResolveIncludeLocation (sourceUri: string) (doc: DocumentState) (line: int) (character: int) : JsonObject option =

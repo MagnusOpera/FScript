@@ -28,7 +28,7 @@ function getConfig() {
   return {
     lspEnabled: cfg.get('lsp.enabled', true),
     inlayHintsEnabled: cfg.get('inlayHints.enabled', true),
-    debugLoggingEnabled: cfg.get('debug.logging', false),
+    hoverHintsEnabled: cfg.get('hoverHints.enabled', true),
     serverPath: (cfg.get('server.path', '') || '').trim(),
     logLevel: cfg.get('server.logLevel', 'info'),
     replCommand: (cfg.get('repl.command', 'auto') || '').trim() || 'auto'
@@ -551,7 +551,7 @@ async function startClient(context) {
       initializationOptions: {
         logLevel: config.logLevel,
         inlayHintsEnabled: config.inlayHintsEnabled,
-        debugLoggingEnabled: config.debugLoggingEnabled
+        hoverHintsEnabled: config.hoverHintsEnabled
       }
     };
 
@@ -663,7 +663,7 @@ function activate(context) {
     if (
       event.affectsConfiguration('fscript.lsp.enabled') ||
       event.affectsConfiguration('fscript.inlayHints.enabled') ||
-      event.affectsConfiguration('fscript.debug.logging') ||
+      event.affectsConfiguration('fscript.hoverHints.enabled') ||
       event.affectsConfiguration('fscript.server.path') ||
       event.affectsConfiguration('fscript.server.logLevel')
     ) {

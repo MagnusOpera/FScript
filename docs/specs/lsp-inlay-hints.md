@@ -86,8 +86,13 @@ Behavior:
 
 ## LSP Debug Logging
 
-- Verbose definition/references debug logging is controlled by initialization option `debugLoggingEnabled` (default `false`).
-- VS Code forwards this through `fscript.debug.logging`.
+- Verbose definition/references debug logging is controlled by initialization option `logLevel`.
+- Debug logs are emitted only when `logLevel = "debug"` (mirrored in VS Code as `fscript.server.logLevel`).
+
+## Feature Toggles
+
+- LSP inlay hints are controlled by initialization option `inlayHintsEnabled` (default `true`).
+- LSP hover hints are controlled by initialization option `hoverHintsEnabled` (default `true`).
 ## Related specifications
 
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)

@@ -560,6 +560,60 @@ import "common.fss" as Common
     }
 
     [Test]
+    public void CSharp_server_hover_can_be_disabled_via_initialization_options()
+    {
+        var client = LspClient.StartCSharp();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"fscript-lsp-hover-disabled-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LspTestFixture.InitializeWith(client, new JsonObject
+            {
+                ["hoverHintsEnabled"] = false
+            });
+
+            var mainPath = Path.Combine(tempDir, "main.fss");
+            var source = """
+let add x y = x + y
+let result = add 1 2
+""";
+            File.WriteAllText(mainPath, source);
+            var mainUri = new Uri(mainPath).AbsoluteUri;
+
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = mainUri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var hoverParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = mainUri },
+                ["position"] = new JsonObject { ["line"] = 1, ["character"] = 14 }
+            };
+            LspClient.SendRequest(client, 811, "textDocument/hover", hoverParams);
+            var hoverResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 811);
+            Assert.That(hoverResponse["result"], Is.Null);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Test]
     public void CSharp_server_navigates_alias_qualified_function_calls()
     {
         var client = LspClient.StartCSharp();

@@ -7,6 +7,7 @@ open FScript.Language
 
 module LspModel =
     let mutable inlayHintsEnabled = true
+    let mutable hoverHintsEnabled = true
     let mutable debugLoggingEnabled = false
     let mutable lastDefinitionRequest: (string * int * int * DateTime) option = None
 

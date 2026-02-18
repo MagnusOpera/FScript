@@ -101,26 +101,31 @@
         "fscript.lsp.enabled": {
           "type": "boolean",
           "default": true,
+          "order": 1,
           "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints)."
         },
         "fscript.inlayHints.enabled": {
           "type": "boolean",
           "default": true,
+          "order": 2,
           "description": "Enable inlay hints provided by the FScript language server."
         },
-        "fscript.debug.logging": {
+        "fscript.hoverHints.enabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable verbose debug logs from the FScript language server in the editor output channel."
+          "default": true,
+          "order": 3,
+          "description": "Enable hover hints provided by the FScript language server."
         },
         "fscript.server.path": {
           "type": "string",
           "default": "",
+          "order": 4,
           "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the first workspace folder."
         },
         "fscript.server.logLevel": {
           "type": "string",
           "default": "info",
+          "order": 5,
           "enum": [
             "error",
             "warn",
@@ -132,6 +137,7 @@
         "fscript.repl.command": {
           "type": "string",
           "default": "auto",
+          "order": 6,
           "description": "Shell command used to launch the FScript REPL terminal. Use 'auto' to prefer local workspace CLI via dotnet run, then fallback to 'fscript'."
         }
       }
