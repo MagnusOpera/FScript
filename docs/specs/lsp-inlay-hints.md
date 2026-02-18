@@ -76,6 +76,11 @@ Behavior:
   - `fscript-stdlib:///List.fss`
   - `fscript-stdlib:///Map.fss`
 
+## Local Binding Definition Navigation
+
+- Go-to-definition on a local variable usage resolves to the nearest lexical local declaration in scope.
+- This includes function parameters, lambda parameters, local `let` bindings, and pattern-bound variables.
+
 ## Related specifications
 
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)

@@ -246,6 +246,32 @@ module LspSymbols =
         |> List.map (fun (name, t) -> $"{name}:{t}")
         |> String.concat ";"
 
+    let rec private collectPatternVarSpans (pat: Pattern) : (string * Span) list =
+        match pat with
+        | PVar (name, span) -> [ name, span ]
+        | PCons (head, tail, _) -> collectPatternVarSpans head @ collectPatternVarSpans tail
+        | PTuple (items, _) -> items |> List.collect collectPatternVarSpans
+        | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> collectPatternVarSpans p)
+        | PMap (clauses, tailOpt, _) ->
+            let fromClauses =
+                clauses
+                |> List.collect (fun (k, v) -> collectPatternVarSpans k @ collectPatternVarSpans v)
+            let fromTail =
+                match tailOpt with
+                | Some tail -> collectPatternVarSpans tail
+                | None -> []
+            fromClauses @ fromTail
+        | PSome (inner, _) -> collectPatternVarSpans inner
+        | PUnionCase (_, _, payload, _) ->
+            match payload with
+            | Some p -> collectPatternVarSpans p
+            | None -> []
+        | PWildcard _
+        | PLiteral _
+        | PNil _
+        | PNone _
+        | PTypeRef _ -> []
+
     let buildSymbolsFromProgram (program: Program) (typed: TypeInfer.TypedProgram option) : TopLevelSymbol list =
         let typedByName = Dictionary<string, TypeInfer.TypedStmt>(StringComparer.Ordinal)
         let recordTypeDefsBySignature = Dictionary<string, ResizeArray<string>>(StringComparer.Ordinal)
@@ -266,6 +292,9 @@ module LspSymbols =
                 match stmt with
                 | TypeInfer.TSLet(name, _, _, _, _, _) ->
                     typedByName[name] <- stmt
+                | TypeInfer.TSLetPattern(pattern, _, _, _, _) ->
+                    for (name, _) in collectPatternVarSpans pattern do
+                        typedByName[name] <- stmt
                 | TypeInfer.TSLetRecGroup(bindings, _, _) ->
                     for (name, _, _, _) in bindings do
                         typedByName[name] <- stmt
@@ -313,6 +342,20 @@ module LspSymbols =
             | true, TypeInfer.TSLetRecGroup(bindings, _, _) ->
                 match bindings |> List.tryFind (fun (n, _, _, _) -> n = name) with
                 | Some (_, _, t, _) ->
+                    { Name = name
+                      Kind = symbolKindForType t
+                      TypeText = Some (lspTypeToString t)
+                      TypeTargetName = typeTargetFromType t
+                      Span = span }
+                | None ->
+                    { Name = name
+                      Kind = fallbackKind
+                      TypeText = None
+                      TypeTargetName = None
+                      Span = span }
+            | true, TypeInfer.TSLetPattern(_, _, bindings, _, _) ->
+                match bindings |> Map.tryFind name with
+                | Some t ->
                     { Name = name
                       Kind = symbolKindForType t
                       TypeText = Some (lspTypeToString t)
@@ -374,6 +417,9 @@ module LspSymbols =
                 typeSymbol :: caseSymbols
             | SLet(name, args, _, _, _, span) ->
                 [ mkFromTyped name span (declarationKindFromArgs args) ]
+            | SLetPattern(pattern, _, _, _) ->
+                collectPatternVarSpans pattern
+                |> List.map (fun (name, span) -> mkFromTyped name span 13)
             | SLetRecGroup(bindings, _, _) ->
                 bindings
                 |> List.map (fun (name, args, _, span) -> mkFromTyped name span (declarationKindFromArgs args))
@@ -639,32 +685,6 @@ module LspSymbols =
             | ENone _
             | ETypeOf _
             | ENameOf _ -> acc
-
-        let rec collectPatternVarSpans (pat: Pattern) : (string * Span) list =
-            match pat with
-            | PVar (name, span) -> [ name, span ]
-            | PCons (head, tail, _) -> collectPatternVarSpans head @ collectPatternVarSpans tail
-            | PTuple (items, _) -> items |> List.collect collectPatternVarSpans
-            | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> collectPatternVarSpans p)
-            | PMap (clauses, tailOpt, _) ->
-                let fromClauses =
-                    clauses
-                    |> List.collect (fun (k, v) -> collectPatternVarSpans k @ collectPatternVarSpans v)
-                let fromTail =
-                    match tailOpt with
-                    | Some tail -> collectPatternVarSpans tail
-                    | None -> []
-                fromClauses @ fromTail
-            | PSome (inner, _) -> collectPatternVarSpans inner
-            | PUnionCase (_, _, payload, _) ->
-                match payload with
-                | Some p -> collectPatternVarSpans p
-                | None -> []
-            | PWildcard _
-            | PLiteral _
-            | PNil _
-            | PNone _
-            | PTypeRef _ -> []
 
         let withDeclsAndExprs =
             program
@@ -1031,16 +1051,17 @@ module LspSymbols =
             name, span.Start.Line, span.Start.Column, span.End.Line, span.End.Column, file)
 
     let private buildLocalBindings (program: Program) =
-        let mkBinding (name: string) (declSpan: Span) (scopeSpan: Span) (annotation: string option) =
+        let mkBinding (name: string) (declSpan: Span) (scopeSpan: Span) (bindingKind: LocalBindingKind) (annotation: string option) =
             { Name = name
               DeclSpan = declSpan
               ScopeSpan = scopeSpan
+              BindingKind = bindingKind
               AnnotationType = annotation }
 
         let rec collectPatternBindings (scopeSpan: Span) (pattern: Pattern) =
             match pattern with
             | PVar (name, span) ->
-                [ mkBinding name span scopeSpan None ]
+                [ mkBinding name span scopeSpan PatternBound None ]
             | PCons (head, tail, _) ->
                 collectPatternBindings scopeSpan head @ collectPatternBindings scopeSpan tail
             | PTuple (items, _) ->
@@ -1073,10 +1094,10 @@ module LspSymbols =
             match expr with
             | ELambda (param, body, _) ->
                 let annotation = param.Annotation |> Option.map typeRefToString
-                mkBinding param.Name param.Span (Ast.spanOfExpr body) annotation
+                mkBinding param.Name param.Span (Ast.spanOfExpr body) Parameter annotation
                 :: collectExprBindings body
             | EFor (name, source, body, span) ->
-                mkBinding name span (Ast.spanOfExpr body) None
+                mkBinding name span (Ast.spanOfExpr body) LoopBound None
                 :: (collectExprBindings source @ collectExprBindings body)
             | EMatch (scrutinee, cases, _) ->
                 let inScrutinee = collectExprBindings scrutinee
@@ -1092,7 +1113,7 @@ module LspSymbols =
                         fromPattern @ fromGuard @ collectExprBindings body)
                 inScrutinee @ inCases
             | ELet (name, value, body, _, span) ->
-                mkBinding name span (Ast.spanOfExpr body) None
+                mkBinding name span (Ast.spanOfExpr body) LetBound None
                 :: (collectExprBindings value @ collectExprBindings body)
             | ELetPattern (pattern, value, body, _) ->
                 let scope = Ast.spanOfExpr body
@@ -1106,8 +1127,8 @@ module LspSymbols =
                             args
                             |> List.map (fun p ->
                                 let annotation = p.Annotation |> Option.map typeRefToString
-                                mkBinding p.Name p.Span (Ast.spanOfExpr valueExpr) annotation)
-                        mkBinding name bindingSpan (Ast.spanOfExpr body) None
+                                mkBinding p.Name p.Span (Ast.spanOfExpr valueExpr) Parameter annotation)
+                        mkBinding name bindingSpan (Ast.spanOfExpr body) LetBound None
                         :: (argBindings @ collectExprBindings valueExpr))
                 fromBindings @ collectExprBindings body
             | EApply (f, a, _) ->
@@ -1158,7 +1179,7 @@ module LspSymbols =
                 args
                 |> List.map (fun p ->
                     let annotation = p.Annotation |> Option.map typeRefToString
-                    mkBinding p.Name p.Span (Ast.spanOfExpr body) annotation)
+                    mkBinding p.Name p.Span (Ast.spanOfExpr body) Parameter annotation)
             argBindings @ collectExprBindings body
 
         program
@@ -1166,6 +1187,8 @@ module LspSymbols =
             match stmt with
             | SLet (_, args, body, _, _, _) ->
                 fromTopLevelFunction args body
+            | SLetPattern (_, expr, _, _) ->
+                collectExprBindings expr
             | SLetRecGroup (bindings, _, _) ->
                 bindings
                 |> List.collect (fun (_, args, body, _) -> fromTopLevelFunction args body)
@@ -2143,6 +2166,64 @@ module LspSymbols =
             || (line1 = span.End.Line && col1 <= span.End.Column)
         startsBefore && endsAfter
 
+    let tryResolveLocalBindingAtPosition (doc: DocumentState) (line: int) (character: int) : LocalBindingInfo option =
+        let spanIsInCurrentDocument (span: Span) =
+            match span.Start.File with
+            | Some file when not (String.IsNullOrWhiteSpace(file)) ->
+                String.Equals(file, doc.SourcePath, StringComparison.OrdinalIgnoreCase)
+            | _ ->
+                true
+
+        let positionIsAtOrAfterSpanStart (span: Span) =
+            let line1 = line + 1
+            let col1 = character + 1
+            line1 > span.Start.Line
+            || (line1 = span.Start.Line && col1 >= span.Start.Column)
+
+        let scopeLikelyCollapsed (scopeSpan: Span) =
+            scopeSpan.End.Line <= scopeSpan.Start.Line
+
+        let isInBindingScope (binding: LocalBindingInfo) =
+            spanContainsPosition binding.ScopeSpan line character
+            || spanContainsPosition binding.DeclSpan line character
+            || (binding.BindingKind = Parameter
+                && scopeLikelyCollapsed binding.ScopeSpan
+                && positionIsAtOrAfterSpanStart binding.ScopeSpan)
+
+        let scoreBinding (binding: LocalBindingInfo) =
+            let line1 = line + 1
+            let col1 = character + 1
+            let lineDistance = abs (binding.DeclSpan.Start.Line - line1)
+            let colDistance = abs (binding.DeclSpan.Start.Column - col1)
+            let startsBefore =
+                binding.DeclSpan.Start.Line < line1
+                || (binding.DeclSpan.Start.Line = line1 && binding.DeclSpan.Start.Column <= col1)
+            let isDeclHit = spanContainsPosition binding.DeclSpan line character
+            let sameDocument = spanIsInCurrentDocument binding.DeclSpan
+            (if isDeclHit then 0 else 1),
+            (if sameDocument then 0 else 1),
+            (if startsBefore then 0 else 1),
+            lineDistance,
+            colDistance
+
+        match tryGetWordAtPosition doc.Text line character with
+        | Some word ->
+            let normalized =
+                if word.Contains('.') then word.Split('.') |> Array.last
+                else word
+            let names =
+                [ word; normalized ]
+                |> List.distinct
+
+            doc.LocalBindings
+            |> List.filter (fun binding ->
+                (names |> List.exists (fun name -> String.Equals(binding.Name, name, StringComparison.Ordinal)))
+                && isInBindingScope binding)
+            |> List.sortBy scoreBinding
+            |> List.tryHead
+        | None ->
+            None
+
     let tryGetLocalVariableHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         let bySpan =
             doc.LocalVariableTypeHints
@@ -2163,27 +2244,7 @@ module LspSymbols =
                 if isOnTopLevelSymbol then
                     None
                 else
-                    let candidates =
-                        doc.LocalBindings
-                        |> List.filter (fun binding ->
-                            String.Equals(binding.Name, word, StringComparison.Ordinal)
-                            && (spanContainsPosition binding.ScopeSpan line character
-                                || spanContainsPosition binding.DeclSpan line character))
-
-                    let scoreBinding (binding: LocalBindingInfo) =
-                        let line1 = line + 1
-                        let col1 = character + 1
-                        let lineDistance = abs (binding.DeclSpan.Start.Line - line1)
-                        let colDistance = abs (binding.DeclSpan.Start.Column - col1)
-                        let startsBefore =
-                            binding.DeclSpan.Start.Line < line1
-                            || (binding.DeclSpan.Start.Line = line1 && binding.DeclSpan.Start.Column <= col1)
-                        if startsBefore then (0, lineDistance, colDistance) else (1, lineDistance, colDistance)
-
-                    let nearestBinding =
-                        candidates
-                        |> List.sortBy scoreBinding
-                        |> List.tryHead
+                    let nearestBinding = tryResolveLocalBindingAtPosition doc line character
 
                     let inferredTypeForBinding (binding: LocalBindingInfo) =
                         let byDeclSpan =

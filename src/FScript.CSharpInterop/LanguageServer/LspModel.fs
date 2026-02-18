@@ -50,10 +50,17 @@ module LspModel =
           TypeTargetName: string option
           Span: Span }
 
+    type LocalBindingKind =
+        | Parameter
+        | LetBound
+        | PatternBound
+        | LoopBound
+
     type LocalBindingInfo =
         { Name: string
           DeclSpan: Span
           ScopeSpan: Span
+          BindingKind: LocalBindingKind
           AnnotationType: string option }
 
     type DocumentState =

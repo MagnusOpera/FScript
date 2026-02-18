@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added LSP go-to-definition support for local and pattern-bound variable bindings so usages navigate to the nearest in-scope declaration (including function parameters and tuple `let` destructuring names).
+
 ## [0.41.0]
 
 - Added `Int/Float/Bool` conversion helpers in stdlib-style builtins (`*.tryParse` and `*.toString`) for safe scalar parsing and string formatting.
