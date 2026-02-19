@@ -115,6 +115,7 @@ dotnet run --project src/FScript --
 Useful samples:
 - [`samples/types-showcase.fss`](samples/types-showcase.fss)
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
+- [`samples/quicksort.fss`](samples/quicksort.fss)
 - [`samples/tree.fss`](samples/tree.fss)
 - [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
 - [`samples/imports-and-exports.fss`](samples/imports-and-exports.fss)

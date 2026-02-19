@@ -426,6 +426,7 @@ When embedding, keep this mindset:
 - Sample scripts:
   - [`samples/types-showcase.fss`](../../samples/types-showcase.fss)
   - [`samples/patterns-and-collections.fss`](../../samples/patterns-and-collections.fss)
+  - [`samples/quicksort.fss`](../../samples/quicksort.fss)
   - [`samples/map-matching.fss`](../../samples/map-matching.fss)
   - [`samples/imports-and-exports.fss`](../../samples/imports-and-exports.fss)
 - Specifications index: [`docs/specs/README.md`](../specs/README.md)

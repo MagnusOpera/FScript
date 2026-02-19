@@ -1,0 +1,21 @@
+let rec quicksort values =
+  match values with
+  | [] -> []
+  | pivot :: rest ->
+      let smaller = rest |> List.filter (fun value -> value < pivot)
+      let equal = rest |> List.filter (fun value -> value = pivot)
+      let greater = rest |> List.filter (fun value -> value > pivot)
+      (quicksort smaller) @ [pivot] @ equal @ (quicksort greater)
+
+let rec is_sorted values =
+  match values with
+  | [] -> true
+  | [_] -> true
+  | first :: second :: tail -> (first <= second) && (is_sorted (second :: tail))
+
+let input = [9; 2; 8; 2; 4; 7; 1; 6; 3; 5; 3]
+let sorted = quicksort input
+
+print $"quicksort input : {input}"
+print $"quicksort output: {sorted}"
+print $"is sorted       : {is_sorted sorted}"

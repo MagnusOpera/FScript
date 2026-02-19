@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added `samples/quicksort.fss` with a recursive quicksort example over integer lists.
+
 ## [0.43.0]
 
 
