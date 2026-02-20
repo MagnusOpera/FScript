@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Publishing to tap requires only sign artifacts.
+
 ## [0.46.0]
 
 

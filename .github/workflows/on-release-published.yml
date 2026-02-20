@@ -152,8 +152,6 @@ jobs:
   update-homebrew-tap:
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
-      - release-nuget
-      - publish-vscode-extension
       - sign-and-notarize
     with:
       ref: ${{ github.ref }}
