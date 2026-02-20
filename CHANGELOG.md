@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.44.0]
+
+
 - Added `samples/quicksort.fss` with a recursive quicksort example over integer lists.
 - Added let-function return type annotations (`let f ... : Type = ...`) with parser/type-inference support and updated annotation specifications.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.43.0...0.44.0
 
 ## [0.43.0]
 
