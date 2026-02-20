@@ -277,6 +277,15 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected lambda")
 
     [<Test>]
+    member _.``Parses if branches with compact list of multiline records`` () =
+        let src =
+            "let operations =\n    if context.CI then\n      [ { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 };\n        { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 } ]\n    else\n      [ { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 } ]"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("operations", [], _, EIf (_, EList (_, _), EList (_, _), _), false, _, _) -> ()
+        | _ -> Assert.Fail("Expected if expression with compact list record branches")
+
+    [<Test>]
     member _.``Parses multi-parameter lambda expression`` () =
         let p = Helpers.parse "fun x y -> x + y"
         match p.[0] with

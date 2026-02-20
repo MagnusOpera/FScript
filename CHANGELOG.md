@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed `if ... then ... else` parsing when branches contain compact multiline list literals with nested record items.
+
 ## [0.48.1]
 
 

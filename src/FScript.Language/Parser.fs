@@ -1130,6 +1130,8 @@ module Parser =
             stream.Expect(Then, "Expected 'then'") |> ignore
             let thenExpr = parseExprOrBlock()
             stream.SkipNewlines()
+            while stream.Match(Dedent) do
+                stream.SkipNewlines()
             let elseExpr =
                 match stream.Peek().Kind with
                 | Else ->
