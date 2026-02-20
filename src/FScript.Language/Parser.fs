@@ -180,6 +180,22 @@ module Parser =
                     keepSearching <- false
             foundSameLine
 
+        let hasNonLayoutTokenAfterOnSameLine (tokenIndex: int) (line: int) =
+            let mutable i = tokenIndex + 1
+            let mutable keepSearching = true
+            let mutable foundSameLine = false
+            while keepSearching && i < tokens.Length do
+                let tok = stream.TokenAt(i)
+                match tok.Kind with
+                | Newline
+                | Indent
+                | Dedent ->
+                    i <- i + 1
+                | _ ->
+                    foundSameLine <- tok.Span.Start.Line = line
+                    keepSearching <- false
+            foundSameLine
+
         let mutable allowIndentedApplication = true
         let mutable allowBinaryNewlineSkipping = true
 
@@ -339,7 +355,10 @@ module Parser =
                     hasOuterIndent <- true
 
             let parseRecordDecl () =
-                stream.Expect(LBrace, "Expected '{' in record type declaration") |> ignore
+                let lbIndex = stream.Index
+                let lb = stream.Expect(LBrace, "Expected '{' in record type declaration")
+                if not (hasNonLayoutTokenAfterOnSameLine lbIndex lb.Span.Start.Line) then
+                    raise (ParseException { Message = "Opening '{' cannot be on its own line; keep it with the first field"; Span = lb.Span })
                 let fields = ResizeArray<string * TypeRef>()
                 let parseField () =
                     stream.SkipNewlines()
@@ -378,7 +397,10 @@ module Parser =
                                 raise (ParseException { Message = "Expected field or '}' in record type declaration"; Span = stream.Peek().Span })
                         else
                             doneFields <- true
+                let rbIndex = stream.Index
                 let rb = stream.Expect(RBrace, "Expected '}' in record type declaration")
+                if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                    raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last field"; Span = rb.Span })
                 fields |> Seq.toList, [], rb.Span
 
             let parseUnionDecl () =
@@ -469,7 +491,10 @@ module Parser =
                 let t = stream.Next()
                 PLiteral(parseLiteral t, t.Span)
             | LBracket ->
+                let lbIndex = stream.Index
                 let lb = stream.Next()
+                if not (hasNonLayoutTokenAfterOnSameLine lbIndex lb.Span.Start.Line) then
+                    raise (ParseException { Message = "Opening '[' cannot be on its own line; keep it with the first element"; Span = lb.Span })
                 if stream.Match(RBracket) then
                     PNil (mkSpanFrom lb.Span lb.Span)
                 else
@@ -479,7 +504,10 @@ module Parser =
                     while stream.Match(Semicolon) do
                         if stream.Peek().Kind <> RBracket then
                             elements.Add(parsePatternCons())
+                    let rbIndex = stream.Index
                     let rb = stream.Expect(RBracket, "Expected ']' in list pattern")
+                    if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                        raise (ParseException { Message = "Closing ']' cannot be on its own line; keep it with the last element"; Span = rb.Span })
                     let listPattern =
                         (elements |> Seq.toList, PNil (mkSpanFrom rb.Span rb.Span))
                         ||> List.foldBack (fun head tail -> PCons(head, tail, mkSpanFrom (Ast.spanOfPattern head) (Ast.spanOfPattern tail)))
@@ -499,7 +527,10 @@ module Parser =
                     stream.Expect(RParen, "Expected ')' after parenthesized pattern") |> ignore
                     first
             | LBrace ->
+                let lbIndex = stream.Index
                 let lb = stream.Next()
+                if not (hasNonLayoutTokenAfterOnSameLine lbIndex lb.Span.Start.Line) then
+                    raise (ParseException { Message = "Opening '{' cannot be on its own line; keep it with the first entry"; Span = lb.Span })
                 stream.SkipNewlines()
                 if stream.Match(RBrace) then
                     PMap([], None, mkSpanFrom lb.Span lb.Span)
@@ -524,7 +555,10 @@ module Parser =
                         if stream.Peek().Kind <> Bar then
                             parseTypeField()
                     stream.Expect(Bar, "Expected '|' in structural record type pattern") |> ignore
+                    let rbIndex = stream.Index
                     let rb = stream.Expect(RBrace, "Expected '}' in structural record type pattern")
+                    if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                        raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                     PTypeRef(TRStructuralRecord(fields |> Seq.toList), mkSpanFrom lb.Span rb.Span)
                 elif stream.Peek().Kind = LBracket then
                     let clauses = ResizeArray<Pattern * Pattern>()
@@ -569,7 +603,10 @@ module Parser =
                         else
                             donePattern <- true
 
+                    let rbIndex = stream.Index
                     let rb = stream.Expect(RBrace, "Expected '}' in map pattern")
+                    if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                        raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                     PMap(clauses |> Seq.toList, tailPattern, mkSpanFrom lb.Span rb.Span)
                 else
                     let mark = stream.Mark()
@@ -602,7 +639,10 @@ module Parser =
                         while stream.Match(Semicolon) do
                             if stream.Peek().Kind <> RBrace then
                                 parseTypeField()
+                        let rbIndex = stream.Index
                         let rb = stream.Expect(RBrace, "Expected '}' in record type pattern")
+                        if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                            raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last field"; Span = rb.Span })
                         PTypeRef(TRRecord(fields |> Seq.toList), mkSpanFrom lb.Span rb.Span)
                     else
                         let fields = ResizeArray<string * Pattern>()
@@ -624,7 +664,10 @@ module Parser =
                         while stream.Match(Semicolon) do
                             if stream.Peek().Kind <> RBrace then
                                 parseField()
+                        let rbIndex = stream.Index
                         let rb = stream.Expect(RBrace, "Expected '}' in record pattern")
+                        if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                            raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last field"; Span = rb.Span })
                         PRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | _ -> raise (ParseException { Message = "Unexpected token in pattern"; Span = t.Span })
 
@@ -686,10 +729,8 @@ module Parser =
             | LBracket ->
                 let lbIndex = stream.Index
                 let lb = stream.Next()
-                let immediateMultiline = stream.Peek().Kind = Newline
-                let hasSameLinePrefix = hasNonLayoutTokenBeforeOnSameLine lbIndex lb.Span.Start.Line
-                if immediateMultiline && hasSameLinePrefix then
-                    raise (ParseException { Message = "For multiline list literals, '[' must be on its own line"; Span = lb.Span })
+                if not (hasNonLayoutTokenAfterOnSameLine lbIndex lb.Span.Start.Line) then
+                    raise (ParseException { Message = "Opening '[' cannot be on its own line; keep it with the first element"; Span = lb.Span })
                 consumeLayoutSeparators() |> ignore
                 if stream.Match(RBracket) then
                     EList([], mkSpanFrom lb.Span lb.Span)
@@ -716,15 +757,16 @@ module Parser =
                                 elements.Add(parseEntryExpr())
                             else
                                 keepParsing <- false
+                        let rbIndex = stream.Index
                         let rb = stream.Expect(RBracket, "Expected ']' in list literal")
+                        if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                            raise (ParseException { Message = "Closing ']' cannot be on its own line; keep it with the last element"; Span = rb.Span })
                         EList(elements |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | LBrace ->
                 let lbIndex = stream.Index
                 let lb = stream.Next()
-                let immediateMultiline = stream.Peek().Kind = Newline
-                let hasSameLinePrefix = hasNonLayoutTokenBeforeOnSameLine lbIndex lb.Span.Start.Line
-                if immediateMultiline && hasSameLinePrefix then
-                    raise (ParseException { Message = "For multiline record/map literals, '{' must be on its own line"; Span = lb.Span })
+                if not (hasNonLayoutTokenAfterOnSameLine lbIndex lb.Span.Start.Line) then
+                    raise (ParseException { Message = "Opening '{' cannot be on its own line; keep it with the first entry"; Span = lb.Span })
                 consumeLayoutSeparators() |> ignore
                 if stream.Match(RBrace) then
                     EMap([], mkSpanFrom lb.Span lb.Span)
@@ -765,7 +807,10 @@ module Parser =
                                     else
                                         keepParsing <- false
                                 stream.Expect(Bar, "Expected '|' in structural record update") |> ignore
+                                let rbIndex = stream.Index
                                 let rb = stream.Expect(RBrace, "Expected '}' in structural record update")
+                                if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                                    raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                                 Some (EStructuralRecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
                         match tryStructuralRecordUpdate() with
                         | Some updateExpr -> updateExpr
@@ -795,7 +840,10 @@ module Parser =
                                 else
                                     keepParsing <- false
                             stream.Expect(Bar, "Expected '|' in structural record literal") |> ignore
+                            let rbIndex = stream.Index
                             let rb = stream.Expect(RBrace, "Expected '}' in structural record literal")
+                            if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                                raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                             EStructuralRecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
                     else
                     if stream.Peek().Kind = LBracket || stream.Peek().Kind = RangeDots then
@@ -833,7 +881,10 @@ module Parser =
                                 else
                                     raise (ParseException { Message = "Expected ';', newline, or '}' in map literal"; Span = stream.Peek().Span })
 
+                        let rbIndex = stream.Index
                         let rb = stream.Expect(RBrace, "Expected '}' in map literal")
+                        if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                            raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                         EMap(entries |> Seq.toList, mkSpanFrom lb.Span rb.Span)
                     else
                         let mark = stream.Mark()
@@ -868,7 +919,10 @@ module Parser =
                                         parseUpdateField()
                                     else
                                         keepParsing <- false
+                                let rbIndex = stream.Index
                                 let rb = stream.Expect(RBrace, "Expected '}' in record update")
+                                if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                                    raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                                 Some (ERecordUpdate(baseExpr, updates |> Seq.toList, mkSpanFrom lb.Span rb.Span))
                         match tryRecordUpdate() with
                         | Some updateExpr -> updateExpr
@@ -897,7 +951,10 @@ module Parser =
                                     parseField()
                                 else
                                     keepParsing <- false
+                            let rbIndex = stream.Index
                             let rb = stream.Expect(RBrace, "Expected '}' in record literal")
+                            if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
+                                raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
                             ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
             | Let ->
                 parseLetExpr()

@@ -14,21 +14,9 @@ let names_compact =
     ["format_address"
      "make_office_address"]
 
-let names_block =
-    [
-      "format_address"
-      "make_office_address"
-    ]
-
 let record_compact =
     { City = "Paris"
       Zip = 75000 }
-
-let record_block =
-    {
-      City = "Lyon"
-      Zip = 69000
-    }
 
 let capabilities_single =
     { ["format_address"] = "address formatting"; ["make_office_address"] = "office address constructor" }
@@ -37,19 +25,11 @@ let capabilities_compact =
     { ["format_address"] = "address formatting"
       ["make_office_address"] = "office address constructor" }
 
-let capabilities_block =
-    {
-      ["format_address"] = "address formatting"
-      ["make_office_address"] = "office address constructor"
-    }
-
 let primary = format_address record_compact
-let fallback = format_address record_block
-let names_total = List.length names_compact + List.length names_block
+let names_total = List.length names_compact
 let all_count =
     (capabilities_single |> Map.count)
     + (capabilities_compact |> Map.count)
-    + (capabilities_block |> Map.count)
 
 let build_ops command =
     let ops = [ { Command = "docker"
@@ -59,4 +39,4 @@ let build_ops command =
 
 let ops = build_ops "build ."
 
-print $"{primary} | {fallback} | names={names_total} | maps={all_count} | ops={List.length ops}"
+print $"{primary} | names={names_total} | maps={all_count} | ops={List.length ops}"

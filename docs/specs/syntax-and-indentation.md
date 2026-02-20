@@ -47,13 +47,11 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - union case patterns in cases: `Case` and `Case pattern`
 - Records:
   - literal `{ Name = "a"; Age = 1 }`
-  - if fields start on the next line, `{` must be on its own line
+  - multiline record literals keep `{` on the same line as the first field and `}` on the same line as the last field
   - multiline example:
   ```fsharp
-  {
-      Name = "a"
-      Age = 1
-  }
+  { Name = "a"
+    Age = 1 }
   ```
   - field access `p.Name`
   - copy-update `{ p with Age = 2 }`
@@ -65,13 +63,11 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
   - keys are bracketed expressions (`[expr]`) and must infer to `string`
-  - if entries start on the next line, `{` must be on its own line
+  - multiline map literals keep `{` on the same line as the first entry and `}` on the same line as the last entry
   - multiline example:
   ```fsharp
-  {
-      ["a"] = 1
-      ["b"] = 2
-  }
+  { ["a"] = 1
+    ["b"] = 2 }
   ```
 - Lists:
   - `[a; b; c]`
@@ -81,16 +77,10 @@ This document describes the concrete syntax accepted by the interpreter and the 
    2
    3]
   ```
-  ```fsharp
-  [
-    1
-    2
-    3
-  ]
-  ```
+  - block delimiter style (opening `[` or closing `]` on its own line) is invalid
   - range `[a..b]`
   - `::`, `@` (list-only)
-  - if elements start on the next line, `[` must be on its own line
+  - multiline list literals keep `[` on the same line as the first element and `]` on the same line as the last element
 - Tuples:
   - `(a, b, c)`
 - Options:
@@ -119,6 +109,10 @@ From highest to lowest:
 ### General block behavior
 - After constructs that accept block bodies (`let`, `fun`, `if/else`, `for`, etc.), a newline followed by increased indent opens a block.
 - A block ends on matching dedent.
+- For non-empty brace/list forms (`{...}` and `[...]`), opening/closing delimiters cannot be on their own lines:
+  - opener must share a line with the first item
+  - closer must share a line with the last item
+  - empty literals (`{}` and `[]`) remain valid
 
 ### Let parameter alignment
 - Single-line function declarations remain valid:
@@ -160,7 +154,7 @@ let main =
 ### Type declaration field alignment
 - `type`/`type rec` record declarations support:
   - single-line `{ A: int; B: string }`
-  - multiline with newline-separated fields
+  - compact multiline with newline-separated fields (`{ A: int\n  B: string }`)
 - In multiline type declarations, field-start columns align exactly.
 
 ### Map layout examples
@@ -174,14 +168,6 @@ All of the following map literal layouts are valid:
 { ["format_address"] = "address formatting"
   ["make_office_address"] = "office address constructor" }
 ```
-
-```fsharp
-{
-  ["format_address"] = "address formatting"
-  ["make_office_address"] = "office address constructor"
-}
-```
-
 
 ### Multiline union declaration layout
 - `type`/`type rec` union declarations support:

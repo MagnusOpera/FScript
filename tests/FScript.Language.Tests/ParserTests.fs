@@ -59,7 +59,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses multiline type declaration`` () =
-        let src = "type rec Node =\n    { Value: int\n      Left: Node option\n      Right: Node option }"
+        let src = "type rec Node = { Value: int\n                  Left: Node option\n                  Right: Node option }"
         let program = Helpers.parse src
         match program.Head with
         | SType def ->
@@ -82,7 +82,7 @@ type ParserTests () =
     [<Test>]
     member _.``Rejects misaligned multiline type declaration fields`` () =
         let act () =
-            Helpers.parse "type Person =\n    { Name: string\n       Age: int }" |> ignore
+            Helpers.parse "type Person = { Name: string\n                     Age: int }" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
@@ -100,11 +100,9 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected compact multiline list literal")
 
     [<Test>]
-    member _.``Parses block multiline list literal`` () =
-        let p = Helpers.parse "[\n 1\n 2\n 3\n]"
-        match p.[0] with
-        | SExpr (EList (items, _)) -> items.Length |> should equal 3
-        | _ -> Assert.Fail("Expected block multiline list literal")
+    member _.``Rejects block multiline list literal`` () =
+        let act () = Helpers.parse "[\n 1\n 2\n 3\n]" |> ignore
+        act |> should throw typeof<ParseException>
 
     [<Test>]
     member _.``Parses compact list with multiline record items`` () =
@@ -117,8 +115,8 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected compact list with multiline record items")
 
     [<Test>]
-    member _.``Rejects multiline list literal with '[' kept on assignment line`` () =
-        let act () = Helpers.parse "let x = [\n 1\n 2\n]" |> ignore
+    member _.``Rejects list literal when closing ']' is on its own line`` () =
+        let act () = Helpers.parse "[1\n 2\n]" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
@@ -163,15 +161,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected multiline record literal")
 
     [<Test>]
-    member _.``Parses multiline record literal block braces`` () =
-        let p = Helpers.parse "{\n  Name = \"a\"\n  Age = 1\n}"
-        match p.[0] with
-        | SExpr (ERecord (fields, _)) -> fields.Length |> should equal 2
-        | _ -> Assert.Fail("Expected multiline block record literal")
+    member _.``Rejects block multiline record literal`` () =
+        let act () = Helpers.parse "{\n  Name = \"a\"\n  Age = 1\n}" |> ignore
+        act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects multiline record literal with '{' kept on assignment line`` () =
-        let act () = Helpers.parse "let x = {\n  Name = \"a\"\n  Age = 1\n}" |> ignore
+    member _.``Rejects record literal when closing '}' is on its own line`` () =
+        let act () = Helpers.parse "{ Name = \"a\"\n  Age = 1\n}" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
@@ -198,17 +194,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected map literal")
 
     [<Test>]
-    member _.``Parses multiline map literal`` () =
-        let src = "{\n    [\"a\"] = 1\n    [\"b\"] = 2\n}"
-        let p = Helpers.parse src
-        match p.[0] with
-        | SExpr (EMap (entries, _)) ->
-            entries.Length |> should equal 2
-        | _ -> Assert.Fail("Expected multiline map literal")
+    member _.``Rejects block multiline map literal`` () =
+        let act () = Helpers.parse "{\n    [\"a\"] = 1\n    [\"b\"] = 2\n}" |> ignore
+        act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects multiline map literal with '{' kept on assignment line`` () =
-        let act () = Helpers.parse "let x = {\n  [\"a\"] = 1\n  [\"b\"] = 2\n}" |> ignore
+    member _.``Rejects map literal when closing '}' is on its own line`` () =
+        let act () = Helpers.parse "{ [\"a\"] = 1\n  [\"b\"] = 2\n}" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
