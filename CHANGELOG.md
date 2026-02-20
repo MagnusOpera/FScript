@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.50.0]
+
+
 - Fixed parser handling for record fields whose value expression starts on a deeper indented line (for example `Operations =` followed by a multiline compact list literal).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.49.0...0.50.0
 
 ## [0.49.0]
 
