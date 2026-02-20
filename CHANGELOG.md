@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.45.0]
+
+
 - Fixed parser/LSP false "Block cannot end with a let binding" errors for block-scoped `let` values that contain multiline expression continuations (for example list literals with multiline record items).
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.44.0...0.45.0
 
 ## [0.44.0]
 
