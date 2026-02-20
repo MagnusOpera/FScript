@@ -127,27 +127,32 @@ jobs:
             .out/darwin/fscript-${{ github.ref_name }}-darwin-x64.zip
 
       - name: Remove unsigned macOS artifact
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
-            const unsignedName = `fscript-${tag}-darwin-unsigned.zip`;
-            const { data: release } = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag,
-            });
-            const asset = release.assets.find(a => a.name === unsignedName);
-            if (!asset) {
-              core.info(`Unsigned artifact not found: ${unsignedName}`);
-              return;
+            try {
+              const tag = context.ref.replace('refs/tags/', '');
+              const unsignedName = `fscript-${tag}-darwin-unsigned.zip`;
+              const { data: release } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              const asset = release.assets.find(a => a.name === unsignedName);
+              if (!asset) {
+                core.info(`Unsigned artifact not found: ${unsignedName}`);
+                return;
+              }
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: asset.id,
+              });
+              core.info(`Deleted unsigned artifact: ${unsignedName}`);
+            } catch (error) {
+              core.warning(`Best-effort cleanup failed: ${error?.message ?? error}`);
             }
-            await github.rest.repos.deleteReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              asset_id: asset.id,
-            });
-            core.info(`Deleted unsigned artifact: ${unsignedName}`);
 
   update-homebrew-tap:
     uses: ./.github/workflows/release-homebrew-tap.yml

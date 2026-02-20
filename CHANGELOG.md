@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made unsigned macOS release-asset cleanup best-effort so transient GitHub API failures no longer fail the release workflow.
+
 ## [0.48.0]
 
 
