@@ -49,14 +49,15 @@ let x =
 - FScript uses structural records and also supports top-level named record declarations.
 - In current behavior, declared record names can unify with matching record shapes (structural equivalence), including recursive records.
 
-### Type annotations (optional, parameter-focused)
+### Type annotations (optional, function-focused)
 - FScript supports optional parameter annotations using F#-style syntax:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
+- FScript supports optional let-bound function return annotations:
+  - `let f x : int = ...`
 - FScript also supports two inline record annotation forms:
   - structural (explicit): `let f (x: {| Name: string; Zip: int |}) = ...`
   - declared-type-by-shape: `let f (x: { Name: string; Zip: int }) = ...` (must resolve to a declared record type)
-- Return type annotations are not supported.
 - Pattern-level type annotations are supported in `match`:
   - structural: `| {| Name: string |} -> ...`
   - declared-type-by-shape: `| { Name: string } -> ...`
@@ -93,6 +94,6 @@ let x =
 ## Practical porting checklist
 - Replace `let ... in` with indented block bindings.
 - Replace generic angle syntax with postfix syntax (`'a list`, `'a option`, `'a map`).
-- Keep annotations on parameters only.
+- Keep annotations on function parameters and, when helpful, explicit function returns.
 - Convert unsupported modules/features into records + functions + `match` where possible.
 - Check indentation alignment for `match` cases and multiline type fields.

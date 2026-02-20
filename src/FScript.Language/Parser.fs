@@ -1224,14 +1224,21 @@ module Parser =
                         let name = match nameTok.Kind with Ident n -> n | _ -> ""
                         name, parseParamsAligned(), None, nameTok.Span
             stream.SkipNewlines()
+            let returnAnnotation =
+                if stream.Match(Colon) then
+                    if args.Count = 0 then
+                        raise (ParseException { Message = "Return type annotations are only supported on function let bindings"; Span = stream.Peek().Span })
+                    Some (parseTypeRef())
+                else
+                    None
             if stream.Peek().Kind = Colon then
                 raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
             stream.Expect(Equals, "Expected '=' in let binding") |> ignore
             let value = parseExprOrBlock()
             if isRec then
-                let bindings = ResizeArray<string * Param list * Expr * Span>()
+                let bindings = ResizeArray<string * Param list * TypeRef option * Expr * Span>()
                 let firstSpan = mkSpanFrom bindingSpan (Ast.spanOfExpr value)
-                bindings.Add(bindingName, args |> Seq.toList, value, firstSpan)
+                bindings.Add(bindingName, args |> Seq.toList, returnAnnotation, value, firstSpan)
                 let mutable doneBindings = false
                 while not doneBindings do
                     stream.SkipNewlines()
@@ -1242,12 +1249,17 @@ module Parser =
                         if nextArgs.Count = 0 then
                             raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
                         stream.SkipNewlines()
+                        let nextReturnAnnotation =
+                            if stream.Match(Colon) then
+                                Some (parseTypeRef())
+                            else
+                                None
                         if stream.Peek().Kind = Colon then
                             raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
                         stream.Expect(Equals, "Expected '=' in let binding") |> ignore
                         let nextValue = parseExprOrBlock()
                         let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
-                        bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
+                        bindings.Add(nextName, nextArgs |> Seq.toList, nextReturnAnnotation, nextValue, nextSpan)
                     else
                         doneBindings <- true
                 match stream.Peek().Kind with
@@ -1262,7 +1274,7 @@ module Parser =
                         | _ -> parseExprOrBlock()
                     if bindings.Count = 1 then
                         let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                        ELet(bindingName, funValue, body, true, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                        ELet(bindingName, funValue, body, true, returnAnnotation, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
                     else
                         ELetRecGroup(bindings |> Seq.toList, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
             else
@@ -1284,7 +1296,7 @@ module Parser =
                         ELetPattern(pattern, value, body, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
                     | None ->
                         let funValue = Seq.foldBack (fun arg acc -> ELambda(arg, acc, Ast.spanOfExpr acc)) args value
-                        ELet(bindingName, funValue, body, false, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
+                        ELet(bindingName, funValue, body, false, returnAnnotation, mkSpanFrom letTok.Span (Ast.spanOfExpr body))
 
         and parseExprOrBlock () : Expr =
             let mutable sawNewline = false
@@ -1331,16 +1343,16 @@ module Parser =
                 match stmts with
                 | [] -> EUnit (stream.Peek().Span)
                 | [SExpr e] -> e
-                | [SLet(_, _, _, _, _, span)] ->
+                | [SLet(_, _, _, _, _, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | [SLetPattern(_, _, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | [SLetRecGroup(_, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
-                | SLet(name, args, value, isRec, _, span) :: rest ->
+                | SLet(name, args, returnAnnotation, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
-                    ELet(name, valExpr, body, isRec, mkSpanFrom span (Ast.spanOfExpr body))
+                    ELet(name, valExpr, body, isRec, returnAnnotation, mkSpanFrom span (Ast.spanOfExpr body))
                 | SLetPattern(pattern, value, _, span) :: rest ->
                     let body = desugar rest
                     ELetPattern(pattern, value, body, mkSpanFrom span (Ast.spanOfExpr body))
@@ -1349,7 +1361,7 @@ module Parser =
                     ELetRecGroup(bindings, body, mkSpanFrom span (Ast.spanOfExpr body))
                 | SExpr e :: rest ->
                     let body = desugar rest
-                    ELet("_", e, body, false, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
+                    ELet("_", e, body, false, None, mkSpanFrom (Ast.spanOfExpr e) (Ast.spanOfExpr body))
                 | SType def :: _ ->
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
                 | SImport (_, _, span) :: _ ->
@@ -1388,14 +1400,21 @@ module Parser =
                         let name = match nameTok.Kind with Ident n -> n | _ -> ""
                         name, parseParamsAligned(), None, nameTok.Span
             stream.SkipNewlines()
+            let returnAnnotation =
+                if stream.Match(Colon) then
+                    if args.Count = 0 then
+                        raise (ParseException { Message = "Return type annotations are only supported on function let bindings"; Span = stream.Peek().Span })
+                    Some (parseTypeRef())
+                else
+                    None
             if stream.Peek().Kind = Colon then
                 raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
             stream.Expect(Equals, "Expected '=' in let binding") |> ignore
             let value = parseExprOrBlock()
             if isRec then
-                let bindings = ResizeArray<string * Param list * Expr * Span>()
+                let bindings = ResizeArray<string * Param list * TypeRef option * Expr * Span>()
                 let firstSpan = mkSpanFrom bindingSpan (Ast.spanOfExpr value)
-                bindings.Add(bindingName, args |> Seq.toList, value, firstSpan)
+                bindings.Add(bindingName, args |> Seq.toList, returnAnnotation, value, firstSpan)
                 let mutable doneBindings = false
                 while not doneBindings do
                     stream.SkipNewlines()
@@ -1406,18 +1425,23 @@ module Parser =
                         if nextArgs.Count = 0 then
                             raise (ParseException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = nextNameTok.Span })
                         stream.SkipNewlines()
+                        let nextReturnAnnotation =
+                            if stream.Match(Colon) then
+                                Some (parseTypeRef())
+                            else
+                                None
                         if stream.Peek().Kind = Colon then
                             raise (ParseException { Message = "Annotated parameters must be parenthesized as (x: T)"; Span = stream.Peek().Span })
                         stream.Expect(Equals, "Expected '=' in let binding") |> ignore
                         let nextValue = parseExprOrBlock()
                         let nextSpan = mkSpanFrom nextNameTok.Span (Ast.spanOfExpr nextValue)
-                        bindings.Add(nextName, nextArgs |> Seq.toList, nextValue, nextSpan)
+                        bindings.Add(nextName, nextArgs |> Seq.toList, nextReturnAnnotation, nextValue, nextSpan)
                     else
                         doneBindings <- true
                 if bindings.Count = 1 then
-                    SLet(bindingName, args |> Seq.toList, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                    SLet(bindingName, args |> Seq.toList, returnAnnotation, value, true, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
                 else
-                    let (_, _, _, lastSpan) = bindings.[bindings.Count - 1]
+                    let (_, _, _, _, lastSpan) = bindings.[bindings.Count - 1]
                     SLetRecGroup(bindings |> Seq.toList, isExported, mkSpanFrom letTok.Span lastSpan)
             else
                 match tuplePatternOpt with
@@ -1426,7 +1450,7 @@ module Parser =
                 | Some pattern ->
                     SLetPattern(pattern, value, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
                 | None ->
-                    SLet(bindingName, args |> Seq.toList, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
+                    SLet(bindingName, args |> Seq.toList, returnAnnotation, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
 
         and parseAttributeName () =
             stream.Expect(LBracket, "Expected '[' in attribute") |> ignore

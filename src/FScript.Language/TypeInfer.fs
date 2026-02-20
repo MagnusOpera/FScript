@@ -327,6 +327,11 @@ module TypeInfer =
             |> Map.ofList
             |> TRecord
 
+    let rec private functionReturnType (t: Type) : Type =
+        match t with
+        | TFun (_, ret) -> functionReturnType ret
+        | _ -> t
+
     let rec private typeFromRef (decls: Map<string, TypeDef>) (stack: string list) (tref: TypeRef) : Type =
         match tref with
         | TRName name ->
@@ -612,7 +617,7 @@ module TypeInfer =
             let sBodyUnit = unify typeDefs (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
             let s = compose sBodyUnit (compose s2 sSource)
             s, TUnit, asTyped expr TUnit
-        | ELet (name, value, body, isRec, span) ->
+        | ELet (name, value, body, isRec, returnAnnotation, span) ->
             if isRec then
                 let tv = Types.freshVar()
                 let envRec = env |> Map.add name (Forall([], tv))
@@ -620,7 +625,14 @@ module TypeInfer =
                     withLocalBindings [ name ] (fun () ->
                         inferExpr typeDefs constructors envRec value)
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
-                let sValue = compose s2 s1
+                let sRet =
+                    match returnAnnotation with
+                    | Some tref ->
+                        let expectedReturn = annotationTypeFromRef typeDefs span tref
+                        let inferredReturn = functionReturnType (applyType s2 t1)
+                        unify typeDefs inferredReturn expectedReturn span
+                    | None -> emptySubst
+                let sValue = compose sRet (compose s2 s1)
                 let env1 = applyEnv sValue env
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
@@ -636,7 +648,14 @@ module TypeInfer =
                         unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr value)
                     else
                         emptySubst
-                let sValue = compose sDiscard s1
+                let sRet =
+                    match returnAnnotation with
+                    | Some tref ->
+                        let expectedReturn = annotationTypeFromRef typeDefs span tref
+                        let inferredReturn = functionReturnType (applyType sDiscard t1)
+                        unify typeDefs inferredReturn expectedReturn span
+                    | None -> emptySubst
+                let sValue = compose sRet (compose sDiscard s1)
                 let env1 = applyEnv sValue env
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
@@ -668,15 +687,15 @@ module TypeInfer =
         | ELetRecGroup (bindings, body, span) ->
             let foldedBindings =
                 bindings
-                |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                |> List.map (fun (name, args, returnAnnotation, valueExpr, bindingSpan) ->
                     if args.IsEmpty then
                         raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
                     let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
-                    name, folded, bindingSpan)
+                    name, returnAnnotation, folded, bindingSpan)
 
             let freshByName =
                 foldedBindings
-                |> List.map (fun (name, _, _) -> name, Types.freshVar())
+                |> List.map (fun (name, _, _, _) -> name, Types.freshVar())
                 |> Map.ofList
 
             let envRec =
@@ -686,17 +705,26 @@ module TypeInfer =
             let mutable sRec = emptySubst
             let recursiveNames = freshByName |> Map.toList |> List.map fst
             withLocalBindings recursiveNames (fun () ->
-                for (name, exprVal, bindingSpan) in foldedBindings do
+                for (name, _, exprVal, bindingSpan) in foldedBindings do
                     let envForBinding = applyEnv sRec envRec
                     let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
                     let expected = applyType s1 (applyType sRec freshByName.[name])
                     let s2 = unify typeDefs expected t1 bindingSpan
                     sRec <- compose s2 (compose s1 sRec))
 
+            for (name, returnAnnotation, _, bindingSpan) in foldedBindings do
+                match returnAnnotation with
+                | Some tref ->
+                    let expectedReturn = annotationTypeFromRef typeDefs bindingSpan tref
+                    let inferredReturn = functionReturnType (applyType sRec freshByName.[name])
+                    let sRet = unify typeDefs inferredReturn expectedReturn bindingSpan
+                    sRec <- compose sRet sRec
+                | None -> ()
+
             let envGeneralize = applyEnv sRec env
             let schemes =
                 foldedBindings
-                |> List.map (fun (name, _, _) ->
+                |> List.map (fun (name, _, _, _) ->
                     let inferred = applyType sRec freshByName.[name]
                     name, Types.generalize envGeneralize inferred)
 
@@ -1071,9 +1099,9 @@ module TypeInfer =
     let private topLevelBindingNames (program: Program) : string list =
         program
         |> List.collect (function
-            | SLet(name, _, _, _, _, _) -> [ name ]
+            | SLet(name, _, _, _, _, _, _) -> [ name ]
             | SLetPattern(pat, _, _, _) -> patternBindingNames pat
-            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
+            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
     let private inferProgramWithExternsRawAndLocals (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
@@ -1133,7 +1161,7 @@ module TypeInfer =
                     typed.Add(TSType def)
                 | SImport (_, _, span) ->
                     raise (TypeException { Message = "'import' must be resolved before type inference"; Span = span })
-                | SLet(name, args, expr, isRec, isExported, span) ->
+                | SLet(name, args, returnAnnotation, expr, isRec, isExported, span) ->
                     let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                     let startIndex =
                         match telemetry with
@@ -1145,7 +1173,14 @@ module TypeInfer =
                         let envRec = env |> Map.add name (Forall([], tv))
                         let s1, t1, _ = inferExpr typeDefs constructors envRec exprVal
                         let s2 = unify typeDefs (applyType s1 tv) t1 span
-                        let s = compose s2 s1
+                        let sRet =
+                            match returnAnnotation with
+                            | Some tref ->
+                                let expectedReturn = annotationTypeFromRef typeDefs span tref
+                                let inferredReturn = functionReturnType (applyType s2 t1)
+                                unify typeDefs inferredReturn expectedReturn span
+                            | None -> emptySubst
+                        let s = compose sRet (compose s2 s1)
                         applySubstToCapturedLocals startIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
@@ -1155,9 +1190,17 @@ module TypeInfer =
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
                     else
                         let s1, t1, _ = inferExpr typeDefs constructors env exprVal
-                        applySubstToCapturedLocals startIndex s1
-                        let env' = applyEnv s1 env
-                        let inferred = applyType s1 t1
+                        let sRet =
+                            match returnAnnotation with
+                            | Some tref ->
+                                let expectedReturn = annotationTypeFromRef typeDefs span tref
+                                let inferredReturn = functionReturnType (applyType s1 t1)
+                                unify typeDefs inferredReturn expectedReturn span
+                            | None -> emptySubst
+                        let s = compose sRet s1
+                        applySubstToCapturedLocals startIndex s
+                        let env' = applyEnv s env
+                        let inferred = applyType s t1
                         validateMapKeyTypes span inferred
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
@@ -1191,15 +1234,15 @@ module TypeInfer =
 
                     let foldedBindings =
                         bindings
-                        |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                        |> List.map (fun (name, args, returnAnnotation, valueExpr, bindingSpan) ->
                             if args.IsEmpty then
                                 raise (TypeException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
                             let folded = Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args valueExpr
-                            name, folded, bindingSpan)
+                            name, returnAnnotation, folded, bindingSpan)
 
                     let freshByName =
                         foldedBindings
-                        |> List.map (fun (name, _, _) -> name, Types.freshVar())
+                        |> List.map (fun (name, _, _, _) -> name, Types.freshVar())
                         |> Map.ofList
 
                     let envRec =
@@ -1207,26 +1250,35 @@ module TypeInfer =
                         |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
 
                     let mutable sRec = emptySubst
-                    for (name, exprVal, bindingSpan) in foldedBindings do
+                    for (name, _, exprVal, bindingSpan) in foldedBindings do
                         let envForBinding = applyEnv sRec envRec
                         let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
                         let expected = applyType s1 (applyType sRec freshByName.[name])
                         let s2 = unify typeDefs expected t1 bindingSpan
                         sRec <- compose s2 (compose s1 sRec)
 
+                    for (name, returnAnnotation, _, bindingSpan) in foldedBindings do
+                        match returnAnnotation with
+                        | Some tref ->
+                            let expectedReturn = annotationTypeFromRef typeDefs bindingSpan tref
+                            let inferredReturn = functionReturnType (applyType sRec freshByName.[name])
+                            let sRet = unify typeDefs inferredReturn expectedReturn bindingSpan
+                            sRec <- compose sRet sRec
+                        | None -> ()
+
                     applySubstToCapturedLocals startIndex sRec
 
                     let envGeneralize = applyEnv sRec env
                     let schemes =
                         foldedBindings
-                        |> List.map (fun (name, _, _) ->
+                        |> List.map (fun (name, _, _, _) ->
                             let inferred = applyType sRec freshByName.[name]
                             validateMapKeyTypes span inferred
                             name, Types.generalize envGeneralize inferred)
 
                     let typedBindings =
                         foldedBindings
-                        |> List.map (fun (name, exprVal, bindingSpan) ->
+                        |> List.map (fun (name, _, exprVal, bindingSpan) ->
                             name, exprVal, applyType sRec freshByName.[name], bindingSpan)
 
                     env <-

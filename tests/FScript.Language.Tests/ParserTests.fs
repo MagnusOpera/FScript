@@ -11,7 +11,7 @@ type ParserTests () =
         let program = Helpers.parse "let x = 1"
         program.Length |> should equal 1
         match program.Head with
-        | SLet (name, args, _, _, _, _) ->
+        | SLet (name, args, _, _, _, _, _) ->
             name |> should equal "x"
             args.Length |> should equal 0
         | _ -> Assert.Fail("Expected top-level let")
@@ -20,7 +20,7 @@ type ParserTests () =
     member _.``Parses top-level function binding with arguments`` () =
         let program = Helpers.parse "let id x = x"
         match program.Head with
-        | SLet ("id", args, _, _, _, _) -> args.Length |> should equal 1
+        | SLet ("id", args, _, _, _, _, _) -> args.Length |> should equal 1
         | _ -> Assert.Fail("Expected function let")
 
     [<Test>]
@@ -34,7 +34,7 @@ type ParserTests () =
     member _.``Parses tuple let expression in block`` () =
         let program = Helpers.parse "let x = (let (a, b) = (1, 2)\n    a + b\n)"
         match program.Head with
-        | SLet (_, _, EParen (ELetPattern (PTuple (_, _), _, _, _), _), _, _, _) -> ()
+        | SLet (_, _, _, EParen (ELetPattern (PTuple (_, _), _, _, _), _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected tuple let expression")
 
     [<Test>]
@@ -248,14 +248,14 @@ type ParserTests () =
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
-        | SLet (_, _, EParen (ELet ("y", _, _, _, _), _), _, _, _) -> ()
+        | SLet (_, _, _, EParen (ELet ("y", _, _, _, _, _), _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected nested let expression")
 
     [<Test>]
     member _.``Parses top-level recursive function binding`` () =
         let program = Helpers.parse "let rec fib n = if n < 2 then n else fib (n - 1)"
         match program.Head with
-        | SLet ("fib", args, _, true, _, _) ->
+        | SLet ("fib", args, _, _, true, _, _) ->
             args.Length |> should equal 1
         | _ -> Assert.Fail("Expected recursive function let")
 
@@ -292,8 +292,24 @@ type ParserTests () =
     member _.``Parses annotated let parameter`` () =
         let p = Helpers.parse "let show (node: Node) = node"
         match p.[0] with
-        | SLet ("show", [ { Name = "node"; Annotation = Some (TRName "Node") } ], _, _, _, _) -> ()
+        | SLet ("show", [ { Name = "node"; Annotation = Some (TRName "Node") } ], _, _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter")
+
+    [<Test>]
+    member _.``Parses let return type annotation`` () =
+        let p = Helpers.parse "let id x : int = x"
+        match p.[0] with
+        | SLet ("id", args, Some (TRName "int"), _, _, _, _) ->
+            args.Length |> should equal 1
+            args[0].Name |> should equal "x"
+        | _ -> Assert.Fail("Expected annotated let return type")
+
+    [<Test>]
+    member _.``Parses let rec return type annotation`` () =
+        let p = Helpers.parse "let rec even n : bool = if n = 0 then true else odd (n - 1)\nand odd n : bool = if n = 0 then false else even (n - 1)"
+        match p.[0] with
+        | SLetRecGroup ([ ("even", _, Some (TRName "bool"), _, _); ("odd", _, Some (TRName "bool"), _, _) ], _, _) -> ()
+        | _ -> Assert.Fail("Expected annotated let rec return types")
 
     [<Test>]
     member _.``Parses top-level import directive`` () =
@@ -317,7 +333,7 @@ type ParserTests () =
         let src = "let format_address (address: { City: string; Zip: int })\n                   (name: string) = $\"{address.City} ({name})\""
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("format_address", args, _, _, _, _) -> args.Length |> should equal 2
+        | SLet ("format_address", args, _, _, _, _, _) -> args.Length |> should equal 2
         | _ -> Assert.Fail("Expected multiline let parameters")
 
     [<Test>]
@@ -325,7 +341,7 @@ type ParserTests () =
         let src = "let format_address (address: { City: string; Zip: int })\n                   (name: string) =\n    $\"{address.City} ({name})\""
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("format_address", args, _, _, _, _) -> args.Length |> should equal 2
+        | SLet ("format_address", args, _, _, _, _, _) -> args.Length |> should equal 2
         | _ -> Assert.Fail("Expected multiline let parameters with block body")
 
     [<Test>]
@@ -345,21 +361,21 @@ type ParserTests () =
     member _.``Parses annotated parameter with structural inline record type`` () =
         let p = Helpers.parse "let format_address (address: {| City: string; Zip: int |}) = address.City"
         match p.[0] with
-        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRStructuralRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _) -> ()
+        | SLet ("format_address", [ { Name = "address"; Annotation = Some (TRStructuralRecord [ ("City", TRName "string"); ("Zip", TRName "int") ]) } ], _, _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter with structural inline record type")
 
     [<Test>]
     member _.``Parses annotated parameter with qualified type name`` () =
         let p = Helpers.parse "let summary (project: common.ProjectInfo) = project.Name"
         match p.[0] with
-        | SLet ("summary", [ { Name = "project"; Annotation = Some (TRName "common.ProjectInfo") } ], _, _, _, _) -> ()
+        | SLet ("summary", [ { Name = "project"; Annotation = Some (TRName "common.ProjectInfo") } ], _, _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter with qualified type name")
 
     [<Test>]
     member _.``Parses structural record literal expression`` () =
         let p = Helpers.parse "let officeAddress = {| City = \"London\"; Zip = 12345 |}"
         match p.[0] with
-        | SLet ("officeAddress", [], EStructuralRecord ([ ("City", ELiteral (LString "London", _)); ("Zip", ELiteral (LInt 12345L, _)) ], _), _, _, _) -> ()
+        | SLet ("officeAddress", [], _, EStructuralRecord ([ ("City", ELiteral (LString "London", _)); ("Zip", ELiteral (LInt 12345L, _)) ], _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected structural record literal expression")
 
     [<Test>]
@@ -567,7 +583,7 @@ type ParserTests () =
         let src = "let f x =\n    let y = x + 1\n    y"
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("f", [_], ELet _, false, _, _) -> ()
+        | SLet ("f", [_], _, ELet _, false, _, _) -> ()
         | _ -> Assert.Fail("Expected block-desugared let")
 
     [<Test>]
@@ -589,7 +605,7 @@ type ParserTests () =
         let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i)\n    |> List.iter print"
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("main", [], EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
+        | SLet ("main", [], _, EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
         | _ -> Assert.Fail("Expected pipeline continuation after multiline lambda argument")
 
     [<Test>]
@@ -597,7 +613,7 @@ type ParserTests () =
         let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i |> fib |> fun x -> $\"{x}\")\n    |> List.iter print"
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("main", [], EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
+        | SLet ("main", [], _, EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
         | _ -> Assert.Fail("Expected pipeline continuation after multiline nested lambda")
 
     [<Test>]
@@ -614,7 +630,7 @@ type ParserTests () =
     member _.``Parses exported top-level let binding with attribute`` () =
         let p = Helpers.parse "[<export>] let cosine x = x"
         match p.[0] with
-        | SLet ("cosine", [_], _, false, true, _) -> ()
+        | SLet ("cosine", [_], _, _, false, true, _) -> ()
         | _ -> Assert.Fail("Expected exported top-level let binding")
 
     [<Test>]
@@ -698,8 +714,8 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects bare parameter annotation syntax`` () =
-        let act () = Helpers.parse "let f x: int = x" |> ignore
+    member _.``Rejects return type annotation on non-function let binding`` () =
+        let act () = Helpers.parse "let value : int = 1" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]

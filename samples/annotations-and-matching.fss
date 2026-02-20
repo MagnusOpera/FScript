@@ -24,6 +24,15 @@ let describe_nominal_shape (address: { City: string; Zip: int }) =
 let describe_structural (address: {| City: string; Zip: int |}) =
     $"structural: {address.City} ({address.Zip})"
 
+// Return type annotation on let function.
+let city_line (address: Address) : string =
+    $"{address.City} ({address.Zip})"
+
+// Return type annotation + recursion.
+let rec countdown n : string =
+    if n <= 0 then "done"
+    else $"tick {n} -> {countdown (n - 1)}"
+
 let office = make_address { City = "London"; Zip = 12345 }
 let home = {| City = "Paris"; Zip = 75000 |}
 let home = {| home with Name = "Robert" |}
@@ -36,6 +45,8 @@ print (describe_nominal_shape (make_address home))
 print (describe_structural office)
 print (describe_structural home)
 print (describe_structural contact)
+print (city_line office)
+print (countdown 3)
 
 let match_nominal_shape value =
     match value with

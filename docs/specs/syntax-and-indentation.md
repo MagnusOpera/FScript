@@ -207,6 +207,8 @@ All of the following map literal layouts are valid:
   - structural lambda: `fun (x: {| Name: string; Tags: string list |}) -> ...`
   - declared-type-by-shape: `let say_hello (person: { Name: string }) = ...`
 - Inline record annotation fields are `;`-separated in single-line form.
+- Let-bound function return annotations are supported before `=`:
+  - `let f x : int = x + 1`
 
 ## Import directive
 - Import uses explicit alias syntax:

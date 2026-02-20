@@ -1,10 +1,11 @@
-# Function Parameter Annotations Specification
+# Function Annotations Specification
 
 ## Purpose
-This document specifies type annotations for function parameters in FScript.
+This document specifies type annotations for function parameters and returns in FScript.
 
 ## Annotation positions
 - Let-bound function parameters.
+- Let-bound function returns.
 - Lambda parameters.
 
 ## Supported forms
@@ -14,6 +15,10 @@ This document specifies type annotations for function parameters in FScript.
   - `let f x = x`
 - Annotated parameter:
   - `let f (x: int) = x + 1`
+- Annotated return:
+  - `let f x : int = x + 1`
+- Annotated parameter + return:
+  - `let f (x: int) : int = x + 1`
 - Mixed parameters:
   - `let f (x: int) y = y`
 
@@ -25,6 +30,10 @@ This document specifies type annotations for function parameters in FScript.
 
 ## Syntax rule
 - Annotated parameters use parenthesized form `(name: Type)`.
+- Let-bound function returns use `: Type` after all parameters and before `=`.
+  - `let f x y : int = x + y`
+- Return annotations are valid only for function bindings (bindings with at least one parameter).
+  - `let value : int = 1` is not valid.
 
 ## Supported annotation type syntax
 - Named/basic: `int`, `string`, `Node`
@@ -47,11 +56,13 @@ This document specifies type annotations for function parameters in FScript.
 
 ## Type-checking semantics
 - An annotation constrains parameter type during inference.
+- A return annotation constrains the inferred function result type.
 - Body usage unifies against the declared annotation.
-- Inferred function types include the annotated parameter type.
+- Inferred function types include annotated parameter and return constraints.
 
 ## Practical use
 - Annotations are useful for making function argument intent explicit.
 - Example:
   - `let display_node (node: Node) = $"{node.Value}"`
   - `let format_address (address: {| City: string; Zip: int |}) = $"{address.City} ({address.Zip})"`
+  - `let increment x : int = x + 1`

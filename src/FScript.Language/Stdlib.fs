@@ -53,8 +53,8 @@ module Stdlib =
 
         loadProgram ()
         |> List.collect (function
-            | SLet(name, _, _, _, _, _) -> [ name ]
+            | SLet(name, _, _, _, _, _, _) -> [ name ]
             | SLetPattern(pattern, _, _, _) -> patternBindingNames pattern
-            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
+            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
         |> Set.ofList

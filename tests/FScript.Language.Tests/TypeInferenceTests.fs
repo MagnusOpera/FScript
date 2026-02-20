@@ -64,6 +64,13 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers function with annotated return type`` () =
+        let typed = Helpers.infer "let increment x : int = x + 1\nincrement 2"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
     member _.``Infers structural inline record parameter annotation`` () =
         let typed =
             Helpers.infer
@@ -476,6 +483,18 @@ type TypeInferenceTests () =
     [<Test>]
     member _.``Reports type error for annotation mismatch`` () =
         let act () = Helpers.infer "let f (x: int) = x + true" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for return type annotation mismatch`` () =
+        let act () = Helpers.infer "let f x : string = x + 1" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Reports type error for recursive return annotation mismatch`` () =
+        let act () =
+            Helpers.infer "let rec even n : int = if n = 0 then true else odd (n - 1)\nand odd n : int = if n = 0 then false else even (n - 1)\neven 4"
+            |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

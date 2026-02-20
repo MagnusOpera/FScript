@@ -51,9 +51,9 @@ and Expr =
     | ERaise of Expr * Span
     | EFor of string * Expr * Expr * Span
     | EMatch of Expr * (Pattern * Expr option * Expr * Span) list * Span
-    | ELet of string * Expr * Expr * bool * Span
+    | ELet of string * Expr * Expr * bool * TypeRef option * Span
     | ELetPattern of Pattern * Expr * Expr * Span
-    | ELetRecGroup of (string * Param list * Expr * Span) list * Expr * Span
+    | ELetRecGroup of (string * Param list * TypeRef option * Expr * Span) list * Expr * Span
     | EList of Expr list * Span
     | ERange of Expr * Expr * Span
     | ETuple of Expr list * Span
@@ -84,9 +84,9 @@ and MapEntry =
 and Stmt =
     | SType of TypeDef
     | SImport of string * string * Span
-    | SLet of string * Param list * Expr * bool * bool * Span
+    | SLet of string * Param list * TypeRef option * Expr * bool * bool * Span
     | SLetPattern of Pattern * Expr * bool * Span
-    | SLetRecGroup of (string * Param list * Expr * Span) list * bool * Span
+    | SLetRecGroup of (string * Param list * TypeRef option * Expr * Span) list * bool * Span
     | SExpr of Expr
 
 type Program = Stmt list
@@ -119,7 +119,7 @@ module Ast =
         | ERaise (_, s) -> s
         | EFor (_, _, _, s) -> s
         | EMatch (_, _, s) -> s
-        | ELet (_, _, _, _, s) -> s
+        | ELet (_, _, _, _, _, s) -> s
         | ELetPattern (_, _, _, s) -> s
         | ELetRecGroup (_, _, s) -> s
         | EList (_, s) -> s

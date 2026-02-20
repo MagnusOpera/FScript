@@ -41,6 +41,8 @@ let x =
 - Parameter annotations use parenthesized form:
   - `let f (x: int) = ...`
   - `fun (x: int) -> ...`
+- Let-bound function return annotations use `: Type` before `=`:
+  - `let f x : int = ...`
 - Parameter annotations support two inline record forms:
   - structural: `let f (x: {| Name: string; Zip: int |}) = ...`
   - declared-type-by-shape: `let f (x: { Name: string; Zip: int }) = ...`

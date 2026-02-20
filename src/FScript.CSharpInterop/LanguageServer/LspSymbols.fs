@@ -75,11 +75,11 @@ module LspSymbols =
         lazy
             InteropServices.stdlibProgram()
             |> List.collect (function
-                | SLet(name, args, _, _, _, _) ->
+                | SLet(name, args, _, _, _, _, _) ->
                     [ name, (args |> List.map (fun p -> p.Name)) ]
                 | SLetRecGroup(bindings, _, _) ->
                     bindings
-                    |> List.map (fun (name, args, _, _) -> name, (args |> List.map (fun p -> p.Name)))
+                    |> List.map (fun (name, args, _, _, _) -> name, (args |> List.map (fun p -> p.Name)))
                 | _ -> [])
             |> Map.ofList
 
@@ -87,13 +87,13 @@ module LspSymbols =
         lazy
             InteropServices.stdlibProgram()
             |> List.collect (function
-                | SLet(name, _, _, _, _, span) ->
+                | SLet(name, _, _, _, _, _, span) ->
                     match tryStdlibVirtualUriFromSource span.Start.File with
                     | Some uri -> [ name, (uri, span) ]
                     | None -> []
                 | SLetRecGroup(bindings, _, _) ->
                     bindings
-                    |> List.collect (fun (name, _, _, span) ->
+                    |> List.collect (fun (name, _, _, _, span) ->
                         match tryStdlibVirtualUriFromSource span.Start.File with
                         | Some uri -> [ name, (uri, span) ]
                         | None -> [])
@@ -415,14 +415,14 @@ module LspSymbols =
                             Span = typeDef.Span } ])
 
                 typeSymbol :: caseSymbols
-            | SLet(name, args, _, _, _, span) ->
+            | SLet(name, args, _, _, _, _, span) ->
                 [ mkFromTyped name span (declarationKindFromArgs args) ]
             | SLetPattern(pattern, _, _, _) ->
                 collectPatternVarSpans pattern
                 |> List.map (fun (name, span) -> mkFromTyped name span 13)
             | SLetRecGroup(bindings, _, _) ->
                 bindings
-                |> List.map (fun (name, args, _, span) -> mkFromTyped name span (declarationKindFromArgs args))
+                |> List.map (fun (name, args, _, _, span) -> mkFromTyped name span (declarationKindFromArgs args))
             | _ -> [])
 
     let private buildTopLevelTypeTargetFromProgram (program: Program) =
@@ -521,7 +521,7 @@ module LspSymbols =
             match stmt with
             | SType _ ->
                 accepted <- accepted @ [ stmt ]
-            | SLet (name, _, _, _, _, _) ->
+            | SLet (name, _, _, _, _, _, _) ->
                 let candidate = accepted @ [ stmt ]
                 match tryInferWithCurrent candidate with
                 | Some typed ->
@@ -545,7 +545,7 @@ module LspSymbols =
                 match tryInferWithCurrent candidate with
                 | Some typed ->
                     accepted <- candidate
-                    for (name, _, _, _) in bindings do
+                    for (name, _, _, _, _) in bindings do
                         match extractTypeForName typed name with
                         | Some t -> result <- result |> Map.add name t
                         | None -> ()
@@ -623,7 +623,7 @@ module LspSymbols =
                         | Some g -> collectExpr state g
                         | None -> state
                     collectExpr withGuard body) withScrutinee
-            | ELet (_, value, body, _, _) ->
+            | ELet (_, value, body, _, _, _) ->
                 let withValue = collectExpr acc value
                 collectExpr withValue body
             | ELetPattern (_, value, body, _) ->
@@ -632,7 +632,7 @@ module LspSymbols =
             | ELetRecGroup (bindings, body, _) ->
                 let withBindings =
                     bindings
-                    |> List.fold (fun state (_, _, value, _) -> collectExpr state value) acc
+                    |> List.fold (fun state (_, _, _, value, _) -> collectExpr state value) acc
                 collectExpr withBindings body
             | EList (items, _) ->
                 items |> List.fold collectExpr acc
@@ -690,7 +690,7 @@ module LspSymbols =
             program
             |> List.fold (fun state stmt ->
                 match stmt with
-                | SLet (name, _, expr, _, _, span) ->
+                | SLet (name, _, _, expr, _, _, span) ->
                     let withDecl = addOccurrence name span state
                     collectExpr withDecl expr
                 | SLetPattern (pattern, expr, _, _) ->
@@ -700,7 +700,7 @@ module LspSymbols =
                     collectExpr withDecls expr
                 | SLetRecGroup (bindings, _, _) ->
                     bindings
-                    |> List.fold (fun inner (name, _, expr, span) ->
+                    |> List.fold (fun inner (name, _, _, expr, span) ->
                         let withDecl = addOccurrence name span inner
                         collectExpr withDecl expr) state
                 | SExpr expr ->
@@ -780,7 +780,7 @@ module LspSymbols =
                                 | None -> []
                             inGuard @ resolveExpr scopedWithPattern body))
                 inScrutinee @ inCases
-            | ELet (name, value, body, isRec, span) ->
+            | ELet (name, value, body, isRec, _, span) ->
                 if isRec then
                     withScope scopes (fun scoped ->
                         let scopedWithSelf = pushBindings scoped [ name, span ]
@@ -806,11 +806,11 @@ module LspSymbols =
                 withScope scopes (fun scoped ->
                     let names =
                         bindings
-                        |> List.map (fun (name, _, _, bindingSpan) -> name, bindingSpan)
+                        |> List.map (fun (name, _, _, _, bindingSpan) -> name, bindingSpan)
                     let scopedWithNames = pushBindings scoped names
                     let inBindings =
                         bindings
-                        |> List.collect (fun (_, args, valueExpr, _) ->
+                        |> List.collect (fun (_, args, _, valueExpr, _) ->
                             withScope scopedWithNames (fun scopedBinding ->
                                 let argBindings = args |> List.map (fun p -> p.Name, p.Span)
                                 let scopedWithArgs = pushBindings scopedBinding argBindings
@@ -854,7 +854,7 @@ module LspSymbols =
             | [] -> acc
             | stmt :: rest ->
                 match stmt with
-                | SLet (name, args, expr, isRec, _, span) ->
+                | SLet (name, args, _, expr, isRec, _, span) ->
                     let inExpr =
                         withScope scopes (fun scoped ->
                             let baseScope =
@@ -872,11 +872,11 @@ module LspSymbols =
                 | SLetRecGroup (bindings, _, _) ->
                     let nameBindings =
                         bindings
-                        |> List.map (fun (name, _, _, bindingSpan) -> name, bindingSpan)
+                        |> List.map (fun (name, _, _, _, bindingSpan) -> name, bindingSpan)
                     let scopesWithNames = pushBindings scopes nameBindings
                     let inBindings =
                         bindings
-                        |> List.collect (fun (_, args, valueExpr, _) ->
+                        |> List.collect (fun (_, args, _, valueExpr, _) ->
                             withScope scopesWithNames (fun scoped ->
                                 let argBindings = args |> List.map (fun p -> p.Name, p.Span)
                                 let scopedWithArgs = pushBindings scoped argBindings
@@ -1031,11 +1031,11 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (_, args, _, _, _, _) ->
+            | SLet (_, args, _, _, _, _, _) ->
                 collectFromArgs state args
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.fold (fun inner (_, args, _, _) -> collectFromArgs inner args) state
+                |> List.fold (fun inner (_, args, _, _, _) -> collectFromArgs inner args) state
             | _ ->
                 state) Map.empty
 
@@ -1077,11 +1077,11 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (_, args, _, _, _, _) ->
+            | SLet (_, args, _, _, _, _, _) ->
                 collectFromArgs state args
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.fold (fun inner (_, args, _, _) -> collectFromArgs inner args) state
+                |> List.fold (fun inner (_, args, _, _, _) -> collectFromArgs inner args) state
             | _ ->
                 state) Map.empty
 
@@ -1096,11 +1096,11 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (name, args, _, _, _, _) ->
+            | SLet (name, args, _, _, _, _, _) ->
                 addBinding name args state
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.fold (fun inner (name, args, _, _) -> addBinding name args inner) state
+                |> List.fold (fun inner (name, args, _, _, _) -> addBinding name args inner) state
             | _ ->
                 state) Map.empty
 
@@ -1120,11 +1120,11 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (name, args, _, _, _, _) ->
+            | SLet (name, args, _, _, _, _, _) ->
                 addBinding name args state
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.fold (fun inner (name, args, _, _) -> addBinding name args inner) state
+                |> List.fold (fun inner (name, args, _, _, _) -> addBinding name args inner) state
             | _ ->
                 state) Map.empty
 
@@ -1150,7 +1150,7 @@ module LspSymbols =
 
         let rec terminalExpr (expr: Expr) =
             match expr with
-            | ELet (_, _, body, _, _) -> terminalExpr body
+            | ELet (_, _, body, _, _, _) -> terminalExpr body
             | ELetRecGroup (_, body, _) -> terminalExpr body
             | EParen (inner, _) -> terminalExpr inner
             | _ -> expr
@@ -1170,13 +1170,13 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (name, args, expr, _, _, _) when not args.IsEmpty ->
+            | SLet (name, args, _, expr, _, _, _) when not args.IsEmpty ->
                 match tryResolve expr with
                 | Some returnType -> state |> Map.add name returnType
                 | None -> state
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.fold (fun inner (name, args, expr, _) ->
+                |> List.fold (fun inner (name, args, _, expr, _) ->
                     if args.IsEmpty then inner
                     else
                         match tryResolve expr with
@@ -1254,14 +1254,14 @@ module LspSymbols =
                                 | None -> []
                             inGuard @ collectFieldVarUses fieldTypes body)
                     inScrutinee @ inCases
-                | ELet (_, value, body, _, _) ->
+                | ELet (_, value, body, _, _, _) ->
                     collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
                 | ELetPattern (_, value, body, _) ->
                     collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
                 | ELetRecGroup (bindings, body, _) ->
                     let inBindings =
                         bindings
-                        |> List.collect (fun (_, _, valueExpr, _) -> collectFieldVarUses fieldTypes valueExpr)
+                        |> List.collect (fun (_, _, _, valueExpr, _) -> collectFieldVarUses fieldTypes valueExpr)
                     inBindings @ collectFieldVarUses fieldTypes body
                 | ELambda (_, body, _) ->
                     collectFieldVarUses fieldTypes body
@@ -1329,11 +1329,11 @@ module LspSymbols =
 
         program
         |> List.collect (function
-            | SLet (name, args, expr, _, _, _) when not args.IsEmpty ->
+            | SLet (name, args, _, expr, _, _, _) when not args.IsEmpty ->
                 fromBinding name expr
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.collect (fun (name, args, expr, _) ->
+                |> List.collect (fun (name, args, _, expr, _) ->
                     if args.IsEmpty then [] else fromBinding name expr)
             | _ -> [])
         |> List.distinctBy (fun (span, name, _) ->
@@ -1402,7 +1402,7 @@ module LspSymbols =
                             | None -> []
                         fromPattern @ fromGuard @ collectExprBindings body)
                 inScrutinee @ inCases
-            | ELet (name, value, body, _, span) ->
+            | ELet (name, value, body, _, _, span) ->
                 mkBinding name span (Ast.spanOfExpr body) LetBound None
                 :: (collectExprBindings value @ collectExprBindings body)
             | ELetPattern (pattern, value, body, _) ->
@@ -1412,7 +1412,7 @@ module LspSymbols =
             | ELetRecGroup (bindings, body, _) ->
                 let fromBindings =
                     bindings
-                    |> List.collect (fun (name, args, valueExpr, bindingSpan) ->
+                    |> List.collect (fun (name, args, _, valueExpr, bindingSpan) ->
                         let argBindings =
                             args
                             |> List.map (fun p ->
@@ -1475,13 +1475,13 @@ module LspSymbols =
         program
         |> List.collect (fun stmt ->
             match stmt with
-            | SLet (_, args, body, _, _, _) ->
+            | SLet (_, args, _, body, _, _, _) ->
                 fromTopLevelFunction args body
             | SLetPattern (_, expr, _, _) ->
                 collectExprBindings expr
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.collect (fun (_, args, body, _) -> fromTopLevelFunction args body)
+                |> List.collect (fun (_, args, _, body, _) -> fromTopLevelFunction args body)
             | SExpr expr ->
                 collectExprBindings expr
             | _ -> [])
@@ -1536,13 +1536,13 @@ module LspSymbols =
         program
         |> List.collect (fun stmt ->
             match stmt with
-            | SLet (name, args, expr, _, _, _) ->
+            | SLet (name, args, _, expr, _, _, _) ->
                 let allParams =
                     if args.IsEmpty then collectLambdaParams expr else args
                 emitHints name allParams
             | SLetRecGroup (bindings, _, _) ->
                 bindings
-                |> List.collect (fun (name, args, expr, _) ->
+                |> List.collect (fun (name, args, _, expr, _) ->
                     let allParams =
                         if args.IsEmpty then collectLambdaParams expr else args
                     emitHints name allParams)
@@ -1596,7 +1596,7 @@ module LspSymbols =
             program
             |> List.choose (fun stmt ->
                 match stmt with
-                | SLet (name, args, expr, _, _, _) ->
+                | SLet (name, args, _, expr, _, _, _) ->
                     let allParams =
                         if args.IsEmpty then collectLambdaParams expr else args
                     emitHint name allParams
@@ -1609,7 +1609,7 @@ module LspSymbols =
                 match stmt with
                 | SLetRecGroup (bindings, _, _) ->
                     bindings
-                    |> List.choose (fun (name, args, expr, _) ->
+                    |> List.choose (fun (name, args, _, expr, _) ->
                         let allParams =
                             if args.IsEmpty then collectLambdaParams expr else args
                         emitHint name allParams)
@@ -1672,13 +1672,13 @@ module LspSymbols =
                 collectExpr acc inner
             | EFor (_, source, body, _) ->
                 collectExpr (collectExpr acc source) body
-            | ELet (_, value, body, _, _) ->
+            | ELet (_, value, body, _, _, _) ->
                 collectExpr (collectExpr acc value) body
             | ELetPattern (_, value, body, _) ->
                 collectExpr (collectExpr acc value) body
             | ELetRecGroup (bindings, body, _) ->
                 let withBindings =
-                    bindings |> List.fold (fun state (_, _, value, _) -> collectExpr state value) acc
+                    bindings |> List.fold (fun state (_, _, _, value, _) -> collectExpr state value) acc
                 collectExpr withBindings body
             | EList (items, _)
             | ETuple (items, _) ->
@@ -1726,12 +1726,12 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (_, _, expr, _, _, _) ->
+            | SLet (_, _, _, expr, _, _, _) ->
                 collectExpr state expr
             | SLetPattern (_, expr, _, _) ->
                 collectExpr state expr
             | SLetRecGroup (bindings, _, _) ->
-                bindings |> List.fold (fun inner (_, _, expr, _) -> collectExpr inner expr) state
+                bindings |> List.fold (fun inner (_, _, _, expr, _) -> collectExpr inner expr) state
             | SExpr expr ->
                 collectExpr state expr
             | _ -> state) []
@@ -1794,13 +1794,13 @@ module LspSymbols =
                             | Some g -> collectExpr state false g
                             | None -> state
                         collectExpr withGuard false body) withScrutinee
-                | ELet (_, value, body, _, _) ->
+                | ELet (_, value, body, _, _, _) ->
                     collectExpr (collectExpr acc false value) false body
                 | ELetPattern (_, value, body, _) ->
                     collectExpr (collectExpr acc false value) false body
                 | ELetRecGroup (bindings, body, _) ->
                     let withBindings =
-                        bindings |> List.fold (fun state (_, _, value, _) -> collectExpr state false value) acc
+                        bindings |> List.fold (fun state (_, _, _, value, _) -> collectExpr state false value) acc
                     collectExpr withBindings false body
                 | ELambda (_, body, _) ->
                     collectExpr acc false body
@@ -1871,10 +1871,10 @@ module LspSymbols =
         program
         |> List.fold (fun state stmt ->
             match stmt with
-            | SLet (_, _, expr, _, _, _) ->
+            | SLet (_, _, _, expr, _, _, _) ->
                 collectExpr state false expr
             | SLetRecGroup (bindings, _, _) ->
-                bindings |> List.fold (fun inner (_, _, expr, _) -> collectExpr inner false expr) state
+                bindings |> List.fold (fun inner (_, _, _, expr, _) -> collectExpr inner false expr) state
             | SExpr expr ->
                 collectExpr state false expr
             | _ ->

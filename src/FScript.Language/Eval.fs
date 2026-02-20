@@ -467,7 +467,7 @@ module Eval =
                     evalExpr typeDefs env' body |> ignore
                 VUnit
             | _ -> raise (EvalException { Message = "For loop source must be list"; Span = span })
-        | ELet (name, value, body, isRec, span) ->
+        | ELet (name, value, body, isRec, _, span) ->
             if isRec then
                 match value with
                 | ELambda (param, lambdaBody, _) ->
@@ -496,7 +496,7 @@ module Eval =
                 let recEnv = ref env
                 let recEntries =
                     bindings
-                    |> List.map (fun (name, args, valueExpr, bindingSpan) ->
+                    |> List.map (fun (name, args, _, valueExpr, bindingSpan) ->
                         if args.IsEmpty then
                             raise (EvalException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
                         let folded = Seq.foldBack (fun arg accExpr -> ELambda(arg, accExpr, bindingSpan)) args valueExpr

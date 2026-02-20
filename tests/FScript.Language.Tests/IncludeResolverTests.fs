@@ -33,7 +33,7 @@ type IncludeResolverTests () =
             let program = IncludeResolver.parseProgramFromFile dir mainPath
             let lets =
                 program
-                |> List.choose (function | SLet(name, _, _, _, _, _) -> Some name | _ -> None)
+                |> List.choose (function | SLet(name, _, _, _, _, _, _) -> Some name | _ -> None)
             lets |> should contain "total"
             lets |> List.filter (fun name -> name.EndsWith(".common", StringComparison.Ordinal)) |> List.length |> should equal 1)
 
@@ -124,7 +124,7 @@ type IncludeResolverTests () =
             let names =
                 program
                 |> List.choose (function
-                    | SLet(name, _, _, _, _, _) -> Some name
+                    | SLet(name, _, _, _, _, _, _) -> Some name
                     | _ -> None)
             names |> List.exists (fun name -> name.EndsWith(".add1", StringComparison.Ordinal)) |> should equal true
             names |> should contain "value")
@@ -154,7 +154,7 @@ type IncludeResolverTests () =
             let letNames =
                 program
                 |> List.choose (function
-                    | SLet(name, _, _, _, _, _) -> Some name
+                    | SLet(name, _, _, _, _, _, _) -> Some name
                     | _ -> None)
 
             letNames |> should contain "defaults")
@@ -181,7 +181,7 @@ type IncludeResolverTests () =
             let names =
                 program
                 |> List.choose (function
-                    | SLet(name, _, _, _, _, _) -> Some name
+                    | SLet(name, _, _, _, _, _, _) -> Some name
                     | _ -> None)
 
             names |> should contain "value")
