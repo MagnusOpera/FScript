@@ -29,7 +29,7 @@ The extension is published on tag pushes only, to both:
 Release checklist:
 
 1. Update `vscode-fscript/package.json` version.
-2. Update `vscode-fscript/CHANGELOG.md`.
+2. Update root `CHANGELOG.md` (the extension changelog points to this file).
 3. Commit and push.
 4. Push tag `vX.Y.Z` matching `package.json` version.
 

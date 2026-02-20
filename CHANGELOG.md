@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Switched VS Code extension changelog to a symlink of root `CHANGELOG.md` so Marketplace/Open VSX release notes use a single shared source.
+
 ## [0.47.0]
 
 
