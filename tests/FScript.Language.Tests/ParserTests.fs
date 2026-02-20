@@ -593,6 +593,22 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
+    member _.``Parses block let with list containing multiline record literal`` () =
+        let src =
+            "let command = \"build\"\n"
+            + "let run =\n"
+            + "    let ops = [ { Command = \"docker\"\n"
+            + "                  Arguments = command\n"
+            + "                  ErrorLevel = 0 } ]\n"
+            + "    ops"
+        let p = Helpers.parse src
+        match p.[1] with
+        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord (fields, _) ], _), EVar ("ops", _), false, _, _), false, _, _) ->
+            fields.Length |> should equal 3
+        | _ ->
+            Assert.Fail("Expected block let with list containing multiline record literal")
+
+    [<Test>]
     member _.``Parses multiline lambda argument closed by parenthesis on same line`` () =
         let src = "Map.fold (fun acc key value ->\n    match value with\n    | \"workspace:*\" -> key :: acc\n    | _ -> acc) [] { [\"a\"] = \"workspace:*\" }"
         let p = Helpers.parse src

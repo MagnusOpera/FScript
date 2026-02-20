@@ -191,6 +191,17 @@ All of the following map literal layouts are valid:
     - indented case lines starting with `|`
 - The multiline union block ends on dedent.
 
+### Block-local let with multiline expression continuation
+- A block-local `let` value can use multiline expression continuations (for example list literals containing multiline record literals) as long as the block still ends with a final expression.
+
+```fsharp
+let build_ops command =
+    let ops = [ { Command = "docker"
+                  Arguments = command
+                  ErrorLevel = 0 } ]
+    ops
+```
+
 ## Type declaration forms
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`

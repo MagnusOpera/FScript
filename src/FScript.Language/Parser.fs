@@ -1313,18 +1313,35 @@ module Parser =
         and parseBlock () : Expr =
             let statements = ResizeArray<Stmt>()
             let mutable doneBlock = false
+            let mutable blockStatementColumn: int option = None
             while not doneBlock do
                 stream.SkipNewlines()
                 match stream.Peek().Kind with
                 | Dedent ->
                     stream.Next() |> ignore
-                    doneBlock <- true
+                    stream.SkipNewlines()
+                    let next = stream.Peek()
+                    let continuationDedent =
+                        match blockStatementColumn with
+                        | Some col ->
+                            match next.Kind with
+                            | EOF
+                            | Dedent
+                            | RParen
+                            | RBracket
+                            | RBrace -> false
+                            | _ -> next.Span.Start.Column >= col
+                        | None -> false
+                    if not continuationDedent then
+                        doneBlock <- true
                 | RParen
                 | RBracket
                 | RBrace ->
                     doneBlock <- true
                 | EOF -> doneBlock <- true
                 | Let ->
+                    if blockStatementColumn.IsNone then
+                        blockStatementColumn <- Some ((stream.Peek()).Span.Start.Column)
                     statements.Add(parseLetStmt false)
                 | Import ->
                     raise (ParseException { Message = "'import' is only supported at top level"; Span = stream.Peek().Span })
@@ -1335,6 +1352,8 @@ module Parser =
                 | LBracket when stream.PeekAt(1).Kind = Less ->
                     raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
                 | _ ->
+                    if blockStatementColumn.IsNone then
+                        blockStatementColumn <- Some ((stream.Peek()).Span.Start.Column)
                     let expr = parseExpr()
                     statements.Add(SExpr expr)
             if statements.Count = 0 then

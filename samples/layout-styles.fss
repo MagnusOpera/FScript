@@ -2,6 +2,11 @@ type Address =
     { City: string
       Zip: int }
 
+type Operation =
+    { Command: string
+      Arguments: string
+      ErrorLevel: int }
+
 let format_address (address: { City: string; Zip: int }) =
     $"{address.City} ({address.Zip})"
 
@@ -46,4 +51,12 @@ let all_count =
     + (capabilities_compact |> Map.count)
     + (capabilities_block |> Map.count)
 
-print $"{primary} | {fallback} | names={names_total} | maps={all_count}"
+let build_ops command =
+    let ops = [ { Command = "docker"
+                  Arguments = command
+                  ErrorLevel = 0 } ]
+    ops
+
+let ops = build_ops "build ."
+
+print $"{primary} | {fallback} | names={names_total} | maps={all_count} | ops={List.length ops}"
