@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.48.1]
+
+
 - Made unsigned macOS release-asset cleanup best-effort so transient GitHub API failures no longer fail the release workflow.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.48.0...0.48.1
 
 ## [0.48.0]
 
