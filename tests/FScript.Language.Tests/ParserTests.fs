@@ -286,6 +286,16 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected if expression with compact list record branches")
 
     [<Test>]
+    member _.``Parses record field assigned to indented compact multiline list`` () =
+        let src =
+            "let ops command =\n    { Batchable = false\n      Operations =\n        [ { Command = \"docker\"\n            Arguments = command\n            ErrorLevel = 0 }\n          { Command = \"docker\"\n            Arguments = command\n            ErrorLevel = 1 } ] }"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("ops", [ _ ], _, ERecord (fields, _), false, _, _) ->
+            fields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected record with indented list value")
+
+    [<Test>]
     member _.``Parses multi-parameter lambda expression`` () =
         let p = Helpers.parse "fun x y -> x + y"
         match p.[0] with

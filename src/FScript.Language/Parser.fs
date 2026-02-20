@@ -685,6 +685,15 @@ module Parser =
             allowIndentedApplication <- false
             allowBinaryNewlineSkipping <- false
             try
+                // Allow expression continuation on next indented line after assignments
+                // (for example record fields whose value is a multiline list literal).
+                let mutable progress = true
+                while progress do
+                    progress <- false
+                    while stream.Match(Newline) do
+                        progress <- true
+                    while stream.Match(Indent) do
+                        progress <- true
                 parseExpr()
             finally
                 allowIndentedApplication <- previousIndentedApplication
