@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.47.0]
+
+
 - Publishing to tap requires only sign artifacts.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.46.0...0.47.0
 
 ## [0.46.0]
 
