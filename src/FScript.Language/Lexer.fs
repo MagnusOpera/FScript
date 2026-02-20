@@ -165,8 +165,14 @@ module Lexer =
         let mutable col = 1
         let mutable atLineStart = true
         let mutable inLetBindingHead = false
+        let mutable parenDepth = 0
+        let mutable bracketDepth = 0
+        let mutable braceDepth = 0
 
         let emitIndentChanges newIndent span =
+            let insideDelimiterContext () =
+                parenDepth > 0 || bracketDepth > 0 || braceDepth > 0
+
             let current = indentStack.[indentStack.Count - 1]
             if newIndent > current then
                 indentStack.Add(newIndent)
@@ -178,7 +184,13 @@ module Lexer =
                     addToken Dedent span tokens
                     j <- j - 1
                 if indentStack.[indentStack.Count - 1] <> newIndent then
-                    raise (ParseException { Message = "Inconsistent indentation"; Span = span })
+                    if insideDelimiterContext () && indentStack.[indentStack.Count - 1] < newIndent then
+                        // Allow continuation indentation levels inside open delimiters
+                        // (for example compact list literals with multiline record items).
+                        indentStack.Add(newIndent)
+                        addToken Indent span tokens
+                    else
+                        raise (ParseException { Message = "Inconsistent indentation"; Span = span })
             else
                 ()
 
@@ -314,6 +326,7 @@ module Lexer =
                     col <- col + 2
                 | '|' when i + 1 < src.Length && src.[i + 1] = ']' ->
                     addToken BarRBracket (mkSpan sourceName line col 2) tokens
+                    if bracketDepth > 0 then bracketDepth <- bracketDepth - 1
                     i <- i + 2
                     col <- col + 2
                 | '|' when i + 1 < src.Length && src.[i + 1] = '|' ->
@@ -338,14 +351,31 @@ module Lexer =
                 | '>' -> addToken Greater (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '|' -> addToken Bar (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '@' -> addToken Append (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
-                | '(' -> addToken LParen (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
-                | ')' -> addToken RParen (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '(' ->
+                    addToken LParen (mkSpan sourceName line col 1) tokens
+                    parenDepth <- parenDepth + 1
+                    i <- i + 1
+                    col <- col + 1
+                | ')' ->
+                    addToken RParen (mkSpan sourceName line col 1) tokens
+                    if parenDepth > 0 then parenDepth <- parenDepth - 1
+                    i <- i + 1
+                    col <- col + 1
                 | '[' when i + 1 < src.Length && src.[i + 1] = '|' ->
                     addToken LBracketBar (mkSpan sourceName line col 2) tokens
+                    bracketDepth <- bracketDepth + 1
                     i <- i + 2
                     col <- col + 2
-                | '[' -> addToken LBracket (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
-                | ']' -> addToken RBracket (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '[' ->
+                    addToken LBracket (mkSpan sourceName line col 1) tokens
+                    bracketDepth <- bracketDepth + 1
+                    i <- i + 1
+                    col <- col + 1
+                | ']' ->
+                    addToken RBracket (mkSpan sourceName line col 1) tokens
+                    if bracketDepth > 0 then bracketDepth <- bracketDepth - 1
+                    i <- i + 1
+                    col <- col + 1
                 | ';' -> addToken Semicolon (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | ',' -> addToken Comma (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | ':' -> addToken Colon (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
@@ -355,8 +385,16 @@ module Lexer =
                     col <- col + 2
                 | '.' -> addToken Dot (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
                 | '#' -> addToken Hash (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
-                | '{' -> addToken LBrace (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
-                | '}' -> addToken RBrace (mkSpan sourceName line col 1) tokens; i <- i + 1; col <- col + 1
+                | '{' ->
+                    addToken LBrace (mkSpan sourceName line col 1) tokens
+                    braceDepth <- braceDepth + 1
+                    i <- i + 1
+                    col <- col + 1
+                | '}' ->
+                    addToken RBrace (mkSpan sourceName line col 1) tokens
+                    if braceDepth > 0 then braceDepth <- braceDepth - 1
+                    i <- i + 1
+                    col <- col + 1
                 | _ ->
                     raise (ParseException { Message = sprintf "Unexpected character '%c'" ch; Span = mkSpan sourceName line col 1 })
 

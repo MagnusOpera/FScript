@@ -107,6 +107,16 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected block multiline list literal")
 
     [<Test>]
+    member _.``Parses compact list with multiline record items`` () =
+        let src = "let ops =\n    [ { A = 1\n        B = 2 }\n      { A = 3\n        B = 4 } ]"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("ops", [], _, EList ([ ERecord (firstFields, _); ERecord (secondFields, _) ], _), false, _, _) ->
+            firstFields.Length |> should equal 2
+            secondFields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected compact list with multiline record items")
+
+    [<Test>]
     member _.``Rejects multiline list literal with '[' kept on assignment line`` () =
         let act () = Helpers.parse "let x = [\n 1\n 2\n]" |> ignore
         act |> should throw typeof<ParseException>
@@ -607,6 +617,20 @@ type ParserTests () =
             fields.Length |> should equal 3
         | _ ->
             Assert.Fail("Expected block let with list containing multiline record literal")
+
+    [<Test>]
+    member _.``Parses block let with compact list containing multiple multiline record items`` () =
+        let src =
+            "let run =\n"
+            + "    let ops = [ { A = 1\n"
+            + "                  B = 2 }\n"
+            + "                { A = 3\n"
+            + "                  B = 4 } ]\n"
+            + "    ops"
+        let p = Helpers.parse src
+        match p.[0] with
+        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord _; ERecord _ ], _), EVar ("ops", _), false, _, _), false, _, _) -> ()
+        | _ -> Assert.Fail("Expected block-local compact list with multiline record items")
 
     [<Test>]
     member _.``Parses multiline lambda argument closed by parenthesis on same line`` () =

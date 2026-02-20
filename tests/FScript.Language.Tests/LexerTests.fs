@@ -99,3 +99,16 @@ type LexerTests () =
         tokens |> List.exists (fun t -> t.Kind = LBrace) |> should equal true
         tokens |> List.exists (fun t -> t.Kind = LBracket) |> should equal true
         tokens |> List.exists (fun t -> t.Kind = RBracket) |> should equal true
+
+    [<Test>]
+    member _.``Tokenizes compact list with multiline record items`` () =
+        let src = "let ops =\n    [ { A = 1\n        B = 2 }\n      { A = 3\n        B = 4 } ]"
+        let tokens = Lexer.tokenize src
+        tokens |> List.exists (fun t -> t.Kind = LBracket) |> should equal true
+        tokens |> List.exists (fun t -> t.Kind = LBrace) |> should equal true
+
+    [<Test>]
+    member _.``Rejects unrelated inconsistent indentation`` () =
+        let src = "let run =\n    let x = 1\n  let y = 2"
+        let act () = Lexer.tokenize src |> ignore
+        act |> should throw typeof<ParseException>

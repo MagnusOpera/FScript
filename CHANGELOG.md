@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed lexer indentation handling for compact list layouts with multiple multiline record items so Terrabuild-style operation lists parse without inconsistent-indentation errors.
+
 ## [0.45.0]
 
 

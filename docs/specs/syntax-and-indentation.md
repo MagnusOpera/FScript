@@ -202,6 +202,16 @@ let build_ops command =
     ops
 ```
 
+- Compact list layout with multiple multiline record items is also supported:
+
+```fsharp
+let ops =
+    [ { A = 1
+        B = 2 }
+      { A = 3
+        B = 4 } ]
+```
+
 ## Type declaration forms
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`

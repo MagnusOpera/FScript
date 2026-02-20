@@ -1320,17 +1320,24 @@ module Parser =
                 | Dedent ->
                     stream.Next() |> ignore
                     stream.SkipNewlines()
+                    let rec findNextNonLayout (offset: int) =
+                        match stream.PeekAt(offset).Kind with
+                        | Newline
+                        | Indent
+                        | Dedent -> findNextNonLayout (offset + 1)
+                        | _ -> stream.PeekAt(offset)
+                    let nextSignificant = findNextNonLayout 0
                     let next = stream.Peek()
                     let continuationDedent =
                         match blockStatementColumn with
                         | Some col ->
-                            match next.Kind with
+                            match nextSignificant.Kind with
                             | EOF
                             | Dedent
                             | RParen
                             | RBracket
                             | RBrace -> false
-                            | _ -> next.Span.Start.Column >= col
+                            | _ -> nextSignificant.Span.Start.Column >= col
                         | None -> false
                     if not continuationDedent then
                         doneBlock <- true
