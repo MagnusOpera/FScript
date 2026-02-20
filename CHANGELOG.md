@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.49.0]
+
+
 - Fixed `if ... then ... else` parsing when branches contain compact multiline list literals with nested record items.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.48.1...0.49.0
 
 ## [0.48.1]
 
