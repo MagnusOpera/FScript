@@ -4,9 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.54.0]
+
+
 - Split VS Code Marketplace and Open VSX publishing into separate release jobs and added idempotent publish scripts so duplicate-version reruns succeed while real publish errors still fail.
 - Updated package/readme wording from `immutable-first` to `immutable-by-design` to reflect immutable-only semantics.
 - Switched NuGet package readme for `MagnusOpera.FScript.Language` and `MagnusOpera.FScript.Runtime` to a targeted `NUGET.md` with logo, overview, rationale, and license.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.53.0...0.54.0
 
 ## [0.53.0]
 
