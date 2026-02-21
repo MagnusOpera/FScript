@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.51.0]
+
+
 - Added CLI extern configuration flags (`--no-default-externs`, repeatable `--extern-assembly`) with attribute-based provider discovery and conflict validation.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.50.0...0.51.0
 
 ## [0.50.0]
 
