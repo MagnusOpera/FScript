@@ -4,11 +4,17 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.52.0]
+
+
 - Added `Json.serialize` and `Xml.serialize` externs for option-based JSON/XML serialization in runtime hosts.
 - Renamed XML decode extern from `Xml.values` to `Xml.deserialize`.
 - Replaced `Fs.isFile` and `Fs.isDirectory` with `Fs.kind` returning stdlib union `FsKind` (`File`/`Directory`/`Missing`) for direct pattern matching.
 - Added host-configurable sandbox exclusions (`HostContext.ExcludedPaths`) so `Fs.glob`/`Fs.enumerateFiles` hide blocked entries and `Fs.readText`/`Fs.writeText`/`Fs.createDirectory` fail immediately on blocked paths.
 - Added built-in `String.*` helpers: `replace`, `indexOf`, `toLower`, `toUpper`, `substring`, `concat`, and `split`.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.51.0...0.52.0
+
 ## [0.51.0]
 
 
