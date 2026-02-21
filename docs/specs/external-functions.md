@@ -13,6 +13,9 @@ An external function is represented by:
 
 Registry entrypoint:
 - `FScript.Runtime.Registry.all : HostContext -> ExternalFunction list`
+  - `HostContext` includes:
+    - `RootDirectory : string`
+    - `ExcludedPaths : string list` (absolute paths hidden/blocked inside root)
 - Optional plugin protocol marker:
   - `[<FScript.Runtime.FScriptExternProvider>]` on `public static` provider methods in user assemblies
   - supported method signatures:
@@ -48,6 +51,10 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Fs.fileNameWithoutExtension : string -> string`
 - `Fs.glob : string -> string list option`
 - `Fs.enumerateFiles : string -> string -> string list option`
+- Excluded path policy:
+  - `Fs.glob` and `Fs.enumerateFiles` hide excluded entries.
+  - `Fs.readText`, `Fs.writeText`, and `Fs.createDirectory` throw an eval error on excluded targets.
+  - `Fs.exists` returns `false` and `Fs.kind` returns `FsKind.Missing` for excluded targets.
 
 ### Regex
 - `Regex.matchGroups : string -> string -> string list option`

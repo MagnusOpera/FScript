@@ -87,6 +87,7 @@ Use this when:
 ### CLI execution path
 1. `FScript` reads CLI args, splits script arguments after `--`, and picks mode: file path, piped stdin, `version`, or interactive REPL.
 2. For execution modes, `FScript` builds `HostContext` root and resolves externs:
+   - `HostContext` includes `RootDirectory` and `ExcludedPaths`
    - default runtime externs from `Registry.all` (unless `--no-default-externs`)
    - optional user extern assemblies via `--extern-assembly`
    - duplicate extern names are rejected as fatal CLI errors

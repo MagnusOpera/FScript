@@ -9,7 +9,7 @@ open FScript.Runtime
 type RegistryTests () =
     [<Test>]
     member _.``Registry exposes expected extern names`` () =
-        let host = { RootDirectory = Directory.GetCurrentDirectory() }
+        let host = { RootDirectory = Directory.GetCurrentDirectory(); ExcludedPaths = [] }
         let names = Registry.all host |> List.map (fun e -> e.Name) |> Set.ofList
         names.Contains "Fs.readText" |> should equal true
         names.Contains "Fs.exists" |> should equal true

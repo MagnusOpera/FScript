@@ -1,0 +1,15 @@
+let files =
+  Fs.enumerateFiles "." "**/*"
+  |> Option.defaultValue []
+
+let directories =
+  "." :: (files |> List.choose Fs.parentDirectory)
+  |> List.distinct
+  |> List.choose (fun path ->
+      match Fs.kind path with
+      | FsKind.Directory dir -> Some dir
+      | _ -> None)
+  |> List.distinct
+
+print $"Directories from root: {directories}"
+print $"Files from root: {files}"

@@ -9,7 +9,7 @@ open FScript.Runtime
 
 [<TestFixture>]
 type HostExternTests () =
-    let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory() }
+    let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); ExcludedPaths = [] }
     let externs = Registry.all host
 
     [<Test>]
@@ -109,7 +109,7 @@ type HostExternTests () =
         let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(root) |> ignore
         try
-            let localExterns = Registry.all { RootDirectory = root }
+            let localExterns = Registry.all { RootDirectory = root; ExcludedPaths = [] }
             let script =
                 "let created = Fs.createDirectory \"tmp\"\n" +
                 "let written = Fs.writeText \"tmp/file.txt\" \"hello\"\n" +
@@ -139,7 +139,7 @@ type HostExternTests () =
         try
             let file = Path.Combine(root, "item.txt")
             File.WriteAllText(file, "x")
-            let localExterns = Registry.all { RootDirectory = root }
+            let localExterns = Registry.all { RootDirectory = root; ExcludedPaths = [] }
             let script =
                 "match Fs.kind \"item.txt\" with\n" +
                 "| FsKind.File file -> file\n" +
@@ -148,6 +148,32 @@ type HostExternTests () =
             match Helpers.evalWithExterns localExterns script with
             | VString "item.txt" -> ()
             | _ -> Assert.Fail("Expected FsKind.File match branch")
+        finally
+            if Directory.Exists(root) then
+                Directory.Delete(root, true)
+
+    [<Test>]
+    member _.``Fs excluded paths hide probes and fail read/write`` () =
+        let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(root) |> ignore
+        try
+            let blocked = Path.Combine(root, ".git")
+            Directory.CreateDirectory(blocked) |> ignore
+            File.WriteAllText(Path.Combine(blocked, "config"), "x")
+            let localExterns = Registry.all { RootDirectory = root; ExcludedPaths = [ blocked ] }
+
+            match Helpers.evalWithExterns localExterns "Fs.kind \".git\"" with
+            | VUnionCase("FsKind", "Missing", None) -> ()
+            | _ -> Assert.Fail("Expected Fs.kind Missing for excluded path")
+
+            match Helpers.evalWithExterns localExterns "Fs.exists \".git/config\"" with
+            | VBool false -> ()
+            | _ -> Assert.Fail("Expected Fs.exists false for excluded path")
+
+            let readAct () = Helpers.evalWithExterns localExterns "Fs.readText \".git/config\"" |> ignore
+            let writeAct () = Helpers.evalWithExterns localExterns "Fs.writeText \".git/config\" \"y\"" |> ignore
+            Assert.Throws<EvalException>(TestDelegate readAct) |> ignore
+            Assert.Throws<EvalException>(TestDelegate writeAct) |> ignore
         finally
             if Directory.Exists(root) then
                 Directory.Delete(root, true)

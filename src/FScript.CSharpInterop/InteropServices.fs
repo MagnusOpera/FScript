@@ -16,7 +16,7 @@ module InteropServices =
             Directory.GetCurrentDirectory()
 
     let runtimeExternsForSourcePath (sourcePath: string) : ExternalFunction list =
-        let ctx = { HostContext.RootDirectory = resolveRootDirectory sourcePath }
+        let ctx = { HostContext.RootDirectory = resolveRootDirectory sourcePath; ExcludedPaths = [] }
         Registry.all ctx
 
     let private lspEnvironmentPreludeProgram : Program =

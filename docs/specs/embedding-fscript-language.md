@@ -10,6 +10,7 @@ Note on CLI host behavior:
 - The `fscript` CLI injects `let Env` into script execution.
 - The `Environment` type is provided by stdlib.
 - That injection is a CLI host convenience, not part of the `FScript.Language` core API contract.
+- Hosts can provide filesystem exclusions through `HostContext.ExcludedPaths`.
 
 ## Namespace and entry points
 
@@ -68,7 +69,7 @@ Only top-level exported bindings are exposed through this API.
 open FScript.Language
 open FScript.Runtime
 
-let externs = Registry.all { RootDirectory = "." }
+let externs = Registry.all { RootDirectory = "."; ExcludedPaths = [] }
 let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y"
 let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
 ```
@@ -214,7 +215,7 @@ Use `ScriptHost` when you want to invoke exported functions repeatedly.
 open FScript.Language
 open FScript.Runtime
 
-let hostContext = { RootDirectory = "." }
+let hostContext = { RootDirectory = "."; ExcludedPaths = [] }
 let externs = Registry.all hostContext
 
 let loaded =
@@ -243,7 +244,7 @@ let embeddedSources =
 
 let resolver path = embeddedSources |> Map.tryFind path
 
-let externs = Registry.all { RootDirectory = root }
+let externs = Registry.all { RootDirectory = root; ExcludedPaths = [] }
 let loaded =
     ScriptHost.loadSourceWithIncludes externs root entryFile entrySource resolver
 

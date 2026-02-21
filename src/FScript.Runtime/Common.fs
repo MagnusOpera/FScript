@@ -18,16 +18,45 @@ module internal HostCommon =
     let normalizeRoot (ctx: HostContext) =
         Path.GetFullPath(ctx.RootDirectory)
 
+    let isWithinRoot (root: string) (fullPath: string) =
+        fullPath = root || fullPath.StartsWith(root + string Path.DirectorySeparatorChar, StringComparison.Ordinal)
+
     let tryResolvePath (ctx: HostContext) (candidate: string) =
         try
             let root = normalizeRoot ctx
             let full =
                 if Path.IsPathRooted(candidate) then Path.GetFullPath(candidate)
                 else Path.GetFullPath(Path.Combine(root, candidate))
-            if full = root || full.StartsWith(root + string Path.DirectorySeparatorChar, StringComparison.Ordinal) then
+            if isWithinRoot root full then
                 Some full
             else None
         with _ -> None
+
+    let private normalizeExcludedPaths (ctx: HostContext) =
+        let root = normalizeRoot ctx
+        ctx.ExcludedPaths
+        |> List.choose (fun path ->
+            try
+                let full = Path.GetFullPath(path)
+                if isWithinRoot root full then
+                    Some full
+                else
+                    None
+            with _ ->
+                None)
+
+    let private isExcludedDirectoryCandidate (fullExcludedPath: string) =
+        Directory.Exists(fullExcludedPath)
+        || fullExcludedPath.EndsWith(string Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        || fullExcludedPath.EndsWith(string Path.AltDirectorySeparatorChar, StringComparison.Ordinal)
+
+    let isExcludedPath (ctx: HostContext) (fullPath: string) =
+        normalizeExcludedPaths ctx
+        |> List.exists (fun excludedPath ->
+            if isExcludedDirectoryCandidate excludedPath then
+                isWithinRoot excludedPath fullPath
+            else
+                String.Equals(excludedPath, fullPath, StringComparison.Ordinal))
 
     let globToRegex (glob: string) =
         let escaped = Regex.Escape(glob.Replace("\\", "/"))

@@ -1,4 +1,5 @@
 namespace FScript.Runtime
 
 type HostContext =
-    { RootDirectory: string }
+    { RootDirectory: string
+      ExcludedPaths: string list }
