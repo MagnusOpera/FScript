@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.57.0]
+
+
 - Replaced `Xml.deserialize` with `Xml.queryValues` for explicit value extraction from XML strings.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.56.0...0.57.0
 
 ## [0.56.0]
 
