@@ -32,12 +32,12 @@ type TypeInferenceTests () =
             | _ -> Assert.Fail("Expected expression")
 
         assertType "String.replace \"a\" \"a\" \"b\"" TString
-        assertType "String.indexOf \"abc\" \"b\"" (TOption TInt)
+        assertType "String.indexOf \"b\" \"abc\"" (TOption TInt)
         assertType "String.toLower \"ABC\"" TString
         assertType "String.toUpper \"abc\"" TString
-        assertType "String.substring \"abcdef\" 1 2" (TOption TString)
+        assertType "String.substring 1 2 \"abcdef\"" (TOption TString)
         assertType "String.concat \",\" [\"a\";\"b\"]" TString
-        assertType "String.split \"a,b\" \",\"" (TList TString)
+        assertType "String.split \",\" \"a,b\"" (TList TString)
 
     [<Test>]
     member _.``Reports type error for invalid String.concat argument type`` () =

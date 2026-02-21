@@ -117,7 +117,7 @@ module Eval =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString source; VString oldValue; VString newValue ] ->
+                | [ VString oldValue; VString newValue; VString source ] ->
                     VString(source.Replace(oldValue, newValue))
                 | _ ->
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
@@ -130,7 +130,7 @@ module Eval =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString source; VString value ] ->
+                | [ VString value; VString source ] ->
                     let index = source.IndexOf(value, System.StringComparison.Ordinal)
                     if index >= 0 then VOption (Some (VInt (int64 index))) else VOption None
                 | _ ->
@@ -163,12 +163,12 @@ module Eval =
 
     let private builtinStringSubstring : ExternalFunction =
         { Name = "String.substring"
-          Scheme = Forall([], TFun(TString, TFun(TInt, TFun(TInt, TOption TString))))
+          Scheme = Forall([], TFun(TInt, TFun(TInt, TFun(TString, TOption TString))))
           Arity = 3
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString source; VInt start; VInt length ] ->
+                | [ VInt start; VInt length; VString source ] ->
                     let startIndex = int start
                     let sliceLength = int length
                     if startIndex < 0 || sliceLength < 0 || startIndex > source.Length || startIndex + sliceLength > source.Length then
@@ -209,7 +209,7 @@ module Eval =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString source; VString separator ] ->
+                | [ VString separator; VString source ] ->
                     source.Split([| separator |], System.StringSplitOptions.None)
                     |> Array.toList
                     |> List.map VString

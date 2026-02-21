@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made `String.replace`, `String.indexOf`, `String.substring`, and `String.split` consistently pipeline-friendly by using data-last argument order.
+
 ## [0.55.0]
 
 

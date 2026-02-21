@@ -1069,7 +1069,7 @@ module TypeInfer =
               "String.indexOf", Forall([], TFun(TString, TFun(TString, TOption TInt)))
               "String.toLower", Forall([], TFun(TString, TString))
               "String.toUpper", Forall([], TFun(TString, TString))
-              "String.substring", Forall([], TFun(TString, TFun(TInt, TFun(TInt, TOption TString))))
+              "String.substring", Forall([], TFun(TInt, TFun(TInt, TFun(TString, TOption TString))))
               "String.concat", Forall([], TFun(TString, TFun(TList TString, TString)))
               "String.split", Forall([], TFun(TString, TFun(TString, TList TString))) ]
             |> Map.ofList

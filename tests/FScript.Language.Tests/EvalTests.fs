@@ -244,15 +244,19 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates string manipulation builtins`` () =
-        match Helpers.eval "String.replace \"hello world\" \"world\" \"fscript\"" with
+        match Helpers.eval "String.replace \"world\" \"fscript\" \"hello world\"" with
         | VString "hello fscript" -> ()
         | _ -> Assert.Fail("Expected replaced string")
 
-        match Helpers.eval "String.indexOf \"hello\" \"ll\"" with
+        match Helpers.eval "let value = \"D/D.csproj\"\nvalue |> String.replace \"\\\"\" \"&quot;\" |> String.replace \"'\" \"&apos;\"" with
+        | VString "D/D.csproj" -> ()
+        | _ -> Assert.Fail("Expected pipeline-friendly String.replace to preserve unquoted path")
+
+        match Helpers.eval "String.indexOf \"ll\" \"hello\"" with
         | VOption (Some (VInt 2L)) -> ()
         | _ -> Assert.Fail("Expected index Some 2")
 
-        match Helpers.eval "String.indexOf \"hello\" \"zz\"" with
+        match Helpers.eval "String.indexOf \"zz\" \"hello\"" with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected None for missing index")
 
@@ -264,11 +268,11 @@ type EvalTests () =
         | VString "HELLO" -> ()
         | _ -> Assert.Fail("Expected upper-cased string")
 
-        match Helpers.eval "String.substring \"abcdef\" 1 3" with
+        match Helpers.eval "String.substring 1 3 \"abcdef\"" with
         | VOption (Some (VString "bcd")) -> ()
         | _ -> Assert.Fail("Expected Some substring")
 
-        match Helpers.eval "String.substring \"abcdef\" 4 8" with
+        match Helpers.eval "String.substring 4 8 \"abcdef\"" with
         | VOption None -> ()
         | _ -> Assert.Fail("Expected None for invalid range")
 
@@ -280,7 +284,7 @@ type EvalTests () =
         | VString "" -> ()
         | _ -> Assert.Fail("Expected empty string for empty list")
 
-        match Helpers.eval "String.split \"a,b,c\" \",\"" with
+        match Helpers.eval "String.split \",\" \"a,b,c\"" with
         | VList [ VString "a"; VString "b"; VString "c" ] -> ()
         | _ -> Assert.Fail("Expected split string list")
 
