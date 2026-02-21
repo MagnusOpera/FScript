@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Updated package/readme wording from `immutable-first` to `immutable-by-design` to reflect immutable-only semantics.
+- Switched NuGet package readme for `MagnusOpera.FScript.Language` and `MagnusOpera.FScript.Runtime` to a targeted `NUGET.md` with logo, overview, rationale, and license.
+
 ## [0.53.0]
 
 
