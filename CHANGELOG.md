@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.56.0]
+
+
 - Removed `Xml.serialize` from runtime externs; `Xml.deserialize` remains available.
 - Made `String.replace`, `String.indexOf`, `String.substring`, and `String.split` consistently pipeline-friendly by using data-last argument order.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.55.0...0.56.0
 
 ## [0.55.0]
 
