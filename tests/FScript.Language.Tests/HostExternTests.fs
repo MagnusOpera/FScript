@@ -348,18 +348,14 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some serialized json")
 
     [<Test>]
-    member _.``Xml deserialize works with record payloads`` () =
+    member _.``Xml queryValues extracts explicit values`` () =
         let script =
-            "type Item = { Name: string }\n" +
-            "let xml = \"<root><Item><Name>x</Name></Item></root>\"\n" +
-            "Xml.deserialize (typeof Item) xml \"Item\""
+            "let xml = \"<root><ProjectReference Include=\\\"A.csproj\\\" /><ProjectReference Include=\\\"B.csproj\\\" /></root>\"\n" +
+            "Xml.queryValues \"//ProjectReference/@Include\" xml"
 
         match Helpers.evalWithExterns externs script with
-        | VOption (Some (VList [ VRecord fields ])) ->
-            match fields.TryFind "Name" with
-            | Some (VString "x") -> ()
-            | _ -> Assert.Fail("Expected Name field with value x")
-        | _ -> Assert.Fail("Expected XML roundtrip result")
+        | VOption (Some (VList [ VString "A.csproj"; VString "B.csproj" ])) -> ()
+        | _ -> Assert.Fail("Expected explicit XML attribute values")
 
     [<Test>]
     member _.``Regex groups external returns captures`` () =

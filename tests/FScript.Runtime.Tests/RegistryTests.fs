@@ -30,5 +30,6 @@ type RegistryTests () =
         names.Contains "print" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Json.serialize" |> should equal true
-        names.Contains "Xml.deserialize" |> should equal true
+        names.Contains "Xml.queryValues" |> should equal true
+        names.Contains "Xml.deserialize" |> should equal false
         names.Contains "Xml.serialize" |> should equal false

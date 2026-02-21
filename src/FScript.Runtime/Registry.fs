@@ -21,4 +21,4 @@ module Registry =
           PrintExterns.print
           JsonExterns.deserialize
           JsonExterns.serialize
-          XmlExterns.deserialize ]
+          XmlExterns.query_values ]

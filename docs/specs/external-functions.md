@@ -94,12 +94,17 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Typed decoders
 - `Json.deserialize : type -> string -> 'a option`
 - `Json.serialize : 'a -> string option`
-- `Xml.deserialize : type -> string -> string -> 'a list option`
+- `Xml.queryValues : string -> string -> string list option`
+  - argument order: `query -> xmldoc`
+  - query subset: `.../@attr` and `.../text()` selectors only
+  - supports simple element paths with optional leading `//` descendant step
+  - returns `Some []` when query is valid but no values match
+  - returns `None` for XML parse failure or invalid/unsupported query syntax
 
 ## Error and option behavior
 - Type/arity mismatch in extern calls raises eval errors.
 - Many data/IO externs return `None` on operational failures (parse/IO/regex failures), rather than throwing.
-- `Xml.deserialize` does not support XML namespaces.
+- `Xml.queryValues` does not support XML namespaces.
 
 ## Extending with new externs
 Recommended steps:
