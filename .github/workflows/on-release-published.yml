@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release-nuget:
     runs-on: ubuntu-latest
@@ -31,8 +35,9 @@ jobs:
             dotnet nuget push "$pkg" --skip-duplicate --api-key "${{ secrets.NUGET_KEY }}" --source https://api.nuget.org/v3/index.json
           done
 
-  publish-vscode-extension:
+  publish-vscode-marketplace:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,28 +50,38 @@ jobs:
           tag: ${{ github.ref_name }}
           fileName: '*.vsix'
 
-      - name: Install extension publishing tools
-        run: npm install -g @vscode/vsce@3.5 ovsx@0.9
+      - name: Install VS Code publishing tool
+        run: npm install -g @vscode/vsce@3.5
 
       - name: Publish to VS Code Marketplace
         shell: bash
-        run: |
-          VSIX_FILE=$(ls -1 *.vsix | head -n 1)
-          if [ -z "$VSIX_FILE" ]; then
-            echo "No VSIX artifact found in release assets."
-            exit 1
-          fi
-          vsce publish --packagePath "$VSIX_FILE" --pat "${{ secrets.VSCE_TOKEN }}"
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: ./.github/scripts/publish-vscode-marketplace.sh
+
+  publish-open-vsx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download VSIX artifact
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: ${{ github.ref_name }}
+          fileName: '*.vsix'
+
+      - name: Install Open VSX publishing tool
+        run: npm install -g ovsx@0.9
 
       - name: Publish to Open VSX
         shell: bash
-        run: |
-          VSIX_FILE=$(ls -1 *.vsix | head -n 1)
-          if [ -z "$VSIX_FILE" ]; then
-            echo "No VSIX artifact found in release assets."
-            exit 1
-          fi
-          ovsx publish "$VSIX_FILE" --pat "${{ secrets.OPEN_VSX_TOKEN }}"
+        env:
+          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
+        run: ./.github/scripts/publish-open-vsx.sh
 
   sign-and-notarize:
     runs-on: macos-latest
