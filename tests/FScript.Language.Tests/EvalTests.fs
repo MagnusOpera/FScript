@@ -509,6 +509,12 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected interpolation with string-literal placeholder expression")
 
     [<Test>]
+    member _.``Evaluates interpolation containing escaped quotes around placeholder`` () =
+        match Helpers.eval "let value = \"'\"\n$\"Path=\\\"{value}\\\"\"" with
+        | VString "Path=\"'\"" -> ()
+        | _ -> Assert.Fail("Expected interpolation value with quoted placeholder content")
+
+    [<Test>]
     member _.``Evaluates typeof for explicit recursive type`` () =
         match Helpers.eval "type rec Node = { Value: int; Next: Node option }\ntypeof Node" with
         | VTypeToken _ -> ()

@@ -10,13 +10,21 @@ module Pretty =
             | _ -> acc
         loop [ firstArg ] body
 
+    let private escapeStringLiteral (value: string) =
+        value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "\\r")
+            .Replace("\n", "\\n")
+            .Replace("\t", "\\t")
+
     let rec valueToString v =
         match v with
         | VUnit -> "()"
         | VInt i -> string i
         | VFloat f -> string f
         | VBool b -> if b then "true" else "false"
-        | VString s -> sprintf "\"%s\"" s
+        | VString s -> sprintf "\"%s\"" (escapeStringLiteral s)
         | VList xs ->
             xs |> List.map valueToString |> String.concat ";" |> sprintf "[%s]"
         | VTuple xs ->
@@ -30,7 +38,7 @@ module Pretty =
         | VMap fields ->
             let mapKeyToString key =
                 match key with
-                | MKString s -> $"\"{s}\""
+                | MKString s -> $"\"{escapeStringLiteral s}\""
                 | MKInt i -> string i
             fields
             |> Map.toList

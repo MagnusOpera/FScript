@@ -27,3 +27,15 @@ type PrettyTests () =
     [<Test>]
     member _.``Formats extern values with name and application progress`` () =
         Helpers.evalToString "print" |> should equal "<extern print>"
+
+    [<Test>]
+    member _.``Escapes quoted interpolation output in strings`` () =
+        Helpers.evalToString "let value = \"'\"\n$\"Path=\\\"{value}\\\"\"" |> should equal "\"Path=\\\"'\\\"\""
+
+    [<Test>]
+    member _.``Escapes special characters in rendered strings`` () =
+        Helpers.evalToString "\"a\\\"b\\\\c\\n\\t\"" |> should equal "\"a\\\"b\\\\c\\n\\t\""
+
+    [<Test>]
+    member _.``Escapes quoted map string keys`` () =
+        Helpers.evalToString "{ [\"a\\\"b\"] = 1 }" |> should equal "map { \"a\\\"b\" => 1 }"

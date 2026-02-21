@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Escaped pretty-printed string values (including map string keys) so interpolated strings with embedded quotes render unambiguously in CLI/REPL output.
+
 ## [0.54.2]
 
 
