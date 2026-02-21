@@ -72,11 +72,14 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 
 ### Typed decoders
 - `Json.deserialize : type -> string -> 'a option`
-- `Xml.values : type -> string -> string -> 'a list option`
+- `Json.serialize : 'a -> string option`
+- `Xml.deserialize : type -> string -> string -> 'a list option`
+- `Xml.serialize : 'a -> string option`
 
 ## Error and option behavior
 - Type/arity mismatch in extern calls raises eval errors.
 - Many data/IO externs return `None` on operational failures (parse/IO/regex failures), rather than throwing.
+- `Xml.deserialize` and `Xml.serialize` do not support XML namespaces.
 
 ## Extending with new externs
 Recommended steps:

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added `Json.serialize` and `Xml.serialize` externs for option-based JSON/XML serialization in runtime hosts.
+- Renamed XML decode extern from `Xml.values` to `Xml.deserialize`.
 ## [0.51.0]
 
 

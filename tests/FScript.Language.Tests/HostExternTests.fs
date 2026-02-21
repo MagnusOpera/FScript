@@ -284,6 +284,34 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some record")
 
     [<Test>]
+    member _.``Json serialize returns string payload`` () =
+        let script =
+            "type Payload = { Name: string; Deps: string list }\n" +
+            "Json.serialize { Name = \"pkg\"; Deps = [\"core\"; \"cli\"] }"
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VString json)) ->
+            json.Contains("\"Name\":\"pkg\"") |> should equal true
+            json.Contains("\"Deps\":[\"core\",\"cli\"]") |> should equal true
+        | _ -> Assert.Fail("Expected Some serialized json")
+
+    [<Test>]
+    member _.``Xml deserialize and serialize work with record payloads`` () =
+        let script =
+            "type Item = { Name: string }\n" +
+            "type Payload = { Item: Item }\n" +
+            "let payload = Xml.serialize { Item = { Name = \"x\" } }\n" +
+            "match payload with\n" +
+            "| Some xml -> Xml.deserialize (typeof Item) xml \"Item\"\n" +
+            "| None -> None"
+
+        match Helpers.evalWithExterns externs script with
+        | VOption (Some (VList [ VRecord fields ])) ->
+            match fields.TryFind "Name" with
+            | Some (VString "x") -> ()
+            | _ -> Assert.Fail("Expected Name field with value x")
+        | _ -> Assert.Fail("Expected XML roundtrip result")
+
+    [<Test>]
     member _.``Regex groups external returns captures`` () =
         let script = "Regex.matchGroups \"^file:(.*)$\" \"file:foo\""
         match Helpers.evalWithExterns externs script with

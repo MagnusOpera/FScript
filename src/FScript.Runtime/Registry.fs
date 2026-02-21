@@ -21,4 +21,6 @@ module Registry =
           GuidExterns.new_guid
           PrintExterns.print
           JsonExterns.deserialize
-          XmlExterns.values ]
+          JsonExterns.serialize
+          XmlExterns.deserialize
+          XmlExterns.serialize ]

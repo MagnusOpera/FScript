@@ -17,3 +17,14 @@ module JsonExterns =
                       | None -> HostCommon.none
                   with _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Json.deserialize expects (type, string)") }
+
+    let serialize : ExternalFunction =
+        { Name = "Json.serialize"
+          Scheme = Forall([ 0 ], TFun(TVar 0, TOption TString))
+          Arity = 1
+          Impl = fun _ -> function
+              | [ value ] ->
+                  match HostEncode.encodeJson value with
+                  | Some encoded -> HostCommon.some (VString encoded)
+                  | None -> HostCommon.none
+              | _ -> raise (HostCommon.evalError "Json.serialize expects (value)") }

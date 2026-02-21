@@ -28,4 +28,6 @@ type RegistryTests () =
         names.Contains "Guid.new" |> should equal true
         names.Contains "print" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
-        names.Contains "Xml.values" |> should equal true
+        names.Contains "Json.serialize" |> should equal true
+        names.Contains "Xml.deserialize" |> should equal true
+        names.Contains "Xml.serialize" |> should equal true

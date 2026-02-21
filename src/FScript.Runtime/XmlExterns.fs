@@ -5,8 +5,8 @@ open System.Xml.Linq
 open FScript.Language
 
 module XmlExterns =
-    let values : ExternalFunction =
-        { Name = "Xml.values"
+    let deserialize : ExternalFunction =
+        { Name = "Xml.deserialize"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TFun(TString, TOption (TList (TVar 0))))))
           Arity = 3
           Impl = fun _ -> function
@@ -36,4 +36,15 @@ module XmlExterns =
                       |> Option.map (List.rev >> VList >> HostCommon.some)
                       |> Option.defaultValue HostCommon.none
                   with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "Xml.values expects (type, xml, query)") }
+              | _ -> raise (HostCommon.evalError "Xml.deserialize expects (type, xml, query)") }
+
+    let serialize : ExternalFunction =
+        { Name = "Xml.serialize"
+          Scheme = Forall([ 0 ], TFun(TVar 0, TOption TString))
+          Arity = 1
+          Impl = fun _ -> function
+              | [ value ] ->
+                  match HostEncode.encodeXml value with
+                  | Some encoded -> HostCommon.some (VString encoded)
+                  | None -> HostCommon.none
+              | _ -> raise (HostCommon.evalError "Xml.serialize expects (value)") }
