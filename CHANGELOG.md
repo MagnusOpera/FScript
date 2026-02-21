@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.54.2]
+
+
 - Fixed release marketplace publish jobs to checkout the repository before running local publish scripts.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.54.1...0.54.2
 
 ## [0.54.1]
 
