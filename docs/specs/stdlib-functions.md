@@ -12,6 +12,7 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Int`
 - `Float`
 - `Bool`
+- `String`
 
 ## Notes
 - Functions are curried.
@@ -72,6 +73,15 @@ Map keys in FScript are string-only.
 ## Bool
 - `Bool.tryParse : string -> bool option`
 - `Bool.toString : bool -> string`
+
+## String
+- `String.replace : string -> string -> string -> string`
+- `String.indexOf : string -> string -> int option`
+- `String.toLower : string -> string`
+- `String.toUpper : string -> string`
+- `String.substring : string -> int -> int -> string option`
+- `String.concat : string -> string list -> string`
+- `String.split : string -> string -> string list`
 
 ## Quick examples
 ```fsharp

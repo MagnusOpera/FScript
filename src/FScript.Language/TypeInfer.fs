@@ -1064,7 +1064,14 @@ module TypeInfer =
               "Bool.tryParse", Forall([], TFun (TString, TOption TBool))
               "Int.toString", Forall([], TFun (TInt, TString))
               "Float.toString", Forall([], TFun (TFloat, TString))
-              "Bool.toString", Forall([], TFun (TBool, TString)) ]
+              "Bool.toString", Forall([], TFun (TBool, TString))
+              "String.replace", Forall([], TFun(TString, TFun(TString, TFun(TString, TString))))
+              "String.indexOf", Forall([], TFun(TString, TFun(TString, TOption TInt)))
+              "String.toLower", Forall([], TFun(TString, TString))
+              "String.toUpper", Forall([], TFun(TString, TString))
+              "String.substring", Forall([], TFun(TString, TFun(TInt, TFun(TInt, TOption TString))))
+              "String.concat", Forall([], TFun(TString, TFun(TList TString, TString)))
+              "String.split", Forall([], TFun(TString, TFun(TString, TList TString))) ]
             |> Map.ofList
 
         externs

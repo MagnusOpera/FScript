@@ -110,6 +110,114 @@ module Eval =
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
                     raise (EvalException { Message = "Bool.toString expects (bool)"; Span = span })) }
 
+    let private builtinStringReplace : ExternalFunction =
+        { Name = "String.replace"
+          Scheme = Forall([], TFun(TString, TFun(TString, TFun(TString, TString))))
+          Arity = 3
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source; VString oldValue; VString newValue ] ->
+                    VString(source.Replace(oldValue, newValue))
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.replace expects (string, string, string)"; Span = span })) }
+
+    let private builtinStringIndexOf : ExternalFunction =
+        { Name = "String.indexOf"
+          Scheme = Forall([], TFun(TString, TFun(TString, TOption TInt)))
+          Arity = 2
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source; VString value ] ->
+                    let index = source.IndexOf(value, System.StringComparison.Ordinal)
+                    if index >= 0 then VOption (Some (VInt (int64 index))) else VOption None
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.indexOf expects (string, string)"; Span = span })) }
+
+    let private builtinStringToLower : ExternalFunction =
+        { Name = "String.toLower"
+          Scheme = Forall([], TFun(TString, TString))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source ] -> VString(source.ToLowerInvariant())
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.toLower expects (string)"; Span = span })) }
+
+    let private builtinStringToUpper : ExternalFunction =
+        { Name = "String.toUpper"
+          Scheme = Forall([], TFun(TString, TString))
+          Arity = 1
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source ] -> VString(source.ToUpperInvariant())
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.toUpper expects (string)"; Span = span })) }
+
+    let private builtinStringSubstring : ExternalFunction =
+        { Name = "String.substring"
+          Scheme = Forall([], TFun(TString, TFun(TInt, TFun(TInt, TOption TString))))
+          Arity = 3
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source; VInt start; VInt length ] ->
+                    let startIndex = int start
+                    let sliceLength = int length
+                    if startIndex < 0 || sliceLength < 0 || startIndex > source.Length || startIndex + sliceLength > source.Length then
+                        VOption None
+                    else
+                        VOption (Some (VString (source.Substring(startIndex, sliceLength))))
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.substring expects (string, int, int)"; Span = span })) }
+
+    let private builtinStringConcat : ExternalFunction =
+        { Name = "String.concat"
+          Scheme = Forall([], TFun(TString, TFun(TList TString, TString)))
+          Arity = 2
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString separator; VList values ] ->
+                    let rec collect (remaining: Value list) (acc: string list) =
+                        match remaining with
+                        | [] -> Some(List.rev acc)
+                        | VString value :: tail -> collect tail (value :: acc)
+                        | _ -> None
+
+                    match collect values [] with
+                    | Some strings -> VString(System.String.Join(separator, strings))
+                    | None ->
+                        let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                        raise (EvalException { Message = "String.concat expects (string, string list)"; Span = span })
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.concat expects (string, string list)"; Span = span })) }
+
+    let private builtinStringSplit : ExternalFunction =
+        { Name = "String.split"
+          Scheme = Forall([], TFun(TString, TFun(TString, TList TString)))
+          Arity = 2
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString source; VString separator ] ->
+                    source.Split([| separator |], System.StringSplitOptions.None)
+                    |> Array.toList
+                    |> List.map VString
+                    |> VList
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.split expects (string, string)"; Span = span })) }
+
     let private literalToValue lit =
         match lit with
         | LInt v -> VInt v
@@ -856,6 +964,13 @@ module Eval =
              :: builtinIntToString
              :: builtinFloatToString
              :: builtinBoolToString
+             :: builtinStringReplace
+             :: builtinStringIndexOf
+             :: builtinStringToLower
+             :: builtinStringToUpper
+             :: builtinStringSubstring
+             :: builtinStringConcat
+             :: builtinStringSplit
              :: externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then

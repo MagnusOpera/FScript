@@ -8,6 +8,7 @@ All notable changes to FScript are documented in this file.
 - Renamed XML decode extern from `Xml.values` to `Xml.deserialize`.
 - Replaced `Fs.isFile` and `Fs.isDirectory` with `Fs.kind` returning stdlib union `FsKind` (`File`/`Directory`/`Missing`) for direct pattern matching.
 - Added host-configurable sandbox exclusions (`HostContext.ExcludedPaths`) so `Fs.glob`/`Fs.enumerateFiles` hide blocked entries and `Fs.readText`/`Fs.writeText`/`Fs.createDirectory` fail immediately on blocked paths.
+- Added built-in `String.*` helpers: `replace`, `indexOf`, `toLower`, `toUpper`, `substring`, `concat`, and `split`.
 ## [0.51.0]
 
 

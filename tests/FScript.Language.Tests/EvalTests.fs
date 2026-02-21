@@ -243,6 +243,48 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected float to string")
 
     [<Test>]
+    member _.``Evaluates string manipulation builtins`` () =
+        match Helpers.eval "String.replace \"hello world\" \"world\" \"fscript\"" with
+        | VString "hello fscript" -> ()
+        | _ -> Assert.Fail("Expected replaced string")
+
+        match Helpers.eval "String.indexOf \"hello\" \"ll\"" with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected index Some 2")
+
+        match Helpers.eval "String.indexOf \"hello\" \"zz\"" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for missing index")
+
+        match Helpers.eval "String.toLower \"HeLLo\"" with
+        | VString "hello" -> ()
+        | _ -> Assert.Fail("Expected lower-cased string")
+
+        match Helpers.eval "String.toUpper \"HeLLo\"" with
+        | VString "HELLO" -> ()
+        | _ -> Assert.Fail("Expected upper-cased string")
+
+        match Helpers.eval "String.substring \"abcdef\" 1 3" with
+        | VOption (Some (VString "bcd")) -> ()
+        | _ -> Assert.Fail("Expected Some substring")
+
+        match Helpers.eval "String.substring \"abcdef\" 4 8" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for invalid range")
+
+        match Helpers.eval "String.concat \",\" [\"a\";\"b\";\"c\"]" with
+        | VString "a,b,c" -> ()
+        | _ -> Assert.Fail("Expected joined string")
+
+        match Helpers.eval "String.concat \",\" []" with
+        | VString "" -> ()
+        | _ -> Assert.Fail("Expected empty string for empty list")
+
+        match Helpers.eval "String.split \"a,b,c\" \",\"" with
+        | VList [ VString "a"; VString "b"; VString "c" ] -> ()
+        | _ -> Assert.Fail("Expected split string list")
+
+    [<Test>]
     member _.``Evaluates match on option`` () =
         let src = "match Some 3 with\n    | Some x -> x + 1\n    | None -> 0"
         Helpers.eval src |> assertInt 4L

@@ -25,6 +25,26 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers String builtins`` () =
+        let assertType src expected =
+            match Helpers.infer src |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal expected
+            | _ -> Assert.Fail("Expected expression")
+
+        assertType "String.replace \"a\" \"a\" \"b\"" TString
+        assertType "String.indexOf \"abc\" \"b\"" (TOption TInt)
+        assertType "String.toLower \"ABC\"" TString
+        assertType "String.toUpper \"abc\"" TString
+        assertType "String.substring \"abcdef\" 1 2" (TOption TString)
+        assertType "String.concat \",\" [\"a\";\"b\"]" TString
+        assertType "String.split \"a,b\" \",\"" (TList TString)
+
+    [<Test>]
+    member _.``Reports type error for invalid String.concat argument type`` () =
+        let act () = Helpers.infer "String.concat \",\" [1;2]" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers polymorphic identity function`` () =
         let typed = Helpers.infer "let id x = x"
         match typed.[0] with

@@ -72,6 +72,13 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
   - `Int.toString : int -> string`
   - `Float.toString : float -> string`
   - `Bool.toString : bool -> string`
+  - `String.replace : string -> string -> string -> string`
+  - `String.indexOf : string -> string -> int option`
+  - `String.toLower : string -> string`
+  - `String.toUpper : string -> string`
+  - `String.substring : string -> int -> int -> string option`
+  - `String.concat : string -> string list -> string`
+  - `String.split : string -> string -> string list`
 - `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
 - `FsKind` is provided by stdlib as:
