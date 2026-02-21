@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed release marketplace publish jobs to checkout the repository before running local publish scripts.
+
 ## [0.54.1]
 
 
