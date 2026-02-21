@@ -86,7 +86,10 @@ Use this when:
 
 ### CLI execution path
 1. `FScript` reads CLI args, splits script arguments after `--`, and picks mode: file path, piped stdin, `version`, or interactive REPL.
-2. For execution modes, `FScript` builds `HostContext` root and asks `FScript.Runtime` for externs (`Registry.all`).
+2. For execution modes, `FScript` builds `HostContext` root and resolves externs:
+   - default runtime externs from `Registry.all` (unless `--no-default-externs`)
+   - optional user extern assemblies via `--extern-assembly`
+   - duplicate extern names are rejected as fatal CLI errors
 3. `FScript` injects `Environment`/`Env` metadata:
    - file mode: `ScriptName = Some <file name>`, `Arguments = [..]`
    - stdin mode: `ScriptName = None`, `Arguments = [..]`

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added CLI extern configuration flags (`--no-default-externs`, repeatable `--extern-assembly`) with attribute-based provider discovery and conflict validation.
+
 ## [0.50.0]
 
 

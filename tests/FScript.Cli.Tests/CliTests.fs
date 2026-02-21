@@ -4,6 +4,10 @@ open System
 open System.Diagnostics
 open System.IO
 open System.Text.RegularExpressions
+open FScript.Runtime
+open FScript.Cli.Tests.Fixtures.Valid
+open FScript.Cli.Tests.Fixtures.Conflict
+open FScript.Cli.Tests.Fixtures.Invalid
 open NUnit.Framework
 
 [<TestFixture>]
@@ -50,6 +54,15 @@ type CliTests() =
         proc.WaitForExit()
 
         proc.ExitCode, stdout, stderr
+
+    let validProviderAssemblyPath () =
+        typeof<ValidExternProvider>.Assembly.Location
+
+    let conflictProviderAssemblyPath () =
+        typeof<ConflictExternProvider>.Assembly.Location
+
+    let invalidProviderAssemblyPath () =
+        typeof<InvalidExternProvider>.Assembly.Location
 
     [<Test>]
     member _.``Runs script file from positional path`` () =
@@ -161,3 +174,78 @@ type CliTests() =
             Assert.That(stderr, Does.Contain("parameter '<path>' should appear after all other arguments"))
         finally
             if File.Exists(tempScript) then File.Delete(tempScript)
+
+    [<Test>]
+    member _.``No-default-externs disables runtime Registry externs`` () =
+        let repoRoot = findRepoRoot ()
+        let code, _, stderr = runCli repoRoot repoRoot [ "--no-default-externs" ] (Some "Fs.exists \"a.txt\"")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("Unbound variable 'Fs'"))
+
+    [<Test>]
+    member _.``Loads extern provider assembly and invokes exported extern`` () =
+        let repoRoot = findRepoRoot ()
+        let providerAssembly = validProviderAssemblyPath ()
+        let code, stdout, stderr = runCli repoRoot repoRoot [ "--extern-assembly"; providerAssembly ] (Some "Ext.answer")
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Dedupes duplicate extern assembly paths`` () =
+        let repoRoot = findRepoRoot ()
+        let providerAssembly = validProviderAssemblyPath ()
+        let code, stdout, stderr =
+            runCli repoRoot repoRoot [ "--extern-assembly"; providerAssembly; "--extern-assembly"; providerAssembly ] (Some "Ext.answer")
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Supports extern provider methods that accept HostContext`` () =
+        let repoRoot = findRepoRoot ()
+        let providerAssembly = validProviderAssemblyPath ()
+        let code, stdout, stderr = runCli repoRoot repoRoot [ "--extern-assembly"; providerAssembly ] (Some "Ext.rootDirectory")
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(stdout.Trim(), Is.EqualTo($"\"{repoRoot}\""))
+
+    [<Test>]
+    member _.``Fails fast on extern name conflicts with defaults`` () =
+        let repoRoot = findRepoRoot ()
+        let providerAssembly = conflictProviderAssemblyPath ()
+        let code, _, stderr =
+            runCli repoRoot repoRoot [ "--extern-assembly"; providerAssembly ] (Some "1")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("External function name conflicts detected"))
+        Assert.That(stderr, Does.Contain("Fs.exists"))
+
+    [<Test>]
+    member _.``Fails when extern provider signature is invalid`` () =
+        let repoRoot = findRepoRoot ()
+        let providerAssembly = invalidProviderAssemblyPath ()
+        let code, _, stderr =
+            runCli repoRoot repoRoot [ "--extern-assembly"; providerAssembly ] (Some "1")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("Invalid extern provider"))
+
+    [<Test>]
+    member _.``Fails when extern assembly path does not exist`` () =
+        let repoRoot = findRepoRoot ()
+        let bogusPath = Path.Combine(Path.GetTempPath(), $"fscript-missing-{Guid.NewGuid():N}.dll")
+        let code, _, stderr = runCli repoRoot repoRoot [ "--extern-assembly"; bogusPath ] (Some "1")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("Extern assembly not found"))
+
+    [<Test>]
+    member _.``Fails when assembly has no extern providers`` () =
+        let repoRoot = findRepoRoot ()
+        let runtimeAssemblyPath = typeof<HostContext>.Assembly.Location
+        let code, _, stderr = runCli repoRoot repoRoot [ "--extern-assembly"; runtimeAssemblyPath ] (Some "1")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("No [<FScriptExternProvider>] methods found"))

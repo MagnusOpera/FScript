@@ -23,6 +23,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FScript\FScript.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Valid\FScript.Cli.Tests.Fixtures.Valid.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Conflict\FScript.Cli.Tests.Fixtures.Conflict.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Invalid\FScript.Cli.Tests.Fixtures.Invalid.fsproj" />
   </ItemGroup>
 
 </Project>

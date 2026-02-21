@@ -88,6 +88,16 @@ Optional sandbox root override:
 dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.fss
 ```
 
+Disable default runtime externs (`Registry.all`):
+```bash
+dotnet run --project src/FScript -- --no-default-externs samples/types-showcase.fss
+```
+
+Load user extern providers from an assembly (repeatable):
+```bash
+dotnet run --project src/FScript -- --extern-assembly ./MyExterns.dll samples/types-showcase.fss
+```
+
 Run a script from stdin:
 ```bash
 cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r .

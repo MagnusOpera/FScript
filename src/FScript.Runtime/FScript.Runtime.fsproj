@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Compile Include="Types.fs" />
+    <Compile Include="ExternProvider.fs" />
     <Compile Include="Common.fs" />
     <Compile Include="Decode.fs" />
     <Compile Include="FsExterns.fs" />

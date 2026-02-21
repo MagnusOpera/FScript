@@ -13,6 +13,11 @@ An external function is represented by:
 
 Registry entrypoint:
 - `FScript.Runtime.Registry.all : HostContext -> ExternalFunction list`
+- Optional plugin protocol marker:
+  - `[<FScript.Runtime.FScriptExternProvider>]` on `public static` provider methods in user assemblies
+  - supported method signatures:
+    - `unit -> ExternalFunction list`
+    - `HostContext -> ExternalFunction list`
 
 Interpreter integration:
 - Extern schemes are injected into type inference environment.
@@ -81,6 +86,19 @@ Recommended steps:
 4. Add tests in:
    - `tests/FScript.Runtime.Tests` for direct module behavior.
    - `tests/FScript.Language.Tests/HostExternTests.fs` for interpreter integration.
+
+## CLI-only extern assembly injection
+- The `fscript` CLI can inject externs from user assemblies via:
+  - `--extern-assembly <path>` (repeatable)
+  - `--no-default-externs` (disables `Registry.all`)
+- Provider discovery:
+  - CLI loads each unique assembly path once.
+  - It discovers methods annotated with `[<FScriptExternProvider>]`.
+  - It invokes each discovered provider once per CLI process startup.
+- Conflicts:
+  - Any duplicate external function name across defaults + user providers is a fatal CLI error.
+- Runtime constraints:
+  - If runtime assembly loading is unavailable (for example native AOT), `--extern-assembly` is rejected with a clear CLI error.
 
 ## Compatibility guidance
 - External names are part of source-level API; renaming is breaking.
