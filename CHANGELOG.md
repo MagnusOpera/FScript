@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.55.0]
+
+
 - Escaped pretty-printed string values (including map string keys) so interpolated strings with embedded quotes render unambiguously in CLI/REPL output.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.54.2...0.55.0
 
 ## [0.54.2]
 
