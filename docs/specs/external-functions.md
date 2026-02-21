@@ -39,8 +39,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Filesystem
 - `Fs.readText : string -> string option`
 - `Fs.exists : string -> bool`
-- `Fs.isFile : string -> bool`
-- `Fs.isDirectory : string -> bool`
+- `Fs.kind : string -> FsKind`
 - `Fs.createDirectory : string -> bool`
 - `Fs.writeText : string -> string -> bool`
 - `Fs.combinePath : string -> string -> string`
@@ -68,6 +67,10 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
   - `Bool.toString : bool -> string`
 - `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
+- `FsKind` is provided by stdlib as:
+  - `FsKind.File of string`
+  - `FsKind.Directory of string`
+  - `FsKind.Missing`
 - See [`stdlib-functions.md`](./stdlib-functions.md) for the full stdlib function reference.
 
 ### Typed decoders

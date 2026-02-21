@@ -13,8 +13,9 @@ type RegistryTests () =
         let names = Registry.all host |> List.map (fun e -> e.Name) |> Set.ofList
         names.Contains "Fs.readText" |> should equal true
         names.Contains "Fs.exists" |> should equal true
-        names.Contains "Fs.isFile" |> should equal true
-        names.Contains "Fs.isDirectory" |> should equal true
+        names.Contains "Fs.kind" |> should equal true
+        names.Contains "Fs.isFile" |> should equal false
+        names.Contains "Fs.isDirectory" |> should equal false
         names.Contains "Fs.createDirectory" |> should equal true
         names.Contains "Fs.writeText" |> should equal true
         names.Contains "Fs.combinePath" |> should equal true

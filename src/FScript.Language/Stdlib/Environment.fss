@@ -1,3 +1,8 @@
 type Environment =
   { ScriptName: string option
     Arguments: string list }
+
+type FsKind =
+  | File of string
+  | Directory of string
+  | Missing

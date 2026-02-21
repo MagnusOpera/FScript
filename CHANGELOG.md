@@ -6,6 +6,7 @@ All notable changes to FScript are documented in this file.
 
 - Added `Json.serialize` and `Xml.serialize` externs for option-based JSON/XML serialization in runtime hosts.
 - Renamed XML decode extern from `Xml.values` to `Xml.deserialize`.
+- Replaced `Fs.isFile` and `Fs.isDirectory` with `Fs.kind` returning stdlib union `FsKind` (`File`/`Directory`/`Missing`) for direct pattern matching.
 ## [0.51.0]
 
 

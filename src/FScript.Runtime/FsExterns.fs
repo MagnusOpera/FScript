@@ -30,27 +30,24 @@ module FsExterns =
                   | None -> VBool false
               | _ -> raise (HostCommon.evalError "Fs.exists expects (string)") }
 
-    let is_file (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.isFile"
-          Scheme = Forall([], TFun(TString, TBool))
+    let entry_kind (ctx: HostContext) : ExternalFunction =
+        { Name = "Fs.kind"
+          Scheme = Forall([], TFun(TString, TNamed "FsKind"))
           Arity = 1
           Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
-                  | Some full -> VBool (File.Exists(full))
-                  | None -> VBool false
-              | _ -> raise (HostCommon.evalError "Fs.isFile expects (string)") }
-
-    let is_directory (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.isDirectory"
-          Scheme = Forall([], TFun(TString, TBool))
-          Arity = 1
-          Impl = fun _ -> function
-              | [ VString path ] ->
-                  match HostCommon.tryResolvePath ctx path with
-                  | Some full -> VBool (Directory.Exists(full))
-                  | None -> VBool false
-              | _ -> raise (HostCommon.evalError "Fs.isDirectory expects (string)") }
+                  | Some full ->
+                      let root = HostCommon.normalizeRoot ctx
+                      let relative = Path.GetRelativePath(root, full) |> normalizeSeparators
+                      if File.Exists(full) then
+                          VUnionCase("FsKind", "File", Some (VString relative))
+                      elif Directory.Exists(full) then
+                          VUnionCase("FsKind", "Directory", Some (VString relative))
+                      else
+                          VUnionCase("FsKind", "Missing", None)
+                  | None -> VUnionCase("FsKind", "Missing", None)
+              | _ -> raise (HostCommon.evalError "Fs.kind expects (string)") }
 
     let create_directory (ctx: HostContext) : ExternalFunction =
         { Name = "Fs.createDirectory"

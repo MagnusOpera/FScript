@@ -6,8 +6,7 @@ module Registry =
     let all (ctx: HostContext) : ExternalFunction list =
         [ FsExterns.read_text ctx
           FsExterns.exists ctx
-          FsExterns.is_file ctx
-          FsExterns.is_directory ctx
+          FsExterns.entry_kind ctx
           FsExterns.create_directory ctx
           FsExterns.write_text ctx
           FsExterns.combine_path

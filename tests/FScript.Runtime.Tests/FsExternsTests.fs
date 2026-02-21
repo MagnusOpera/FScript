@@ -27,28 +27,38 @@ type FsExternsTests () =
             | _ -> Assert.Fail("Expected None for escaped path"))
 
     [<Test>]
-    member _.``fs_exists is_file and is_directory respect root boundary`` () =
+    member _.``fs_exists and fs_kind respect root boundary`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             let dir = Path.Combine(root, "sub")
             let file = Path.Combine(dir, "a.txt")
             Directory.CreateDirectory(dir) |> ignore
             File.WriteAllText(file, "a")
             let exists = FsExterns.exists { RootDirectory = root }
-            let isFile = FsExterns.is_file { RootDirectory = root }
-            let isDirectory = FsExterns.is_directory { RootDirectory = root }
+            let kind = FsExterns.entry_kind { RootDirectory = root }
 
             match invoke exists [ VString "sub/a.txt" ] with
             | VBool true -> ()
             | _ -> Assert.Fail("Expected Fs.exists true")
-            match invoke isFile [ VString "sub/a.txt" ] with
-            | VBool true -> ()
-            | _ -> Assert.Fail("Expected Fs.isFile true")
-            match invoke isDirectory [ VString "sub" ] with
-            | VBool true -> ()
-            | _ -> Assert.Fail("Expected Fs.isDirectory true")
+            match invoke kind [ VString "sub/a.txt" ] with
+            | VUnionCase("FsKind", "File", Some (VString "sub/a.txt")) -> ()
+            | _ -> Assert.Fail("Expected Fs.kind File")
+            match invoke kind [ VString "sub" ] with
+            | VUnionCase("FsKind", "Directory", Some (VString "sub")) -> ()
+            | _ -> Assert.Fail("Expected Fs.kind Directory")
             match invoke exists [ VString "../outside.txt" ] with
             | VBool false -> ()
             | _ -> Assert.Fail("Expected Fs.exists false for escaped path"))
+
+    [<Test>]
+    member _.``fs_kind returns Missing for out of root and missing path`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let kind = FsExterns.entry_kind { RootDirectory = root }
+            match invoke kind [ VString "../outside.txt" ] with
+            | VUnionCase("FsKind", "Missing", None) -> ()
+            | _ -> Assert.Fail("Expected Fs.kind Missing for escaped path")
+            match invoke kind [ VString "does-not-exist.txt" ] with
+            | VUnionCase("FsKind", "Missing", None) -> ()
+            | _ -> Assert.Fail("Expected Fs.kind Missing for missing path"))
 
     [<Test>]
     member _.``fs_create_directory and fs_write_text create files in root only`` () =

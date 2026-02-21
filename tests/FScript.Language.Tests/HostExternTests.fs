@@ -114,13 +114,40 @@ type HostExternTests () =
                 "let created = Fs.createDirectory \"tmp\"\n" +
                 "let written = Fs.writeText \"tmp/file.txt\" \"hello\"\n" +
                 "let exists = Fs.exists \"tmp/file.txt\"\n" +
-                "let file = Fs.isFile \"tmp/file.txt\"\n" +
-                "let dir = Fs.isDirectory \"tmp\"\n" +
-                "(created, written, exists, file, dir)"
+                "let file = Fs.kind \"tmp/file.txt\"\n" +
+                "let dir = Fs.kind \"tmp\"\n" +
+                "let missing = Fs.kind \"tmp/nope\"\n" +
+                "(created, written, exists, file, dir, missing)"
 
             match Helpers.evalWithExterns localExterns script with
-            | VTuple [ VBool true; VBool true; VBool true; VBool true; VBool true ] -> ()
+            | VTuple
+                [ VBool true
+                  VBool true
+                  VBool true
+                  VUnionCase("FsKind", "File", Some (VString "tmp/file.txt"))
+                  VUnionCase("FsKind", "Directory", Some (VString "tmp"))
+                  VUnionCase("FsKind", "Missing", None) ] -> ()
             | _ -> Assert.Fail("Expected Fs write-side externs to succeed")
+        finally
+            if Directory.Exists(root) then
+                Directory.Delete(root, true)
+
+    [<Test>]
+    member _.``Fs kind supports union pattern matching`` () =
+        let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(root) |> ignore
+        try
+            let file = Path.Combine(root, "item.txt")
+            File.WriteAllText(file, "x")
+            let localExterns = Registry.all { RootDirectory = root }
+            let script =
+                "match Fs.kind \"item.txt\" with\n" +
+                "| FsKind.File file -> file\n" +
+                "| FsKind.Directory dir -> dir\n" +
+                "| FsKind.Missing -> \"missing\""
+            match Helpers.evalWithExterns localExterns script with
+            | VString "item.txt" -> ()
+            | _ -> Assert.Fail("Expected FsKind.File match branch")
         finally
             if Directory.Exists(root) then
                 Directory.Delete(root, true)
