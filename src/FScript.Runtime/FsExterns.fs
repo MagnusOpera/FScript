@@ -9,7 +9,7 @@ module FsExterns =
         path.Replace("\\", "/")
 
     let private throwBlockedPathAccess (operationName: string) (fullPath: string) =
-        raise (HostCommon.evalError $"Access denied for operation '{operationName}' on excluded path '{fullPath}'")
+        raise (HostCommon.evalError $"Access denied for operation '{operationName}' on denied path '{fullPath}'")
 
     let read_text (ctx: HostContext) : ExternalFunction =
         { Name = "Fs.readText"
@@ -18,7 +18,7 @@ module FsExterns =
           Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isExcludedPath ctx full -> throwBlockedPathAccess "Fs.readText" full
+                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.readText" full
                   | Some full when File.Exists(full) -> HostCommon.some (VString (File.ReadAllText(full)))
                   | _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.readText expects (string)") }
@@ -30,7 +30,7 @@ module FsExterns =
           Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isExcludedPath ctx full -> VBool false
+                  | Some full when HostCommon.isDeniedPath ctx full -> VBool false
                   | Some full -> VBool (File.Exists(full) || Directory.Exists(full))
                   | None -> VBool false
               | _ -> raise (HostCommon.evalError "Fs.exists expects (string)") }
@@ -45,7 +45,7 @@ module FsExterns =
                   | Some full ->
                       let root = HostCommon.normalizeRoot ctx
                       let relative = Path.GetRelativePath(root, full) |> normalizeSeparators
-                      if HostCommon.isExcludedPath ctx full then
+                      if HostCommon.isDeniedPath ctx full then
                           VUnionCase("FsKind", "Missing", None)
                       elif File.Exists(full) then
                           VUnionCase("FsKind", "File", Some (VString relative))
@@ -63,7 +63,7 @@ module FsExterns =
           Impl = fun _ -> function
               | [ VString path ] ->
                   match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isExcludedPath ctx full -> throwBlockedPathAccess "Fs.createDirectory" full
+                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.createDirectory" full
                   | Some full ->
                       try
                           Directory.CreateDirectory(full) |> ignore
@@ -79,7 +79,7 @@ module FsExterns =
           Impl = fun _ -> function
               | [ VString path; VString content ] ->
                   match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isExcludedPath ctx full -> throwBlockedPathAccess "Fs.writeText" full
+                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.writeText" full
                   | Some full ->
                       try
                           match Path.GetDirectoryName(full) with
@@ -148,7 +148,7 @@ module FsExterns =
                   let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                   try
                       Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-                      |> Seq.filter (fun full -> not (HostCommon.isExcludedPath ctx full))
+                      |> Seq.filter (fun full -> not (HostCommon.isDeniedPath ctx full))
                       |> Seq.map (fun full -> Path.GetRelativePath(root, full).Replace("\\", "/"))
                       |> Seq.filter regex.IsMatch
                       |> Seq.map VString
@@ -170,7 +170,7 @@ module FsExterns =
                       let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                       try
                           Directory.EnumerateFiles(fullDirectory, "*", SearchOption.AllDirectories)
-                          |> Seq.filter (fun full -> not (HostCommon.isExcludedPath ctx full))
+                          |> Seq.filter (fun full -> not (HostCommon.isDeniedPath ctx full))
                           |> Seq.filter (fun full ->
                               let relativeToDirectory = Path.GetRelativePath(fullDirectory, full) |> normalizeSeparators
                               regex.IsMatch relativeToDirectory)

@@ -11,7 +11,7 @@ This document defines the security model for running FScript programs with host 
 ## Host context and filesystem boundary
 - Host context includes:
   - `RootDirectory : string`
-  - `ExcludedPaths : string list` (absolute paths inside root that are blocked)
+  - `DeniedPathGlobs : string list` (glob patterns matched against root-relative paths)
 - The CLI defaults `RootDirectory` to the script file directory in file mode (`fscript script.fss`).
 - In stdin and REPL modes (`cat script.fss | fscript`, `fscript`), the CLI defaults `RootDirectory` to the current working directory.
 - The CLI allows overriding root with `--root <path>` (or `-r <path>`).
@@ -26,9 +26,10 @@ Filesystem extern behavior:
 - `Fs.glob` evaluates patterns under `RootDirectory`.
 - Access is granted for paths within `RootDirectory` (or exactly equal to it).
 - Out-of-bound paths return `None`/`false`/`FsKind.Missing` depending on function shape.
-- Excluded paths are matched by absolute path (exact file or directory subtree).
-- Excluded entries are hidden from `Fs.glob` and `Fs.enumerateFiles`.
-- Read/write/mkdir operations on excluded targets fail immediately with `EvalException`.
+- Denied paths are matched by glob against root-relative paths.
+- Examples: `.git` blocks only the root `.git` subtree, `**/node_modules` blocks all nested `node_modules` subtrees.
+- Denied entries are hidden from `Fs.glob` and `Fs.enumerateFiles`.
+- Read/write/mkdir operations on denied targets fail immediately with `EvalException`.
 
 ## Runtime safety behavior
 - Extern invocation checks arity and argument type-shape.

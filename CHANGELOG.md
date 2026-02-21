@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Switched sandbox deny configuration to root-relative glob patterns (`HostContext.DeniedPathGlobs`), including support for `.git` and `**/node_modules` style blocking.
+
 ## [0.52.0]
 
 

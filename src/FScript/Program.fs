@@ -405,7 +405,7 @@ let main argv =
                 args.TryGetResult <@ Root @>
                 |> Option.map Path.GetFullPath
                 |> Option.defaultValue defaultRoot
-            let context : HostContext = { RootDirectory = rootDirectory; ExcludedPaths = [] }
+            let context : HostContext = { RootDirectory = rootDirectory; DeniedPathGlobs = [] }
             let externsResult = resolveExternalFunctions args context currentDirectory
 
             try

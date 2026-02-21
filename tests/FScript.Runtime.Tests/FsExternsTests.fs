@@ -13,7 +13,7 @@ type FsExternsTests () =
         withTempRoot "fscript-host-tests" (fun root ->
             let file = Path.Combine(root, "a.txt")
             File.WriteAllText(file, "hello")
-            let ext = FsExterns.read_text { RootDirectory = root; ExcludedPaths = [] }
+            let ext = FsExterns.read_text { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke ext [ VString "a.txt" ] with
             | VOption (Some (VString "hello")) -> ()
             | _ -> Assert.Fail("Expected Some \"hello\""))
@@ -21,7 +21,7 @@ type FsExternsTests () =
     [<Test>]
     member _.``fs_read_text rejects parent path escape`` () =
         withTempRoot "fscript-host-tests" (fun root ->
-            let ext = FsExterns.read_text { RootDirectory = root; ExcludedPaths = [] }
+            let ext = FsExterns.read_text { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke ext [ VString "../outside.txt" ] with
             | VOption None -> ()
             | _ -> Assert.Fail("Expected None for escaped path"))
@@ -33,8 +33,8 @@ type FsExternsTests () =
             let file = Path.Combine(dir, "a.txt")
             Directory.CreateDirectory(dir) |> ignore
             File.WriteAllText(file, "a")
-            let exists = FsExterns.exists { RootDirectory = root; ExcludedPaths = [] }
-            let kind = FsExterns.entry_kind { RootDirectory = root; ExcludedPaths = [] }
+            let exists = FsExterns.exists { RootDirectory = root; DeniedPathGlobs = [] }
+            let kind = FsExterns.entry_kind { RootDirectory = root; DeniedPathGlobs = [] }
 
             match invoke exists [ VString "sub/a.txt" ] with
             | VBool true -> ()
@@ -52,7 +52,7 @@ type FsExternsTests () =
     [<Test>]
     member _.``fs_kind returns Missing for out of root and missing path`` () =
         withTempRoot "fscript-host-tests" (fun root ->
-            let kind = FsExterns.entry_kind { RootDirectory = root; ExcludedPaths = [] }
+            let kind = FsExterns.entry_kind { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke kind [ VString "../outside.txt" ] with
             | VUnionCase("FsKind", "Missing", None) -> ()
             | _ -> Assert.Fail("Expected Fs.kind Missing for escaped path")
@@ -63,9 +63,9 @@ type FsExternsTests () =
     [<Test>]
     member _.``fs_create_directory and fs_write_text create files in root only`` () =
         withTempRoot "fscript-host-tests" (fun root ->
-            let createDirectory = FsExterns.create_directory { RootDirectory = root; ExcludedPaths = [] }
-            let writeText = FsExterns.write_text { RootDirectory = root; ExcludedPaths = [] }
-            let readText = FsExterns.read_text { RootDirectory = root; ExcludedPaths = [] }
+            let createDirectory = FsExterns.create_directory { RootDirectory = root; DeniedPathGlobs = [] }
+            let writeText = FsExterns.write_text { RootDirectory = root; DeniedPathGlobs = [] }
+            let readText = FsExterns.read_text { RootDirectory = root; DeniedPathGlobs = [] }
 
             match invoke createDirectory [ VString "new/sub" ] with
             | VBool true -> ()
@@ -84,12 +84,12 @@ type FsExternsTests () =
             | _ -> Assert.Fail("Expected Fs.writeText false for escaped path"))
 
     [<Test>]
-    member _.``excluded read write and create_directory fail immediately`` () =
+    member _.``denied glob read write and create_directory fail immediately`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             let blocked = Path.Combine(root, ".git")
             Directory.CreateDirectory(blocked) |> ignore
             File.WriteAllText(Path.Combine(blocked, "config"), "x")
-            let context = { RootDirectory = root; ExcludedPaths = [ blocked ] }
+            let context = { RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
 
             let readText = FsExterns.read_text context
             let writeText = FsExterns.write_text context
@@ -104,7 +104,7 @@ type FsExternsTests () =
             Assert.Throws<EvalException>(TestDelegate createAct) |> ignore)
 
     [<Test>]
-    member _.``excluded entries are hidden from probes and enumeration`` () =
+    member _.``denied glob entries are hidden from probes and enumeration`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             let blocked = Path.Combine(root, ".git")
             let visible = Path.Combine(root, "src")
@@ -113,7 +113,7 @@ type FsExternsTests () =
             File.WriteAllText(Path.Combine(blocked, "HEAD"), "ref: heads/main")
             File.WriteAllText(Path.Combine(visible, "app.fs"), "let x = 1")
 
-            let context = { RootDirectory = root; ExcludedPaths = [ blocked ] }
+            let context = { RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
             let exists = FsExterns.exists context
             let kind = FsExterns.entry_kind context
             let glob = FsExterns.glob context
@@ -146,15 +146,42 @@ type FsExternsTests () =
             | _ -> Assert.Fail("Expected Fs.enumerateFiles list"))
 
     [<Test>]
-    member _.``excluded paths outside root are ignored`` () =
+    member _.``non matching denied glob is ignored`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             let file = Path.Combine(root, "a.txt")
             File.WriteAllText(file, "hello")
-            let outside = Path.Combine(Path.GetTempPath(), "outside-fscript-blacklist")
-            let readText = FsExterns.read_text { RootDirectory = root; ExcludedPaths = [ outside ] }
+            let readText = FsExterns.read_text { RootDirectory = root; DeniedPathGlobs = [ "outside-fscript-blacklist" ] }
             match invoke readText [ VString "a.txt" ] with
             | VOption (Some (VString "hello")) -> ()
-            | _ -> Assert.Fail("Expected outside exclusion to be ignored"))
+            | _ -> Assert.Fail("Expected non-matching denied glob to be ignored"))
+
+    [<Test>]
+    member _.``double star denied glob blocks root and nested node_modules`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            Directory.CreateDirectory(Path.Combine(root, "node_modules")) |> ignore
+            Directory.CreateDirectory(Path.Combine(root, "src", "node_modules")) |> ignore
+            File.WriteAllText(Path.Combine(root, "node_modules", "a.txt"), "a")
+            File.WriteAllText(Path.Combine(root, "src", "node_modules", "b.txt"), "b")
+            File.WriteAllText(Path.Combine(root, "src", "ok.txt"), "ok")
+
+            let context = { RootDirectory = root; DeniedPathGlobs = [ "**/node_modules" ] }
+            let glob = FsExterns.glob context
+            let readText = FsExterns.read_text context
+
+            match invoke glob [ VString "**/*" ] with
+            | VOption (Some (VList values)) ->
+                let asStrings =
+                    values
+                    |> List.choose (function | VString value -> Some value | _ -> None)
+                Assert.That(asStrings, Does.Contain("src/ok.txt"))
+                Assert.That(asStrings, Does.Not.Contain("node_modules/a.txt"))
+                Assert.That(asStrings, Does.Not.Contain("src/node_modules/b.txt"))
+            | _ -> Assert.Fail("Expected Fs.glob list")
+
+            let readRootAct () = invoke readText [ VString "node_modules/a.txt" ] |> ignore
+            let readNestedAct () = invoke readText [ VString "src/node_modules/b.txt" ] |> ignore
+            Assert.Throws<EvalException>(TestDelegate readRootAct) |> ignore
+            Assert.Throws<EvalException>(TestDelegate readNestedAct) |> ignore)
 
     [<Test>]
     member _.``fs_glob filters by pattern`` () =
@@ -163,7 +190,7 @@ type FsExternsTests () =
             File.WriteAllText(Path.Combine(root, "a.txt"), "a")
             File.WriteAllText(Path.Combine(root, "sub", "b.txt"), "b")
             File.WriteAllText(Path.Combine(root, "sub", "c.md"), "c")
-            let ext = FsExterns.glob { RootDirectory = root; ExcludedPaths = [] }
+            let ext = FsExterns.glob { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke ext [ VString "sub/*.txt" ] with
             | VOption (Some (VList [ VString "sub/b.txt" ])) -> ()
             | _ -> Assert.Fail("Expected only sub/b.txt"))
@@ -199,7 +226,7 @@ type FsExternsTests () =
             Directory.CreateDirectory(Path.Combine(root, "sub")) |> ignore
             File.WriteAllText(Path.Combine(root, "sub", "a.txt"), "a")
             File.WriteAllText(Path.Combine(root, "sub", "b.md"), "b")
-            let ext = FsExterns.enumerate_files { RootDirectory = root; ExcludedPaths = [] }
+            let ext = FsExterns.enumerate_files { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke ext [ VString "sub"; VString "*.txt" ] with
             | VOption (Some (VList [ VString "sub/a.txt" ])) -> ()
             | _ -> Assert.Fail("Expected only sub/a.txt"))

@@ -32,41 +32,55 @@ module internal HostCommon =
             else None
         with _ -> None
 
-    let private normalizeExcludedPaths (ctx: HostContext) =
+    let toRelativeNormalizedPath (ctx: HostContext) (fullPath: string) =
         let root = normalizeRoot ctx
-        ctx.ExcludedPaths
-        |> List.choose (fun path ->
-            try
-                let full = Path.GetFullPath(path)
-                if isWithinRoot root full then
-                    Some full
-                else
-                    None
-            with _ ->
-                None)
-
-    let private isExcludedDirectoryCandidate (fullExcludedPath: string) =
-        Directory.Exists(fullExcludedPath)
-        || fullExcludedPath.EndsWith(string Path.DirectorySeparatorChar, StringComparison.Ordinal)
-        || fullExcludedPath.EndsWith(string Path.AltDirectorySeparatorChar, StringComparison.Ordinal)
-
-    let isExcludedPath (ctx: HostContext) (fullPath: string) =
-        normalizeExcludedPaths ctx
-        |> List.exists (fun excludedPath ->
-            if isExcludedDirectoryCandidate excludedPath then
-                isWithinRoot excludedPath fullPath
-            else
-                String.Equals(excludedPath, fullPath, StringComparison.Ordinal))
+        if isWithinRoot root fullPath then
+            Path.GetRelativePath(root, fullPath).Replace("\\", "/")
+        else
+            fullPath.Replace("\\", "/")
 
     let globToRegex (glob: string) =
         let escaped = Regex.Escape(glob.Replace("\\", "/"))
         let pattern =
             escaped
+                .Replace("\\*\\*/", "___DOUBLESTAR_SLASH___")
                 .Replace("\\*\\*", "___DOUBLESTAR___")
                 .Replace("\\*", "[^/]*")
+                .Replace("___DOUBLESTAR_SLASH___", "(?:.*/)?")
                 .Replace("___DOUBLESTAR___", ".*")
                 .Replace("\\?", ".")
         "^" + pattern + "$"
+
+    let private normalizeDeniedGlob (glob: string) =
+        let value = glob.Trim().Replace("\\", "/")
+        if String.IsNullOrWhiteSpace(value) then None else Some value
+
+    let private globRegexes (ctx: HostContext) =
+        ctx.DeniedPathGlobs
+        |> List.choose normalizeDeniedGlob
+        |> List.map (fun glob -> Regex(globToRegex glob, RegexOptions.Compiled))
+
+    let private ancestorsWithSelf (relativePath: string) =
+        let rec loop (current: string) (acc: string list) =
+            if String.IsNullOrWhiteSpace(current) || current = "." then
+                "." :: acc
+            else
+                let parent = Path.GetDirectoryName(current.Replace("/", string Path.DirectorySeparatorChar))
+                let normalizedParent =
+                    match parent with
+                    | null
+                    | "" -> "."
+                    | value -> value.Replace("\\", "/")
+                loop normalizedParent (current :: acc)
+        loop relativePath []
+
+    let isDeniedPath (ctx: HostContext) (fullPath: string) =
+        let relativePath = toRelativeNormalizedPath ctx fullPath
+        let candidates = ancestorsWithSelf relativePath
+        let regexes = globRegexes ctx
+        regexes
+        |> List.exists (fun regex ->
+            candidates |> List.exists regex.IsMatch)
 
     let jsonInt (el: JsonElement) =
         match el.TryGetInt64() with
