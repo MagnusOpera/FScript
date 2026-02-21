@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.54.1]
+
+
 - Fixed NuGet packaging to include the custom package readme as `README.md` so `PackageReadmeFile` validation succeeds during pack/publish.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.54.0...0.54.1
 
 ## [0.54.0]
 
