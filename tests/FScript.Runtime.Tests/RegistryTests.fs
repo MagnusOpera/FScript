@@ -31,4 +31,4 @@ type RegistryTests () =
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Json.serialize" |> should equal true
         names.Contains "Xml.deserialize" |> should equal true
-        names.Contains "Xml.serialize" |> should equal true
+        names.Contains "Xml.serialize" |> should equal false

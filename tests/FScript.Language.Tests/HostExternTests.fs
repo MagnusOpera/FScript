@@ -348,14 +348,11 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some serialized json")
 
     [<Test>]
-    member _.``Xml deserialize and serialize work with record payloads`` () =
+    member _.``Xml deserialize works with record payloads`` () =
         let script =
             "type Item = { Name: string }\n" +
-            "type Payload = { Item: Item }\n" +
-            "let payload = Xml.serialize { Item = { Name = \"x\" } }\n" +
-            "match payload with\n" +
-            "| Some xml -> Xml.deserialize (typeof Item) xml \"Item\"\n" +
-            "| None -> None"
+            "let xml = \"<root><Item><Name>x</Name></Item></root>\"\n" +
+            "Xml.deserialize (typeof Item) xml \"Item\""
 
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VList [ VRecord fields ])) ->

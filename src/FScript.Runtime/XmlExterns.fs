@@ -37,14 +37,3 @@ module XmlExterns =
                       |> Option.defaultValue HostCommon.none
                   with _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Xml.deserialize expects (type, xml, query)") }
-
-    let serialize : ExternalFunction =
-        { Name = "Xml.serialize"
-          Scheme = Forall([ 0 ], TFun(TVar 0, TOption TString))
-          Arity = 1
-          Impl = fun _ -> function
-              | [ value ] ->
-                  match HostEncode.encodeXml value with
-                  | Some encoded -> HostCommon.some (VString encoded)
-                  | None -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "Xml.serialize expects (value)") }
