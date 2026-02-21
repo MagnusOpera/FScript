@@ -41,7 +41,7 @@
     <EmbeddedResource Include="Stdlib/Map.fss" />
     <EmbeddedResource Include="Stdlib/Environment.fss" />
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
-    <None Include="..\..\NUGET.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="..\..\NUGET.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
   </ItemGroup>
 

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed NuGet packaging to include the custom package readme as `README.md` so `PackageReadmeFile` validation succeeds during pack/publish.
+
 ## [0.54.0]
 
 
