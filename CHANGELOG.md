@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed the obsolete `Stdlib` shim module and switched embedded-source import errors to generic wording now that stdlib is fully native.
+
 ## [0.58.0]
 
 
