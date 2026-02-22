@@ -1,235 +1,10 @@
 namespace FScript.Language
 
-open System.Globalization
-
 module Eval =
     type ProgramState =
         { TypeDefs: Map<string, Type>
           Env: Env
           LastValue: Value }
-
-    let private builtinIgnore : ExternalFunction =
-        { Name = "ignore"
-          Scheme = Forall([ 0 ], TFun (TVar 0, TUnit))
-          Arity = 1
-          Impl = (fun _ _ -> VUnit) }
-
-    let private builtinPrint : ExternalFunction =
-        { Name = "print"
-          Scheme = Forall([], TFun (TString, TUnit))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString text ] ->
-                    System.Console.WriteLine(text)
-                    VUnit
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "print expects (string)"; Span = span })) }
-
-    let private builtinIntTryParse : ExternalFunction =
-        { Name = "Int.tryParse"
-          Scheme = Forall([], TFun (TString, TOption TInt))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString text ] ->
-                    match System.Int64.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture) with
-                    | true, value -> VOption (Some (VInt value))
-                    | _ -> VOption None
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Int.tryParse expects (string)"; Span = span })) }
-
-    let private builtinFloatTryParse : ExternalFunction =
-        { Name = "Float.tryParse"
-          Scheme = Forall([], TFun (TString, TOption TFloat))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString text ] ->
-                    match System.Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
-                    | true, value -> VOption (Some (VFloat value))
-                    | _ -> VOption None
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Float.tryParse expects (string)"; Span = span })) }
-
-    let private builtinBoolTryParse : ExternalFunction =
-        { Name = "Bool.tryParse"
-          Scheme = Forall([], TFun (TString, TOption TBool))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString text ] ->
-                    match System.Boolean.TryParse(text) with
-                    | true, value -> VOption (Some (VBool value))
-                    | _ -> VOption None
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Bool.tryParse expects (string)"; Span = span })) }
-
-    let private builtinIntToString : ExternalFunction =
-        { Name = "Int.toString"
-          Scheme = Forall([], TFun (TInt, TString))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VInt value ] -> VString (value.ToString(CultureInfo.InvariantCulture))
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Int.toString expects (int)"; Span = span })) }
-
-    let private builtinFloatToString : ExternalFunction =
-        { Name = "Float.toString"
-          Scheme = Forall([], TFun (TFloat, TString))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VFloat value ] -> VString (value.ToString("G17", CultureInfo.InvariantCulture))
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Float.toString expects (float)"; Span = span })) }
-
-    let private builtinBoolToString : ExternalFunction =
-        { Name = "Bool.toString"
-          Scheme = Forall([], TFun (TBool, TString))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VBool true ] -> VString "true"
-                | [ VBool false ] -> VString "false"
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "Bool.toString expects (bool)"; Span = span })) }
-
-    let private builtinStringReplace : ExternalFunction =
-        { Name = "String.replace"
-          Scheme = Forall([], TFun(TString, TFun(TString, TFun(TString, TString))))
-          Arity = 3
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString oldValue; VString newValue; VString source ] ->
-                    VString(source.Replace(oldValue, newValue))
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.replace expects (string, string, string)"; Span = span })) }
-
-    let private builtinStringIndexOf : ExternalFunction =
-        { Name = "String.indexOf"
-          Scheme = Forall([], TFun(TString, TFun(TString, TOption TInt)))
-          Arity = 2
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString value; VString source ] ->
-                    let index = source.IndexOf(value, System.StringComparison.Ordinal)
-                    if index >= 0 then VOption (Some (VInt (int64 index))) else VOption None
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.indexOf expects (string, string)"; Span = span })) }
-
-    let private builtinStringToLower : ExternalFunction =
-        { Name = "String.toLower"
-          Scheme = Forall([], TFun(TString, TString))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString source ] -> VString(source.ToLowerInvariant())
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.toLower expects (string)"; Span = span })) }
-
-    let private builtinStringToUpper : ExternalFunction =
-        { Name = "String.toUpper"
-          Scheme = Forall([], TFun(TString, TString))
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString source ] -> VString(source.ToUpperInvariant())
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.toUpper expects (string)"; Span = span })) }
-
-    let private builtinStringSubstring : ExternalFunction =
-        { Name = "String.substring"
-          Scheme = Forall([], TFun(TInt, TFun(TInt, TFun(TString, TOption TString))))
-          Arity = 3
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VInt start; VInt length; VString source ] ->
-                    let startIndex = int start
-                    let sliceLength = int length
-                    if startIndex < 0 || sliceLength < 0 || startIndex > source.Length || startIndex + sliceLength > source.Length then
-                        VOption None
-                    else
-                        VOption (Some (VString (source.Substring(startIndex, sliceLength))))
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.substring expects (string, int, int)"; Span = span })) }
-
-    let private builtinStringConcat : ExternalFunction =
-        { Name = "String.concat"
-          Scheme = Forall([], TFun(TString, TFun(TList TString, TString)))
-          Arity = 2
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString separator; VList values ] ->
-                    let rec collect (remaining: Value list) (acc: string list) =
-                        match remaining with
-                        | [] -> Some(List.rev acc)
-                        | VString value :: tail -> collect tail (value :: acc)
-                        | _ -> None
-
-                    match collect values [] with
-                    | Some strings -> VString(System.String.Join(separator, strings))
-                    | None ->
-                        let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                        raise (EvalException { Message = "String.concat expects (string, string list)"; Span = span })
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.concat expects (string, string list)"; Span = span })) }
-
-    let private builtinStringSplit : ExternalFunction =
-        { Name = "String.split"
-          Scheme = Forall([], TFun(TString, TFun(TString, TList TString)))
-          Arity = 2
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString separator; VString source ] ->
-                    source.Split([| separator |], System.StringSplitOptions.None)
-                    |> Array.toList
-                    |> List.map VString
-                    |> VList
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.split expects (string, string)"; Span = span })) }
-
-    let private builtinStringEndsWith : ExternalFunction =
-        { Name = "String.endsWith"
-          Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
-          Arity = 2
-          Impl =
-            (fun _ args ->
-                match args with
-                | [ VString suffix; VString source ] ->
-                    VBool (source.EndsWith(suffix, System.StringComparison.Ordinal))
-                | _ ->
-                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    raise (EvalException { Message = "String.endsWith expects (string, string)"; Span = span })) }
 
     let private literalToValue lit =
         match lit with
@@ -885,7 +660,7 @@ module Eval =
         applyMany fnValue args
 
     let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
-        let reserved = Stdlib.reservedNames ()
+        let reserved = BuiltinSignatures.builtinReservedNames
         let unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
 
         externs
@@ -909,12 +684,9 @@ module Eval =
         |> Option.iter (fun name ->
             raise (EvalException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        let stdlibTyped = TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram ())
-        let combinedProgram = stdlibTyped @ program
-
         let decls =
-            combinedProgram
-            |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None)
+            (BuiltinTypes.typeDefs |> List.map (fun def -> def.Name, def))
+            @ (program |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None))
             |> Map.ofList
 
         let rec fromRef (stack: string list) (tref: TypeRef) =
@@ -1000,23 +772,7 @@ module Eval =
             { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }
 
         let mutable env : Env =
-            (builtinIgnore
-             :: builtinPrint
-             :: builtinIntTryParse
-             :: builtinFloatTryParse
-             :: builtinBoolTryParse
-             :: builtinIntToString
-             :: builtinFloatToString
-             :: builtinBoolToString
-             :: builtinStringReplace
-             :: builtinStringIndexOf
-             :: builtinStringToLower
-             :: builtinStringToUpper
-             :: builtinStringSubstring
-             :: builtinStringConcat
-             :: builtinStringSplit
-             :: builtinStringEndsWith
-             :: externs)
+            (BuiltinFunctions.builtinExterns @ externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then
                     let value = ext.Impl externContext []
@@ -1027,7 +783,7 @@ module Eval =
             constructorValues
             |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
         let mutable lastValue = VUnit
-        for stmt in combinedProgram do
+        for stmt in program do
             match stmt with
             | TypeInfer.TSType _ ->
                 ()

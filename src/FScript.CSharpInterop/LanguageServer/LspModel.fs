@@ -11,7 +11,7 @@ module LspModel =
     let mutable debugLoggingEnabled = false
     let mutable lastDefinitionRequest: (string * int * int * DateTime) option = None
 
-    let stdlibNames = Stdlib.reservedNames() |> Set.toList
+    let stdlibNames = BuiltinSignatures.builtinReservedNames |> Set.toList
     let builtinNames = [ "ignore"; "nameof"; "typeof" ]
 
     let reservedKeywords =

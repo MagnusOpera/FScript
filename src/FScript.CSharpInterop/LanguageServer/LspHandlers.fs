@@ -1703,24 +1703,6 @@ module LspHandlers =
         | _ ->
             LspProtocol.sendResponse idNode None
 
-    let handleStdlibSource (idNode: JsonNode) (paramsObj: JsonObject) =
-        match tryGetString paramsObj "uri" with
-        | None ->
-            sendCommandError idNode "internal" "Missing stdlib URI."
-        | Some uri ->
-            match InteropServices.tryLoadStdlibSourceText uri with
-            | Some sourceText ->
-                let response = JsonObject()
-                response["ok"] <- JsonValue.Create(true)
-                let data = JsonObject()
-                data["uri"] <- JsonValue.Create(uri)
-                data["text"] <- JsonValue.Create(sourceText)
-                data["languageId"] <- JsonValue.Create("fscript")
-                response["data"] <- data
-                LspProtocol.sendResponse idNode (Some response)
-            | None ->
-                sendCommandError idNode "internal" $"Unable to load stdlib source for '{uri}'."
-
     let handleRename (idNode: JsonNode) (paramsObj: JsonObject) =
         match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj, tryGetString paramsObj "newName" with
         | Some _, Some _, Some newName when not (isValidIdentifierName newName) ->

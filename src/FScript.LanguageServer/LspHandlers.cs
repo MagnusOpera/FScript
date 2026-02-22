@@ -34,33 +34,6 @@ internal static class LspHandlers
         };
     }
 
-    internal static JsonObject HandleStdlibSource(JsonObject? @params)
-    {
-        var uri = @params?["uri"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(uri))
-        {
-            return Error("internal", "Missing stdlib URI.");
-        }
-
-        var textOption = InteropServices.tryLoadStdlibSourceText(uri);
-        if (textOption is null)
-        {
-            return Error("internal", $"Unable to load stdlib source for '{uri}'.");
-        }
-
-        var text = textOption.Value;
-        return new JsonObject
-        {
-            ["ok"] = true,
-            ["data"] = new JsonObject
-            {
-                ["uri"] = uri,
-                ["text"] = text,
-                ["languageId"] = "fscript"
-            }
-        };
-    }
-
     internal static JsonObject HandleViewAst(JsonObject? @params, Func<string, string?> tryLoadSource)
     {
         var uri = TryGetCommandUri(@params);

@@ -45,71 +45,63 @@ module LspSymbols =
         match scheme with
         | Forall (_, t) -> Types.typeToString t
 
-    let private stdlibFunctionSignatures : Lazy<Map<string, string>> =
+    let private builtinSignatures : Lazy<Map<string, string>> =
         lazy
-            let typedStdlib = InteropServices.inferStdlibWithExternsRaw []
-            typedStdlib
-            |> List.collect (function
-                | TypeInfer.TSLet(name, _, t, _, _, _) ->
-                    match t with
-                    | TFun _ -> [ name, Types.typeToString t ]
-                    | _ -> []
-                | TypeInfer.TSLetRecGroup(bindings, _, _) ->
-                    bindings
-                    |> List.choose (fun (name, _, t, _) ->
-                        match t with
-                        | TFun _ -> Some (name, Types.typeToString t)
-                        | _ -> None)
-                | _ -> [])
-            |> Map.ofList
+            BuiltinSignatures.builtinSchemes
+            |> Map.map (fun _ signature -> schemeTypeToString signature)
 
-    let private tryStdlibVirtualUriFromSource (sourceFile: string option) =
-        match sourceFile with
-        | Some file when file.EndsWith("Stdlib.Option.fss", StringComparison.Ordinal) || file.EndsWith("Option.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Option.fss"
-        | Some file when file.EndsWith("Stdlib.List.fss", StringComparison.Ordinal) || file.EndsWith("List.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///List.fss"
-        | Some file when file.EndsWith("Stdlib.Map.fss", StringComparison.Ordinal) || file.EndsWith("Map.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Map.fss"
-        | Some file when file.EndsWith("Stdlib.Environment.fss", StringComparison.Ordinal) || file.EndsWith("Environment.fss", StringComparison.Ordinal) -> Some "fscript-stdlib:///Environment.fss"
-        | _ -> None
-
-    let private stdlibFunctionParameterNames : Lazy<Map<string, string list>> =
-        lazy
-            InteropServices.stdlibProgram()
-            |> List.collect (function
-                | SLet(name, args, _, _, _, _, _) ->
-                    [ name, (args |> List.map (fun p -> p.Name)) ]
-                | SLetRecGroup(bindings, _, _) ->
-                    bindings
-                    |> List.map (fun (name, args, _, _, _) -> name, (args |> List.map (fun p -> p.Name)))
-                | _ -> [])
-            |> Map.ofList
-
-    let private stdlibFunctionDefinitions : Lazy<Map<string, (string * Span)>> =
-        lazy
-            InteropServices.stdlibProgram()
-            |> List.collect (function
-                | SLet(name, _, _, _, _, _, span) ->
-                    match tryStdlibVirtualUriFromSource span.Start.File with
-                    | Some uri -> [ name, (uri, span) ]
-                    | None -> []
-                | SLetRecGroup(bindings, _, _) ->
-                    bindings
-                    |> List.collect (fun (name, _, _, _, span) ->
-                        match tryStdlibVirtualUriFromSource span.Start.File with
-                        | Some uri -> [ name, (uri, span) ]
-                        | None -> [])
-                | _ -> [])
-            |> Map.ofList
-
-    let private stdlibTypeDefinitions : Lazy<Map<string, (string * Span)>> =
-        lazy
-            InteropServices.stdlibProgram()
-            |> List.collect (function
-                | SType typeDef ->
-                    match tryStdlibVirtualUriFromSource typeDef.Span.Start.File with
-                    | Some uri -> [ typeDef.Name, (uri, typeDef.Span) ]
-                    | None -> []
-                | _ -> [])
-            |> Map.ofList
+    let private builtinParameterNames : Map<string, string list> =
+        [ "ignore", [ "value" ]
+          "print", [ "message" ]
+          "Int.tryParse", [ "value" ]
+          "Float.tryParse", [ "value" ]
+          "Bool.tryParse", [ "value" ]
+          "Int.toString", [ "value" ]
+          "Float.toString", [ "value" ]
+          "Bool.toString", [ "value" ]
+          "String.replace", [ "oldValue"; "newValue"; "source" ]
+          "String.indexOf", [ "value"; "source" ]
+          "String.toLower", [ "source" ]
+          "String.toUpper", [ "source" ]
+          "String.substring", [ "start"; "length"; "source" ]
+          "String.concat", [ "separator"; "values" ]
+          "String.split", [ "separator"; "source" ]
+          "String.endsWith", [ "suffix"; "source" ]
+          "List.empty", []
+          "List.map", [ "mapper"; "values" ]
+          "List.iter", [ "iterator"; "values" ]
+          "List.choose", [ "chooser"; "values" ]
+          "List.collect", [ "collector"; "values" ]
+          "List.exists", [ "predicate"; "values" ]
+          "List.contains", [ "needle"; "values" ]
+          "List.rev", [ "values" ]
+          "List.distinct", [ "values" ]
+          "List.fold", [ "folder"; "state"; "values" ]
+          "List.filter", [ "predicate"; "values" ]
+          "List.length", [ "values" ]
+          "List.tryFind", [ "predicate"; "values" ]
+          "List.tryGet", [ "predicate"; "values" ]
+          "List.tryHead", [ "values" ]
+          "List.tail", [ "values" ]
+          "List.append", [ "left"; "right" ]
+          "Option.defaultValue", [ "fallback"; "value" ]
+          "Option.defaultWith", [ "fallback"; "value" ]
+          "Option.isNone", [ "value" ]
+          "Option.isSome", [ "value" ]
+          "Option.map", [ "mapper"; "value" ]
+          "Map.empty", []
+          "Map.tryGet", [ "key"; "values" ]
+          "Map.containsKey", [ "key"; "values" ]
+          "Map.add", [ "key"; "value"; "values" ]
+          "Map.ofList", [ "pairs" ]
+          "Map.fold", [ "folder"; "state"; "values" ]
+          "Map.count", [ "values" ]
+          "Map.filter", [ "predicate"; "values" ]
+          "Map.choose", [ "chooser"; "values" ]
+          "Map.map", [ "mapper"; "values" ]
+          "Map.iter", [ "iterator"; "values" ]
+          "Map.remove", [ "key"; "values" ] ]
+        |> Map.ofList
 
     let private buildInjectedFunctionData (externs: ExternalFunction list) =
         let fromExterns =
@@ -117,7 +109,7 @@ module LspSymbols =
             |> List.map (fun ext -> ext.Name, schemeTypeToString ext.Scheme)
             |> Map.ofList
 
-        let builtinSignatures =
+        let builtinCoreSignatures =
             [ "ignore", "'a -> unit"
               "print", "string -> unit"
               "Int.tryParse", "string -> int option"
@@ -144,19 +136,18 @@ module LspSymbols =
             |> Map.ofList
 
         let signatures =
-            stdlibFunctionSignatures.Value
+            builtinSignatures.Value
             |> Map.fold (fun acc name signature -> acc |> Map.add name signature) fromExterns
-            |> Map.fold (fun acc name signature -> acc |> Map.add name signature) builtinSignatures
+            |> Map.fold (fun acc name signature -> acc |> Map.add name signature) builtinCoreSignatures
 
         let paramNames =
-            stdlibFunctionParameterNames.Value
+            builtinParameterNames
             |> Map.fold (fun acc name names -> acc |> Map.add name names) builtinParamNames
 
-        signatures, paramNames, stdlibFunctionDefinitions.Value
+        signatures, paramNames, Map.empty
 
-    let tryFindInjectedTypeDefinition (typeName: string) =
-        stdlibTypeDefinitions.Value
-        |> Map.tryFind typeName
+    let tryFindInjectedTypeDefinition (_typeName: string) : (string * Span) option =
+        None
 
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with

@@ -28,6 +28,9 @@
     <Compile Include="Lexer.fs" />
     <Compile Include="Parser.fs" />
     <Compile Include="IncludeResolver.fs" />
+    <Compile Include="BuiltinTypes.fs" />
+    <Compile Include="BuiltinSignatures.fs" />
+    <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="Stdlib.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="Eval.fs" />
@@ -36,10 +39,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Stdlib/List.fss" />
-    <EmbeddedResource Include="Stdlib/Option.fss" />
-    <EmbeddedResource Include="Stdlib/Map.fss" />
-    <EmbeddedResource Include="Stdlib/Environment.fss" />
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\NUGET.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />

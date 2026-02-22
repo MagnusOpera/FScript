@@ -160,9 +160,6 @@ internal sealed class LspServer
             case "fscript/viewInferredAst":
                 if (paramsObj is not null) FSLspHandlers.handleViewInferredAst(idNode, paramsObj); else SendInvalidParams(idNode);
                 break;
-            case "fscript/stdlibSource":
-                if (paramsObj is not null) FSLspHandlers.handleStdlibSource(idNode, paramsObj); else SendInvalidParams(idNode);
-                break;
             default:
                 FSLspProtocol.sendError(idNode, -32601, "Method not found");
                 break;

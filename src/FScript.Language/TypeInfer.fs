@@ -1056,27 +1056,8 @@ module TypeInfer =
             s, tRes, asTyped expr tRes
 
     let private envFromExterns (externs: ExternalFunction list) : Map<string, Scheme> =
-        let builtins =
-            [ "ignore", Forall([ 0 ], TFun (TVar 0, TUnit))
-              "print", Forall([], TFun (TString, TUnit))
-              "Int.tryParse", Forall([], TFun (TString, TOption TInt))
-              "Float.tryParse", Forall([], TFun (TString, TOption TFloat))
-              "Bool.tryParse", Forall([], TFun (TString, TOption TBool))
-              "Int.toString", Forall([], TFun (TInt, TString))
-              "Float.toString", Forall([], TFun (TFloat, TString))
-              "Bool.toString", Forall([], TFun (TBool, TString))
-              "String.replace", Forall([], TFun(TString, TFun(TString, TFun(TString, TString))))
-              "String.indexOf", Forall([], TFun(TString, TFun(TString, TOption TInt)))
-              "String.toLower", Forall([], TFun(TString, TString))
-              "String.toUpper", Forall([], TFun(TString, TString))
-              "String.substring", Forall([], TFun(TInt, TFun(TInt, TFun(TString, TOption TString))))
-              "String.concat", Forall([], TFun(TString, TFun(TList TString, TString)))
-              "String.split", Forall([], TFun(TString, TFun(TString, TList TString)))
-              "String.endsWith", Forall([], TFun(TString, TFun(TString, TBool))) ]
-            |> Map.ofList
-
         externs
-        |> List.fold (fun acc ext -> acc.Add(ext.Name, ext.Scheme)) builtins
+        |> List.fold (fun acc ext -> acc.Add(ext.Name, ext.Scheme)) BuiltinSignatures.builtinSchemes
 
     let private patternBindingNames (pat: Pattern) : string list =
         let rec loop acc pattern =
@@ -1114,8 +1095,8 @@ module TypeInfer =
 
     let private inferProgramWithExternsRawAndLocals (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         let decls =
-            program
-            |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None)
+            (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
+            @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
             |> Map.ofList
         let typeDefs =
             decls
@@ -1320,8 +1301,7 @@ module TypeInfer =
         inferProgramWithExternsRawAndLocals externs program |> fst
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        let stdlibProgram = Stdlib.loadProgram ()
-        let reserved = Stdlib.reservedNames ()
+        let reserved = BuiltinSignatures.builtinReservedNames
 
         externs
         |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
@@ -1333,12 +1313,10 @@ module TypeInfer =
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        let typedCombined = inferProgramWithExternsRaw externs (stdlibProgram @ program)
-        typedCombined |> List.skip (List.length stdlibProgram)
+        inferProgramWithExternsRaw externs program
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
-        let stdlibProgram = Stdlib.loadProgram ()
-        let reserved = Stdlib.reservedNames ()
+        let reserved = BuiltinSignatures.builtinReservedNames
 
         externs
         |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
@@ -1350,10 +1328,7 @@ module TypeInfer =
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        let typedCombined, localTypes =
-            inferProgramWithExternsRawAndLocals externs (stdlibProgram @ program)
-
-        typedCombined |> List.skip (List.length stdlibProgram), localTypes
+        inferProgramWithExternsRawAndLocals externs program
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program

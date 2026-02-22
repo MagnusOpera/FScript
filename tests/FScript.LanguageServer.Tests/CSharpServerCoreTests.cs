@@ -33,31 +33,6 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
-    public void CSharp_server_returns_stdlib_source()
-    {
-        var client = LspClient.StartCSharp();
-        try
-        {
-            LspTestFixture.Initialize(client);
-            var requestParams = new JsonObject { ["uri"] = "fscript-stdlib:///Option.fss" };
-
-            LspClient.SendRequest(client, 43, "fscript/stdlibSource", requestParams);
-            var resp = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 43);
-
-            var result = resp["result"] as JsonObject ?? throw new Exception("Expected result object");
-            Assert.That(result["ok"]?.GetValue<bool>(), Is.True);
-            var data = result["data"] as JsonObject ?? throw new Exception("Expected data object");
-            var text = data["text"]?.GetValue<string>() ?? string.Empty;
-            Assert.That(text.Contains("let", StringComparison.Ordinal), Is.True);
-        }
-        finally
-        {
-            try { LspTestFixture.Shutdown(client); } catch { }
-            LspClient.Stop(client);
-        }
-    }
-
-    [Test]
     public void CSharp_server_returns_method_not_found_for_unknown_request()
     {
         var client = LspClient.StartCSharp();
@@ -180,7 +155,7 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
-    public void CSharp_server_typeDefinition_resolves_Environment_to_stdlib()
+    public void CSharp_server_typeDefinition_for_Env_returns_no_location()
     {
         var client = LspClient.StartCSharp();
         try
@@ -211,9 +186,7 @@ public sealed class CSharpServerCoreTests
             var definitionResponse = LspClient.ReadUntil(client, 10_000,
                 msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 142);
 
-            var result = definitionResponse["result"] as JsonObject
-                ?? throw new Exception("Expected typeDefinition location.");
-            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo("fscript-stdlib:///Environment.fss"));
+            Assert.That(definitionResponse["result"], Is.Null);
         }
         finally
         {

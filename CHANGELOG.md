@@ -8,6 +8,8 @@ All notable changes to FScript are documented in this file.
 - Optimized runtime invocation paths by reducing argument list churn and improving closure application in `Eval.invokeValue`.
 - Cached stdlib loading and reserved-name computation to avoid repeated parse/inference work.
 - Optimized `ScriptHost` exported symbol access by caching function/value sets and maps for faster `invoke` and `getValue`.
+- Moved stdlib `List.*`, `Option.*`, `Map.*`, `Environment`, and `FsKind` definitions to native language/runtime built-ins to remove stdlib source parsing/inference at load time.
+- Removed virtual stdlib source navigation plumbing from LSP (`fscript/stdlibSource`) and updated injected symbol/type resolution to rely on native built-in metadata.
 
 ## [0.57.0]
 

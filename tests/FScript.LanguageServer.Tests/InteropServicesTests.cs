@@ -7,21 +7,6 @@ namespace FScript.LanguageServer.Tests;
 public sealed class InteropServicesTests
 {
     [Test]
-    public void Interop_loads_stdlib_virtual_source()
-    {
-        var source = InteropServices.tryLoadStdlibSourceText("fscript-stdlib:///Option.fss");
-        Assert.That(source is not null, Is.True);
-    }
-
-    [Test]
-    public void Interop_loads_environment_stdlib_virtual_source()
-    {
-        var source = InteropServices.tryLoadStdlibSourceText("fscript-stdlib:///Environment.fss");
-        Assert.That(source is not null, Is.True);
-        Assert.That(source!.Value, Does.Contain("type Environment"));
-    }
-
-    [Test]
     public void Interop_parses_and_infers_a_simple_script()
     {
         const string script = "let add x y = x + y";

@@ -39,37 +39,3 @@ let Env = asEnvironment { ScriptName = None; Arguments = [] }
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypeInfer.TypedProgram * TypeInfer.LocalVariableTypeInfo list =
         TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs (withLspEnvironmentPrelude program)
-
-    let inferStdlibWithExternsRaw (externs: ExternalFunction list) : TypeInfer.TypedProgram =
-        TypeInfer.inferProgramWithExternsRaw externs (Stdlib.loadProgram())
-
-    let stdlibProgram () : Program =
-        Stdlib.loadProgram()
-
-    let tryLoadStdlibSourceText (uri: string) : string option =
-        try
-            let parsed = Uri(uri)
-            if not (String.Equals(parsed.Scheme, "fscript-stdlib", StringComparison.OrdinalIgnoreCase)) then
-                None
-            else
-                let fileName = parsed.AbsolutePath.TrimStart('/')
-                let resourceName =
-                    match fileName with
-                    | "Option.fss" -> Some "FScript.Language.Stdlib.Option.fss"
-                    | "List.fss" -> Some "FScript.Language.Stdlib.List.fss"
-                    | "Map.fss" -> Some "FScript.Language.Stdlib.Map.fss"
-                    | "Environment.fss" -> Some "FScript.Language.Stdlib.Environment.fss"
-                    | _ -> None
-
-                match resourceName with
-                | None -> None
-                | Some name ->
-                    let assembly = typeof<Span>.Assembly
-                    match assembly.GetManifestResourceStream(name) with
-                    | null -> None
-                    | stream ->
-                        use stream = stream
-                        use reader = new StreamReader(stream)
-                        Some(reader.ReadToEnd())
-        with _ ->
-            None
