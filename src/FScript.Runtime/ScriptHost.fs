@@ -4,6 +4,11 @@ open System.IO
 open FScript.Language
 
 module ScriptHost =
+    type private RuntimeState =
+        { TypeDefs: Map<string, Type>
+          Env: Env
+          LastValue: Value }
+
     type ExecutionMode =
         | Interpreted
         | Compiled
@@ -93,7 +98,11 @@ module ScriptHost =
             | Compiled ->
                 let executable = FScript.compileWithExterns externs typed
                 let loadedExecutable = Executable.load executable
-                let state = Executable.loadedState loadedExecutable
+                let compiledState = Executable.loadedState loadedExecutable
+                let state =
+                    { TypeDefs = compiledState.TypeDefs
+                      Env = compiledState.Env
+                      LastValue = compiledState.LastValue }
                 let functionNames = Executable.loadedFunctionNames loadedExecutable
                 let functionSet = Executable.loadedFunctionSet loadedExecutable
                 let functions = Executable.loadedFunctions loadedExecutable
@@ -110,7 +119,11 @@ module ScriptHost =
                 let values = Executable.loadedValues loadedExecutable
                 Some executable, state, functionNames, functionSet, functions, functionInvokers, functionSignatures, valueNames, valueSet, values
             | Interpreted ->
-                let state = Eval.evalProgramWithExternsState externs typed
+                let interpretedState = Eval.evalProgramWithExternsState externs typed
+                let state =
+                    { TypeDefs = interpretedState.TypeDefs
+                      Env = interpretedState.Env
+                      LastValue = interpretedState.LastValue }
                 let exportedNames = declaredExportedNames typed
                 let functionNames =
                     exportedNames

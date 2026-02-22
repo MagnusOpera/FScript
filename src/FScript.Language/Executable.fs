@@ -1,24 +1,6 @@
 namespace FScript.Language
 
-open System.Linq.Expressions
-
 module Executable =
-    let private evalProgramWithExternsStateMethod =
-        match typeof<Value>.Assembly.GetType("FScript.Language.Eval") with
-        | null -> failwith "FScript.Language.Eval type not found"
-        | evalType ->
-            match evalType.GetMethod("evalProgramWithExternsState") with
-            | null -> failwith "Eval.evalProgramWithExternsState not found"
-            | methodInfo -> methodInfo
-
-    let private invokeValueMethod =
-        match typeof<Value>.Assembly.GetType("FScript.Language.Eval") with
-        | null -> failwith "FScript.Language.Eval type not found"
-        | evalType ->
-            match evalType.GetMethod("invokeValue") with
-            | null -> failwith "Eval.invokeValue not found"
-            | methodInfo -> methodInfo
-
     type CompiledFunctionSignature =
         { Name: string
           ParameterNames: string list
@@ -27,14 +9,14 @@ module Executable =
 
     type ExecutableProgram =
         private
-            { RunState: unit -> Eval.ProgramState
+            { RunState: unit -> CompiledBackend.ProgramState
               ExportedNames: string list
               FunctionSignatures: Map<string, CompiledFunctionSignature> }
 
     type LoadedExecutableProgram =
         private
             { Program: ExecutableProgram
-              State: Eval.ProgramState
+              State: CompiledBackend.ProgramState
               ExportedFunctionNames: string list
               ExportedFunctionSet: Set<string>
               ExportedFunctions: Map<string, Value>
@@ -102,38 +84,19 @@ module Executable =
         | _ -> false
 
     let private compileInvoker (typeDefs: Map<string, Type>) (fnValue: Value) : (Value list -> Value) =
-        let argsParameter = Expression.Parameter(typeof<Value list>, "args")
-        let callExpression =
-            Expression.Call(
-                invokeValueMethod,
-                Expression.Constant(typeDefs, typeof<Map<string, Type>>),
-                Expression.Constant(fnValue, typeof<Value>),
-                argsParameter
-            )
-        let lambda = Expression.Lambda<System.Func<Value list, Value>>(callExpression, argsParameter)
-        let compiled = lambda.Compile()
-        fun args -> compiled.Invoke(args)
+        fun args -> CompiledBackend.invokeValue typeDefs fnValue args
 
     let compileWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ExecutableProgram =
         let exportedNames = declaredExportedNames program
         let functionSignatures = collectFunctionSignatures program
-        let call =
-            Expression.Call(
-                evalProgramWithExternsStateMethod,
-                Expression.Constant(externs, typeof<ExternalFunction list>),
-                Expression.Constant(program, typeof<TypeInfer.TypedProgram>)
-            )
-        let lambda = Expression.Lambda<System.Func<Eval.ProgramState>>(call)
-        let compiled = lambda.Compile()
-
-        { RunState = (fun () -> compiled.Invoke())
+        { RunState = (fun () -> CompiledBackend.evalProgramWithExternsState externs program)
           ExportedNames = exportedNames
           FunctionSignatures = functionSignatures }
 
     let compile (program: TypeInfer.TypedProgram) : ExecutableProgram =
         compileWithExterns [] program
 
-    let executeWithState (program: ExecutableProgram) : Eval.ProgramState =
+    let executeWithState (program: ExecutableProgram) : CompiledBackend.ProgramState =
         program.RunState()
 
     let execute (program: ExecutableProgram) : Value =
@@ -194,7 +157,7 @@ module Executable =
           ExportedValueSet = valueSet
           ExportedValues = values }
 
-    let loadedState (loaded: LoadedExecutableProgram) : Eval.ProgramState =
+    let loadedState (loaded: LoadedExecutableProgram) : CompiledBackend.ProgramState =
         loaded.State
 
     let loadedFunctionNames (loaded: LoadedExecutableProgram) : string list =
