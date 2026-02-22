@@ -17,6 +17,7 @@ module ScriptHost =
           ExportedFunctionNames: string list
           ExportedFunctionSet: Set<string>
           ExportedFunctions: Map<string, Value>
+          ExportedFunctionInvokers: Map<string, (Value list -> Value)>
           ExportedFunctionSignatures: Map<string, FunctionSignature>
           ExportedValueNames: string list
           ExportedValueSet: Set<string>
@@ -106,6 +107,10 @@ module ScriptHost =
             collectFunctionSignatures typed
             |> Map.filter (fun name _ -> functionSet |> Set.contains name)
 
+        let functionInvokers =
+            functions
+            |> Map.map (fun _ fnValue -> InvocationCompiler.compile state.TypeDefs fnValue)
+
         let valueNames =
             exportedNames
             |> List.filter (fun name ->
@@ -127,6 +132,7 @@ module ScriptHost =
           ExportedFunctionNames = functionNames
           ExportedFunctionSet = functionSet
           ExportedFunctions = functions
+          ExportedFunctionInvokers = functionInvokers
           ExportedFunctionSignatures = functionSignatures
           ExportedValueNames = valueNames
           ExportedValueSet = valueSet
@@ -185,10 +191,7 @@ module ScriptHost =
             else
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
         else
-            match loaded.ExportedFunctions |> Map.tryFind functionName with
-            | Some fnValue when isCallable fnValue ->
-                Eval.invokeValue loaded.TypeDefs fnValue args
-            | Some _ ->
-                raise (HostCommon.evalError $"'{functionName}' is not callable")
+            match loaded.ExportedFunctionInvokers |> Map.tryFind functionName with
+            | Some invoker -> invoker args
             | None ->
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")

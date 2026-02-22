@@ -5,6 +5,7 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - Added an explicit executable pipeline (`FScript.compile*` + `FScript.execute*`) and switched host/runtime entry points to use compiled execution by default.
+- Added in-memory invocation code generation in `ScriptHost` using compiled delegates for exported function calls.
 
 ## [0.59.0]
 

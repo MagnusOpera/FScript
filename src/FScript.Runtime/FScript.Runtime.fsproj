@@ -31,6 +31,7 @@
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />
+    <Compile Include="InvocationCompiler.fs" />
     <Compile Include="ScriptHost.fs" />
   </ItemGroup>
 
