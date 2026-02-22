@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.59.0]
+
+
 - Removed the obsolete `Stdlib` shim module and switched embedded-source import errors to generic wording now that stdlib is fully native.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.58.0...0.59.0
 
 ## [0.58.0]
 
