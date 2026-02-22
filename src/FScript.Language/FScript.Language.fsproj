@@ -31,7 +31,6 @@
     <Compile Include="BuiltinTypes.fs" />
     <Compile Include="BuiltinSignatures.fs" />
     <Compile Include="BuiltinFunctions.fs" />
-    <Compile Include="Stdlib.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Pretty.fs" />

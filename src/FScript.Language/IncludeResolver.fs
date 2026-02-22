@@ -420,7 +420,7 @@ module IncludeResolver =
                 program
                 |> List.choose (function | SImport(_, _, span) -> Some span | _ -> None)
                 |> List.head
-            raise (ParseException { Message = "Embedded stdlib source does not support 'import'"; Span = importSpan })
+            raise (ParseException { Message = "Embedded source does not support 'import'"; Span = importSpan })
         let prefix = tryGetSourceModulePrefix sourceName
         expandProgram dummyRoot fileSpan getOrCreatePrefix loadRef [] false sourceName prefix program
 
