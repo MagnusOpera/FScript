@@ -11,7 +11,8 @@ module ScriptHost =
           ReturnType: Type }
 
     type LoadedScript =
-        { TypeDefs: Map<string, Type>
+        { Executable: Executable.ExecutableProgram
+          TypeDefs: Map<string, Type>
           Env: Env
           ExportedFunctionNames: string list
           ExportedFunctionSet: Set<string>
@@ -79,7 +80,8 @@ module ScriptHost =
 
     let private loadProgram (externs: ExternalFunction list) (program: Program) : LoadedScript =
         let typed = FScript.inferWithExterns externs program
-        let state = Eval.evalProgramWithExternsState externs typed
+        let executable = FScript.compileWithExterns externs typed
+        let state = FScript.executeWithState executable
         let exportedNames =
             declaredExportedNames typed
             |> List.distinct
@@ -119,7 +121,8 @@ module ScriptHost =
                 | None -> None)
             |> Map.ofList
 
-        { TypeDefs = state.TypeDefs
+        { Executable = executable
+          TypeDefs = state.TypeDefs
           Env = state.Env
           ExportedFunctionNames = functionNames
           ExportedFunctionSet = functionSet

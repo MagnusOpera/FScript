@@ -14,7 +14,8 @@ let formatSpan (span: Span) =
 
 let runTypedProgram (externs: ExternalFunction list) (program: Program) =
     let typed = TypeInfer.inferProgramWithExterns externs program
-    let result = Eval.evalProgramWithExterns externs typed
+    let executable = FScript.compileWithExterns externs typed
+    let result = FScript.execute executable
     Console.WriteLine(Pretty.valueToString result)
     0
 
@@ -297,7 +298,8 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
         let parsed = FScript.parse source
         let candidate = baseProgram @ parsed
         let typed = TypeInfer.inferProgramWithExterns externs candidate
-        let state = Eval.evalProgramWithExternsState externs typed
+        let executable = FScript.compileWithExterns externs typed
+        let state = FScript.executeWithState executable
         let hasExpression =
             parsed
             |> List.exists (function

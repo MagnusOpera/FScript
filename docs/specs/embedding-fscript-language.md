@@ -1,7 +1,7 @@
 # Embedding `FScript.Language`
 
 This document describes the host-facing interface of `FScript.Language`:
-- running the interpreter pipeline,
+- running the executable pipeline,
 - discovering script functions,
 - invoking functions,
 - supported host-visible types and values.
@@ -21,9 +21,13 @@ Primary entry points are in module `FScript`:
 - `FScript.parse : string -> Program`
 - `FScript.infer : Program -> TypeInfer.TypedProgram`
 - `FScript.inferWithExterns : ExternalFunction list -> Program -> TypeInfer.TypedProgram`
+- `FScript.compile : TypeInfer.TypedProgram -> Executable.ExecutableProgram`
+- `FScript.compileWithExterns : ExternalFunction list -> TypeInfer.TypedProgram -> Executable.ExecutableProgram`
+- `FScript.execute : Executable.ExecutableProgram -> Value`
+- `FScript.executeWithState : Executable.ExecutableProgram -> Eval.ProgramState`
 - `FScript.eval : TypeInfer.TypedProgram -> Value`
 - `FScript.evalWithExterns : ExternalFunction list -> TypeInfer.TypedProgram -> Value`
-- `FScript.run : string -> Value` (parse + infer + eval without externs)
+- `FScript.run : string -> Value` (parse + infer + compile + execute without externs)
 
 ## Running scripts
 
@@ -57,7 +61,8 @@ let toUpperExtern =
 let source = "toUpper \"fscript\""
 let program = FScript.parse source
 let typed = FScript.inferWithExterns [ toUpperExtern ] program
-let result = FScript.evalWithExterns [ toUpperExtern ] typed
+let executable = FScript.compileWithExterns [ toUpperExtern ] typed
+let result = FScript.execute executable
 ```
 
 ## Loading once and invoking by name
@@ -205,7 +210,8 @@ let entry = "/path/to/workspace/main.fss"
 
 let program = FScript.parseFileWithIncludes root entry
 let typed = FScript.infer program
-let value = FScript.eval typed
+let executable = FScript.compile typed
+let value = FScript.execute executable
 ```
 
 ### 2. Load once, invoke many times

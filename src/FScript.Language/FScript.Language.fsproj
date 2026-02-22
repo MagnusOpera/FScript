@@ -33,6 +33,7 @@
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="Eval.fs" />
+    <Compile Include="Executable.fs" />
     <Compile Include="Pretty.fs" />
     <Compile Include="Library.fs" />
   </ItemGroup>

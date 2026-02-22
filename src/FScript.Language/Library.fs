@@ -10,6 +10,10 @@ module FScript =
     let inferWithExterns = TypeInfer.inferProgramWithExterns
     let eval = Eval.evalProgram
     let evalWithExterns = Eval.evalProgramWithExterns
+    let compile = Executable.compile
+    let compileWithExterns = Executable.compileWithExterns
+    let execute = Executable.execute
+    let executeWithState = Executable.executeWithState
 
     let run (source: string) =
-        source |> parse |> infer |> eval
+        source |> parse |> infer |> compile |> execute

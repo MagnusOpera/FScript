@@ -14,6 +14,7 @@
     <Compile Include="ParserTests.fs" />
     <Compile Include="TypeInferenceTests.fs" />
     <Compile Include="EvalTests.fs" />
+    <Compile Include="ExecutableTests.fs" />
     <Compile Include="PrettyTests.fs" />
     <Compile Include="ExternalTests.fs" />
     <Compile Include="HostExternTests.fs" />

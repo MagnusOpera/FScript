@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added an explicit executable pipeline (`FScript.compile*` + `FScript.execute*`) and switched host/runtime entry points to use compiled execution by default.
+
 ## [0.59.0]
 
 
