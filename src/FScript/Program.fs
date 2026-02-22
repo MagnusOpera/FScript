@@ -315,12 +315,12 @@ let runRepl (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (_
         let parsed = FScript.parse source
         let candidate = baseProgram @ parsed
         let typed = TypeInfer.inferProgramWithExterns externs candidate
-        let state =
+        let lastValue =
             match mode with
-            | ScriptHost.Interpreted -> Eval.evalProgramWithExternsState externs typed
+            | ScriptHost.Interpreted -> (Eval.evalProgramWithExternsState externs typed).LastValue
             | ScriptHost.Compiled ->
                 let executable = FScript.compileWithExterns externs typed
-                FScript.executeWithState executable
+                (FScript.executeWithState executable).LastValue
         let hasExpression =
             parsed
             |> List.exists (function
@@ -329,11 +329,11 @@ let runRepl (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (_
         if hasExpression then
             match tryGetLastExpressionType typed with
             | Some t ->
-                match tryFormatFunctionValueWithType state.LastValue t with
+                match tryFormatFunctionValueWithType lastValue t with
                 | Some signature -> Console.WriteLine(signature)
-                | None -> Console.WriteLine(Pretty.valueToString state.LastValue)
+                | None -> Console.WriteLine(Pretty.valueToString lastValue)
             | None ->
-                Console.WriteLine(Pretty.valueToString state.LastValue)
+                Console.WriteLine(Pretty.valueToString lastValue)
         let retained =
             parsed
             |> List.filter (function

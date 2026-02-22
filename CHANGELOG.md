@@ -7,6 +7,7 @@ All notable changes to FScript are documented in this file.
 - Added an explicit executable pipeline (`FScript.compile*` + `FScript.execute*`) and switched host/runtime entry points to use compiled execution by default.
 - Added in-memory invocation code generation in `ScriptHost` using compiled delegates for exported function calls.
 - Added in-memory code generation for executable program runners (`ExecutableProgram` now compiles to a reusable `unit -> ProgramState` delegate).
+- Switched executable exported function invokers to emitted in-memory delegates (`DynamicMethod`) so compiled mode avoids interpreter dispatch on invocation.
 - Added executable preload support (`Executable.load` / `FScript.loadExecutable`) so exported metadata and invokers are materialized once and reused by hosts.
 - Added `ScriptHost.LoadOptions` with `ExecutionMode` (`Interpreted` or `Compiled`) so hosts can benchmark and compare execution pipelines.
 - Updated CLI execution defaults to interpreted mode, with new `--compile` flag to opt into compile-first execution.

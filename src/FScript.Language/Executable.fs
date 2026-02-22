@@ -1,11 +1,51 @@
 namespace FScript.Language
 
+open System
+open System.Reflection
+open System.Reflection.Emit
+
 module Executable =
+    type private ProgramRunner(externs: ExternalFunction list, program: TypeInfer.TypedProgram) =
+        member _.Invoke() : CompiledBackend.ProgramState =
+            CompiledBackend.evalProgramWithExternsState externs program
+
+    type private FunctionInvoker(typeDefs: Map<string, FScript.Language.Type>, fnValue: Value) =
+        member _.Invoke(args: Value list) : Value =
+            CompiledBackend.invokeValue typeDefs fnValue args
+
+    let private getRequiredMethod (t: System.Type) (name: string) =
+        match t.GetMethod(name, BindingFlags.Instance ||| BindingFlags.Public ||| BindingFlags.NonPublic) with
+        | null -> failwith $"Unable to locate required method '{name}' on type '{t.FullName}'"
+        | methodInfo -> methodInfo
+
+    let private programRunnerInvokeMethod =
+        getRequiredMethod typeof<ProgramRunner> "Invoke"
+
+    let private functionInvokerInvokeMethod =
+        getRequiredMethod typeof<FunctionInvoker> "Invoke"
+
+    let private compileRunStateInvoker (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : (unit -> CompiledBackend.ProgramState) =
+        let target = ProgramRunner(externs, program)
+        let dynamicMethod =
+            DynamicMethod(
+                "fscript_compiled_run_state",
+                typeof<CompiledBackend.ProgramState>,
+                [| typeof<ProgramRunner> |],
+                true)
+        let il = dynamicMethod.GetILGenerator()
+        il.Emit(OpCodes.Ldarg_0)
+        il.Emit(OpCodes.Callvirt, programRunnerInvokeMethod)
+        il.Emit(OpCodes.Ret)
+        let invoker =
+            dynamicMethod.CreateDelegate(typeof<Func<ProgramRunner, CompiledBackend.ProgramState>>)
+            :?> Func<ProgramRunner, CompiledBackend.ProgramState>
+        fun () -> invoker.Invoke(target)
+
     type CompiledFunctionSignature =
         { Name: string
           ParameterNames: string list
-          ParameterTypes: Type list
-          ReturnType: Type }
+          ParameterTypes: FScript.Language.Type list
+          ReturnType: FScript.Language.Type }
 
     type ExecutableProgram =
         private
@@ -35,8 +75,8 @@ module Executable =
         |> List.distinct
         |> List.sort
 
-    let private flattenFunctionType (t: Type) : Type list * Type =
-        let rec loop (acc: Type list) (current: Type) =
+    let private flattenFunctionType (t: FScript.Language.Type) : FScript.Language.Type list * FScript.Language.Type =
+        let rec loop (acc: FScript.Language.Type list) (current: FScript.Language.Type) =
             match current with
             | TFun (arg, ret) -> loop (arg :: acc) ret
             | _ -> List.rev acc, current
@@ -83,13 +123,28 @@ module Executable =
         | VUnionCtor _ -> true
         | _ -> false
 
-    let private compileInvoker (typeDefs: Map<string, Type>) (fnValue: Value) : (Value list -> Value) =
-        fun args -> CompiledBackend.invokeValue typeDefs fnValue args
+    let private compileInvoker (typeDefs: Map<string, FScript.Language.Type>) (fnValue: Value) : (Value list -> Value) =
+        let target = FunctionInvoker(typeDefs, fnValue)
+        let dynamicMethod =
+            DynamicMethod(
+                "fscript_compiled_invoke",
+                typeof<Value>,
+                [| typeof<FunctionInvoker>; typeof<Value list> |],
+                true)
+        let il = dynamicMethod.GetILGenerator()
+        il.Emit(OpCodes.Ldarg_0)
+        il.Emit(OpCodes.Ldarg_1)
+        il.Emit(OpCodes.Callvirt, functionInvokerInvokeMethod)
+        il.Emit(OpCodes.Ret)
+        let invoker =
+            dynamicMethod.CreateDelegate(typeof<Func<FunctionInvoker, Value list, Value>>)
+            :?> Func<FunctionInvoker, Value list, Value>
+        fun args -> invoker.Invoke(target, args)
 
     let compileWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ExecutableProgram =
         let exportedNames = declaredExportedNames program
         let functionSignatures = collectFunctionSignatures program
-        { RunState = (fun () -> CompiledBackend.evalProgramWithExternsState externs program)
+        { RunState = compileRunStateInvoker externs program
           ExportedNames = exportedNames
           FunctionSignatures = functionSignatures }
 
