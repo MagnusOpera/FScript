@@ -288,6 +288,14 @@ type EvalTests () =
         | VList [ VString "a"; VString "b"; VString "c" ] -> ()
         | _ -> Assert.Fail("Expected split string list")
 
+        match Helpers.eval "String.endsWith \".csproj\" \"A/B.csproj\"" with
+        | VBool true -> ()
+        | _ -> Assert.Fail("Expected true for matching suffix")
+
+        match Helpers.eval "String.endsWith \".fsproj\" \"A/B.csproj\"" with
+        | VBool false -> ()
+        | _ -> Assert.Fail("Expected false for non-matching suffix")
+
     [<Test>]
     member _.``Evaluates match on option`` () =
         let src = "match Some 3 with\n    | Some x -> x + 1\n    | None -> 0"

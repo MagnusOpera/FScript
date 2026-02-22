@@ -17,44 +17,52 @@ module Stdlib =
         use reader = new StreamReader(stream)
         reader.ReadToEnd()
 
+    let private loadedProgram =
+        lazy
+            (let assembly = typeof<Span>.Assembly
+             stdlibResources
+             |> List.collect (fun (resourceName, logicalSourceName) ->
+                 let source = readResourceText assembly resourceName
+                 IncludeResolver.parseIncludedSource logicalSourceName source))
+
     let loadProgram () : Program =
-        let assembly = typeof<Span>.Assembly
-        stdlibResources
-        |> List.collect (fun (resourceName, logicalSourceName) ->
-            let source = readResourceText assembly resourceName
-            IncludeResolver.parseIncludedSource logicalSourceName source)
+        loadedProgram.Value
+
+    let private reserved =
+        lazy
+            (let rec patternBindingNames (pat: Pattern) : string list =
+                match pat with
+                | PWildcard _
+                | PLiteral _
+                | PNil _
+                | PNone _
+                | PTypeRef _ -> []
+                | PVar (name, _) -> [ name ]
+                | PCons (head, tail, _) -> patternBindingNames head @ patternBindingNames tail
+                | PTuple (items, _) -> items |> List.collect patternBindingNames
+                | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> patternBindingNames p)
+                | PMap (clauses, tailPattern, _) ->
+                    let fromClauses =
+                        clauses
+                        |> List.collect (fun (k, v) -> patternBindingNames k @ patternBindingNames v)
+                    let fromTail =
+                        match tailPattern with
+                        | Some tail -> patternBindingNames tail
+                        | None -> []
+                    fromClauses @ fromTail
+                | PSome (inner, _) -> patternBindingNames inner
+                | PUnionCase (_, _, payload, _) ->
+                    match payload with
+                    | Some inner -> patternBindingNames inner
+                    | None -> []
+
+             loadProgram ()
+             |> List.collect (function
+                 | SLet(name, _, _, _, _, _, _) -> [ name ]
+                 | SLetPattern(pattern, _, _, _) -> patternBindingNames pattern
+                 | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
+                 | _ -> [])
+             |> Set.ofList)
 
     let reservedNames () : Set<string> =
-        let rec patternBindingNames (pat: Pattern) : string list =
-            match pat with
-            | PWildcard _
-            | PLiteral _
-            | PNil _
-            | PNone _
-            | PTypeRef _ -> []
-            | PVar (name, _) -> [ name ]
-            | PCons (head, tail, _) -> patternBindingNames head @ patternBindingNames tail
-            | PTuple (items, _) -> items |> List.collect patternBindingNames
-            | PRecord (fields, _) -> fields |> List.collect (fun (_, p) -> patternBindingNames p)
-            | PMap (clauses, tailPattern, _) ->
-                let fromClauses =
-                    clauses
-                    |> List.collect (fun (k, v) -> patternBindingNames k @ patternBindingNames v)
-                let fromTail =
-                    match tailPattern with
-                    | Some tail -> patternBindingNames tail
-                    | None -> []
-                fromClauses @ fromTail
-            | PSome (inner, _) -> patternBindingNames inner
-            | PUnionCase (_, _, payload, _) ->
-                match payload with
-                | Some inner -> patternBindingNames inner
-                | None -> []
-
-        loadProgram ()
-        |> List.collect (function
-            | SLet(name, _, _, _, _, _, _) -> [ name ]
-            | SLetPattern(pattern, _, _, _) -> patternBindingNames pattern
-            | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
-            | _ -> [])
-        |> Set.ofList
+        reserved.Value

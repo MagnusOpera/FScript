@@ -4,6 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added `String.endsWith` to the language/runtime built-ins with corresponding type inference support.
+- Optimized runtime invocation paths by reducing argument list churn and improving closure application in `Eval.invokeValue`.
+- Cached stdlib loading and reserved-name computation to avoid repeated parse/inference work.
+- Optimized `ScriptHost` exported symbol access by caching function/value sets and maps for faster `invoke` and `getValue`.
+
 ## [0.57.0]
 
 

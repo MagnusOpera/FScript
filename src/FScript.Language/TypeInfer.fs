@@ -1071,7 +1071,8 @@ module TypeInfer =
               "String.toUpper", Forall([], TFun(TString, TString))
               "String.substring", Forall([], TFun(TInt, TFun(TInt, TFun(TString, TOption TString))))
               "String.concat", Forall([], TFun(TString, TFun(TList TString, TString)))
-              "String.split", Forall([], TFun(TString, TFun(TString, TList TString))) ]
+              "String.split", Forall([], TFun(TString, TFun(TString, TList TString)))
+              "String.endsWith", Forall([], TFun(TString, TFun(TString, TBool))) ]
             |> Map.ofList
 
         externs

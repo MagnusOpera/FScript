@@ -218,6 +218,19 @@ module Eval =
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
                     raise (EvalException { Message = "String.split expects (string, string)"; Span = span })) }
 
+    let private builtinStringEndsWith : ExternalFunction =
+        { Name = "String.endsWith"
+          Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
+          Arity = 2
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VString suffix; VString source ] ->
+                    VBool (source.EndsWith(suffix, System.StringComparison.Ordinal))
+                | _ ->
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    raise (EvalException { Message = "String.endsWith expects (string, string)"; Span = span })) }
+
     let private literalToValue lit =
         match lit with
         | LInt v -> VInt v
@@ -534,9 +547,9 @@ module Eval =
         | VUnionCtor (typeName, caseName) ->
             VUnionCase(typeName, caseName, Some argValue)
         | VExternal (ext, args) ->
-            let args' = args @ [ argValue ]
+            let args' = argValue :: args
             if args'.Length = ext.Arity then
-                ext.Impl { Apply = applyFunctionValue eval typeDefs span } args'
+                ext.Impl { Apply = applyFunctionValue eval typeDefs span } (args' |> List.rev)
             elif args'.Length < ext.Arity then
                 VExternal (ext, args')
             else
@@ -838,7 +851,38 @@ module Eval =
 
     let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
         let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-        args |> List.fold (fun state arg -> applyFunctionValue evalExpr typeDefs span state arg) fnValue
+        let applyExternal (ext: ExternalFunction) (existingArgsRev: Value list) (newArgs: Value list) =
+            let allArgs = (existingArgsRev |> List.rev) @ newArgs
+            if allArgs.Length = ext.Arity then
+                ext.Impl { Apply = applyFunctionValue evalExpr typeDefs span } allArgs
+            elif allArgs.Length < ext.Arity then
+                VExternal (ext, allArgs |> List.rev)
+            else
+                raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
+
+        let rec applyMany (currentValue: Value) (remainingArgs: Value list) =
+            match currentValue, remainingArgs with
+            | value, [] -> value
+            | VExternal (ext, existingArgsRev), argsLeft ->
+                applyExternal ext existingArgsRev argsLeft
+            | VClosure (argName, body, closureEnv), firstArg :: tailArgs ->
+                let initialEnv = closureEnv.Value |> Map.add argName firstArg
+
+                let rec bindLambdaChain (envAcc: Env) (exprAcc: Expr) (argsAcc: Value list) =
+                    match exprAcc, argsAcc with
+                    | ELambda (param, nextBody, _), nextArg :: rest ->
+                        bindLambdaChain (envAcc |> Map.add param.Name nextArg) nextBody rest
+                    | _ ->
+                        envAcc, exprAcc, argsAcc
+
+                let boundEnv, boundBody, argsLeft = bindLambdaChain initialEnv body tailArgs
+                let evaluated = evalExpr typeDefs boundEnv boundBody
+                applyMany evaluated argsLeft
+            | value, nextArg :: tailArgs ->
+                let next = applyFunctionValue evalExpr typeDefs span value nextArg
+                applyMany next tailArgs
+
+        applyMany fnValue args
 
     let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
         let reserved = Stdlib.reservedNames ()
@@ -971,6 +1015,7 @@ module Eval =
              :: builtinStringSubstring
              :: builtinStringConcat
              :: builtinStringSplit
+             :: builtinStringEndsWith
              :: externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then

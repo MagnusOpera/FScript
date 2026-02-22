@@ -14,8 +14,12 @@ module ScriptHost =
         { TypeDefs: Map<string, Type>
           Env: Env
           ExportedFunctionNames: string list
+          ExportedFunctionSet: Set<string>
+          ExportedFunctions: Map<string, Value>
           ExportedFunctionSignatures: Map<string, FunctionSignature>
           ExportedValueNames: string list
+          ExportedValueSet: Set<string>
+          ExportedValues: Map<string, Value>
           LastValue: Value }
 
     let private isCallable value =
@@ -87,10 +91,18 @@ module ScriptHost =
                 match state.Env.TryFind name with
                 | Some value -> isCallable value
                 | None -> false)
+        let functionSet = functionNames |> Set.ofList
+        let functions =
+            functionNames
+            |> List.choose (fun name ->
+                match state.Env.TryFind name with
+                | Some value -> Some (name, value)
+                | None -> None)
+            |> Map.ofList
 
         let functionSignatures =
             collectFunctionSignatures typed
-            |> Map.filter (fun name _ -> functionNames |> List.contains name)
+            |> Map.filter (fun name _ -> functionSet |> Set.contains name)
 
         let valueNames =
             exportedNames
@@ -98,12 +110,24 @@ module ScriptHost =
                 match state.Env.TryFind name with
                 | Some value -> not (isCallable value)
                 | None -> false)
+        let valueSet = valueNames |> Set.ofList
+        let values =
+            valueNames
+            |> List.choose (fun name ->
+                match state.Env.TryFind name with
+                | Some value -> Some (name, value)
+                | None -> None)
+            |> Map.ofList
 
         { TypeDefs = state.TypeDefs
           Env = state.Env
           ExportedFunctionNames = functionNames
+          ExportedFunctionSet = functionSet
+          ExportedFunctions = functions
           ExportedFunctionSignatures = functionSignatures
           ExportedValueNames = valueNames
+          ExportedValueSet = valueSet
+          ExportedValues = values
           LastValue = state.LastValue }
 
     let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
@@ -144,21 +168,21 @@ module ScriptHost =
         loaded.ExportedValueNames
 
     let getValue (loaded: LoadedScript) (valueName: string) : Value =
-        if not (loaded.ExportedValueNames |> List.contains valueName) then
+        if not (loaded.ExportedValueSet |> Set.contains valueName) then
             raise (HostCommon.evalError $"Unknown exported value '{valueName}'")
         else
-            match loaded.Env.TryFind valueName with
+            match loaded.ExportedValues |> Map.tryFind valueName with
             | Some value -> value
             | None -> raise (HostCommon.evalError $"Unknown exported value '{valueName}'")
 
     let invoke (loaded: LoadedScript) (functionName: string) (args: Value list) : Value =
-        if not (loaded.ExportedFunctionNames |> List.contains functionName) then
-            if loaded.ExportedValueNames |> List.contains functionName then
+        if not (loaded.ExportedFunctionSet |> Set.contains functionName) then
+            if loaded.ExportedValueSet |> Set.contains functionName then
                 raise (HostCommon.evalError $"'{functionName}' is a value and cannot be invoked")
             else
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
         else
-            match loaded.Env.TryFind functionName with
+            match loaded.ExportedFunctions |> Map.tryFind functionName with
             | Some fnValue when isCallable fnValue ->
                 Eval.invokeValue loaded.TypeDefs fnValue args
             | Some _ ->

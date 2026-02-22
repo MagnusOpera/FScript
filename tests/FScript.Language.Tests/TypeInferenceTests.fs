@@ -38,6 +38,7 @@ type TypeInferenceTests () =
         assertType "String.substring 1 2 \"abcdef\"" (TOption TString)
         assertType "String.concat \",\" [\"a\";\"b\"]" TString
         assertType "String.split \",\" \"a,b\"" (TList TString)
+        assertType "String.endsWith \".b\" \"a.b\"" TBool
 
     [<Test>]
     member _.``Reports type error for invalid String.concat argument type`` () =
