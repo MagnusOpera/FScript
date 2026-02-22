@@ -12,10 +12,14 @@ let formatSpan (span: Span) =
     | Some file -> sprintf "(%s:%d:%d)" file span.Start.Line span.Start.Column
     | None -> sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
 
-let runTypedProgram (externs: ExternalFunction list) (program: Program) =
+let runTypedProgram (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (program: Program) =
     let typed = TypeInfer.inferProgramWithExterns externs program
-    let executable = FScript.compileWithExterns externs typed
-    let result = FScript.execute executable
+    let result =
+        match mode with
+        | ScriptHost.Interpreted -> Eval.evalProgramWithExterns externs typed
+        | ScriptHost.Compiled ->
+            let executable = FScript.compileWithExterns externs typed
+            FScript.execute executable
     Console.WriteLine(Pretty.valueToString result)
     0
 
@@ -38,6 +42,18 @@ let splitScriptArguments (argv: string array) =
             if index + 1 >= argv.Length then []
             else argv.[index + 1 ..] |> Array.toList
         cliArgs, scriptArgs
+
+let extractCompileFlag (argv: string array) =
+    let mutable compileFirst = false
+    let filtered =
+        argv
+        |> Array.filter (fun arg ->
+            if String.Equals(arg, "--compile", StringComparison.OrdinalIgnoreCase) then
+                compileFirst <- true
+                false
+            else
+                true)
+    compileFirst, filtered
 
 let resolveExternalFunctions
     (args: ParseResults<CliArgs>)
@@ -204,7 +220,7 @@ let parseEnvironmentPrelude (scriptName: string option) (arguments: string list)
     environmentPrelude scriptName arguments
     |> FScript.parseWithSourceName (Some "<cli-environment>")
 
-let runFile (externs: ExternalFunction list) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
+let runFile (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
     if not (File.Exists scriptPath) then
         Console.Error.WriteLine($"File not found: {scriptPath}")
         1
@@ -217,11 +233,12 @@ let runFile (externs: ExternalFunction list) (rootDirectory: string) (scriptPath
         let envProgram = parseEnvironmentPrelude (Some scriptName) arguments
         let scriptProgram = FScript.parseFileWithIncludes rootDirectory scriptPath
         let program = envProgram @ scriptProgram
-        runTypedProgram externs program
+        runTypedProgram mode externs program
 
-let runSource (externs: ExternalFunction list) (_rootDirectory: string) (source: string) (arguments: string list) =
+let runSource (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (_rootDirectory: string) (source: string) (arguments: string list) =
     let combinedSource = $"{environmentPrelude None arguments}\n{source}"
-    let loaded = ScriptHost.loadSource externs combinedSource
+    let loadOptions: ScriptHost.LoadOptions = { ExecutionMode = mode }
+    let loaded = ScriptHost.loadSourceWithOptions loadOptions externs combinedSource
     Console.WriteLine(Pretty.valueToString loaded.LastValue)
     0
 
@@ -281,7 +298,7 @@ let printVersion () =
         | null -> "0.0.0"
         | v -> v.ToString()
 
-let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
+let runRepl (mode: ScriptHost.ExecutionMode) (externs: ExternalFunction list) (_rootDirectory: string) =
     let mutable baseProgram: Program = parseEnvironmentPrelude None []
     let mutable pendingLines: string list = []
     let mutable pendingBlankLines = 0
@@ -298,8 +315,12 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
         let parsed = FScript.parse source
         let candidate = baseProgram @ parsed
         let typed = TypeInfer.inferProgramWithExterns externs candidate
-        let executable = FScript.compileWithExterns externs typed
-        let state = FScript.executeWithState executable
+        let state =
+            match mode with
+            | ScriptHost.Interpreted -> Eval.evalProgramWithExternsState externs typed
+            | ScriptHost.Compiled ->
+                let executable = FScript.compileWithExterns externs typed
+                FScript.executeWithState executable
         let hasExpression =
             parsed
             |> List.exists (function
@@ -381,7 +402,8 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
 [<EntryPoint>]
 let main argv =
     let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
-    let cliArgv, scriptArguments = splitScriptArguments argv
+    let cliArgvRaw, scriptArguments = splitScriptArguments argv
+    let compileFirst, cliArgv = extractCompileFlag cliArgvRaw
     try
         if scriptArguments.IsEmpty && cliArgv.Length = 1 && String.Equals(cliArgv.[0], "version", StringComparison.OrdinalIgnoreCase) then
             Console.WriteLine(printVersion ())
@@ -409,6 +431,8 @@ let main argv =
                 |> Option.defaultValue defaultRoot
             let context : HostContext = { RootDirectory = rootDirectory; DeniedPathGlobs = [] }
             let externsResult = resolveExternalFunctions args context currentDirectory
+            let executionMode =
+                if compileFirst || args.Contains <@ Compile @> then ScriptHost.Compiled else ScriptHost.Interpreted
 
             try
                 match externsResult with
@@ -418,16 +442,16 @@ let main argv =
                 | Ok externs ->
                     match scriptPath with
                     | Some path ->
-                        runFile externs rootDirectory path scriptArguments
+                        runFile executionMode externs rootDirectory path scriptArguments
                     | None when Console.IsInputRedirected ->
                         let source = Console.In.ReadToEnd()
-                        runSource externs rootDirectory source scriptArguments
+                        runSource executionMode externs rootDirectory source scriptArguments
                     | None ->
                         if not scriptArguments.IsEmpty then
                             Console.Error.WriteLine("Script arguments require file or stdin mode. Use 'fscript <script.fss> -- <args...>' or pipe stdin with '--'.")
                             1
                         else
-                            runRepl externs rootDirectory
+                            runRepl executionMode externs rootDirectory
             with
             | ParseException err ->
                 Console.Error.WriteLine($"Parse error {formatSpan err.Span}: {err.Message}")

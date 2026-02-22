@@ -12,6 +12,7 @@ module FScript =
     let evalWithExterns = Eval.evalProgramWithExterns
     let compile = Executable.compile
     let compileWithExterns = Executable.compileWithExterns
+    let loadExecutable = Executable.load
     let execute = Executable.execute
     let executeWithState = Executable.executeWithState
 

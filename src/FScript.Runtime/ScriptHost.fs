@@ -4,6 +4,16 @@ open System.IO
 open FScript.Language
 
 module ScriptHost =
+    type ExecutionMode =
+        | Interpreted
+        | Compiled
+
+    type LoadOptions =
+        { ExecutionMode: ExecutionMode }
+
+    let defaultLoadOptions : LoadOptions =
+        { ExecutionMode = Compiled }
+
     type FunctionSignature =
         { Name: string
           ParameterNames: string list
@@ -11,7 +21,8 @@ module ScriptHost =
           ReturnType: Type }
 
     type LoadedScript =
-        { Executable: Executable.ExecutableProgram
+        { ExecutionMode: ExecutionMode
+          Executable: Executable.ExecutableProgram option
           TypeDefs: Map<string, Type>
           Env: Env
           ExportedFunctionNames: string list
@@ -24,19 +35,14 @@ module ScriptHost =
           ExportedValues: Map<string, Value>
           LastValue: Value }
 
-    let private isCallable value =
-        match value with
-        | VClosure _ -> true
-        | VExternal _ -> true
-        | VUnionCtor _ -> true
-        | _ -> false
-
     let private declaredExportedNames (program: TypeInfer.TypedProgram) =
         program
         |> List.collect (function
             | TypeInfer.TSLet(name, _, _, _, isExported, _) when isExported -> [ name ]
             | TypeInfer.TSLetRecGroup(bindings, isExported, _) when isExported -> bindings |> List.map (fun (name, _, _, _) -> name)
             | _ -> [])
+        |> List.distinct
+        |> List.sort
 
     let private flattenFunctionType (t: Type) : Type list * Type =
         let rec loop (acc: Type list) (current: Type) =
@@ -79,54 +85,81 @@ module ScriptHost =
             | _ -> [])
         |> Map.ofList
 
-    let private loadProgram (externs: ExternalFunction list) (program: Program) : LoadedScript =
+    let private loadProgram (options: LoadOptions) (externs: ExternalFunction list) (program: Program) : LoadedScript =
         let typed = FScript.inferWithExterns externs program
-        let executable = FScript.compileWithExterns externs typed
-        let state = FScript.executeWithState executable
-        let exportedNames =
-            declaredExportedNames typed
-            |> List.distinct
-            |> List.sort
+        let executionMode = options.ExecutionMode
+        let executable, state, functionNames, functionSet, functions, functionInvokers, functionSignatures, valueNames, valueSet, values =
+            match executionMode with
+            | Compiled ->
+                let executable = FScript.compileWithExterns externs typed
+                let loadedExecutable = Executable.load executable
+                let state = Executable.loadedState loadedExecutable
+                let functionNames = Executable.loadedFunctionNames loadedExecutable
+                let functionSet = Executable.loadedFunctionSet loadedExecutable
+                let functions = Executable.loadedFunctions loadedExecutable
+                let functionInvokers = Executable.loadedFunctionInvokers loadedExecutable
+                let functionSignatures =
+                    Executable.loadedFunctionSignatures loadedExecutable
+                    |> Map.map (fun _ signature ->
+                        { Name = signature.Name
+                          ParameterNames = signature.ParameterNames
+                          ParameterTypes = signature.ParameterTypes
+                          ReturnType = signature.ReturnType })
+                let valueNames = Executable.loadedValueNames loadedExecutable
+                let valueSet = Executable.loadedValueSet loadedExecutable
+                let values = Executable.loadedValues loadedExecutable
+                Some executable, state, functionNames, functionSet, functions, functionInvokers, functionSignatures, valueNames, valueSet, values
+            | Interpreted ->
+                let state = Eval.evalProgramWithExternsState externs typed
+                let exportedNames = declaredExportedNames typed
+                let functionNames =
+                    exportedNames
+                    |> List.filter (fun name ->
+                        match state.Env.TryFind name with
+                        | Some value ->
+                            match value with
+                            | VClosure _
+                            | VExternal _
+                            | VUnionCtor _ -> true
+                            | _ -> false
+                        | None -> false)
+                let functionSet = functionNames |> Set.ofList
+                let functions =
+                    functionNames
+                    |> List.choose (fun name ->
+                        match state.Env.TryFind name with
+                        | Some value -> Some (name, value)
+                        | None -> None)
+                    |> Map.ofList
+                let functionInvokers =
+                    functions
+                    |> Map.map (fun _ fnValue -> (fun args -> Eval.invokeValue state.TypeDefs fnValue args))
+                let functionSignatures =
+                    collectFunctionSignatures typed
+                    |> Map.filter (fun name _ -> functionSet |> Set.contains name)
+                let valueNames =
+                    exportedNames
+                    |> List.filter (fun name ->
+                        match state.Env.TryFind name with
+                        | Some value ->
+                            match value with
+                            | VClosure _
+                            | VExternal _
+                            | VUnionCtor _ -> false
+                            | _ -> true
+                        | None -> false)
+                let valueSet = valueNames |> Set.ofList
+                let values =
+                    valueNames
+                    |> List.choose (fun name ->
+                        match state.Env.TryFind name with
+                        | Some value -> Some (name, value)
+                        | None -> None)
+                    |> Map.ofList
+                None, state, functionNames, functionSet, functions, functionInvokers, functionSignatures, valueNames, valueSet, values
 
-        let functionNames =
-            exportedNames
-            |> List.filter (fun name ->
-                match state.Env.TryFind name with
-                | Some value -> isCallable value
-                | None -> false)
-        let functionSet = functionNames |> Set.ofList
-        let functions =
-            functionNames
-            |> List.choose (fun name ->
-                match state.Env.TryFind name with
-                | Some value -> Some (name, value)
-                | None -> None)
-            |> Map.ofList
-
-        let functionSignatures =
-            collectFunctionSignatures typed
-            |> Map.filter (fun name _ -> functionSet |> Set.contains name)
-
-        let functionInvokers =
-            functions
-            |> Map.map (fun _ fnValue -> InvocationCompiler.compile state.TypeDefs fnValue)
-
-        let valueNames =
-            exportedNames
-            |> List.filter (fun name ->
-                match state.Env.TryFind name with
-                | Some value -> not (isCallable value)
-                | None -> false)
-        let valueSet = valueNames |> Set.ofList
-        let values =
-            valueNames
-            |> List.choose (fun name ->
-                match state.Env.TryFind name with
-                | Some value -> Some (name, value)
-                | None -> None)
-            |> Map.ofList
-
-        { Executable = executable
+        { ExecutionMode = executionMode
+          Executable = executable
           TypeDefs = state.TypeDefs
           Env = state.Env
           ExportedFunctionNames = functionNames
@@ -139,13 +172,16 @@ module ScriptHost =
           ExportedValues = values
           LastValue = state.LastValue }
 
-    let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
+    let loadSourceWithOptions (options: LoadOptions) (externs: ExternalFunction list) (source: string) : LoadedScript =
         let program = FScript.parse source
         if program |> List.exists (function SImport _ -> true | _ -> false) then
             raise (HostCommon.evalError "'import' is only supported when loading scripts from files")
-        loadProgram externs program
+        loadProgram options externs program
 
-    let loadFile (externs: ExternalFunction list) (path: string) : LoadedScript =
+    let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
+        loadSourceWithOptions defaultLoadOptions externs source
+
+    let loadFileWithOptions (options: LoadOptions) (externs: ExternalFunction list) (path: string) : LoadedScript =
         let fullPath = Path.GetFullPath(path)
         let rootDirectory =
             match Path.GetDirectoryName(fullPath) with
@@ -153,9 +189,13 @@ module ScriptHost =
             | "" -> Directory.GetCurrentDirectory()
             | dir -> dir
         let program = FScript.parseFileWithIncludes rootDirectory fullPath
-        loadProgram externs program
+        loadProgram options externs program
 
-    let loadSourceWithIncludes
+    let loadFile (externs: ExternalFunction list) (path: string) : LoadedScript =
+        loadFileWithOptions defaultLoadOptions externs path
+
+    let loadSourceWithIncludesWithOptions
+        (options: LoadOptions)
         (externs: ExternalFunction list)
         (rootDirectory: string)
         (entryFile: string)
@@ -168,7 +208,22 @@ module ScriptHost =
                 entryFile
                 entrySource
                 resolveImportedSource
-        loadProgram externs program
+        loadProgram options externs program
+
+    let loadSourceWithIncludes
+        (externs: ExternalFunction list)
+        (rootDirectory: string)
+        (entryFile: string)
+        (entrySource: string)
+        (resolveImportedSource: string -> string option)
+        : LoadedScript =
+        loadSourceWithIncludesWithOptions
+            defaultLoadOptions
+            externs
+            rootDirectory
+            entryFile
+            entrySource
+            resolveImportedSource
 
     let listFunctions (loaded: LoadedScript) : string list =
         loaded.ExportedFunctionNames
@@ -192,6 +247,6 @@ module ScriptHost =
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
         else
             match loaded.ExportedFunctionInvokers |> Map.tryFind functionName with
-            | Some invoker -> invoker args
+            | Some invoke -> invoke args
             | None ->
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")

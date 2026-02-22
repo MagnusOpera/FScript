@@ -112,6 +112,14 @@ type CliTests() =
         Assert.That(stdout.Trim(), Is.EqualTo("42"))
 
     [<Test>]
+    member _.``Compile flag enables compiled execution mode`` () =
+        let repoRoot = findRepoRoot ()
+        let code, stdout, stderr = runCli repoRoot repoRoot [ "--compile" ] (Some "40 + 2")
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
     member _.``File mode exposes Environment script name and arguments`` () =
         let repoRoot = findRepoRoot ()
         let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-env-{Guid.NewGuid():N}.fss")

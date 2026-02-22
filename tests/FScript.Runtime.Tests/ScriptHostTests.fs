@@ -114,3 +114,14 @@ type ScriptHostTests () =
         let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSourceWithIncludes externs root entryFile source (fun _ -> None) |> ignore
         Assert.Throws<ParseException>(TestDelegate act) |> ignore
+
+    [<Test>]
+    member _.``script_host loadSourceWithOptions supports interpreted mode`` () =
+        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let options: ScriptHost.LoadOptions = { ExecutionMode = ScriptHost.Interpreted }
+        let loaded = ScriptHost.loadSourceWithOptions options externs "[<export>] let add x y = x + y"
+
+        Assert.That(loaded.ExecutionMode, Is.EqualTo(ScriptHost.Interpreted))
+        match ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ] with
+        | VInt 3L -> ()
+        | _ -> Assert.Fail("Expected add result 3")

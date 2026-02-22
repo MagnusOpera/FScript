@@ -23,8 +23,11 @@ Primary entry points are in module `FScript`:
 - `FScript.inferWithExterns : ExternalFunction list -> Program -> TypeInfer.TypedProgram`
 - `FScript.compile : TypeInfer.TypedProgram -> Executable.ExecutableProgram`
 - `FScript.compileWithExterns : ExternalFunction list -> TypeInfer.TypedProgram -> Executable.ExecutableProgram`
+- `FScript.loadExecutable : Executable.ExecutableProgram -> Executable.LoadedExecutableProgram`
 - `FScript.execute : Executable.ExecutableProgram -> Value`
 - `FScript.executeWithState : Executable.ExecutableProgram -> Eval.ProgramState`
+- `Executable.exportedNames : Executable.ExecutableProgram -> string list`
+- `Executable.functionSignatures : Executable.ExecutableProgram -> Map<string, Executable.CompiledFunctionSignature>`
 - `FScript.eval : TypeInfer.TypedProgram -> Value`
 - `FScript.evalWithExterns : ExternalFunction list -> TypeInfer.TypedProgram -> Value`
 - `FScript.run : string -> Value` (parse + infer + compile + execute without externs)
@@ -69,6 +72,7 @@ let result = FScript.execute executable
 
 Use `FScript.Runtime.ScriptHost` when a host needs reusable loading and direct function invocation.
 Only top-level exported bindings are exposed through this API.
+Hosts can choose execution mode through `ScriptHost.LoadOptions.ExecutionMode` (`Interpreted` or `Compiled`).
 
 ```fsharp
 open FScript.Language
