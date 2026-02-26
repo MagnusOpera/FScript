@@ -82,6 +82,20 @@ Responsibilities:
 Use this when:
 - You want C# ownership of the server host process while reusing existing language services.
 
+### `FScript.TypeProvider`
+Role:
+- F# compile-time type provider for exported FScript functions.
+
+Responsibilities:
+- Parse and type-check `.fss` scripts during F# compilation.
+- Project `[<export>]` functions as strongly-typed static members.
+- Resolve compile-time/runtime extern providers.
+- Enforce runtime signature compatibility using compile-time fingerprints.
+
+Use this when:
+- You want F# compile-time validation of script contracts.
+- You want strongly-typed invocation of exported script functions without hand-written wrappers.
+
 ## Typical composition
 
 ### CLI execution path
@@ -109,6 +123,7 @@ Use this when:
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
 - `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
+- `FScript.TypeProvider` depends on `FScript.Language` and `FScript.Runtime`.
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable.

@@ -17,6 +17,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 ## Hosting and security
 
 - Embedding `FScript.Language`: [`embedding-fscript-language.md`](./embedding-fscript-language.md)
+- F# type provider for exported functions: [`fsharp-type-provider.md`](./fsharp-type-provider.md)
 - Sandbox and security: [`sandbox-and-security.md`](./sandbox-and-security.md)
 
 ## Editor/LSP behavior
