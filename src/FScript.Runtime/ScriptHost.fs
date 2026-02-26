@@ -36,46 +36,14 @@ module ScriptHost =
             | TypeInfer.TSLetRecGroup(bindings, isExported, _) when isExported -> bindings |> List.map (fun (name, _, _, _) -> name)
             | _ -> [])
 
-    let private flattenFunctionType (t: Type) : Type list * Type =
-        let rec loop (acc: Type list) (current: Type) =
-            match current with
-            | TFun (arg, ret) -> loop (arg :: acc) ret
-            | _ -> List.rev acc, current
-        loop [] t
-
-    let private flattenParameterNames (expr: Expr) : string list =
-        let rec loop (acc: string list) (current: Expr) =
-            match current with
-            | ELambda (param, body, _) -> loop (param.Name :: acc) body
-            | _ -> List.rev acc
-        loop [] expr
-
     let private collectFunctionSignatures (program: TypeInfer.TypedProgram) : Map<string, FunctionSignature> =
-        let fromLet name expr exprType =
-            let paramNames = flattenParameterNames expr
-            let parameterTypes, returnType = flattenFunctionType exprType
-            if paramNames.IsEmpty || parameterTypes.IsEmpty then
-                None
-            elif paramNames.Length <> parameterTypes.Length then
-                raise (HostCommon.evalError $"Signature mismatch for function '{name}'")
-            else
-                Some (name,
-                      { Name = name
-                        ParameterNames = paramNames
-                        ParameterTypes = parameterTypes
-                        ReturnType = returnType })
-
         program
-        |> List.collect (function
-            | TypeInfer.TSLet(name, expr, exprType, _, isExported, _) when isExported ->
-                match fromLet name expr exprType with
-                | Some signature -> [ signature ]
-                | None -> []
-            | TypeInfer.TSLetRecGroup(bindings, isExported, _) when isExported ->
-                bindings
-                |> List.choose (fun (name, expr, exprType, _) -> fromLet name expr exprType)
-            | _ -> [])
-        |> Map.ofList
+        |> ExportSignatures.fromTypedProgram
+        |> Map.map (fun _ signature ->
+            { Name = signature.Name
+              ParameterNames = signature.ParameterNames
+              ParameterTypes = signature.ParameterTypes
+              ReturnType = signature.ReturnType })
 
     let private loadProgram (externs: ExternalFunction list) (program: Program) : LoadedScript =
         let typed = FScript.inferWithExterns externs program

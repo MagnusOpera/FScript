@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a new `MagnusOpera.FScript.TypeProvider` package that type-checks scripts at compile time and exposes exported functions as strongly-typed F# members with runtime signature compatibility checks.
+
 ## [0.59.0]
 
 

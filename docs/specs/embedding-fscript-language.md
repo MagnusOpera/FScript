@@ -285,3 +285,14 @@ open FScript.Language
 let typed = "[<export>] let run x = x" |> FScript.parse |> FScript.infer
 let descriptors = Descriptor.describeFunctions typed Map.empty
 ```
+
+### 6. Exported function signatures without evaluation
+Use `FScript.Runtime.ExportSignatures.fromTypedProgram` when a host needs exported function signatures from typed AST without executing script bodies.
+
+```fsharp
+open FScript.Language
+open FScript.Runtime
+
+let typed = "[<export>] let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
+let signatures = ExportSignatures.fromTypedProgram typed
+```

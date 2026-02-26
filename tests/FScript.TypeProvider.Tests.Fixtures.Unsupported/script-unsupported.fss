@@ -1,0 +1,2 @@
+type Person = { Name: string }
+[<export>] let readName (person: Person) = person.Name
