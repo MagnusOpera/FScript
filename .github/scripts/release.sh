@@ -160,7 +160,22 @@ fi
 
 cp "$updated_changelog" CHANGELOG.md
 
-git add CHANGELOG.md
+if [[ -d website ]]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "ERROR: npm is required to version/build website docs during release."
+    exit 1
+  fi
+
+  echo "Preparing website docs version ${version}..."
+  (
+    cd website
+    npm ci
+    npm run version-docs -- "${version}"
+    npm run build
+  )
+fi
+
+git add CHANGELOG.md website
 git commit -m "chore(release): ${version}"
 git tag -a "${version}" -m "Release ${version}"
 

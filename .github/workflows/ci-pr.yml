@@ -44,6 +44,19 @@ jobs:
       - name: Test
         run: dotnet test FScript.sln --configuration Release --no-build --logger "trx" --results-directory TestResults
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build website
+        run: |
+          cd website
+          npm ci
+          npm run build
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

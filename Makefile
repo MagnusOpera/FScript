@@ -1,4 +1,4 @@
-.PHONY: build test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
+.PHONY: build test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website-install website-build website-serve website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
@@ -47,3 +47,18 @@ pack-nuget:
 	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript.Runtime
 
 publish-all: build test publish publish-darwin publish-linux publish-windows pack-nuget
+
+website-install:
+	cd website && npm ci
+
+website-build:
+	cd website && npm run build
+
+website-serve:
+	cd website && npm run serve
+
+website-version:
+	cd website && npm run version-docs -- $(version)
+
+website-typecheck:
+	cd website && npm run typecheck

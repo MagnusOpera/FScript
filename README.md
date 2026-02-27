@@ -168,11 +168,21 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 
 ## Documentation
 
+- Documentation website: `https://magnusopera.github.io/FScript/`
 - Documentation portal: [`docs/README.md`](docs/README.md)
 - Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
 - FScript vs F# / OCaml: [`docs/guides/fsharp-ocaml-differences.md`](docs/guides/fsharp-ocaml-differences.md)
+
+Website development commands:
+
+```bash
+make website-install
+make website-build
+make website-serve
+make website-version version=X.Y.Z
+```
 
 ## Changelog
 

@@ -6,6 +6,9 @@ All notable changes to FScript are documented in this file.
 
 - Added a new `MagnusOpera.FScript.TypeProvider` package that type-checks scripts at compile time and exposes exported functions as strongly-typed F# members with runtime signature compatibility checks.
 - Stabilized type-provider integration tests in CI by hardening spawned `dotnet` process handling and adding job-level CI timeouts to prevent long hangs.
+- Added a Docusaurus-based documentation website under `website/` focused on FScript language learning, examples, and embedding guidance.
+- Added tag-triggered GitHub Pages deployment and release-time docs version snapshotting for the website.
+- Expanded website content with didactic language chapters, embedded runnable examples, detailed stdlib reference, VS Code/Open VSX setup, and practical embedding/type-provider guides.
 
 ## [0.59.0]
 
