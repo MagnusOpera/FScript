@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.60.1]
+
+
 - Fixed website release builds to mark the pushed tag as the latest docs version so freshly released docs do not show the unmaintained-version banner.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.60.0...0.60.1
 
 ## [0.60.0]
 
