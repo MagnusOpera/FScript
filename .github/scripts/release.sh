@@ -171,7 +171,7 @@ if [[ -d website ]]; then
     cd website
     npm ci
     npm run version-docs -- "${version}"
-    npm run build
+    FSCRIPT_DOCS_LAST_VERSION="${version}" npm run build
   )
 fi
 

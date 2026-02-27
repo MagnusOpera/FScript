@@ -39,6 +39,8 @@ jobs:
           npm ci
 
       - name: Build website
+        env:
+          FSCRIPT_DOCS_LAST_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'current' }}
         run: |
           cd website
           npm run build

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed website release builds to mark the pushed tag as the latest docs version so freshly released docs do not show the unmaintained-version banner.
+
 ## [0.60.0]
 
 

@@ -31,7 +31,9 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           routeBasePath: 'manual',
-          lastVersion: 'current',
+          // On release/tag builds we set FSCRIPT_DOCS_LAST_VERSION to the tag (e.g. 0.60.0)
+          // so the freshly released docs are treated as latest and don't show "unmaintained".
+          lastVersion: process.env.FSCRIPT_DOCS_LAST_VERSION ?? 'current',
           versions: {
             current: {
               label: 'Next',
