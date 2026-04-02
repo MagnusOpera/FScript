@@ -16,6 +16,32 @@ type JsonExternsTests () =
         | _ -> Assert.Fail("Expected None")
 
     [<Test>]
+    member _.``json_deserialize fills missing optional record fields with None`` () =
+        let target =
+            TRecord (
+                Map.ofList [
+                    "name", TString
+                    "dependencies", TOption (TMap (TString, TString))
+                    "devDependencies", TOption (TMap (TString, TString))
+                ]
+            )
+
+        match invoke JsonExterns.deserialize [ VTypeToken target; VString "{\"name\":\"pkg\"}" ] with
+        | VOption (Some (VRecord fields)) ->
+            match fields["name"] with
+            | VString "pkg" -> ()
+            | _ -> Assert.Fail("Expected name field to decode as VString \"pkg\"")
+
+            match fields["dependencies"] with
+            | VOption None -> ()
+            | _ -> Assert.Fail("Expected missing dependencies field to decode as None")
+
+            match fields["devDependencies"] with
+            | VOption None -> ()
+            | _ -> Assert.Fail("Expected missing devDependencies field to decode as None")
+        | _ -> Assert.Fail("Expected Some record with missing optional fields defaulted to None")
+
+    [<Test>]
     member _.``json_serialize encodes records lists and options`` () =
         let value =
             VRecord (

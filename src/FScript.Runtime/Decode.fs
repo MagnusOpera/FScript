@@ -7,6 +7,11 @@ open System.Xml.Linq
 open FScript.Language
 
 module internal HostDecode =
+    let private missingFieldValue (target: Type) : Value option =
+        match target with
+        | TOption _ -> Some (VOption None)
+        | _ -> None
+
     let private decodeMapKey (target: Type) (raw: string) : MapKey option =
         match target with
         | TString -> Some (MKString raw)
@@ -66,7 +71,9 @@ module internal HostDecode =
                     | Some v -> map <- map.Add(name, v)
                     | None -> ok <- false
                 else
-                    ok <- false
+                    match missingFieldValue ft with
+                    | Some v -> map <- map.Add(name, v)
+                    | None -> ok <- false
             if ok then Some (VRecord map) else None
         | TNamed _
         | TUnion _
@@ -117,7 +124,10 @@ module internal HostDecode =
             let mutable map = Map.empty<string, Value>
             for KeyValue(name, ft) in fields do
                 match el.Element(XName.Get(name)) with
-                | null -> ok <- false
+                | null ->
+                    match missingFieldValue ft with
+                    | Some v -> map <- map.Add(name, v)
+                    | None -> ok <- false
                 | child ->
                     match decodeXmlValue ft child with
                     | Some v -> map <- map.Add(name, v)

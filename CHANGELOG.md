@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed JSON and XML record deserialization to treat missing optional fields as `None` instead of failing the whole decode.
+- Updated GitHub Actions .NET setup to use SDK `10.0.201`.
+
 ## [0.60.1]
 
 
