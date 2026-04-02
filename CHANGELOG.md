@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.61.0]
+
+
 - Fixed JSON and XML record deserialization to treat missing optional fields as `None` instead of failing the whole decode.
 - Updated GitHub Actions .NET setup to use SDK `10.0.201`.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.60.1...0.61.0
 
 ## [0.60.1]
 
