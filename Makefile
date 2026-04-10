@@ -43,6 +43,7 @@ publish-windows:
 	dotnet publish -c $(config) -r win-arm64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(version) -o $(PWD)/.out/windows/arm64 src/FScript
 
 pack-nuget:
+	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript
 	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript.Language
 	dotnet pack -c $(config) -p:Version=$(version) -o $(PWD)/.out src/FScript.Runtime
 

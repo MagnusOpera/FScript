@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Packaged the `fscript` CLI as the `MagnusOpera.FScript` .NET tool, added it to `make pack-nuget`, and documented .NET tool installation and update flows.
+
 ## [0.61.0]
 
 

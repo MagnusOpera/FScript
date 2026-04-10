@@ -42,6 +42,22 @@ It covers installation, syntax basics, flow control, collections, pattern matchi
 
 ## Installation
 
+### CLI via .NET Tool
+```bash
+dotnet tool install --global MagnusOpera.FScript
+```
+
+To update:
+```bash
+dotnet tool update --global MagnusOpera.FScript
+```
+
+To install in a local tool manifest instead:
+```bash
+dotnet new tool-manifest
+dotnet tool install MagnusOpera.FScript
+```
+
 ### CLI via Homebrew
 ```bash
 brew install magnusopera/tap/fscript

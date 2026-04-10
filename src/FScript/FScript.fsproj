@@ -2,10 +2,31 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fscript</ToolCommandName>
     <AssemblyName>fscript</AssemblyName>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>MagnusOpera.FScript</PackageId>
+    <Version Condition=" '$(Version)' == '' ">0.0.0</Version>
+    <Authors>Magnus Opera</Authors>
+    <Title>FScript CLI</Title>
+    <Description>Command-line interface for running FScript programs with sandboxed filesystem externs and script arguments.</Description>
+    <PackageTags>fscript;cli;tool;interpreter;fsharp;ml</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>FScriptIcon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/MagnusOpera/FScript</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MagnusOpera/FScript.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\NUGET.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <Compile Include="CliArgs.fs" />
