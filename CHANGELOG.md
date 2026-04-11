@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.63.0]
+
+
 - Documented the CLI-injected `Env` value and stdlib `Environment`/`FsKind` types, and filled missing stdlib reference entries such as `String.endsWith`.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.62.0...0.63.0
 
 ## [0.62.0]
 
