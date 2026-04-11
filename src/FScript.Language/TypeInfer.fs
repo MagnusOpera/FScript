@@ -970,18 +970,46 @@ module TypeInfer =
             let s1, tTarget, _ = inferExpr typeDefs constructors env target
             let env2 = applyEnv s1 env
             let s2, tKey, _ = inferExpr typeDefs constructors env2 keyExpr
-            let keyType = Types.freshVar()
-            let s3 = unify typeDefs (applyType s2 tKey) keyType span
-            let valueType = Types.freshVar()
-            let s4 = unify typeDefs (applyType s3 (applyType s2 tTarget)) (TMap (applyType s3 keyType, valueType)) span
-            let s = compose s4 (compose s3 (compose s2 s1))
-            match applyType s keyType with
-            | TString
-            | TVar _ -> ()
-            | t ->
-                raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
-            let tRes = TOption (applyType s valueType)
-            s, tRes, asTyped expr tRes
+            let targetType = applyType s2 tTarget
+            let keyType = applyType s2 tKey
+            match targetType, keyType with
+            | TList itemType, _ ->
+                let s3 = unify typeDefs keyType TInt span
+                let s = compose s3 (compose s2 s1)
+                let tRes = TOption (applyType s itemType)
+                s, tRes, asTyped expr tRes
+            | TMap (mapKeyType, valueType), _ ->
+                let s3 = unify typeDefs keyType mapKeyType span
+                let s = compose s3 (compose s2 s1)
+                match applyType s mapKeyType with
+                | TString
+                | TVar _ -> ()
+                | t ->
+                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+                let tRes = TOption (applyType s valueType)
+                s, tRes, asTyped expr tRes
+            | TVar _, TInt ->
+                let itemType = Types.freshVar()
+                let s3 = unify typeDefs targetType (TList itemType) span
+                let s = compose s3 (compose s2 s1)
+                let tRes = TOption (applyType s itemType)
+                s, tRes, asTyped expr tRes
+            | TVar _, TString ->
+                let valueType = Types.freshVar()
+                let s3 = unify typeDefs targetType (TMap (TString, valueType)) span
+                let s = compose s3 (compose s2 s1)
+                let tRes = TOption (applyType s valueType)
+                s, tRes, asTyped expr tRes
+            | TVar _, TVar _ ->
+                raise (TypeException { Message = "Ambiguous index access: use a list with int index or a map with string key"; Span = span })
+            | _ ->
+                let expectedKind =
+                    match keyType with
+                    | TInt -> "list"
+                    | TString -> "map"
+                    | _ -> "list or map"
+
+                raise (TypeException { Message = $"Index access requires a {expectedKind} target with a compatible index type"; Span = span })
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->

@@ -27,6 +27,13 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected indexer and Map.tryGet to both return Some 1")
 
     [<Test>]
+    member _.``List indexer matches List.tryItem`` () =
+        let script = "let xs = [1;2;3]\n(xs[1], List.tryItem 1 xs)"
+        match Helpers.evalWithExterns externs script with
+        | VTuple [ VOption (Some (VInt 2L)); VOption (Some (VInt 2L)) ] -> ()
+        | _ -> Assert.Fail("Expected list indexer and List.tryItem to both return Some 2")
+
+    [<Test>]
     member _.``Map.empty behaves as a value and cannot be invoked`` () =
         match Helpers.evalWithExterns externs "Map.empty |> Map.count" with
         | VInt 0L -> ()
@@ -275,6 +282,10 @@ type HostExternTests () =
         match Helpers.evalWithExterns externs "List.tryGet (fun x -> x = 2) [1;2;3]" with
         | VOption (Some (VInt 1L)) -> ()
         | _ -> Assert.Fail("Expected tryGet Some 1")
+
+        match Helpers.evalWithExterns externs "List.tryItem 1 [1;2;3]" with
+        | VOption (Some (VInt 2L)) -> ()
+        | _ -> Assert.Fail("Expected tryItem Some 2")
 
         match Helpers.evalWithExterns externs "List.filter (fun x -> x % 2 = 1) [1;2;3;4]" with
         | VList [ VInt 1L; VInt 3L ] -> ()

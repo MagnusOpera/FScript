@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added optional list index access with `list[index]` plus the `List.tryItem` stdlib helper.
+
 ## [0.63.0]
 
 

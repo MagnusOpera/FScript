@@ -219,6 +219,14 @@ Map keys are `string`:
 let status = { ["200"] = "ok"; ["404"] = "not-found" }
 ```
 
+Lists also support optional zero-based indexing:
+
+```fsharp
+let values = [10; 20; 30]
+let first = values[0]
+print $"{first}"
+```
+
 ### Discriminated union
 ```fsharp
 type Result =

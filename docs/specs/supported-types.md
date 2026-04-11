@@ -32,6 +32,11 @@ This document specifies the value and type system used by the interpreter.
 - Values are inferred and unified to a single value type.
 - See `./map-matching-reference.md` for focused map-pattern examples.
 
+## Index access
+- Lists support optional zero-based index access with integer keys (for example `values[0]`).
+- Maps support optional key lookup with string keys (for example `scores["math"]`).
+- Negative or out-of-range list indices return `None`.
+
 ## Function types
 - Functions use curried arrow types:
   - `t1 -> t2`

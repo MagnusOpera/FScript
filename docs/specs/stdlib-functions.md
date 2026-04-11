@@ -42,6 +42,7 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `List.length : 'a list -> int`
 - `List.tryFind : ('a -> bool) -> 'a list -> 'a option`
 - `List.tryGet : ('a -> bool) -> 'a list -> int option`
+- `List.tryItem : int -> 'a list -> 'a option`
 - `List.tryHead : 'a list -> 'a option`
 - `List.tail : 'a list -> 'a list`
 - `List.append : 'a list -> 'a list -> 'a list`
@@ -101,6 +102,7 @@ Map keys in FScript are string-only.
 ```fsharp
 let xs = List.map (fun x -> x + 1) [1;2;3]
 let found = List.tryFind (fun x -> x > 2) xs
+let maybeSecond = List.tryItem 1 xs
 
 let maybePort = Some 8080
 let port = maybePort |> Option.defaultValue 80
@@ -108,6 +110,7 @@ let port = maybePort |> Option.defaultValue 80
 let m = { ["a"] = 1; ["b"] = 2 }
 let hasA = Map.containsKey "a" m
 let one = m["a"] |> Option.defaultValue 0
+let first = xs[0] |> Option.defaultValue 0
 
 match Env.Arguments with
 | scriptPath :: _ -> print scriptPath

@@ -524,13 +524,23 @@ module Eval =
             let targetValue = evalExpr typeDefs env target
             let keyValue = evalExpr typeDefs env keyExpr
             match targetValue, keyValue with
+            | VList values, VInt index ->
+                let rec loop remaining current =
+                    match remaining with
+                    | [] -> None
+                    | head :: tail ->
+                        if current = index then Some head else loop tail (current + 1L)
+
+                if index < 0L then VOption None else loop values 0L |> VOption
             | VMap mapValue, (VString _ | VInt _) ->
                 let key = valueToMapKey span keyValue
                 VOption (mapValue.TryFind key)
             | VMap _, _ ->
                 raise (EvalException { Message = "Map index key must be string or int"; Span = span })
+            | VList _, _ ->
+                raise (EvalException { Message = "List index must be int"; Span = span })
             | _ ->
-                raise (EvalException { Message = "Index access requires a map value"; Span = span })
+                raise (EvalException { Message = "Index access requires a list or map value"; Span = span })
         | ECons (head, tail, span) ->
             let h = evalExpr typeDefs env head
             let t = evalExpr typeDefs env tail

@@ -174,6 +174,24 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers list and map indexer types`` () =
+        match Helpers.infer "[1;2;3][0]" |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TOption TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+        match Helpers.infer "let m = { [\"a\"] = 1 }\nm[\"a\"]" |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TOption TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Rejects incompatible indexer key types`` () =
+        let listAct () = Helpers.infer "[1;2;3][\"0\"]" |> ignore
+        listAct |> should throw typeof<TypeException>
+
+        let mapAct () = Helpers.infer "let m = { [\"a\"] = 1 }\nm[0]" |> ignore
+        mapAct |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Infers tuple type`` () =
         let typed = Helpers.infer "(1, true, \"x\")"
         match typed |> List.last with

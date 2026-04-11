@@ -96,6 +96,14 @@ let tryGet predicate values =
             if predicate head then Some index else loop (index + 1) tail
     loop 0 values
 
+let tryItem index values =
+    let rec loop current remaining =
+        match remaining with
+        | [] -> None
+        | head :: tail ->
+            if current = index then Some head else loop (current + 1) tail
+    if index < 0 then None else loop 0 values
+
 let tryHead values =
     match values with
     | [] -> None

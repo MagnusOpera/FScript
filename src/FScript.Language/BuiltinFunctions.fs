@@ -431,6 +431,23 @@ module BuiltinFunctions =
                     |> VOption
                 | _ -> fail "List.tryGet expects (predicate, values)") }
 
+    let private builtinListTryItem : ExternalFunction =
+        { Name = "List.tryItem"
+          Scheme = scheme "List.tryItem"
+          Arity = 2
+          Impl =
+            (fun _ args ->
+                match args with
+                | [ VInt index; VList values ] ->
+                    let rec loop remaining current =
+                        match remaining with
+                        | [] -> None
+                        | head :: tail ->
+                            if current = index then Some head else loop tail (current + 1L)
+
+                    if index < 0L then VOption None else loop values 0L |> VOption
+                | _ -> fail "List.tryItem expects (index, values)") }
+
     let private builtinListTryHead : ExternalFunction =
         { Name = "List.tryHead"
           Scheme = scheme "List.tryHead"
@@ -686,6 +703,7 @@ module BuiltinFunctions =
           builtinListLength
           builtinListTryFind
           builtinListTryGet
+          builtinListTryItem
           builtinListTryHead
           builtinListTail
           builtinListAppend

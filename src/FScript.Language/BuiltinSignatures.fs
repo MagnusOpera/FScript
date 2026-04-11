@@ -32,6 +32,7 @@ module BuiltinSignatures =
           "List.length", Forall([ 0 ], TFun(TList(TVar 0), TInt))
           "List.tryFind", Forall([ 0 ], TFun(TFun(TVar 0, TBool), TFun(TList(TVar 0), TOption(TVar 0))))
           "List.tryGet", Forall([ 0 ], TFun(TFun(TVar 0, TBool), TFun(TList(TVar 0), TOption TInt)))
+          "List.tryItem", Forall([ 0 ], TFun(TInt, TFun(TList(TVar 0), TOption(TVar 0))))
           "List.tryHead", Forall([ 0 ], TFun(TList(TVar 0), TOption(TVar 0)))
           "List.tail", Forall([ 0 ], TFun(TList(TVar 0), TList(TVar 0)))
           "List.append", Forall([ 0 ], TFun(TList(TVar 0), TFun(TList(TVar 0), TList(TVar 0))))

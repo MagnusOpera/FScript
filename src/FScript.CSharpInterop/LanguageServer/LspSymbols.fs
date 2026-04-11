@@ -81,6 +81,7 @@ module LspSymbols =
           "List.length", [ "values" ]
           "List.tryFind", [ "predicate"; "values" ]
           "List.tryGet", [ "predicate"; "values" ]
+          "List.tryItem", [ "index"; "values" ]
           "List.tryHead", [ "values" ]
           "List.tail", [ "values" ]
           "List.append", [ "left"; "right" ]

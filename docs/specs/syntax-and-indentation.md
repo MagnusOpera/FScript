@@ -70,6 +70,10 @@ This document describes the concrete syntax accepted by the interpreter and the 
     ["b"] = 2 }
   ```
 - Lists:
+  - literal `[1; 2; 3]`
+  - index access `xs[0]`
+  - list index keys must infer to `int`
+  - list index access returns an option value
   - `[a; b; c]`
   - multiline examples:
   ```fsharp

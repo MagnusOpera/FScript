@@ -131,8 +131,36 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected None for missing map key")
 
     [<Test>]
+    member _.``Evaluates list indexer lookup as option`` () =
+        match Helpers.eval "[1;2;3][0]" with
+        | VOption (Some (VInt 1L)) -> ()
+        | _ -> Assert.Fail("Expected Some 1 from list indexer")
+
+        match Helpers.eval "[1;2;3][2]" with
+        | VOption (Some (VInt 3L)) -> ()
+        | _ -> Assert.Fail("Expected Some 3 from list indexer")
+
+        match Helpers.eval "[1;2;3][3]" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for out-of-range list index")
+
+        match Helpers.eval "[1;2;3][0 - 1]" with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected None for negative list index")
+
+    [<Test>]
     member _.``Rejects int keyed map indexer lookup`` () =
         let act () = Helpers.eval "let m = { [1] = 42 }\nm[1]" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Rejects non-int list indexer lookup`` () =
+        let act () = Helpers.eval "[1;2;3][\"0\"]" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Rejects indexer on non-list non-map values`` () =
+        let act () = Helpers.eval "1[0]" |> ignore
         act |> should throw typeof<TypeException>
 
     [<Test>]

@@ -247,6 +247,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected map indexer expression")
 
     [<Test>]
+    member _.``Parses list indexer expression`` () =
+        let p = Helpers.parse "let xs = [1;2;3]\nxs[0]"
+        match p.[1] with
+        | SExpr (EIndexGet (EVar ("xs", _), ELiteral (LInt (0L), _), _)) -> ()
+        | _ -> Assert.Fail("Expected list indexer expression")
+
+    [<Test>]
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
