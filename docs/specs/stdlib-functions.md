@@ -14,6 +14,14 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Bool`
 - `String`
 
+## Built-in types and values
+- `type Environment = { ScriptName: string option; Arguments: string list }`
+- `type FsKind = File of string | Directory of string | Missing`
+- `let Env : Environment`
+  - Injected by the CLI and REPL hosts.
+  - `Env.ScriptName` is `Some "<path>"` for file execution and `None` for stdin/REPL execution.
+  - `Env.Arguments` contains script arguments passed after `--`.
+
 ## Notes
 - Functions are curried.
 - The stdlib is part of the language runtime and is always available.
@@ -86,6 +94,8 @@ Map keys in FScript are string-only.
 - `String.concat : string -> string list -> string`
 - `String.split : string -> string -> string list`
   - argument order: `separator -> source`
+- `String.endsWith : string -> string -> bool`
+  - argument order: `suffix -> source`
 
 ## Quick examples
 ```fsharp
@@ -98,4 +108,8 @@ let port = maybePort |> Option.defaultValue 80
 let m = { ["a"] = 1; ["b"] = 2 }
 let hasA = Map.containsKey "a" m
 let one = m["a"] |> Option.defaultValue 0
+
+match Env.Arguments with
+| scriptPath :: _ -> print scriptPath
+| [] -> print "no args"
 ```

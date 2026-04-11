@@ -25,6 +25,8 @@ This page summarizes how stdlib and runtime externs differ.
 - `Map.*`
 - `String.*`
 - parsing helpers: `Int.tryParse`, `Float.tryParse`, `Bool.tryParse`
+- scalar formatters: `Int.toString`, `Float.toString`, `Bool.toString`
+- environment types/values: `Environment`, `FsKind`, `Env`
 
 ## Runtime extern families
 
@@ -41,3 +43,15 @@ print "hello"
 ```
 
 Use `print` for quick script output and debugging.
+
+## CLI environment
+
+`Env` is not a runtime extern. It is a host-injected built-in value with the stdlib `Environment` type:
+
+```fsharp
+type Environment =
+  { ScriptName: string option
+    Arguments: string list }
+```
+
+Use `Env.Arguments` for script arguments and `Env.ScriptName` when a script needs to know whether it is running from a file or stdin/REPL.

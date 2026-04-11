@@ -54,3 +54,11 @@ Argument order is `separator -> source`.
 ```fsharp
 let parts = String.split "," "a,b,c"
 ```
+
+## `String.endsWith : string -> string -> bool`
+
+Argument order is `suffix -> source`.
+
+```fsharp
+let isScript = String.endsWith ".fss" "samples/hello.fss"
+```

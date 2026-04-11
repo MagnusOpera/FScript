@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Documented the CLI-injected `Env` value and stdlib `Environment`/`FsKind` types, and filled missing stdlib reference entries such as `String.endsWith`.
+
 ## [0.62.0]
 
 

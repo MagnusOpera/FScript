@@ -131,6 +131,7 @@ dotnet run --project src/FScript -- version
 
 In CLI execution modes, scripts get:
 - stdlib `type Environment = { ScriptName: string option; Arguments: string list }`
+- stdlib `type FsKind = File of string | Directory of string | Missing`
 - CLI-injected `let Env = ...`
 
 Start REPL:
