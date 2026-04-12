@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.64.0]
+
+
 - Added optional list index access with `list[index]` plus the `List.tryItem` stdlib helper.
 - Expanded stdlib docs with built-in `Env` coverage, complete top-level module reference pages, and a dedicated native-types/indexer reference.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.63.0...0.64.0
 
 ## [0.63.0]
 
