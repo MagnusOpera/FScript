@@ -1,10 +1,9 @@
 name: 🌐 Deploy Website
-run-name: Deploy docs for ${{ github.ref_name }}
+run-name: Deploy docs for ${{ github.event.release.tag_name || github.ref_name }}
 
 on:
-  push:
-    tags:
-      - '*.*.*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: github-pages
+  group: github-pages-${{ github.event.release.tag_name || github.ref_name || 'manual' }}
   cancel-in-progress: true
 
 jobs:
@@ -40,7 +39,7 @@ jobs:
 
       - name: Build website
         env:
-          FSCRIPT_DOCS_LAST_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'current' }}
+          FSCRIPT_DOCS_LAST_VERSION: ${{ github.event.release.tag_name || github.ref_name || 'current' }}
         run: |
           cd website
           npm run build

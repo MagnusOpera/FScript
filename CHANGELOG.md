@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Changed website publishing to deploy docs on GitHub release publication instead of on tag push.
+
 ## [0.64.0]
 
 

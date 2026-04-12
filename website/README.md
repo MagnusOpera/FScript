@@ -20,5 +20,5 @@ npm run version-docs -- X.Y.Z
 
 ## Publishing
 
-- GitHub Actions deploys this site to GitHub Pages on release tag pushes.
+- GitHub Actions deploys this site to GitHub Pages when a GitHub release is published.
 - Docs versions are created during `make release-prepare version=X.Y.Z`.
