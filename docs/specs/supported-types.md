@@ -37,6 +37,37 @@ This document specifies the value and type system used by the interpreter.
 - Maps support optional key lookup with string keys (for example `scores["math"]`).
 - Negative or out-of-range list indices return `None`.
 
+## Native access summary
+
+### Lists
+- Type form: `'a list`
+- Indexer signature: `'a list -> int -> 'a option`
+- Notes:
+  - `values[index]` is zero-based
+  - negative or out-of-range indices return `None`
+
+### Maps
+- Type form: `'a map`
+- Indexer signature: `'a map -> string -> 'a option`
+- Notes:
+  - `values[key]` performs optional lookup
+  - keys must be `string`
+
+### Records
+- Field access signature: `{ Field: 'a; ... } -> 'a`
+- Notes:
+  - records use named field access (`record.Field`)
+
+### Tuples
+- Access model:
+  - tuples are consumed by destructuring and pattern matching
+  - tuples do not expose a native indexer
+
+### Options
+- Constructors:
+  - `Some : 'a -> 'a option`
+  - `None : 'a option`
+
 ## Function types
 - Functions use curried arrow types:
   - `t1 -> t2`

@@ -4,6 +4,8 @@ title: Option Module
 slug: /stdlib/option
 ---
 
+`option` is a native type with two cases: `Some value` and `None`.
+
 ## `Option.defaultValue : 'a -> 'a option -> 'a`
 
 Returns option value or a fallback.

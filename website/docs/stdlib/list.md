@@ -4,6 +4,16 @@ title: List Module
 slug: /stdlib/list
 ---
 
+## Native list access
+
+| Form | Signature | Description |
+| --- | --- | --- |
+| `values[index]` | `'a list -> int -> 'a option` | Zero-based optional indexer for lists. |
+
+```fsharp
+let maybeSecond = [10; 20; 30][1]
+```
+
 ## `List.empty : 'a list`
 
 Returns an empty list.
@@ -114,6 +124,15 @@ Returns index of first matching element.
 
 ```fsharp
 let maybeIndex = ["a"; "bb"; "ccc"] |> List.tryGet (fun s -> String.indexOf "c" s |> Option.isSome)
+```
+
+## `List.tryItem : int -> 'a list -> 'a option`
+
+Returns the item at a zero-based index.
+Returns `None` for negative or out-of-range indices.
+
+```fsharp
+let maybeSecond = List.tryItem 1 [10; 20; 30]
 ```
 
 ## `List.tryHead : 'a list -> 'a option`

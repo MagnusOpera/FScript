@@ -4,19 +4,23 @@ title: Stdlib and Built-ins
 slug: /reference/stdlib
 ---
 
-The complete standard library documentation now lives in the dedicated **Stdlib** section of this manual.
+This is the quick lookup page for the built-in FScript surface.
 
-Start here:
+## Modules
 
-- [Stdlib Overview](/manual/stdlib/overview)
-- [List Module](/manual/stdlib/list)
-- [Option Module](/manual/stdlib/option)
-- [Map Module](/manual/stdlib/map)
-- [String Module](/manual/stdlib/string)
-- [Int, Float, Bool Modules](/manual/stdlib/scalars)
-- [Stdlib Recipes](/manual/stdlib/recipes)
+- [`List`](../stdlib/list)
+- [`Option`](../stdlib/option)
+- [`Map`](../stdlib/map)
+- [`String`](../stdlib/string)
+- [`Int`, `Float`, `Bool`](../stdlib/scalars)
 
-This page summarizes how stdlib and runtime externs differ.
+## Top-level built-ins
+
+- [`Env`, `Environment`, `FsKind`, `print`, `ignore`](../stdlib/builtins)
+
+## Native types
+
+- [`list`, `map`, `option`, tuples, records, unions`](/manual/reference/native-types)
 
 ## Core built-in groups
 
@@ -27,6 +31,7 @@ This page summarizes how stdlib and runtime externs differ.
 - parsing helpers: `Int.tryParse`, `Float.tryParse`, `Bool.tryParse`
 - scalar formatters: `Int.toString`, `Float.toString`, `Bool.toString`
 - environment types/values: `Environment`, `FsKind`, `Env`
+- top-level functions: `print`, `ignore`
 
 ## Runtime extern families
 
@@ -36,22 +41,4 @@ This page summarizes how stdlib and runtime externs differ.
 - `Regex.*`
 - hashing and GUID helpers
 
-## `print`
-
-```fsharp
-print "hello"
-```
-
-Use `print` for quick script output and debugging.
-
-## CLI environment
-
-`Env` is not a runtime extern. It is a host-injected built-in value with the stdlib `Environment` type:
-
-```fsharp
-type Environment =
-  { ScriptName: string option
-    Arguments: string list }
-```
-
-Use `Env.Arguments` for script arguments and `Env.ScriptName` when a script needs to know whether it is running from a file or stdin/REPL.
+Use the Stdlib pages for complete module-by-module function reference, and the native types page for language-level access forms such as `list[index]` and `map["key"]`.

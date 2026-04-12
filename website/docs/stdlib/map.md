@@ -8,6 +8,16 @@ FScript maps are string-keyed.
 
 Key takeaway: map indexers are always `string`.
 
+## Native map access
+
+| Form | Signature | Description |
+| --- | --- | --- |
+| `values[key]` | `'v map -> string -> 'v option` | Optional lookup by string key. Missing keys return `None`. |
+
+```fsharp
+let maybeA = { ["a"] = 1 }["a"]
+```
+
 ## `Map.empty : 'v map`
 
 Empty map.

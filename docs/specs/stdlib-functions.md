@@ -14,6 +14,11 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Bool`
 - `String`
 
+## Top-level built-ins
+- `Env : Environment`
+- `print : string -> unit`
+- `ignore : 'a -> unit`
+
 ## Built-in types and values
 - `type Environment = { ScriptName: string option; Arguments: string list }`
 - `type FsKind = File of string | Directory of string | Missing`
@@ -26,6 +31,38 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - Functions are curried.
 - The stdlib is part of the language runtime and is always available.
 - Top-level script bindings cannot collide with reserved stdlib names.
+- `print` and `ignore` are built-in language functions, not host externs.
+
+## Native access forms
+
+### Lists
+- Indexer: `values[index] : 'a option`
+- Signature: `'a list -> int -> 'a option`
+- Description:
+  - zero-based optional index access
+  - negative or out-of-range indices return `None`
+
+### Maps
+- Indexer: `values[key] : 'v option`
+- Signature: `'v map -> string -> 'v option`
+- Description:
+  - optional lookup by string key
+  - missing keys return `None`
+  - map keys are string-only
+
+### Options
+- Constructors:
+  - `Some : 'a -> 'a option`
+  - `None : 'a option`
+
+### Records
+- Field access: `record.Field`
+- Signature: `{ Field: 'a; ... } -> 'a`
+
+### Tuples
+- Access model:
+  - tuples are consumed via destructuring and pattern matching
+  - tuples do not have a native indexer
 
 ## List
 - `List.empty : 'a list`
@@ -57,17 +94,17 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 ## Map
 - `Map.empty : 'v map`  
   Alias of `{}`.
-- `Map.tryGet : 'k -> map<'k, 'v> -> 'v option`
-- `Map.containsKey : 'k -> map<'k, 'v> -> bool`
-- `Map.add : 'k -> 'v -> map<'k, 'v> -> map<'k, 'v>`
-- `Map.ofList : ('k * 'v) list -> map<'k, 'v>`
-- `Map.fold : ('state -> 'k -> 'v -> 'state) -> 'state -> map<'k, 'v> -> 'state`
-- `Map.count : map<'k, 'v> -> int`
-- `Map.filter : ('k -> 'v -> bool) -> map<'k, 'v> -> map<'k, 'v>`
-- `Map.choose : ('k -> 'v -> 'u option) -> map<'k, 'v> -> map<'k, 'u>`
-- `Map.map : ('v -> 'u) -> map<'k, 'v> -> map<'k, 'u>`
-- `Map.iter : ('k -> 'v -> unit) -> map<'k, 'v> -> unit`
-- `Map.remove : 'k -> map<'k, 'v> -> map<'k, 'v>`
+- `Map.tryGet : string -> 'v map -> 'v option`
+- `Map.containsKey : string -> 'v map -> bool`
+- `Map.add : string -> 'v -> 'v map -> 'v map`
+- `Map.ofList : (string * 'v) list -> 'v map`
+- `Map.fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state`
+- `Map.count : 'v map -> int`
+- `Map.filter : (string -> 'v -> bool) -> 'v map -> 'v map`
+- `Map.choose : (string -> 'v -> 'u option) -> 'v map -> 'u map`
+- `Map.map : ('v -> 'u) -> 'v map -> 'u map`
+- `Map.iter : (string -> 'v -> unit) -> 'v map -> unit`
+- `Map.remove : string -> 'v map -> 'v map`
 
 Map keys in FScript are string-only.
 

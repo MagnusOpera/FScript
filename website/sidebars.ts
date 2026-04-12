@@ -46,6 +46,7 @@ const sidebars: SidebarsConfig = {
       label: 'Stdlib',
       items: [
         'stdlib/stdlib-overview',
+        'stdlib/stdlib-builtins',
         'stdlib/stdlib-list',
         'stdlib/stdlib-option',
         'stdlib/stdlib-map',
@@ -57,7 +58,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Reference',
-      items: ['reference/cli-reference', 'reference/stdlib-reference'],
+      items: ['reference/cli-reference', 'reference/stdlib-reference', 'reference/native-types-reference'],
     },
   ],
 };
