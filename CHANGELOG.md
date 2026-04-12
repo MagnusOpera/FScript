@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.65.0]
+
+
 - Changed website publishing to deploy docs on GitHub release publication instead of on tag push.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.64.0...0.65.0
 
 ## [0.64.0]
 
