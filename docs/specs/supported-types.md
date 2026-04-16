@@ -12,6 +12,7 @@ This document specifies the value and type system used by the interpreter.
 
 ## Composite/container types
 - List: `'a list`
+- Task: `'a task`
 - Tuple: `(t1 * t2 * ...)`
 - Option: `'a option`
 - Map (string-keyed alias): `'a map`
@@ -68,6 +69,16 @@ This document specifies the value and type system used by the interpreter.
   - `Some : 'a -> 'a option`
   - `None : 'a option`
 
+### Tasks
+- Type form: `'a task`
+- Construction and observation:
+  - `Task.spawn : (unit -> 'a) -> 'a task`
+  - `Task.await : 'a task -> 'a`
+- Notes:
+  - tasks are opaque runtime handles
+  - spawned thunks execute concurrently
+  - side effects may interleave across tasks
+
 ## Function types
 - Functions use curried arrow types:
   - `t1 -> t2`
@@ -117,6 +128,7 @@ This document specifies the value and type system used by the interpreter.
 - `VRecord`
 - `VMap`
 - `VOption`
+- `VTask`
 - `VUnionCase`, `VUnionCtor`
 - `VClosure`
 - `VExternal`

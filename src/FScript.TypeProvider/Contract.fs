@@ -180,6 +180,8 @@ module Contract =
         | TList inner ->
             recurse $"{typePath} list item" inner
             |> Result.map SupportedType.List
+        | TTask inner ->
+            Error $"{typePath}: task types are not supported in exported signatures."
         | TOption inner ->
             recurse $"{typePath} option value" inner
             |> Result.map SupportedType.Option

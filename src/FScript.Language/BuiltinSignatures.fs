@@ -18,6 +18,8 @@ module BuiltinSignatures =
           "String.concat", Forall([], TFun(TString, TFun(TList TString, TString)))
           "String.split", Forall([], TFun(TString, TFun(TString, TList TString)))
           "String.endsWith", Forall([], TFun(TString, TFun(TString, TBool)))
+          "Task.spawn", Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))
+          "Task.await", Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))
           "List.empty", Forall([ 0 ], TList(TVar 0))
           "List.map", Forall([ 0; 1 ], TFun(TFun(TVar 0, TVar 1), TFun(TList(TVar 0), TList(TVar 1))))
           "List.iter", Forall([ 0 ], TFun(TFun(TVar 0, TUnit), TFun(TList(TVar 0), TUnit)))
@@ -60,6 +62,7 @@ module BuiltinSignatures =
         |> Map.keys
         |> Seq.filter (fun name ->
             name.StartsWith("List.", System.StringComparison.Ordinal)
+            || name.StartsWith("Task.", System.StringComparison.Ordinal)
             || name.StartsWith("Option.", System.StringComparison.Ordinal)
             || name.StartsWith("Map.", System.StringComparison.Ordinal))
         |> Set.ofSeq

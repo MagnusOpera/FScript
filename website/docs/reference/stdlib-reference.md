@@ -8,6 +8,7 @@ This is the quick lookup page for the built-in FScript surface.
 
 ## Modules
 
+- [`Task`](../stdlib/task)
 - [`List`](../stdlib/list)
 - [`Option`](../stdlib/option)
 - [`Map`](../stdlib/map)
@@ -20,16 +21,18 @@ This is the quick lookup page for the built-in FScript surface.
 
 ## Native types
 
-- [`list`, `map`, `option`, tuples, records, unions`](/manual/reference/native-types)
+- [`task`, `list`, `map`, `option`, tuples, records, unions`](/manual/reference/native-types)
 
 ## Core built-in groups
 
+- `Task.*`
 - `List.*`
 - `Option.*`
 - `Map.*`
 - `String.*`
 - parsing helpers: `Int.tryParse`, `Float.tryParse`, `Bool.tryParse`
 - scalar formatters: `Int.toString`, `Float.toString`, `Bool.toString`
+- concurrency helpers: `Task.spawn`, `Task.await`
 - environment types/values: `Environment`, `FsKind`, `Env`
 - top-level functions: `print`, `ignore`
 
