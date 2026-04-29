@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.67.0]
+
+
 - Fixed the resolver-backed embedding docs to normalize virtual import paths so the sample works on Windows as well as Unix.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.66.0...0.67.0
 
 ## [0.66.0]
 
