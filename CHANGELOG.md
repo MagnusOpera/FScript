@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed the resolver-backed embedding docs to normalize virtual import paths so the sample works on Windows as well as Unix.
+
 ## [0.66.0]
 
 

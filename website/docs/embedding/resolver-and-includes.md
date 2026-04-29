@@ -37,13 +37,15 @@ It receives a normalized full path and should return source text (`Some`) or mis
 ## Minimal resolver example
 
 ```fsharp
+open System.IO
+
 let sources =
   Map [
-    "/virtual/shared/common.fss", "let inc x = x + 1"
+    Path.GetFullPath(Path.Combine("/virtual/shared", "common.fss")), "let inc x = x + 1"
   ]
 
 let resolver path =
-  sources |> Map.tryFind path
+  sources |> Map.tryFind (Path.GetFullPath(path))
 ```
 
 ## Guidance

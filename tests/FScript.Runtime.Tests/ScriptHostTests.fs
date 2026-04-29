@@ -107,6 +107,32 @@ type ScriptHostTests () =
         | _ -> Assert.Fail("Expected imported function to be available")
 
     [<Test>]
+    member _.``script_host loadSourceWithIncludes resolver receives normalized full import paths`` () =
+        let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-nested-{System.Guid.NewGuid():N}")
+        let entryFile = Path.Combine(root, "main.fss")
+        let sharedFile = Path.GetFullPath(Path.Combine(root, "shared/validation.fss"))
+        let source = "import \"shared/validation.fss\" as Validation\n[<export>] let run x = Validation.increment x"
+        let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+
+        let mutable resolvedPath : string option = None
+        let resolve path =
+            resolvedPath <- Some path
+            if System.String.Equals(path, sharedFile, System.StringComparison.OrdinalIgnoreCase) then
+                Some "let increment x = x + 1"
+            else
+                None
+
+        let loaded = ScriptHost.loadSourceWithIncludes externs root entryFile source resolve
+
+        match ScriptHost.invoke loaded "run" [ VInt 10L ] with
+        | VInt 11L -> ()
+        | _ -> Assert.Fail("Expected imported function to be available")
+
+        match resolvedPath with
+        | Some path -> Assert.That(path, Is.EqualTo(sharedFile))
+        | None -> Assert.Fail("Expected resolver to be called")
+
+    [<Test>]
     member _.``script_host loadSourceWithIncludes fails when resolver misses import`` () =
         let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-missing-{System.Guid.NewGuid():N}")
         let entryFile = Path.Combine(root, "main.fss")

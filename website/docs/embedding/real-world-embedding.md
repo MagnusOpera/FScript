@@ -25,6 +25,7 @@ open FScript.Runtime
 // 1) Entry script loaded from host memory.
 let root = "/virtual/workspace"
 let entryFile = Path.Combine(root, "main.fss")
+let normalizeVirtualPath (path: string) = Path.GetFullPath(path)
 let entrySource =
     """
 import "shared/validation.fss" as Validation
@@ -38,7 +39,7 @@ let run (name: string) =
 // 2) Imported files also come from host memory.
 let virtualSources =
     Map [
-        Path.Combine(root, "shared/validation.fss"),
+        normalizeVirtualPath (Path.Combine(root, "shared", "validation.fss")),
         """
 let validate (name: string) =
   if String.toUpper name = name then
@@ -49,7 +50,7 @@ let validate (name: string) =
     ]
 
 let resolveImportedSource (fullPath: string) : string option =
-    virtualSources |> Map.tryFind fullPath
+    virtualSources |> Map.tryFind (Path.GetFullPath(fullPath))
 
 // 3) Inject host function(s) as externs.
 let normalizeNameExtern =
