@@ -20,6 +20,7 @@ module LspSymbols =
             | TBool -> "bool"
             | TString -> "string"
             | TList t1 -> sprintf "%s list" (postfixArg t1)
+            | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
             | TRecord fields ->
                 fields
@@ -67,6 +68,8 @@ module LspSymbols =
           "String.concat", [ "separator"; "values" ]
           "String.split", [ "separator"; "source" ]
           "String.endsWith", [ "suffix"; "source" ]
+          "Task.spawn", [ "thunk" ]
+          "Task.await", [ "task" ]
           "List.empty", []
           "List.map", [ "mapper"; "values" ]
           "List.iter", [ "iterator"; "values" ]

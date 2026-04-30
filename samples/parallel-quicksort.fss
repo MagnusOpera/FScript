@@ -1,0 +1,40 @@
+let rec quicksort values =
+  match values with
+  | [] -> []
+  | pivot :: rest ->
+      let smaller = rest |> List.filter (fun value -> value < pivot)
+      let equal = rest |> List.filter (fun value -> value = pivot)
+      let greater = rest |> List.filter (fun value -> value > pivot)
+      (quicksort smaller) @ [pivot] @ equal @ (quicksort greater)
+
+let rec parallel_quicksort values =
+  match values with
+  | [] -> []
+  | [single] -> [single]
+  | pivot :: rest ->
+      let smaller = rest |> List.filter (fun value -> value < pivot)
+      let equal = rest |> List.filter (fun value -> value = pivot)
+      let greater = rest |> List.filter (fun value -> value > pivot)
+
+      let sort_smaller =
+        Task.spawn (fun _ -> parallel_quicksort smaller)
+
+      let sorted_greater = parallel_quicksort greater
+      let sorted_smaller = Task.await sort_smaller
+      sorted_smaller @ [pivot] @ equal @ sorted_greater
+
+let rec is_sorted values =
+  match values with
+  | [] -> true
+  | [_] -> true
+  | first :: second :: tail -> (first <= second) && (is_sorted (second :: tail))
+
+let input = [9; 2; 8; 2; 4; 7; 1; 6; 3; 5; 3; 10; 0; 12; 11]
+let sequential = quicksort input
+let parallel = parallel_quicksort input
+
+print $"parallel quicksort input     : {input}"
+print $"sequential quicksort output : {sequential}"
+print $"parallel quicksort output   : {parallel}"
+print $"same result                 : {sequential = parallel}"
+print $"parallel output is sorted   : {is_sorted parallel}"

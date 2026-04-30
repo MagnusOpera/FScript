@@ -361,6 +361,7 @@ let rec fib n =
 FScript ships with a preloaded stdlib focused on functional collection workflows.
 
 Common families:
+- `Task.*`
 - `List.*`
 - `Option.*`
 - `Map.*`
@@ -376,6 +377,16 @@ let chosen = Some 42 |> Option.defaultValue 0
 let m = { ["a"] = 1; ["b"] = 2 }
 let hasA = m |> Map.containsKey "a"
 ```
+
+Concurrent task example:
+
+```fsharp
+let pending = Task.spawn (fun _ -> 40 + 2)
+let answer = Task.await pending
+print $"{answer}"
+```
+
+Tasks use the native type form `'a task`. Spawned thunks run concurrently, `Task.await` synchronizes on the result, and task failures remain fatal runtime errors.
 
 Full reference:
 - [`docs/specs/stdlib-functions.md`](../specs/stdlib-functions.md)

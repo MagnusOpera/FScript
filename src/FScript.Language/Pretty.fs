@@ -50,6 +50,7 @@ module Pretty =
         | VUnionCase (_, caseName, None) -> caseName
         | VUnionCase (_, caseName, Some v) -> sprintf "%s %s" caseName (valueToString v)
         | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
+        | VTask _ -> "<task>"
         | VClosure (argName, body, _) ->
             let args = closureParameters argName body
             sprintf "<fun %s>" (String.concat " " args)

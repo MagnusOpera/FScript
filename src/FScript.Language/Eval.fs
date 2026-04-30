@@ -1,10 +1,33 @@
 namespace FScript.Language
 
 module Eval =
+    open System.Threading.Tasks
+
     type ProgramState =
         { TypeDefs: Map<string, Type>
           Env: Env
           LastValue: Value }
+
+    type private RuntimeState =
+        { SyncRoot: obj
+          PendingTasks: ResizeArray<TaskHandle>
+          mutable BackgroundFailure: EvalError option }
+
+    let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+
+    let private wrapTaskFailure (error: EvalError) =
+        { Message = $"Task failed: {error.Message}"
+          Span = error.Span }
+
+    let private wrapUnexpectedTaskFailure (ex: exn) =
+        { Message = $"Task failed: {ex.Message}"
+          Span = unknownSpan }
+
+    let private raiseIfBackgroundFailed (runtime: RuntimeState) =
+        lock runtime.SyncRoot (fun () ->
+            match runtime.BackgroundFailure with
+            | Some error -> raise (EvalException error)
+            | None -> ())
 
     let private literalToValue lit =
         match lit with
@@ -45,6 +68,7 @@ module Eval =
         | VUnionCase (_, caseName, None) -> caseName
         | VUnionCase (_, caseName, Some value) -> sprintf "%s %s" caseName (valueToInterpolationString value)
         | VTypeToken t -> sprintf "<type %s>" (Types.typeToString t)
+        | VTask _ -> "<task>"
         | VClosure _ -> "<fun>"
         | VUnionCtor (_, caseName) -> sprintf "<ctor %s>" caseName
         | VExternal _ -> "<extern>"
@@ -77,6 +101,7 @@ module Eval =
             | Some xv, Some yv -> valueEquals xv yv
             | _ -> false
         | VTypeToken tx, VTypeToken ty -> tx = ty
+        | VTask tx, VTask ty -> obj.ReferenceEquals(tx, ty)
         | _ -> false
 
     let private mapKeyToValue (key: MapKey) : Value =
@@ -104,6 +129,7 @@ module Eval =
                 resolveTypeList ts |> Option.map TTuple
             | TRFun _ -> None
             | TRPostfix (inner, "list") -> resolve inner |> Option.map TList
+            | TRPostfix (inner, "task") -> resolve inner |> Option.map TTask
             | TRPostfix (inner, "option") -> resolve inner |> Option.map TOption
             | TRPostfix (inner, "map") -> resolve inner |> Option.map (fun t -> TMap (TString, t))
             | TRPostfix _ -> None
@@ -143,6 +169,7 @@ module Eval =
             | TBool, VBool _ -> true
             | TString, VString _ -> true
             | TList inner, VList items -> items |> List.forall (fun v -> valueHasType v inner)
+            | TTask _, VTask _ -> true
             | TTuple inner, VTuple items ->
                 inner.Length = items.Length && List.forall2 valueHasType items inner
             | TOption inner, VOption None -> true
@@ -308,30 +335,85 @@ module Eval =
             if valueMatchesTypeRef typeDefs tref v then Some Map.empty else None
         | _ -> None
 
-    let rec private applyFunctionValue
-        (eval: Map<string, Type> -> Env -> Expr -> Value)
+    let rec private createExternContext (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) : ExternalCallContext =
+        { Apply = applyFunctionValue runtime evalExpr typeDefs span
+          SpawnTask = spawnTaskValue runtime typeDefs
+          AwaitTask = awaitTaskValue runtime
+          CheckRuntime = fun () -> raiseIfBackgroundFailed runtime }
+
+    and private spawnTaskValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (thunk: Value) : Value =
+        raiseIfBackgroundFailed runtime
+        let worker =
+            try
+                Task.Run(fun () ->
+                    try
+                        let result = applyFunctionValue runtime evalExpr typeDefs unknownSpan thunk VUnit
+                        TaskSucceeded result
+                    with
+                    | EvalException error ->
+                        let taskError = wrapTaskFailure error
+                        lock runtime.SyncRoot (fun () ->
+                            if runtime.BackgroundFailure.IsNone then
+                                runtime.BackgroundFailure <- Some taskError)
+                        TaskFailed taskError
+                    | ex ->
+                        let taskError = wrapUnexpectedTaskFailure ex
+                        lock runtime.SyncRoot (fun () ->
+                            if runtime.BackgroundFailure.IsNone then
+                                runtime.BackgroundFailure <- Some taskError)
+                        TaskFailed taskError)
+            with
+            | ex ->
+                raise (EvalException (wrapUnexpectedTaskFailure ex))
+
+        let handle = { Worker = worker; Awaited = false }
+        lock runtime.SyncRoot (fun () -> runtime.PendingTasks.Add(handle))
+        VTask handle
+
+    and private awaitTaskValue (runtime: RuntimeState) (taskValue: Value) : Value =
+        raiseIfBackgroundFailed runtime
+        match taskValue with
+        | VTask handle ->
+            handle.Awaited <- true
+            match handle.Worker.GetAwaiter().GetResult() with
+            | TaskSucceeded value ->
+                raiseIfBackgroundFailed runtime
+                value
+            | TaskFailed error ->
+                lock runtime.SyncRoot (fun () ->
+                    if runtime.BackgroundFailure.IsNone then
+                        runtime.BackgroundFailure <- Some error)
+                raise (EvalException error)
+        | _ ->
+            raise (EvalException { Message = "Task.await expects a task"; Span = unknownSpan })
+
+    and private applyFunctionValue
+        (runtime: RuntimeState)
+        (eval: RuntimeState -> Map<string, Type> -> Env -> Expr -> Value)
         (typeDefs: Map<string, Type>)
         (span: Span)
         (fnValue: Value)
         (argValue: Value)
         : Value =
+        raiseIfBackgroundFailed runtime
         match fnValue with
         | VClosure (argName, body, closureEnv) ->
             let env' = closureEnv.Value |> Map.add argName argValue
-            eval typeDefs env' body
+            eval runtime typeDefs env' body
         | VUnionCtor (typeName, caseName) ->
             VUnionCase(typeName, caseName, Some argValue)
         | VExternal (ext, args) ->
             let args' = argValue :: args
             if args'.Length = ext.Arity then
-                ext.Impl { Apply = applyFunctionValue eval typeDefs span } (args' |> List.rev)
+                ext.Impl (createExternContext runtime typeDefs span) (args' |> List.rev)
             elif args'.Length < ext.Arity then
                 VExternal (ext, args')
             else
                 raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
         | _ -> raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
 
-    let rec private evalExpr (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
+    and private evalExpr (runtime: RuntimeState) (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
+        raiseIfBackgroundFailed runtime
         match expr with
         | EUnit _ -> VUnit
         | ELiteral (lit, _) -> literalToValue lit
@@ -340,27 +422,27 @@ module Eval =
             | Some v -> v
             | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EParen (inner, _) ->
-            evalExpr typeDefs env inner
+            evalExpr runtime typeDefs env inner
         | ELambda (param, body, _) -> VClosure (param.Name, body, ref env)
         | EApply (fn, arg, span) ->
-            let fVal = evalExpr typeDefs env fn
-            let aVal = evalExpr typeDefs env arg
-            applyFunctionValue evalExpr typeDefs span fVal aVal
+            let fVal = evalExpr runtime typeDefs env fn
+            let aVal = evalExpr runtime typeDefs env arg
+            applyFunctionValue runtime evalExpr typeDefs span fVal aVal
         | EIf (cond, tExpr, fExpr, span) ->
-            match evalExpr typeDefs env cond with
-            | VBool true -> evalExpr typeDefs env tExpr
-            | VBool false -> evalExpr typeDefs env fExpr
+            match evalExpr runtime typeDefs env cond with
+            | VBool true -> evalExpr runtime typeDefs env tExpr
+            | VBool false -> evalExpr runtime typeDefs env fExpr
             | _ -> raise (EvalException { Message = "Condition must be bool"; Span = span })
         | ERaise (valueExpr, span) ->
-            match evalExpr typeDefs env valueExpr with
+            match evalExpr runtime typeDefs env valueExpr with
             | VString message -> raise (EvalException { Message = message; Span = span })
             | _ -> raise (EvalException { Message = "raise expects a string"; Span = span })
         | EFor (name, source, body, span) ->
-            match evalExpr typeDefs env source with
+            match evalExpr runtime typeDefs env source with
             | VList items ->
                 for item in items do
                     let env' = env |> Map.add name item
-                    evalExpr typeDefs env' body |> ignore
+                    evalExpr runtime typeDefs env' body |> ignore
                 VUnit
             | _ -> raise (EvalException { Message = "For loop source must be list"; Span = span })
         | ELet (name, value, body, isRec, _, span) ->
@@ -370,24 +452,24 @@ module Eval =
                     let recEnv = ref env
                     let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
                     recEnv.Value <- env |> Map.add name selfValue
-                    evalExpr typeDefs recEnv.Value body
+                    evalExpr runtime typeDefs recEnv.Value body
                 | _ ->
                     raise (EvalException { Message = "let rec requires a function binding"; Span = span })
             else
-                let v = evalExpr typeDefs env value
+                let v = evalExpr runtime typeDefs env value
                 let env' = env |> Map.add name v
-                evalExpr typeDefs env' body
+                evalExpr runtime typeDefs env' body
         | ELetPattern (pattern, value, body, span) ->
-            let v = evalExpr typeDefs env value
+            let v = evalExpr runtime typeDefs env value
             match patternMatch typeDefs pattern v with
             | Some bindings ->
                 let env' = Map.fold (fun acc k value -> Map.add k value acc) env bindings
-                evalExpr typeDefs env' body
+                evalExpr runtime typeDefs env' body
             | None ->
                 raise (EvalException { Message = "Let pattern did not match value"; Span = span })
         | ELetRecGroup (bindings, body, span) ->
             if bindings.IsEmpty then
-                evalExpr typeDefs env body
+                evalExpr runtime typeDefs env body
             else
                 let recEnv = ref env
                 let recEntries =
@@ -403,9 +485,9 @@ module Eval =
                             raise (EvalException { Message = "let rec requires a function binding"; Span = span }))
                 let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
                 recEnv.Value <- finalEnv
-                evalExpr typeDefs finalEnv body
+                evalExpr runtime typeDefs finalEnv body
         | EMatch (scrutinee, cases, span) ->
-            let v = evalExpr typeDefs env scrutinee
+            let v = evalExpr runtime typeDefs env scrutinee
             let rec tryCases cs =
                 match cs with
                 | [] -> raise (EvalException { Message = "No match cases matched"; Span = span })
@@ -415,19 +497,19 @@ module Eval =
                         let env' = Map.fold (fun acc k v -> Map.add k v acc) env bindings
                         match guard with
                         | Some guardExpr ->
-                            match evalExpr typeDefs env' guardExpr with
-                            | VBool true -> evalExpr typeDefs env' body
+                            match evalExpr runtime typeDefs env' guardExpr with
+                            | VBool true -> evalExpr runtime typeDefs env' body
                             | VBool false -> tryCases rest
                             | _ -> raise (EvalException { Message = "Match guard must evaluate to bool"; Span = span })
                         | None ->
-                            evalExpr typeDefs env' body
+                            evalExpr runtime typeDefs env' body
                     | None -> tryCases rest
             tryCases cases
         | EList (items, _) ->
-            items |> List.map (evalExpr typeDefs env) |> VList
+            items |> List.map (evalExpr runtime typeDefs env) |> VList
         | ERange (startExpr, endExpr, span) ->
-            let startValue = evalExpr typeDefs env startExpr
-            let endValue = evalExpr typeDefs env endExpr
+            let startValue = evalExpr runtime typeDefs env startExpr
+            let endValue = evalExpr runtime typeDefs env endExpr
             match startValue, endValue with
             | VInt s, VInt e ->
                 let step = if s <= e then 1L else -1L
@@ -439,15 +521,15 @@ module Eval =
                 VList (build [] s)
             | _ -> raise (EvalException { Message = "Range endpoints must be int"; Span = span })
         | ETuple (items, _) ->
-            items |> List.map (evalExpr typeDefs env) |> VTuple
+            items |> List.map (evalExpr runtime typeDefs env) |> VTuple
         | ERecord (fields, _) ->
             fields
-            |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
+            |> List.map (fun (name, valueExpr) -> name, evalExpr runtime typeDefs env valueExpr)
             |> Map.ofList
             |> VRecord
         | EStructuralRecord (fields, _) ->
             fields
-            |> List.map (fun (name, valueExpr) -> name, evalExpr typeDefs env valueExpr)
+            |> List.map (fun (name, valueExpr) -> name, evalExpr runtime typeDefs env valueExpr)
             |> Map.ofList
             |> VRecord
         | EMap (entries, _) ->
@@ -461,18 +543,18 @@ module Eval =
                 |> List.fold (fun (acc: Map<MapKey, Value>) entry ->
                     match entry with
                     | MEKeyValue (keyExpr, valueExpr) ->
-                        let keyValue = evalExpr typeDefs env keyExpr
+                        let keyValue = evalExpr runtime typeDefs env keyExpr
                         match keyValue with
                         | VString _
                         | VInt _ ->
                             let key = valueToMapKey (Ast.spanOfExpr keyExpr) keyValue
-                            let value = evalExpr typeDefs env valueExpr
+                            let value = evalExpr runtime typeDefs env valueExpr
                             acc.Add(key, value)
                         | _ ->
                             // Type checker guarantees string/int keys for map literals.
                             raise (EvalException { Message = "Map literal keys must be string or int"; Span = Ast.spanOfExpr keyExpr })
                     | MESpread spreadExpr ->
-                        match evalExpr typeDefs env spreadExpr with
+                        match evalExpr runtime typeDefs env spreadExpr with
                         | VMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
                         | _ ->
                             // Type checker guarantees spread operands are maps.
@@ -480,24 +562,24 @@ module Eval =
                     (Map.empty<MapKey, Value>)
             VMap evaluated
         | ERecordUpdate (target, updates, span) ->
-            match evalExpr typeDefs env target with
+            match evalExpr runtime typeDefs env target with
             | VRecord fields ->
                 let updated =
                     updates
                     |> List.fold (fun acc (name, valueExpr) ->
                         if Map.containsKey name acc then
-                            Map.add name (evalExpr typeDefs env valueExpr) acc
+                            Map.add name (evalExpr runtime typeDefs env valueExpr) acc
                         else
                             raise (EvalException { Message = sprintf "Record field '%s' not found" name; Span = span })) fields
                 VRecord updated
             | _ -> raise (EvalException { Message = "Record update requires a record value"; Span = span })
         | EStructuralRecordUpdate (target, updates, span) ->
-            match evalExpr typeDefs env target with
+            match evalExpr runtime typeDefs env target with
             | VRecord fields ->
                 let updated =
                     updates
                     |> List.fold (fun acc (name, valueExpr) ->
-                        Map.add name (evalExpr typeDefs env valueExpr) acc) fields
+                        Map.add name (evalExpr runtime typeDefs env valueExpr) acc) fields
                 VRecord updated
             | _ -> raise (EvalException { Message = "Structural record update requires a record value"; Span = span })
         | EFieldGet (target, fieldName, span) ->
@@ -507,22 +589,22 @@ module Eval =
                 match env.TryFind qualifiedName with
                 | Some value -> value
                 | None ->
-                    match evalExpr typeDefs env target with
+                    match evalExpr runtime typeDefs env target with
                     | VRecord fields ->
                         match fields.TryFind fieldName with
                         | Some fieldValue -> fieldValue
                         | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                     | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
             | _ ->
-                match evalExpr typeDefs env target with
+                match evalExpr runtime typeDefs env target with
                 | VRecord fields ->
                     match fields.TryFind fieldName with
                     | Some value -> value
                     | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                 | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
         | EIndexGet (target, keyExpr, span) ->
-            let targetValue = evalExpr typeDefs env target
-            let keyValue = evalExpr typeDefs env keyExpr
+            let targetValue = evalExpr runtime typeDefs env target
+            let keyValue = evalExpr runtime typeDefs env keyExpr
             match targetValue, keyValue with
             | VList values, VInt index ->
                 let rec loop remaining current =
@@ -542,20 +624,20 @@ module Eval =
             | _ ->
                 raise (EvalException { Message = "Index access requires a list or map value"; Span = span })
         | ECons (head, tail, span) ->
-            let h = evalExpr typeDefs env head
-            let t = evalExpr typeDefs env tail
+            let h = evalExpr runtime typeDefs env head
+            let t = evalExpr runtime typeDefs env tail
             match t with
             | VList xs -> VList (h :: xs)
             | _ -> raise (EvalException { Message = "Right side of '::' must be list"; Span = span })
         | EAppend (a, b, span) ->
-            let av = evalExpr typeDefs env a
-            let bv = evalExpr typeDefs env b
+            let av = evalExpr runtime typeDefs env a
+            let bv = evalExpr runtime typeDefs env b
             match av, bv with
             | VList xs, VList ys -> VList (xs @ ys)
             | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
         | EBinOp (op, a, b, span) ->
-            let av = evalExpr typeDefs env a
-            let bv = evalExpr typeDefs env b
+            let av = evalExpr runtime typeDefs env a
+            let bv = evalExpr runtime typeDefs env b
             let arith fInt fFloat =
                 match av, bv with
                 | VInt x, VInt y -> VInt (fInt x y)
@@ -563,7 +645,7 @@ module Eval =
                 | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
             match op with
             | "|>" ->
-                applyFunctionValue evalExpr typeDefs span bv av
+                applyFunctionValue runtime evalExpr typeDefs span bv av
             | "+" -> arith ( + ) ( + )
             | "-" -> arith ( - ) ( - )
             | "*" -> arith ( * ) ( * )
@@ -613,7 +695,7 @@ module Eval =
                 | VList xs, VList ys -> VList (xs @ ys)
                 | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
             | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
-        | ESome (value, _) -> VOption (Some (evalExpr typeDefs env value))
+        | ESome (value, _) -> VOption (Some (evalExpr runtime typeDefs env value))
         | ENone _ -> VOption None
         | ETypeOf (name, span) ->
             match typeDefs.TryFind name with
@@ -630,20 +712,24 @@ module Eval =
                 match part with
                 | IPText text -> sb.Append(text) |> ignore
                 | IPExpr pexpr ->
-                    let rendered = evalExpr typeDefs env pexpr |> valueToInterpolationString
+                    let rendered = evalExpr runtime typeDefs env pexpr |> valueToInterpolationString
                     sb.Append(rendered) |> ignore
             VString (sb.ToString())
 
     let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
-        let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+        let runtime =
+            { SyncRoot = obj ()
+              PendingTasks = ResizeArray()
+              BackgroundFailure = None }
+
         let applyExternal (ext: ExternalFunction) (existingArgsRev: Value list) (newArgs: Value list) =
             let allArgs = (existingArgsRev |> List.rev) @ newArgs
             if allArgs.Length = ext.Arity then
-                ext.Impl { Apply = applyFunctionValue evalExpr typeDefs span } allArgs
+                ext.Impl (createExternContext runtime typeDefs unknownSpan) allArgs
             elif allArgs.Length < ext.Arity then
                 VExternal (ext, allArgs |> List.rev)
             else
-                raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
+                raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = unknownSpan })
 
         let rec applyMany (currentValue: Value) (remainingArgs: Value list) =
             match currentValue, remainingArgs with
@@ -661,17 +747,20 @@ module Eval =
                         envAcc, exprAcc, argsAcc
 
                 let boundEnv, boundBody, argsLeft = bindLambdaChain initialEnv body tailArgs
-                let evaluated = evalExpr typeDefs boundEnv boundBody
+                let evaluated = evalExpr runtime typeDefs boundEnv boundBody
                 applyMany evaluated argsLeft
             | value, nextArg :: tailArgs ->
-                let next = applyFunctionValue evalExpr typeDefs span value nextArg
+                let next = applyFunctionValue runtime evalExpr typeDefs unknownSpan value nextArg
                 applyMany next tailArgs
 
         applyMany fnValue args
 
     let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
         let reserved = BuiltinSignatures.builtinReservedNames
-        let unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+        let runtime =
+            { SyncRoot = obj ()
+              PendingTasks = ResizeArray()
+              BackgroundFailure = None }
 
         externs
         |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
@@ -734,6 +823,7 @@ module Eval =
             | TRTuple ts -> ts |> List.map (fromRef stack) |> TTuple
             | TRFun (a, b) -> TFun(fromRef stack a, fromRef stack b)
             | TRPostfix (inner, "list") -> TList (fromRef stack inner)
+            | TRPostfix (inner, "task") -> TTask (fromRef stack inner)
             | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
             | TRPostfix (inner, "map") -> TMap (TString, fromRef stack inner)
             | TRPostfix (_, suffix) ->
@@ -778,8 +868,7 @@ module Eval =
                     [ caseName, value
                       $"{typeName}.{caseName}", value ]))
 
-        let externContext =
-            { Apply = applyFunctionValue evalExpr typeDefs unknownSpan }
+        let externContext = createExternContext runtime typeDefs unknownSpan
 
         let mutable env : Env =
             (BuiltinFunctions.builtinExterns @ externs)
@@ -794,6 +883,7 @@ module Eval =
             |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
         let mutable lastValue = VUnit
         for stmt in program do
+            raiseIfBackgroundFailed runtime
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
@@ -809,10 +899,10 @@ module Eval =
                     | _ ->
                         raise (EvalException { Message = "let rec requires a function binding"; Span = span })
                 else
-                    let v = evalExpr typeDefs env expr
+                    let v = evalExpr runtime typeDefs env expr
                     env <- env |> Map.add name v
             | TypeInfer.TSLetPattern(pattern, expr, _, _, span) ->
-                let v = evalExpr typeDefs env expr
+                let v = evalExpr runtime typeDefs env expr
                 match patternMatch typeDefs pattern v with
                 | Some bindings ->
                     env <- Map.fold (fun acc k value -> Map.add k value acc) env bindings
@@ -835,7 +925,19 @@ module Eval =
                     recEnv.Value <- finalEnv
                     env <- finalEnv
             | TypeInfer.TSExpr texpr ->
-                lastValue <- evalExpr typeDefs env texpr.Expr
+                lastValue <- evalExpr runtime typeDefs env texpr.Expr
+
+        raiseIfBackgroundFailed runtime
+
+        let unawaitedCount =
+            runtime.PendingTasks
+            |> Seq.filter (fun handle -> not handle.Awaited)
+            |> Seq.length
+
+        if unawaitedCount > 0 then
+            let noun = if unawaitedCount = 1 then "task" else "tasks"
+            raise (EvalException { Message = $"Program completed with {unawaitedCount} unawaited {noun}"; Span = unknownSpan })
+
         { TypeDefs = typeDefs
           Env = env
           LastValue = lastValue }

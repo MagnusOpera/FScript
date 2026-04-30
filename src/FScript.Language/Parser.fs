@@ -283,6 +283,9 @@ module Parser =
                 | Ident "map" ->
                     stream.Next() |> ignore
                     t <- TRPostfix(t, "map")
+                | Ident "task" ->
+                    stream.Next() |> ignore
+                    t <- TRPostfix(t, "task")
                 | _ -> loop <- false
             t
 

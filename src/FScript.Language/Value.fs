@@ -1,5 +1,7 @@
 namespace FScript.Language
 
+open System.Threading.Tasks
+
 type MapKey =
     | MKString of string
     | MKInt of int64
@@ -18,11 +20,23 @@ type Value =
     | VUnionCase of string * string * Value option
     | VUnionCtor of string * string
     | VTypeToken of Type
+    | VTask of TaskHandle
     | VClosure of string * Expr * Env ref
     | VExternal of ExternalFunction * Value list
 
+and TaskOutcome =
+    | TaskSucceeded of Value
+    | TaskFailed of EvalError
+
+and TaskHandle =
+    { Worker: Task<TaskOutcome>
+      mutable Awaited: bool }
+
 and ExternalCallContext =
-    { Apply: Value -> Value -> Value }
+    { Apply: Value -> Value -> Value
+      SpawnTask: Value -> Value
+      AwaitTask: Value -> Value
+      CheckRuntime: unit -> unit }
 
 and ExternalFunction =
     { Name: string

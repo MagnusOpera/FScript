@@ -39,6 +39,11 @@ module BuiltinFunctions =
         | [ VList value ] -> value
         | _ -> fail $"{functionName} expects (list)"
 
+    let private expectTask functionName args =
+        match args with
+        | [ VTask value ] -> value
+        | _ -> fail $"{functionName} expects (task)"
+
     let private asStringKey functionName value =
         match value with
         | VString key -> MKString key
@@ -254,6 +259,27 @@ module BuiltinFunctions =
                 match args with
                 | [ VString suffix; VString source ] -> VBool (source.EndsWith(suffix, StringComparison.Ordinal))
                 | _ -> fail "String.endsWith expects (string, string)") }
+
+    let private builtinTaskSpawn : ExternalFunction =
+        { Name = "Task.spawn"
+          Scheme = scheme "Task.spawn"
+          Arity = 1
+          Impl =
+            (fun ctx args ->
+                match args with
+                | [ thunk ] -> ctx.SpawnTask thunk
+                | _ -> fail "Task.spawn expects (thunk)") }
+
+    let private builtinTaskAwait : ExternalFunction =
+        { Name = "Task.await"
+          Scheme = scheme "Task.await"
+          Arity = 1
+          Impl =
+            (fun ctx args ->
+                let _ = expectTask "Task.await" args
+                match args with
+                | [ task ] -> ctx.AwaitTask task
+                | _ -> fail "Task.await expects (task)") }
 
     let private builtinListEmpty : ExternalFunction =
         { Name = "List.empty"
@@ -689,6 +715,8 @@ module BuiltinFunctions =
           builtinStringConcat
           builtinStringSplit
           builtinStringEndsWith
+          builtinTaskSpawn
+          builtinTaskAwait
           builtinListEmpty
           builtinListMap
           builtinListIter

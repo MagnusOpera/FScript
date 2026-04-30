@@ -13,6 +13,7 @@ module TypeInfer =
             | Some mapped -> applyType s mapped
             | None -> t
         | TList t1 -> TList (applyType s t1)
+        | TTask t1 -> TTask (applyType s t1)
         | TTuple ts -> TTuple (ts |> List.map (applyType s))
         | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> applyType s t1))
         | TMap (tk, tv) -> TMap (applyType s tk, applyType s tv)
@@ -49,6 +50,7 @@ module TypeInfer =
                 | TTypeToken, TTypeToken -> emptySubst
                 | TNamed x, TNamed y when x = y -> emptySubst
                 | TList x, TList y -> uni seen' x y
+                | TTask x, TTask y -> uni seen' x y
                 | TTuple xs, TTuple ys ->
                     if xs.Length <> ys.Length then
                         raise (TypeException { Message = "Tuple arity mismatch"; Span = span })
@@ -109,6 +111,7 @@ module TypeInfer =
             match t with
             | TVar v -> freshMap |> Map.tryFind v |> Option.defaultValue t
             | TList a -> TList (subst a)
+            | TTask a -> TTask (subst a)
             | TTuple ts -> TTuple (ts |> List.map subst)
             | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> subst t1))
             | TMap (k, v) -> TMap (subst k, subst v)
@@ -311,6 +314,7 @@ module TypeInfer =
         | TRTuple ts -> ts |> List.map (annotationTypeFromRef typeDefs span) |> TTuple
         | TRFun (a, b) -> TFun(annotationTypeFromRef typeDefs span a, annotationTypeFromRef typeDefs span b)
         | TRPostfix (inner, "list") -> TList (annotationTypeFromRef typeDefs span inner)
+        | TRPostfix (inner, "task") -> TTask (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "option") -> TOption (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "map") -> TMap (TString, annotationTypeFromRef typeDefs span inner)
         | TRPostfix (_, suffix) ->
@@ -366,6 +370,7 @@ module TypeInfer =
             let resolved = typeFromRef decls stack inner
             match suffix with
             | "list" -> TList resolved
+            | "task" -> TTask resolved
             | "option" -> TOption resolved
             | "map" -> TMap (TString, resolved)
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
@@ -515,6 +520,7 @@ module TypeInfer =
                 | _ ->
                     raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString keyType}"; Span = span })
             | TList inner -> loop inner
+            | TTask inner -> loop inner
             | TTuple items -> items |> List.iter loop
             | TRecord fields -> fields |> Map.values |> Seq.iter loop
             | TOption inner -> loop inner

@@ -10,6 +10,7 @@ Everything in this section is available in every script without imports.
 
 ## Modules
 
+- `Task`
 - `List`
 - `Option`
 - `Map`
@@ -28,6 +29,8 @@ Everything in this section is available in every script without imports.
 
 - Functions are curried.
 - Pipe-friendly usage is preferred.
+- Task values use the native `'a task` type form.
+- `Task.spawn` starts concurrent work and `Task.await` synchronizes on the result.
 - Map keys are always `string` (map indexer type is fixed to string).
 - Many parsing/indexing operations return `option` instead of throwing.
 
@@ -40,6 +43,7 @@ Everything in this section is available in every script without imports.
 
 - [Built-ins](./builtins) for `Env`, `Environment`, `FsKind`, `print`, and `ignore`
 - [Native Types Reference](/manual/reference/native-types) for list/map indexers and native type access forms
+- [Task Module](./task)
 - [List Module](./list)
 - [Option Module](./option)
 - [Map Module](./map)
