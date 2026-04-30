@@ -14,12 +14,6 @@ This page shows a practical host flow with real concerns:
 
 The example uses an in-memory source resolver so the host controls where imported source comes from.
 
-## Export host-callable bindings
-
-Use `[<export>]` on top-level bindings that the host must discover and invoke through embedding APIs such as `ScriptHost`.
-
-Bindings are part of the runtime host surface only when they are explicitly marked `[<export>]`. This makes the host-callable contract intentional: the host can list exported functions, resolve their signatures, read exported values, and invoke exported functions after loading the script.
-
 ## End-to-end host example (F#)
 
 ```fsharp
@@ -99,8 +93,6 @@ match result with
 | VString value -> printfn "Result: %s" value
 | _ -> failwith "Unexpected result type"
 ```
-
-In that example, `run` is marked `[<export>]` because the host needs to find it in the loaded script, inspect its signature, and invoke it through `ScriptHost`.
 
 ## Why this pattern works well in production
 

@@ -237,12 +237,16 @@ let root = "/virtual/workspace"
 let entryFile = Path.Combine(root, "main.fss")
 let entrySource = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.add1 x"
 
+let normalizeVirtualPath (path: string) =
+    Path.GetFullPath(path)
+
 let embeddedSources =
     Map [
-        Path.Combine(root, "shared.fss"), "let add1 x = x + 1"
+        normalizeVirtualPath (Path.Combine(root, "shared.fss")), "let add1 x = x + 1"
     ]
 
-let resolver path = embeddedSources |> Map.tryFind path
+let resolver path =
+    embeddedSources |> Map.tryFind (Path.GetFullPath(path))
 
 let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
 let loaded =

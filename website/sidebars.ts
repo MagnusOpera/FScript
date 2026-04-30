@@ -62,6 +62,7 @@ const sidebars: SidebarsConfig = {
       label: 'Reference',
       items: ['reference/cli-reference', 'reference/stdlib-reference', 'reference/native-types-reference'],
     },
+    'whats-new',
   ],
 };
 
