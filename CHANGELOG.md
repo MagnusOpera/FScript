@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Clarified the website docs so `import` is documented as a language feature and `[<export>]` as an embedding feature.
+
 ## [0.67.0]
 
 

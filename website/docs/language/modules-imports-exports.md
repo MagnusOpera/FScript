@@ -1,12 +1,12 @@
 ---
 id: modules-imports-exports
-title: Imports and Exports
+title: Imports
 slug: /language/imports-exports
 ---
 
-Split scripts with `import` and expose host-callable functions with `[<export>]`.
+Split scripts with `import` and reference imported bindings through an explicit alias.
 
-## Import
+## Import scripts with an alias
 
 ```fsharp
 import "shared/math.fss" as Math
@@ -14,13 +14,4 @@ import "shared/math.fss" as Math
 let value = Math.double 21
 ```
 
-Imports are file-relative and use explicit aliases.
-
-## Export
-
-```fsharp
-[<export>]
-let greet name = $"hello {name}"
-```
-
-Host applications can invoke exported functions through runtime APIs.
+Imports are file-relative and use explicit aliases. Imported bindings stay under the alias selected by the importing file, so `Math.double` is available but `double` is not injected into the top-level scope.

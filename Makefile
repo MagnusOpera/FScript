@@ -1,4 +1,4 @@
-.PHONY: build test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website-install website-build website-serve website-version website-typecheck
+.PHONY: build test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
@@ -55,8 +55,8 @@ website-install:
 website-build:
 	cd website && npm run build
 
-website-serve:
-	cd website && npm run serve
+website:
+	cd website && npm run start
 
 website-version:
 	cd website && npm run version-docs -- $(version)
