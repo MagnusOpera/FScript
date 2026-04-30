@@ -68,6 +68,7 @@
         "reference/stdlib-reference",
         "reference/native-types-reference"
       ]
-    }
+    },
+    "whats-new"
   ]
 }
