@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 - Added native `Task.spawn` and `Task.await` support with `'a task` types for concurrent thunk execution.
+- Kept the website import reference focused on alias-based `import` usage and moved built-in module guidance to task/module docs.
 
 ## [0.67.1]
 
