@@ -8,5 +8,4 @@ For the complete history, see the full [CHANGELOG.md](https://github.com/MagnusO
 
 ## Unreleased
 
-- Clarified the website docs so `import` is documented as a language feature and `[<export>]` as an embedding feature.
-- Added a `What's New` section to the docs sidebar with release notes from the changelog.
+

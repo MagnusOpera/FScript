@@ -4,9 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.67.1]
+
+
 - Clarified the website docs so `import` is documented as a language feature and `[<export>]` as an embedding feature.
 - Added a `What's New` docs page and sidebar section that mirrors release notes from the changelog.
 - Scoped `What's New` so `Next` shows `Unreleased` notes while versioned docs show only the matching release notes.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.67.0...0.67.1
 
 ## [0.67.0]
 
