@@ -112,6 +112,12 @@ module LspHandlers =
           "fun"; "raise"; "import"; "export"; "qualified" ]
         |> Set.ofList
 
+    let private builtinTypeTokenSet =
+        [ "unit"; "int"; "float"; "bool"; "string"
+          "list"; "option"; "map"; "task"
+          "Environment"; "FsKind" ]
+        |> Set.ofList
+
     let private classifyToken (line: string) (startIndex: int) (token: string) =
         let isFunctionCallToken () =
             let mutable i = startIndex + token.Length
@@ -120,6 +126,7 @@ module LspHandlers =
             i < line.Length && line[i] = '('
 
         if keywordSet.Contains(token) then 0
+        elif builtinTypeTokenSet.Contains(token) then 4
         elif token.Length > 1 && token.StartsWith("\"") && token.EndsWith("\"") then 1
         elif token |> Seq.forall Char.IsDigit then 2
         elif isFunctionCallToken () then 3

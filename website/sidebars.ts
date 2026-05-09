@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         'language/indentation-and-layout',
         'language/control-flow',
         'language/collections',
+        'language/tasks-and-concurrency',
         'language/pattern-matching',
         'language/type-system',
         'language/structural-vs-named-annotations',
@@ -47,6 +48,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'stdlib/stdlib-overview',
         'stdlib/stdlib-builtins',
+        'stdlib/stdlib-task',
         'stdlib/stdlib-list',
         'stdlib/stdlib-option',
         'stdlib/stdlib-map',

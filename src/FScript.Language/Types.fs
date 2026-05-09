@@ -10,6 +10,7 @@ type Type =
     | TBool
     | TString
     | TList of Type
+    | TTask of Type
     | TTuple of Type list
     | TRecord of Map<string, Type>
     | TMap of Type * Type
@@ -35,6 +36,7 @@ module Types =
         match t with
         | TUnit | TInt | TFloat | TBool | TString -> Set.empty
         | TList t1 -> ftvType t1
+        | TTask t1 -> ftvType t1
         | TTuple ts -> ts |> List.map ftvType |> List.fold Set.union Set.empty
         | TRecord fields -> fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty
         | TMap (tk, tv) -> Set.union (ftvType tk) (ftvType tv)
@@ -62,6 +64,7 @@ module Types =
             | TBool -> "bool"
             | TString -> "string"
             | TList t1 -> sprintf "%s list" (postfixArg t1)
+            | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
             | TRecord fields ->
                 fields

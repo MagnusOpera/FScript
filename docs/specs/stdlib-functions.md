@@ -6,6 +6,7 @@ This document lists the functions available in the embedded FScript prelude (std
 The stdlib is loaded automatically by `FScript.Language` before user scripts.
 
 ## Modules
+- `Task`
 - `List`
 - `Option`
 - `Map`
@@ -55,6 +56,16 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
   - `Some : 'a -> 'a option`
   - `None : 'a option`
 
+### Tasks
+- Module functions:
+  - `Task.spawn : (unit -> 'a) -> 'a task`
+  - `Task.await : 'a task -> 'a`
+- Description:
+  - `Task.spawn` schedules a thunk for concurrent execution and returns an opaque task handle immediately
+  - `Task.await` waits for completion and returns the result value
+  - task failures are fatal runtime errors
+  - ending a program with unawaited tasks is a runtime error
+
 ### Records
 - Field access: `record.Field`
 - Signature: `{ Field: 'a; ... } -> 'a`
@@ -90,6 +101,10 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Option.isNone : 'a option -> bool`
 - `Option.isSome : 'a option -> bool`
 - `Option.map : ('a -> 'b) -> 'a option -> 'b option`
+
+## Task
+- `Task.spawn : (unit -> 'a) -> 'a task`
+- `Task.await : 'a task -> 'a`
 
 ## Map
 - `Map.empty : 'v map`  

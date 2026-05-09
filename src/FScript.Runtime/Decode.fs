@@ -78,6 +78,7 @@ module internal HostDecode =
         | TNamed _
         | TUnion _
         | TTypeToken
+        | TTask _
         | TFun _
         | TVar _ -> None
         | _ -> None
@@ -137,6 +138,7 @@ module internal HostDecode =
         | TNamed _
         | TUnion _
         | TTypeToken
+        | TTask _
         | TFun _
         | TVar _ -> None
 
@@ -194,6 +196,7 @@ module internal HostEncode =
         | VUnionCase _
         | VUnionCtor _
         | VTypeToken _
+        | VTask _
         | VClosure _
         | VExternal _ -> None
 
@@ -241,6 +244,7 @@ module internal HostEncode =
         | VUnionCase _
         | VUnionCtor _
         | VTypeToken _
+        | VTask _
         | VClosure _
         | VExternal _ -> false
 

@@ -7,6 +7,27 @@ namespace FScript.LanguageServer.Tests;
 [TestFixture]
 public sealed class CSharpServerCoreTests
 {
+    private static List<(int line, int start, int length, int tokenType)> DecodeSemanticTokens(JsonArray data)
+    {
+        var result = new List<(int line, int start, int length, int tokenType)>();
+        var line = 0;
+        var start = 0;
+
+        for (var i = 0; i + 4 < data.Count; i += 5)
+        {
+            var deltaLine = data[i]?.GetValue<int>() ?? 0;
+            var deltaStart = data[i + 1]?.GetValue<int>() ?? 0;
+            var length = data[i + 2]?.GetValue<int>() ?? 0;
+            var tokenType = data[i + 3]?.GetValue<int>() ?? 0;
+
+            line += deltaLine;
+            start = deltaLine == 0 ? start + deltaStart : deltaStart;
+            result.Add((line, start, length, tokenType));
+        }
+
+        return result;
+    }
+
     [Test]
     public void CSharp_server_initialize_returns_capabilities()
     {
@@ -308,6 +329,107 @@ public sealed class CSharpServerCoreTests
 
             Assert.That(optionMapItem, Is.Not.Null, "Expected Option.map completion item at dotted prefix.");
             Assert.That(optionMapItem!["insertText"]?.GetValue<string>(), Is.EqualTo("map"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_completion_includes_Task_members_for_dotted_prefix()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-completion-task-dotted-prefix.fss";
+            var source = "let _ = Task.aw\n";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var requestParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 0, ["character"] = 16 }
+            };
+
+            LspClient.SendRequest(client, 601, "textDocument/completion", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 601);
+            var items = ((response["result"] as JsonObject)?["items"] as JsonArray) ?? new JsonArray();
+
+            var taskAwaitItem = items
+                .OfType<JsonObject>()
+                .FirstOrDefault(item => string.Equals(item["label"]?.GetValue<string>(), "Task.await", StringComparison.Ordinal));
+
+            Assert.That(taskAwaitItem, Is.Not.Null, "Expected Task.await completion item at dotted prefix.");
+            Assert.That(taskAwaitItem!["insertText"]?.GetValue<string>(), Is.EqualTo("await"));
+            Assert.That(taskAwaitItem["detail"]?.GetValue<string>(), Does.Contain("'a task -> 'a"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_semantic_tokens_classify_task_types_and_functions()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-semantic-task-test.fss";
+            var source = "let run (value: int task) = Task.await value\n";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var semanticParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            };
+
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", semanticParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var data = ((response["result"] as JsonObject)?["data"] as JsonArray) ?? new JsonArray();
+            var tokens = DecodeSemanticTokens(data);
+
+            var taskSuffixToken = tokens.FirstOrDefault(token =>
+                token.line == 0 &&
+                token.start == source.IndexOf("task", StringComparison.Ordinal) &&
+                token.length == "task".Length);
+
+            var taskAwaitToken = tokens.FirstOrDefault(token =>
+                token.line == 0 &&
+                token.start == source.IndexOf("Task.await", StringComparison.Ordinal) &&
+                token.length == "Task.await".Length);
+
+            Assert.That(taskSuffixToken.tokenType, Is.EqualTo(4), "Expected 'task' suffix to be classified as a type token.");
+            Assert.That(taskAwaitToken.tokenType, Is.EqualTo(3), "Expected Task.await to be classified as a function token.");
         }
         finally
         {

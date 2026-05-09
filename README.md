@@ -143,6 +143,7 @@ Useful samples:
 - [`samples/types-showcase.fss`](samples/types-showcase.fss)
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
 - [`samples/quicksort.fss`](samples/quicksort.fss)
+- [`samples/parallel-quicksort.fss`](samples/parallel-quicksort.fss)
 - [`samples/tree.fss`](samples/tree.fss)
 - [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
 - [`samples/imports-and-exports.fss`](samples/imports-and-exports.fss)
@@ -168,7 +169,7 @@ Each extern declares:
 - implementation.
 
 Built-in host extern families include `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
-`List.*`, `Map.*`, and `Option.*` are provided by the embedded stdlib prelude.
+`Task.*`, `List.*`, `Map.*`, and `Option.*` are provided by the embedded stdlib prelude.
 
 For details and extension workflow, see [`docs/specs/external-functions.md`](docs/specs/external-functions.md).
 

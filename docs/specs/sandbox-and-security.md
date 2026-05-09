@@ -7,6 +7,8 @@ This document defines the security model for running FScript programs with host 
 - FScript executes in-process inside the host .NET application.
 - Language-level side effects occur through registered externs.
 - Host configuration determines the effective capability surface.
+- `Task.spawn` runs FScript thunks concurrently on the host runtime thread pool.
+- Concurrent task side effects may interleave with the main script and with other tasks.
 
 ## Host context and filesystem boundary
 - Host context includes:
@@ -35,6 +37,8 @@ Filesystem extern behavior:
 - Extern invocation checks arity and argument type-shape.
 - Data/IO externs frequently model operational failures as `None` values.
 - Script type misuse raises `TypeException`/`EvalException`.
+- Task failures are fatal runtime errors, consistent with foreground evaluation.
+- Programs that finish with unawaited tasks fail at runtime instead of silently detaching background work.
 
 ## Resource-governance model
 - Evaluator execution currently relies on host/runtime process limits.

@@ -685,6 +685,32 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
+    member _.``Infers task spawn and await`` () =
+        match Helpers.infer "Task.spawn (fun _ -> 1)" |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTask TInt)
+        | _ -> Assert.Fail("Expected task expression")
+
+        match Helpers.infer "Task.await (Task.spawn (fun _ -> \"x\"))" |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TString
+        | _ -> Assert.Fail("Expected awaited expression")
+
+    [<Test>]
+    member _.``Accepts task type annotation`` () =
+        let typed = Helpers.infer "let await_int (t: int task) = Task.await t"
+        match typed.Head with
+        | TypeInfer.TSLet (_, _, t, _, _, _) ->
+            t |> should equal (TFun (TTask TInt, TInt))
+        | _ -> Assert.Fail("Expected let binding")
+
+    [<Test>]
+    member _.``Rejects invalid task builtin arguments`` () =
+        let spawnAct () = Helpers.infer "Task.spawn 1" |> ignore
+        spawnAct |> should throw typeof<TypeException>
+
+        let awaitAct () = Helpers.infer "Task.await 1" |> ignore
+        awaitAct |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Allows non-string interpolation placeholder`` () =
         let typed = Helpers.infer "$\"value={1}\""
         match typed |> List.last with
