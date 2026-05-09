@@ -3,7 +3,12 @@
 All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
+
+## [0.68.0]
+
 - Added native `Task.spawn` and `Task.await` support with `'a task` types for concurrent thunk execution.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.67.1...0.68.0
 
 ## [0.67.1]
 
