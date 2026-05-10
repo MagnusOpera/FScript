@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.71.0]
+
+
 - Moved `Task.spawn` and `Task.await` into the default runtime extern registry so embedding hosts can disable task concurrency helpers.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.70.0...0.71.0
 
 ## [0.70.0]
 
