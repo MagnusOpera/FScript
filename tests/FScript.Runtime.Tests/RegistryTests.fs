@@ -29,6 +29,8 @@ type RegistryTests () =
         names.Contains "Guid.new" |> should equal true
         names.Contains "Console.writeLine" |> should equal true
         names.Contains "Console.readLine" |> should equal true
+        names.Contains "Task.spawn" |> should equal true
+        names.Contains "Task.await" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Json.serialize" |> should equal true
         names.Contains "Xml.queryValues" |> should equal true

@@ -190,6 +190,14 @@ type CliTests() =
         Assert.That(stderr, Does.Contain("Unbound variable 'Fs'"))
 
     [<Test>]
+    member _.``No-default-externs disables Task externs`` () =
+        let repoRoot = findRepoRoot ()
+        let code, _, stderr = runCli repoRoot repoRoot [ "--no-default-externs" ] (Some "Task.spawn (fun () -> 1)")
+
+        Assert.That(code, Is.Not.EqualTo(0))
+        Assert.That(stderr, Does.Contain("Unbound variable 'Task'"))
+
+    [<Test>]
     member _.``Loads extern provider assembly and invokes exported extern`` () =
         let repoRoot = findRepoRoot ()
         let providerAssembly = validProviderAssemblyPath ()

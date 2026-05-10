@@ -4,7 +4,7 @@ title: Stdlib and Built-ins
 slug: /reference/stdlib
 ---
 
-This is the quick lookup page for the built-in FScript surface.
+This is the quick lookup page for the built-in FScript surface and the default runtime-provided stdlib helpers.
 
 ## Modules
 
@@ -32,15 +32,14 @@ This is the quick lookup page for the built-in FScript surface.
 
 ## Core built-in groups
 
-- `Task.*`
 - `Console.*`
 - `List.*`
 - `Option.*`
 - `Map.*`
 - `String.*`
+- default runtime task helpers: `Task.spawn`, `Task.await`
 - parsing helpers: `Int.tryParse`, `Float.tryParse`, `Bool.tryParse`
 - scalar formatters: `Int.toString`, `Float.toString`, `Bool.toString`
-- concurrency helpers: `Task.spawn`, `Task.await`
 - environment types/values: `Environment`, `FsKind`, `Env`
 - top-level functions: `ignore`
 - console I/O: `Console.writeLine`, `Console.readLine`
@@ -48,6 +47,7 @@ This is the quick lookup page for the built-in FScript surface.
 ## Runtime extern families
 
 - `Fs.*` filesystem utilities
+- `Task.*`
 - `Console.*`
 - `Json.*`
 - `Xml.*`

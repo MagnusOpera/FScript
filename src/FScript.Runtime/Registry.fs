@@ -20,6 +20,8 @@ module Registry =
           GuidExterns.new_guid
           ConsoleExterns.write_line
           ConsoleExterns.read_line
+          TaskExterns.spawn
+          TaskExterns.await_task
           JsonExterns.deserialize
           JsonExterns.serialize
           XmlExterns.query_values ]

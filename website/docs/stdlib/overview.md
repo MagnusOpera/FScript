@@ -4,7 +4,7 @@ title: Stdlib Overview
 slug: /stdlib/overview
 ---
 
-FScript ships with a built-in standard library and a small set of always-available top-level built-ins.
+FScript ships with a built-in standard library, a default runtime extern registry, and a small set of always-available top-level built-ins.
 
 Everything in this section is available in every script without imports.
 
@@ -30,7 +30,7 @@ Everything in this section is available in every script without imports.
 - Functions are curried.
 - Pipe-friendly usage is preferred.
 - Task values use the native `'a task` type form.
-- `Task.spawn` starts concurrent work and `Task.await` synchronizes on the result.
+- `Task.spawn` starts concurrent work and `Task.await` synchronizes on the result when the embedding host includes the default task externs.
 - Map keys are always `string` (map indexer type is fixed to string).
 - Many parsing/indexing operations return `option` instead of throwing.
 

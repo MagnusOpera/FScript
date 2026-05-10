@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Moved `Task.spawn` and `Task.await` into the default runtime extern registry so embedding hosts can disable task concurrency helpers.
+
 ## [0.70.0]
 
 

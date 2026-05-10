@@ -4,7 +4,9 @@ title: Task Module
 slug: /stdlib/task
 ---
 
-The `Task` module provides the built-in task API for concurrent execution.
+The `Task` module provides the default task API for concurrent execution.
+
+`Task.spawn` and `Task.await` are exposed through the default runtime extern registry, so embedding hosts may choose not to provide them.
 
 ## Task type
 

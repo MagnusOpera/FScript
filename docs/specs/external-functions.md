@@ -67,6 +67,11 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Console.writeLine : string -> unit`
 - `Console.readLine : unit -> string option`
 
+### Task
+- `Task.spawn : (unit -> 'a) -> 'a task`
+- `Task.await : 'a task -> 'a`
+- These are part of the default runtime extern registry, so hosts may omit them.
+
 ### Collections and prelude
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
 - Scalar conversion helpers are built into the language runtime:

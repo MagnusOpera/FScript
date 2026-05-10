@@ -21,6 +21,7 @@ let answer = Task.await pending
 ```
 
 Tasks are opaque values. They do not expose indexers or fields.
+The `'a task` type is native to the language, while `Task.spawn` and `Task.await` come from the default runtime extern registry and may be omitted by an embedding host.
 
 ## Lists
 

@@ -4,7 +4,9 @@ title: Tasks and Concurrency
 slug: /language/tasks-and-concurrency
 ---
 
-FScript supports concurrent thunk execution through the built-in `Task` module.
+FScript supports concurrent thunk execution through the default `Task` module surface.
+
+`Task.spawn` and `Task.await` are provided by the default runtime extern registry, so an embedding host may choose not to expose them.
 
 ## Task type
 

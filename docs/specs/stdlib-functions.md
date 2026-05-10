@@ -37,6 +37,9 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - Top-level script bindings cannot collide with reserved stdlib names.
 - `ignore` is a built-in language function.
 - Console I/O is host-provided through runtime externs.
+- Task concurrency helpers are host-provided through the default runtime extern registry:
+  - `Task.spawn : (unit -> 'a) -> 'a task`
+  - `Task.await : 'a task -> 'a`
 
 ## Native access forms
 
@@ -69,6 +72,7 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
   - `Task.await` waits for completion and returns the result value
   - task failures are fatal runtime errors
   - ending a program with unawaited tasks is a runtime error
+  - hosts may disable `Task.*` by omitting those externs
 
 ### Records
 - Field access: `record.Field`

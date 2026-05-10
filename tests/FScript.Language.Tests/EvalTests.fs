@@ -3,6 +3,7 @@ namespace FScript.Language.Tests
 open NUnit.Framework
 open FsUnit
 open FScript.Language
+open FScript.Runtime
 
 [<TestFixture>]
 type EvalTests () =
@@ -577,22 +578,30 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates task await result`` () =
-        match Helpers.eval "Task.await (Task.spawn (fun _ -> 41 + 1))" with
+        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        match Helpers.evalWithExterns externs "Task.await (Task.spawn (fun _ -> 41 + 1))" with
         | VInt 42L -> ()
         | _ -> Assert.Fail("Expected awaited task result")
 
     [<Test>]
     member _.``Evaluates multiple tasks with captured values`` () =
-        match Helpers.eval "let base = 10\nlet a = Task.spawn (fun _ -> base + 1)\nlet b = Task.spawn (fun _ -> base + 2)\n(Task.await a, Task.await b)" with
+        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        match Helpers.evalWithExterns externs "let base = 10\nlet a = Task.spawn (fun _ -> base + 1)\nlet b = Task.spawn (fun _ -> base + 2)\n(Task.await a, Task.await b)" with
         | VTuple [ VInt 11L; VInt 12L ] -> ()
         | _ -> Assert.Fail("Expected awaited tuple results")
 
     [<Test>]
     member _.``Reports runtime error for failed task`` () =
-        let act () = Helpers.eval "Task.await (Task.spawn (fun _ -> raise \"boom\"))" |> ignore
+        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        let act () = Helpers.evalWithExterns externs "Task.await (Task.spawn (fun _ -> raise \"boom\"))" |> ignore
         act |> should throw typeof<EvalException>
 
     [<Test>]
     member _.``Reports runtime error for unawaited task`` () =
-        let act () = Helpers.eval "Task.spawn (fun _ -> 1)" |> ignore
+        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        let act () = Helpers.evalWithExterns externs "Task.spawn (fun _ -> 1)" |> ignore
         act |> should throw typeof<EvalException>
