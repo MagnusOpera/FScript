@@ -13,6 +13,8 @@ This document specifies type annotations for function parameters and returns in 
 ### Let-bound functions
 - Unannotated:
   - `let f x = x`
+- Unit parameter:
+  - `let f () = 42`
 - Annotated parameter:
   - `let f (x: int) = x + 1`
 - Annotated return:
@@ -25,10 +27,13 @@ This document specifies type annotations for function parameters and returns in 
 ### Lambdas
 - Unannotated:
   - `fun x -> x`
+- Unit parameter:
+  - `fun () -> 42`
 - Annotated:
   - `fun (x: int) -> x + 1`
 
 ## Syntax rule
+- `()` is valid as a unit parameter in both let-bound functions and lambdas.
 - Annotated parameters use parenthesized form `(name: Type)`.
 - Let-bound function returns use `: Type` after all parameters and before `=`.
   - `let f x y : int = x + y`

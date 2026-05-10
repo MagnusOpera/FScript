@@ -39,14 +39,14 @@ let home = {| home with Name = "Robert" |}
 let contact = { Name = "Ada"; City = "Paris"; Zip = 75000; Country = "FR" }
 
 // Cross-calls between helpers.
-print (describe_named office)
-print (describe_nominal_shape office)
-print (describe_nominal_shape (make_address home))
-print (describe_structural office)
-print (describe_structural home)
-print (describe_structural contact)
-print (city_line office)
-print (countdown 3)
+Console.writeLine (describe_named office)
+Console.writeLine (describe_nominal_shape office)
+Console.writeLine (describe_nominal_shape (make_address home))
+Console.writeLine (describe_structural office)
+Console.writeLine (describe_structural home)
+Console.writeLine (describe_structural contact)
+Console.writeLine (city_line office)
+Console.writeLine (countdown 3)
 
 let match_nominal_shape value =
     match value with
@@ -58,7 +58,7 @@ let match_structural value =
     | {| City: string; Zip: int |} -> "match structural"
     | _ -> "no structural match"
 
-print (match_nominal_shape office)
-print (match_nominal_shape contact)
-print (match_structural office)
-print (match_structural contact)
+Console.writeLine (match_nominal_shape office)
+Console.writeLine (match_nominal_shape contact)
+Console.writeLine (match_structural office)
+Console.writeLine (match_structural contact)

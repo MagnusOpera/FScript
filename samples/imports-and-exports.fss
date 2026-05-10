@@ -8,7 +8,7 @@ import "includes/common.fss" as Common
 
 let main =
     let project = { Name = "Terrabuild"; Language = "F#" }
-    print (summary project)
-    print $"Extension: {extension_name}"
+    Console.writeLine (summary project)
+    Console.writeLine $"Extension: {extension_name}"
 
 main

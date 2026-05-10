@@ -22,7 +22,7 @@ let classify n =
 
 ```fsharp
 for x in [1; 2; 3] do
-  print $"value={x}"
+  Console.writeLine $"value={x}"
 ```
 
 ## `match`

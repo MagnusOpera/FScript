@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added `Console.writeLine` and `Console.readLine` runtime externs and switched samples/docs from the old `print` builtin to `Console.writeLine`.
+- Added a vintage BASIC interpreter sample under `samples/basic`.
+- Added unit-parameter function syntax so scripts can define zero-argument functions with `let f () = ...` and `fun () -> ...`.
+
 ## [0.68.0]
 
 - Added native `Task.spawn` and `Task.await` support with `'a task` types for concurrent thunk execution.

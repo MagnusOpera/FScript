@@ -103,7 +103,7 @@ type HostExternTests () =
         try
             let result =
                 Helpers.evalWithExterns externs
-                    "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.iter (fun key -> fun value -> print $\"{key}:{value}\")"
+                    "Map.ofList [(\"a\", 1); (\"b\", 2)] |> Map.iter (fun key -> fun value -> Console.writeLine $\"{key}:{value}\")"
             match result with
             | VUnit -> ()
             | _ -> Assert.Fail("Expected unit")
@@ -207,7 +207,7 @@ type HostExternTests () =
         use writer = new StringWriter()
         Console.SetOut(writer)
         try
-            let script = "[1;2] |> List.iter (fun n -> n |> fun x -> $\"{x}\" |> print)"
+            let script = "[1;2] |> List.iter (fun n -> n |> fun x -> $\"{x}\" |> Console.writeLine)"
             let result = Helpers.evalWithExterns externs script
             match result with
             | VUnit -> ()
@@ -381,12 +381,12 @@ type HostExternTests () =
         act |> should throw typeof<TypeException>
 
     [<Test>]
-    member _.``print external writes to console`` () =
+    member _.``Console.writeLine external writes to console`` () =
         let original = Console.Out
         use writer = new StringWriter()
         Console.SetOut(writer)
         try
-            let result = Helpers.evalWithExterns externs "print \"hello-core-test\""
+            let result = Helpers.evalWithExterns externs "Console.writeLine \"hello-core-test\""
             match result with
             | VUnit -> ()
             | _ -> Assert.Fail("Expected unit")
@@ -395,12 +395,25 @@ type HostExternTests () =
             Console.SetOut(original)
 
     [<Test>]
-    member _.``for loop can call print external`` () =
+    member _.``Console.readLine external reads from console`` () =
+        let original = Console.In
+        use reader = new StringReader("typed-value\n")
+        Console.SetIn(reader)
+        try
+            let result = Helpers.evalWithExterns externs "Console.readLine ()"
+            match result with
+            | VOption (Some (VString "typed-value")) -> ()
+            | _ -> Assert.Fail("Expected Some typed-value")
+        finally
+            Console.SetIn(original)
+
+    [<Test>]
+    member _.``for loop can call Console.writeLine external`` () =
         let original = Console.Out
         use writer = new StringWriter()
         Console.SetOut(writer)
         try
-            let result = Helpers.evalWithExterns externs "for msg in [\"a\";\"b\"] do print msg"
+            let result = Helpers.evalWithExterns externs "for msg in [\"a\";\"b\"] do Console.writeLine msg"
             match result with
             | VUnit -> ()
             | _ -> Assert.Fail("Expected unit")

@@ -29,7 +29,7 @@ Tasks are opaque handles. You create them with `Task.spawn` and observe them wit
 
 ```fsharp
 let work =
-  Task.spawn (fun _ -> 21 * 2)
+  Task.spawn (fun () -> 21 * 2)
 ```
 
 Signature:
@@ -38,16 +38,16 @@ Signature:
 Task.spawn : (unit -> 'a) -> 'a task
 ```
 
-FScript writes `unit -> 'a` in the type, and you typically express that thunk as `fun _ -> ...`.
+FScript writes `unit -> 'a` in the type, and `fun () -> ...` is the preferred way to express that thunk.
 
 ## Awaiting results
 
 Use `Task.await` to wait for completion and extract the result value.
 
 ```fsharp
-let work = Task.spawn (fun _ -> 21 * 2)
+let work = Task.spawn (fun () -> 21 * 2)
 let answer = Task.await work
-print $"{answer}"
+Console.writeLine $"{answer}"
 ```
 
 Signature:
@@ -75,11 +75,11 @@ There is no catch/recovery mechanism in FScript today.
 ## Example
 
 ```fsharp
-let a = Task.spawn (fun _ -> 40 + 2)
-let b = Task.spawn (fun _ -> 10 * 3)
+let a = Task.spawn (fun () -> 40 + 2)
+let b = Task.spawn (fun () -> 10 * 3)
 
 let result = (Task.await a, Task.await b)
-print $"{result}"
+Console.writeLine $"{result}"
 ```
 
 For a larger example, see [`samples/parallel-quicksort.fss`](https://github.com/MagnusOpera/FScript/blob/main/samples/parallel-quicksort.fss).

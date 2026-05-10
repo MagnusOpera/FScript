@@ -64,6 +64,12 @@ type CliTests() =
     let invalidProviderAssemblyPath () =
         typeof<InvalidExternProvider>.Assembly.Location
 
+    let basicSampleScriptPath (repoRoot: string) =
+        Path.Combine(repoRoot, "samples", "basic", "basic.fss")
+
+    let basicSampleDirectory (repoRoot: string) =
+        Path.Combine(repoRoot, "samples", "basic")
+
     [<Test>]
     member _.``Runs script file from positional path`` () =
         let repoRoot = findRepoRoot ()
@@ -117,13 +123,13 @@ type CliTests() =
         let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-env-{Guid.NewGuid():N}.fss")
         let scriptSource =
             "match Env.ScriptName with\n"
-            + "| Some name -> print name\n"
-            + "| None -> print \"none\"\n"
+            + "| Some name -> Console.writeLine name\n"
+            + "| None -> Console.writeLine \"none\"\n"
             + "type Wrapper = { Value: Environment }\n"
             + "let wrapped = { Value = Env }\n"
-            + "print $\"{wrapped.Value.Arguments |> List.length}\"\n"
+            + "Console.writeLine $\"{wrapped.Value.Arguments |> List.length}\"\n"
             + "for arg in Env.Arguments do\n"
-            + "  print arg\n"
+            + "  Console.writeLine arg\n"
             + "()\n"
 
         try
@@ -146,10 +152,10 @@ type CliTests() =
         let repoRoot = findRepoRoot ()
         let source =
             "match Env.ScriptName with\n"
-            + "| Some _ -> print \"unexpected\"\n"
-            + "| None -> print \"none\"\n"
+            + "| Some _ -> Console.writeLine \"unexpected\"\n"
+            + "| None -> Console.writeLine \"none\"\n"
             + "for arg in Env.Arguments do\n"
-            + "  print arg\n"
+            + "  Console.writeLine arg\n"
             + "()\n"
 
         let code, stdout, stderr = runCli repoRoot repoRoot [ "--"; "x"; "y" ] (Some source)
@@ -249,3 +255,59 @@ type CliTests() =
 
         Assert.That(code, Is.Not.EqualTo(0))
         Assert.That(stderr, Does.Contain("No [<FScriptExternProvider>] methods found"))
+
+    [<Test>]
+    member _.``Basic sample runs hello world program`` () =
+        let repoRoot = findRepoRoot ()
+        let scriptPath = basicSampleScriptPath repoRoot
+        let code, stdout, stderr = runCli repoRoot repoRoot [ scriptPath; "--"; "helloworld.bas" ] None
+        let normalized = stdout.Replace("\r\n", "\n").Trim()
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(normalized, Is.EqualTo("HELLO WORLD\n()"))
+
+    [<Test>]
+    member _.``Basic sample runs control flow program`` () =
+        let repoRoot = findRepoRoot ()
+        let scriptPath = basicSampleScriptPath repoRoot
+        let code, stdout, stderr = runCli repoRoot repoRoot [ scriptPath; "--"; "controlflow.bas" ] None
+        let normalized = stdout.Replace("\r\n", "\n").Trim()
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(normalized, Is.EqualTo("6\nDONE\n()"))
+
+    [<Test>]
+    member _.``Basic sample requires a BASIC file argument`` () =
+        let repoRoot = findRepoRoot ()
+        let scriptPath = basicSampleScriptPath repoRoot
+        let code, _, stderr = runCli repoRoot repoRoot [ scriptPath ] None
+
+        Assert.That(code, Is.EqualTo(3))
+        Assert.That(stderr, Does.Contain("Usage: fscript samples/basic/basic.fss -- <program.bas>"))
+
+    [<Test>]
+    member _.``Basic sample reports invalid BASIC source`` () =
+        let repoRoot = findRepoRoot ()
+        let scriptPath = basicSampleScriptPath repoRoot
+        let sampleDir = basicSampleDirectory repoRoot
+        let invalidProgramName = $"invalid-{Guid.NewGuid():N}.bas"
+        let invalidProgramPath = Path.Combine(sampleDir, invalidProgramName)
+
+        try
+            File.WriteAllText(invalidProgramPath, "10 IF 1 THEN\n20 END")
+            let code, _, stderr = runCli repoRoot repoRoot [ scriptPath; "--"; invalidProgramName ] None
+
+            Assert.That(code, Is.EqualTo(3))
+            Assert.That(stderr, Does.Contain("Invalid BASIC line 10"))
+        finally
+            if File.Exists(invalidProgramPath) then File.Delete(invalidProgramPath)
+
+    [<Test>]
+    member _.``Basic sample supports INPUT through Console.readLine`` () =
+        let repoRoot = findRepoRoot ()
+        let scriptPath = basicSampleScriptPath repoRoot
+        let code, stdout, stderr = runCli repoRoot repoRoot [ scriptPath; "--"; "input.bas" ] (Some "Ada\n")
+        let normalized = stdout.Replace("\r\n", "\n").Trim()
+
+        Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
+        Assert.That(normalized, Is.EqualTo("WHAT IS YOUR NAME?\nHELLO Ada\n()"))

@@ -17,8 +17,11 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 
 ## Top-level built-ins
 - `Env : Environment`
-- `print : string -> unit`
 - `ignore : 'a -> unit`
+
+## Host-provided console externs
+- `Console.writeLine : string -> unit`
+- `Console.readLine : unit -> string option`
 
 ## Built-in types and values
 - `type Environment = { ScriptName: string option; Arguments: string list }`
@@ -32,7 +35,8 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - Functions are curried.
 - The stdlib is part of the language runtime and is always available.
 - Top-level script bindings cannot collide with reserved stdlib names.
-- `print` and `ignore` are built-in language functions, not host externs.
+- `ignore` is a built-in language function.
+- Console I/O is host-provided through runtime externs.
 
 ## Native access forms
 
@@ -165,6 +169,6 @@ let one = m["a"] |> Option.defaultValue 0
 let first = xs[0] |> Option.defaultValue 0
 
 match Env.Arguments with
-| scriptPath :: _ -> print scriptPath
-| [] -> print "no args"
+| scriptPath :: _ -> Console.writeLine scriptPath
+| [] -> Console.writeLine "no args"
 ```

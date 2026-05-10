@@ -61,6 +61,6 @@ fscript script.fss -- alice
 
 ```fsharp
 match Env.Arguments with
-| name :: _ -> print $"hello {name}"
-| [] -> print "hello"
+| name :: _ -> Console.writeLine $"hello {name}"
+| [] -> Console.writeLine "hello"
 ```

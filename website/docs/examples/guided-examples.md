@@ -20,7 +20,7 @@ let name =
   | head :: _ -> head
   | _ -> "Unknown"
 
-print $"Hello {name} !"
+Console.writeLine $"Hello {name} !"
 ```
 
 Run it:
@@ -28,6 +28,11 @@ Run it:
 ```bash
 fscript hello.fss -- Ada
 ```
+
+API references used here:
+
+- [`Env`](../stdlib/builtins)
+- [`Console.writeLine`](../stdlib/console)
 
 ## 2) FizzBuzz with `for` + `match`
 
@@ -43,10 +48,10 @@ let buzz n = n % 5 = 0
 
 for n in [0..20] do
   match (fizz n, buzz n) with
-  | (true, true) -> print "Fizz Buzz"
-  | (true, _) -> print "Fizz"
-  | (_, true) -> print "Buzz"
-  | _ -> print $"{n}"
+  | (true, true) -> Console.writeLine "Fizz Buzz"
+  | (true, _) -> Console.writeLine "Fizz"
+  | (_, true) -> Console.writeLine "Buzz"
+  | _ -> Console.writeLine $"{n}"
 ```
 
 ## 3) Collections and pattern matching
@@ -65,18 +70,18 @@ let evens = values |> List.filter (fun n -> n % 2 = 0)
 let doubled = evens |> List.map (fun n -> n * 2)
 let total = doubled |> List.fold (fun acc -> fun n -> acc + n) 0
 
-print $"evens={evens}"
-print $"doubled={doubled}"
-print $"total={total}"
+Console.writeLine $"evens={evens}"
+Console.writeLine $"doubled={doubled}"
+Console.writeLine $"total={total}"
 
 let firstEven = evens |> List.tryHead
 match firstEven with
-| Some x -> print $"first even: {x}"
-| None -> print "no even value"
+| Some x -> Console.writeLine $"first even: {x}"
+| None -> Console.writeLine "no even value"
 
 match doubled with
-| head :: tail -> print $"head={head} tail={tail}"
-| [] -> print "empty"
+| head :: tail -> Console.writeLine $"head={head} tail={tail}"
+| [] -> Console.writeLine "empty"
 
 let scores = { ["a"] = 1; ["b"] = 2 }
 let remove k m =
@@ -85,7 +90,7 @@ let remove k m =
   | _ -> m
 
 let removedB = remove "b" scores
-print $"scores without b = {removedB}"
+Console.writeLine $"scores without b = {removedB}"
 ```
 
 ## 4) Recursive records and traversal
@@ -123,7 +128,7 @@ let rec explore visit (node: Node) =
   exploreChild node.Right
 
 let displayNode (node: Node) =
-  print $"{node.Value}"
+  Console.writeLine $"{node.Value}"
 
 explore displayNode root
 ```
@@ -164,8 +169,8 @@ import "includes/common.fss" as Common
 
 let main =
   let project = { Name = "Terrabuild"; Language = "F#" }
-  print (summary project)
-  print $"Extension: {extension_name}"
+  Console.writeLine (summary project)
+  Console.writeLine $"Extension: {extension_name}"
 
 main
 ```
@@ -176,3 +181,4 @@ main
 2. Run example 3 to practice pattern matching on real data.
 3. Run example 4 to practice recursion with typed data.
 4. Run example 5 when you are ready for multi-file scripts and host-facing exports.
+5. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.

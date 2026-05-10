@@ -63,6 +63,10 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Hash.md5 : string -> string option`
 - `Guid.new : 'a -> string option` (dummy argument to preserve call shape)
 
+### Console
+- `Console.writeLine : string -> unit`
+- `Console.readLine : unit -> string option`
+
 ### Collections and prelude
 - `List.*`, `Option.*`, and `Map.*` helpers are provided by the embedded prelude in `FScript.Language`.
 - Scalar conversion helpers are built into the language runtime:
@@ -83,7 +87,6 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
   - `String.concat : string -> string list -> string`
   - `String.split : string -> string -> string list`
     - argument order: `separator -> source`
-- `print : string -> unit` is a built-in language function (not a host extern).
 - Runtime externs focus on host/system capabilities.
 - `FsKind` is provided by stdlib as:
   - `FsKind.File of string`

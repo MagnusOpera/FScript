@@ -35,7 +35,7 @@ let doubled = [1; 2; 3] |> List.map (fun n -> n * 2)
 Applies a side-effecting function to each item.
 
 ```fsharp
-["a"; "b"] |> List.iter print
+["a"; "b"] |> List.iter Console.writeLine
 ```
 
 ## `List.choose : ('a -> 'b option) -> 'a list -> 'b list`

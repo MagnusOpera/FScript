@@ -1,0 +1,18 @@
+import "parser.fss" as BasicParser
+import "runtime.fss" as BasicRuntime
+
+let load_program_path =
+    match Env.Arguments with
+    | path :: _ -> path
+    | [] -> raise "Usage: fscript samples/basic/basic.fss -- <program.bas>"
+
+let read_program path =
+    match Fs.readText path with
+    | Some source -> source
+    | None -> raise $"Could not read BASIC program: {path}"
+
+let basic_path = load_program_path
+let basic_source = read_program basic_path
+let program = BasicParser.parse_program basic_source
+
+BasicRuntime.run program

@@ -38,8 +38,8 @@ Shown for variables introduced by match patterns.
 Example:
 ```fsharp
 match firstEven with
-| Some x -> print $"{x}"
-| None -> print "none"
+| Some x -> Console.writeLine $"{x}"
+| None -> Console.writeLine "none"
 ```
 `x` includes inlay label `: int`.
 

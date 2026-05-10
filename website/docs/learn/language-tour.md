@@ -22,7 +22,7 @@ let message =
   | Ok text -> $"Result: {text}"
   | Error text -> $"Result: {text}"
 
-print message
+Console.writeLine message
 ```
 
 What this introduces:
@@ -30,6 +30,7 @@ What this introduces:
 - `type` for union declarations,
 - `if/else` as an expression,
 - `match` for exhaustive branching,
+- zero-argument function calls such as `ping ()`,
 - string interpolation with `$"..."`.
 
 Next: continue into the language chapters for each feature in detail.

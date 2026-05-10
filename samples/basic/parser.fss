@@ -1,0 +1,239 @@
+import "ast.fss" as Ast
+
+let fail message =
+    raise message
+
+let is_blank text =
+    match Regex.matchGroups "^\\s*$" text with
+    | Some _ -> true
+    | None -> false
+
+let parse_int label text =
+    match Int.tryParse text with
+    | Some value -> value
+    | None -> fail $"Invalid BASIC {label}: {text}"
+
+let normalize_identifier name =
+    String.toUpper name
+
+let rec tokenize line_number remaining =
+    if is_blank remaining then
+        []
+    else
+        match Regex.matchGroups "^\\s*\"((?:[^\"]|\"\")*)\"(.*)$" remaining with
+        | Some [ value; rest ] ->
+            StringToken (String.replace "\"\"" "\"" value) :: tokenize line_number rest
+        | _ ->
+            match Regex.matchGroups "^\\s*([0-9]+)(.*)$" remaining with
+            | Some [ value; rest ] ->
+                NumberToken (parse_int "integer literal" value) :: tokenize line_number rest
+            | _ ->
+                match Regex.matchGroups "^\\s*(<>|<=|>=|[\\+\\-\\*/=<>\\(\\)])(.*)$" remaining with
+                | Some [ symbol; rest ] ->
+                    let token =
+                        match symbol with
+                        | "+" -> PlusToken
+                        | "-" -> MinusToken
+                        | "*" -> StarToken
+                        | "/" -> SlashToken
+                        | "=" -> EqualToken
+                        | "<>" -> NotEqualToken
+                        | "<" -> LessToken
+                        | "<=" -> LessEqualToken
+                        | ">" -> GreaterToken
+                        | ">=" -> GreaterEqualToken
+                        | "(" -> LeftParenToken
+                        | ")" -> RightParenToken
+                        | _ -> fail $"Invalid BASIC line {line_number}: unknown token '{symbol}'"
+                    token :: tokenize line_number rest
+                | _ ->
+                    match Regex.matchGroups "^\\s*([A-Za-z][A-Za-z0-9]*\\$?)(.*)$" remaining with
+                    | Some [ name; rest ] ->
+                        IdentifierToken (normalize_identifier name) :: tokenize line_number rest
+                    | _ ->
+                        fail $"Invalid BASIC line {line_number}: could not tokenize '{remaining}'"
+
+let rec split_keyword keyword depth acc tokens =
+    match tokens with
+    | [] -> None
+    | LeftParenToken :: rest ->
+        split_keyword keyword (depth + 1) (LeftParenToken :: acc) rest
+    | RightParenToken :: rest ->
+        split_keyword keyword (depth - 1) (RightParenToken :: acc) rest
+    | IdentifierToken name :: rest when depth = 0 && name = keyword ->
+        Some (List.rev acc, rest)
+    | head :: rest ->
+        split_keyword keyword depth (head :: acc) rest
+
+let split_at_keyword keyword tokens =
+    split_keyword keyword 0 [] tokens
+
+let rec parse_expression line_number tokens =
+    parse_comparison line_number tokens
+
+and parse_comparison line_number tokens =
+    let (left, rest) = parse_addition line_number tokens
+    match rest with
+    | EqualToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (Equal, left, right), remaining)
+    | NotEqualToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (NotEqual, left, right), remaining)
+    | LessToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (Less, left, right), remaining)
+    | LessEqualToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (LessEqual, left, right), remaining)
+    | GreaterToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (Greater, left, right), remaining)
+    | GreaterEqualToken :: tail ->
+        let (right, remaining) = parse_addition line_number tail
+        (Binary (GreaterEqual, left, right), remaining)
+    | _ -> (left, rest)
+
+and parse_addition line_number tokens =
+    let (left, rest) = parse_multiplication line_number tokens
+    parse_addition_tail line_number left rest
+
+and parse_addition_tail line_number left tokens =
+    match tokens with
+    | PlusToken :: rest ->
+        let (right, remaining) = parse_multiplication line_number rest
+        parse_addition_tail line_number (Binary (Add, left, right)) remaining
+    | MinusToken :: rest ->
+        let (right, remaining) = parse_multiplication line_number rest
+        parse_addition_tail line_number (Binary (Subtract, left, right)) remaining
+    | _ -> (left, tokens)
+
+and parse_multiplication line_number tokens =
+    let (left, rest) = parse_unary line_number tokens
+    parse_multiplication_tail line_number left rest
+
+and parse_multiplication_tail line_number left tokens =
+    match tokens with
+    | StarToken :: rest ->
+        let (right, remaining) = parse_unary line_number rest
+        parse_multiplication_tail line_number (Binary (Multiply, left, right)) remaining
+    | SlashToken :: rest ->
+        let (right, remaining) = parse_unary line_number rest
+        parse_multiplication_tail line_number (Binary (Divide, left, right)) remaining
+    | _ -> (left, tokens)
+
+and parse_unary line_number tokens =
+    match tokens with
+    | MinusToken :: rest ->
+        let (value, remaining) = parse_unary line_number rest
+        (UnaryMinus value, remaining)
+    | _ -> parse_primary line_number tokens
+
+and parse_primary line_number tokens =
+    match tokens with
+    | NumberToken value :: rest -> (IntLiteral value, rest)
+    | StringToken value :: rest -> (StringLiteral value, rest)
+    | IdentifierToken name :: rest -> (Variable name, rest)
+    | LeftParenToken :: rest ->
+        let (expr, remaining) = parse_expression line_number rest
+        match remaining with
+        | RightParenToken :: tail -> (expr, tail)
+        | _ -> fail $"Invalid BASIC line {line_number}: missing closing parenthesis"
+    | _ -> fail $"Invalid BASIC line {line_number}: expected expression"
+
+let parse_complete_expression line_number tokens =
+    let (expr, remaining) = parse_expression line_number tokens
+    match remaining with
+    | [] -> expr
+    | _ -> fail $"Invalid BASIC line {line_number}: unexpected tokens after expression"
+
+let parse_target line_number tokens keyword =
+    match tokens with
+    | [ NumberToken target ] -> target
+    | _ -> fail $"Invalid BASIC line {line_number}: {keyword} expects a line number target"
+
+let parse_assignment line_number name tokens =
+    match tokens with
+    | EqualToken :: rest -> Let (name, parse_complete_expression line_number rest)
+    | _ -> fail $"Invalid BASIC line {line_number}: assignment to {name} requires '='"
+
+let parse_statement_tokens line_number tokens =
+    match tokens with
+    | IdentifierToken "PRINT" :: rest ->
+        Print (parse_complete_expression line_number rest)
+    | [ IdentifierToken "INPUT"; IdentifierToken name ] ->
+        Input name
+    | IdentifierToken "GOTO" :: rest ->
+        Goto (parse_target line_number rest "GOTO")
+    | IdentifierToken "GOSUB" :: rest ->
+        Gosub (parse_target line_number rest "GOSUB")
+    | [ IdentifierToken "RETURN" ] ->
+        Return
+    | [ IdentifierToken "END" ] ->
+        End
+    | [ IdentifierToken "NEXT"; IdentifierToken name ] ->
+        Next name
+    | IdentifierToken "IF" :: rest ->
+        match split_at_keyword "THEN" rest with
+        | Some (condition_tokens, target_tokens) ->
+            IfThen (parse_complete_expression line_number condition_tokens, parse_target line_number target_tokens "THEN")
+        | None ->
+            fail $"Invalid BASIC line {line_number}: IF requires THEN <line>"
+    | IdentifierToken "FOR" :: IdentifierToken name :: EqualToken :: rest ->
+        match split_at_keyword "TO" rest with
+        | Some (start_tokens, end_tokens) ->
+            For (name, parse_complete_expression line_number start_tokens, parse_complete_expression line_number end_tokens)
+        | None ->
+            fail $"Invalid BASIC line {line_number}: FOR requires TO"
+    | IdentifierToken "LET" :: IdentifierToken name :: rest ->
+        parse_assignment line_number name rest
+    | IdentifierToken name :: rest ->
+        parse_assignment line_number name rest
+    | _ ->
+        fail $"Invalid BASIC line {line_number}: unsupported statement"
+
+let parse_statement_text line_number statement_text =
+    match Regex.matchGroups "^\\s*[Rr][Ee][Mm](.*)$" statement_text with
+    | Some [ tail ] -> Rem tail
+    | None -> statement_text |> tokenize line_number |> parse_statement_tokens line_number
+
+let insert_sorted_line line sorted =
+    let rec loop remaining =
+        match remaining with
+        | [] -> [ line ]
+        | head :: tail ->
+            let (line_number, _) = line
+            let (head_number, _) = head
+
+            if line_number < head_number then
+                line :: remaining
+            elif line_number = head_number then
+                fail $"Invalid BASIC line {line_number}: duplicate line number"
+            else
+                head :: loop tail
+
+    loop sorted
+
+let parse_line raw_line =
+    match Regex.matchGroups "^\\s*([0-9]+)\\s+(.*)$" raw_line with
+    | Some [ number_text; statement_text ] ->
+        let line_number = parse_int "line number" number_text
+        let statement = parse_statement_text line_number statement_text
+        (line_number, statement)
+    | _ ->
+        fail $"Invalid BASIC source line: {raw_line}"
+
+let parse_program source =
+    let normalized = String.replace "\r" "" source
+    let source_lines = String.split "\n" normalized
+
+    let rec loop remaining parsed =
+        match remaining with
+        | [] -> parsed
+        | raw_line :: tail ->
+            if is_blank raw_line then
+                loop tail parsed
+            else
+                loop tail (insert_sorted_line (parse_line raw_line) parsed)
+
+    loop source_lines []

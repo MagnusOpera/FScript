@@ -305,16 +305,21 @@ module Parser =
                 { Name = n; Annotation = None; Span = tok.Span }
             | LParen ->
                 let lp = stream.Next()
-                let nameTok = stream.ExpectIdent("Expected parameter name in annotated parameter")
-                let name =
-                    match nameTok.Kind with
-                    | Ident n -> n
-                    | _ -> ""
                 stream.SkipNewlines()
-                stream.Expect(Colon, "Expected ':' in annotated parameter") |> ignore
-                let anno = parseTypeRef()
-                let rp = stream.Expect(RParen, "Expected ')' after annotated parameter")
-                { Name = name; Annotation = Some anno; Span = mkSpanFrom lp.Span rp.Span }
+                if stream.Match(RParen) then
+                    let rp = stream.TokenAt(stream.Index - 1)
+                    { Name = "()"; Annotation = Some (TRName "unit"); Span = mkSpanFrom lp.Span rp.Span }
+                else
+                    let nameTok = stream.ExpectIdent("Expected parameter name in annotated parameter")
+                    let name =
+                        match nameTok.Kind with
+                        | Ident n -> n
+                        | _ -> ""
+                    stream.SkipNewlines()
+                    stream.Expect(Colon, "Expected ':' in annotated parameter") |> ignore
+                    let anno = parseTypeRef()
+                    let rp = stream.Expect(RParen, "Expected ')' after annotated parameter")
+                    { Name = name; Annotation = Some anno; Span = mkSpanFrom lp.Span rp.Span }
             | _ -> raise (ParseException { Message = "Expected parameter"; Span = stream.Peek().Span })
 
         and parseParamsAligned () : ResizeArray<Param> =

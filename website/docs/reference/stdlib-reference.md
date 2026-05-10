@@ -8,6 +8,7 @@ This is the quick lookup page for the built-in FScript surface.
 
 ## Modules
 
+- [`Console`](../stdlib/console)
 - [`Task`](../stdlib/task)
 - [`List`](../stdlib/list)
 - [`Option`](../stdlib/option)
@@ -17,7 +18,13 @@ This is the quick lookup page for the built-in FScript surface.
 
 ## Top-level built-ins
 
-- [`Env`, `Environment`, `FsKind`, `print`, `ignore`](../stdlib/builtins)
+- [`Env`, `Environment`, `FsKind`, `ignore`](../stdlib/builtins)
+
+## Console
+
+- [`Console`](../stdlib/console)
+- `Console.writeLine : string -> unit`
+- `Console.readLine : unit -> string option`
 
 ## Native types
 
@@ -26,6 +33,7 @@ This is the quick lookup page for the built-in FScript surface.
 ## Core built-in groups
 
 - `Task.*`
+- `Console.*`
 - `List.*`
 - `Option.*`
 - `Map.*`
@@ -34,11 +42,13 @@ This is the quick lookup page for the built-in FScript surface.
 - scalar formatters: `Int.toString`, `Float.toString`, `Bool.toString`
 - concurrency helpers: `Task.spawn`, `Task.await`
 - environment types/values: `Environment`, `FsKind`, `Env`
-- top-level functions: `print`, `ignore`
+- top-level functions: `ignore`
+- console I/O: `Console.writeLine`, `Console.readLine`
 
 ## Runtime extern families
 
 - `Fs.*` filesystem utilities
+- `Console.*`
 - `Json.*`
 - `Xml.*`
 - `Regex.*`

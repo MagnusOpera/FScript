@@ -12,11 +12,11 @@ Type form: `'a task`
 
 | Form | Signature | Description |
 | --- | --- | --- |
-| `Task.spawn (fun _ -> expr)` | `(unit -> 'a) -> 'a task` | Starts concurrent work and returns a task handle. |
+| `Task.spawn (fun () -> expr)` | `(unit -> 'a) -> 'a task` | Starts concurrent work and returns a task handle. |
 | `Task.await taskValue` | `'a task -> 'a` | Waits for completion and returns the task result. |
 
 ```fsharp
-let pending = Task.spawn (fun _ -> 40 + 2)
+let pending = Task.spawn (fun () -> 40 + 2)
 let answer = Task.await pending
 ```
 

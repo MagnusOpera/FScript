@@ -27,7 +27,7 @@
     <Compile Include="RegexExterns.fs" />
     <Compile Include="HashExterns.fs" />
     <Compile Include="GuidExterns.fs" />
-    <Compile Include="PrintExterns.fs" />
+    <Compile Include="ConsoleExterns.fs" />
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />

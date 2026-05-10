@@ -26,7 +26,7 @@ Create `hello.fss`:
 
 ```fsharp
 let name = "FScript"
-print $"Hello, {name}!"
+Console.writeLine $"Hello, {name}!"
 ```
 
 Run it:

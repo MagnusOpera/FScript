@@ -11,5 +11,5 @@ let directories =
       | _ -> None)
   |> List.distinct
 
-print $"Directories from root: {directories}"
-print $"Files from root: {files}"
+Console.writeLine $"Directories from root: {directories}"
+Console.writeLine $"Files from root: {files}"

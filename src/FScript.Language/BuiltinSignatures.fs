@@ -3,7 +3,6 @@ namespace FScript.Language
 module BuiltinSignatures =
     let builtinSchemes : Map<string, Scheme> =
         [ "ignore", Forall([ 0 ], TFun(TVar 0, TUnit))
-          "print", Forall([], TFun(TString, TUnit))
           "Int.tryParse", Forall([], TFun(TString, TOption TInt))
           "Float.tryParse", Forall([], TFun(TString, TOption TFloat))
           "Bool.tryParse", Forall([], TFun(TString, TOption TBool))

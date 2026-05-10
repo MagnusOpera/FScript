@@ -78,7 +78,7 @@ Create `hello.fss`:
 
 ```fsharp
 let name = "FScript"
-print $"Hello {name}"
+Console.writeLine $"Hello {name}"
 ```
 
 Run it:
@@ -91,11 +91,11 @@ CLI-injected environment metadata is available in scripts:
 
 ```fsharp
 match Env.ScriptName with
-| Some name -> print name
-| None -> print "stdin"
+| Some name -> Console.writeLine name
+| None -> Console.writeLine "stdin"
 
 for arg in Env.Arguments do
-  print arg
+  Console.writeLine arg
 ```
 
 ## 2. Bindings and expressions
@@ -106,7 +106,7 @@ FScript is also indentation-based: layout defines blocks.
 let a = 40
 let b = 2
 let result = a + b
-print $"result = {result}"
+Console.writeLine $"result = {result}"
 ```
 
 Short block example:
@@ -119,6 +119,13 @@ let describe x =
     "zero-or-negative"
 ```
 
+Zero-argument functions use `()` in both the declaration and the call:
+
+```fsharp
+let greet () = "hello"
+Console.writeLine (greet ())
+```
+
 Pipelines are supported:
 
 ```fsharp
@@ -126,7 +133,7 @@ let text =
   "fscript"
   |> fun x -> $"{x}-lang"
 
-print text
+Console.writeLine text
 ```
 
 ## 3. Basic types
@@ -167,7 +174,7 @@ let classify n =
 ### for ... in ... do
 ```fsharp
 for value in [1; 2; 3] do
-  print $"{value}"
+  Console.writeLine $"{value}"
 ```
 
 ### match
@@ -184,14 +191,14 @@ let describe value =
 ```fsharp
 let numbers = [1; 2; 3]
 let doubled = numbers |> List.map (fun n -> n * 2)
-print $"{doubled}"
+Console.writeLine $"{doubled}"
 ```
 
 ### Option
 ```fsharp
 let maybeName = Some "Ada"
 let label = maybeName |> Option.defaultValue "unknown"
-print label
+Console.writeLine label
 ```
 
 ### Tuple
@@ -203,14 +210,14 @@ let pair = ("pkg", 3)
 ```fsharp
 type Project = { Name: string; Version: int }
 let p = { Name = "core"; Version = 1 }
-print p.Name
+Console.writeLine p.Name
 ```
 
 ### Map
 ```fsharp
 let scores = { ["math"] = 18; ["science"] = 20 }
 let maybeMath = scores |> Map.tryGet "math"
-print $"{maybeMath}"
+Console.writeLine $"{maybeMath}"
 ```
 
 Map keys are `string`:
@@ -224,7 +231,7 @@ Lists also support optional zero-based indexing:
 ```fsharp
 let values = [10; 20; 30]
 let first = values[0]
-print $"{first}"
+Console.writeLine $"{first}"
 ```
 
 ### Discriminated union
@@ -346,7 +353,7 @@ Curried functions are the default.
 ```fsharp
 let add x y = x + y
 let inc = add 1
-print $"{inc 41}"
+Console.writeLine $"{inc 41}"
 ```
 
 Recursive functions use `let rec`:
@@ -381,9 +388,9 @@ let hasA = m |> Map.containsKey "a"
 Concurrent task example:
 
 ```fsharp
-let pending = Task.spawn (fun _ -> 40 + 2)
+let pending = Task.spawn (fun () -> 40 + 2)
 let answer = Task.await pending
-print $"{answer}"
+Console.writeLine $"{answer}"
 ```
 
 Tasks use the native type form `'a task`. Spawned thunks run concurrently, `Task.await` synchronizes on the result, and task failures remain fatal runtime errors.
@@ -398,7 +405,7 @@ You can split scripts using `import`.
 
 ```fsharp
 import "shared/math.fss" as Math
-print $"{Math.sum 20 22}"
+Console.writeLine $"{Math.sum 20 22}"
 ```
 
 `shared/math.fss`:

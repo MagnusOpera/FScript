@@ -18,7 +18,8 @@ module Registry =
           RegexExterns.match_groups
           HashExterns.md5
           GuidExterns.new_guid
-          PrintExterns.print
+          ConsoleExterns.write_line
+          ConsoleExterns.read_line
           JsonExterns.deserialize
           JsonExterns.serialize
           XmlExterns.query_values ]

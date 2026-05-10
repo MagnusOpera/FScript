@@ -16,6 +16,6 @@ let rec is_sorted values =
 let input = [9; 2; 8; 2; 4; 7; 1; 6; 3; 5; 3]
 let sorted = quicksort input
 
-print $"quicksort input : {input}"
-print $"quicksort output: {sorted}"
-print $"is sorted       : {is_sorted sorted}"
+Console.writeLine $"quicksort input : {input}"
+Console.writeLine $"quicksort output: {sorted}"
+Console.writeLine $"is sorted       : {is_sorted sorted}"

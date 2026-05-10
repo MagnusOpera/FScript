@@ -10,6 +10,7 @@ Everything in this section is available in every script without imports.
 
 ## Modules
 
+- `Console`
 - `Task`
 - `List`
 - `Option`
@@ -22,7 +23,6 @@ Everything in this section is available in every script without imports.
 ## Top-level built-ins
 
 - `Env`
-- `print`
 - `ignore`
 
 ## Core rules
@@ -41,7 +41,8 @@ Everything in this section is available in every script without imports.
 
 ## Where to go next
 
-- [Built-ins](./builtins) for `Env`, `Environment`, `FsKind`, `print`, and `ignore`
+- [Built-ins](./builtins) for `Env`, `Environment`, `FsKind`, and `ignore`
+- [Console Module](./console)
 - [Native Types Reference](/manual/reference/native-types) for list/map indexers and native type access forms
 - [Task Module](./task)
 - [List Module](./list)

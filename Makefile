@@ -12,6 +12,8 @@ smoke-tests:
 		echo "Running $$script"; \
 		dotnet run --project src/FScript -- "$$script" > /dev/null; \
 	done; \
+	echo "Running samples/basic/basic.fss -- helloworld.bas"; \
+	dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas > /dev/null; \
 	echo "All smoke tests passed."
 
 verify-changelog:

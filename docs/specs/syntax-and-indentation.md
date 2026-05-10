@@ -20,9 +20,11 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `f x y`
 - Lambda:
   - `fun x -> expr`
+  - `fun () -> expr`
   - `fun (x: int) -> expr`
 - Let expression (layout style):
   - `let x = expr`
+  - `let f () = expr`
   - `let (a, b) = expr` (tuple destructuring)
   - `let rec f x = ... and g y = ...`
   - nested via blocks
@@ -141,14 +143,14 @@ let main =
     [0..9]
     |> List.map (fun i ->
         i)
-    |> List.iter print
+    |> List.iter Console.writeLine
 ```
 ```fsharp
 let main =
     [0..9]
     |> List.map (fun i ->
         i |> fib |> fun x -> $"{x}")
-    |> List.iter print
+    |> List.iter Console.writeLine
 ```
 
 ### Match-case alignment

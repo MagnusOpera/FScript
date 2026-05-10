@@ -13,10 +13,24 @@ let add x y = x + y
 let result = add 2 3
 ```
 
+Zero-argument functions use `()` as their parameter and call syntax:
+
+```fsharp
+let ping () = "pong"
+let message = ping ()
+```
+
 ## Anonymous functions
 
 ```fsharp
 let inc = fun x -> x + 1
+```
+
+Anonymous functions can also use a unit parameter:
+
+```fsharp
+let getAnswer = fun () -> 42
+let answer = getAnswer ()
 ```
 
 ## Partial application

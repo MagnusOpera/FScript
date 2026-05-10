@@ -1,7 +1,9 @@
 namespace FScript.Language.Tests
 
+open System.IO
 open NUnit.Framework
 open FsUnit
+open FScript.Runtime
 
 [<TestFixture>]
 type PrettyTests () =
@@ -23,10 +25,13 @@ type PrettyTests () =
     member _.``Formats function values with parameter names`` () =
         Helpers.evalToString "fun x -> x" |> should equal "<fun x>"
         Helpers.evalToString "fun x -> fun y -> x + y" |> should equal "<fun x y>"
+        Helpers.evalToString "fun () -> 1" |> should equal "<fun ()>"
 
     [<Test>]
     member _.``Formats extern values with name and application progress`` () =
-        Helpers.evalToString "print" |> should equal "<extern print>"
+        let host = { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        Helpers.evalWithExterns externs "Console.writeLine" |> FScript.Language.Pretty.valueToString |> should equal "<extern Console.writeLine>"
 
     [<Test>]
     member _.``Escapes quoted interpolation output in strings`` () =

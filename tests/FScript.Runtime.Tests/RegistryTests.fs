@@ -27,7 +27,8 @@ type RegistryTests () =
         names.Contains "Regex.matchGroups" |> should equal true
         names.Contains "Hash.md5" |> should equal true
         names.Contains "Guid.new" |> should equal true
-        names.Contains "print" |> should equal true
+        names.Contains "Console.writeLine" |> should equal true
+        names.Contains "Console.readLine" |> should equal true
         names.Contains "Json.deserialize" |> should equal true
         names.Contains "Json.serialize" |> should equal true
         names.Contains "Xml.queryValues" |> should equal true

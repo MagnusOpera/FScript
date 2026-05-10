@@ -4,18 +4,18 @@ let evens = values |> List.filter (fun n -> n % 2 = 0)
 let doubled = evens |> List.map (fun n -> n * 2)
 let total = doubled |> List.fold (fun acc -> fun n -> acc + n) 0
 
-print $"evens={evens}"
-print $"doubled={doubled}"
-print $"total={total}"
+Console.writeLine $"evens={evens}"
+Console.writeLine $"doubled={doubled}"
+Console.writeLine $"total={total}"
 
 let firstEven = evens |> List.tryHead
 match firstEven with
-| Some x -> print $"first even: {x}"
-| None -> print "no even value"
+| Some x -> Console.writeLine $"first even: {x}"
+| None -> Console.writeLine "no even value"
 
 match doubled with
-| head :: tail -> print $"head={head} tail={tail}"
-| [] -> print "empty"
+| head :: tail -> Console.writeLine $"head={head} tail={tail}"
+| [] -> Console.writeLine "empty"
 
 let scores = { ["a"] = 1; ["b"] = 2 }
 let remove k m =
@@ -24,4 +24,4 @@ let remove k m =
     | _ -> m
 
 let removedB = remove "b" scores
-print $"scores without b = {removedB}"
+Console.writeLine $"scores without b = {removedB}"

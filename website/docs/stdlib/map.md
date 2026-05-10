@@ -110,7 +110,7 @@ let doubled = { ["x"] = 2 } |> Map.map (fun v -> v * 2)
 Iterates entries for side effects.
 
 ```fsharp
-{ ["x"] = 2; ["y"] = 3 } |> Map.iter (fun k v -> print $"{k}={v}")
+{ ["x"] = 2; ["y"] = 3 } |> Map.iter (fun k v -> Console.writeLine $"{k}={v}")
 ```
 
 ## `Map.remove : string -> 'v map -> 'v map`

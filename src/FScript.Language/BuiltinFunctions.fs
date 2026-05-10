@@ -105,16 +105,6 @@ module BuiltinFunctions =
           Arity = 1
           Impl = (fun _ _ -> VUnit) }
 
-    let private builtinPrint : ExternalFunction =
-        { Name = "print"
-          Scheme = scheme "print"
-          Arity = 1
-          Impl =
-            (fun _ args ->
-                let text = expectString "print" args
-                Console.WriteLine(text)
-                VUnit) }
-
     let private builtinIntTryParse : ExternalFunction =
         { Name = "Int.tryParse"
           Scheme = scheme "Int.tryParse"
@@ -700,7 +690,6 @@ module BuiltinFunctions =
 
     let builtinExterns : ExternalFunction list =
         [ builtinIgnore
-          builtinPrint
           builtinIntTryParse
           builtinFloatTryParse
           builtinBoolTryParse

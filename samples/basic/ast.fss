@@ -1,0 +1,48 @@
+type Token =
+    | NumberToken of int
+    | StringToken of string
+    | IdentifierToken of string
+    | PlusToken
+    | MinusToken
+    | StarToken
+    | SlashToken
+    | EqualToken
+    | NotEqualToken
+    | LessToken
+    | LessEqualToken
+    | GreaterToken
+    | GreaterEqualToken
+    | LeftParenToken
+    | RightParenToken
+
+type BinaryOperator =
+    | Add
+    | Subtract
+    | Multiply
+    | Divide
+    | Equal
+    | NotEqual
+    | Less
+    | LessEqual
+    | Greater
+    | GreaterEqual
+
+type rec Expr =
+    | IntLiteral of int
+    | StringLiteral of string
+    | Variable of string
+    | UnaryMinus of Expr
+    | Binary of (BinaryOperator * Expr * Expr)
+
+type Statement =
+    | Rem of string
+    | Let of (string * Expr)
+    | Print of Expr
+    | Input of string
+    | IfThen of (Expr * int)
+    | Goto of int
+    | Gosub of int
+    | Return
+    | For of (string * Expr * Expr)
+    | Next of string
+    | End

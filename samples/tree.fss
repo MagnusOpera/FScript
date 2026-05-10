@@ -24,6 +24,6 @@ let rec explore visit (node: Node) =
     explore_child node.Right
 
 let display_node (node: Node) =
-    print $"{node.Value}"
+    Console.writeLine $"{node.Value}"
 
 explore display_node root

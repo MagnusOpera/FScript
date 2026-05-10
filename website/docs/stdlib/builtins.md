@@ -5,13 +5,13 @@ slug: /stdlib/builtins
 ---
 
 This page covers the top-level built-ins that are always in scope even though they are not module members.
+For host console I/O, see the separate [Console module](./console).
 
 ## Values and functions
 
 | Name | Signature | Description |
 | --- | --- | --- |
 | `Env` | `Environment` | Host-injected execution metadata for CLI file runs, stdin runs, and the REPL. |
-| `print` | `string -> unit` | Writes a line of text to standard output. |
 | `ignore` | `'a -> unit` | Discards a value when only the side effect of an expression matters. |
 
 ## `type Environment`
@@ -30,8 +30,8 @@ The host exposes `Env` with this shape:
 
 ```fsharp
 match Env.Arguments with
-| name :: _ -> print $"hello {name}"
-| [] -> print "hello"
+| name :: _ -> Console.writeLine $"hello {name}"
+| [] -> Console.writeLine "hello"
 ```
 
 ## `type FsKind`
@@ -47,17 +47,9 @@ type FsKind =
 
 ```fsharp
 match Fs.kind "samples" with
-| Directory path -> print $"dir: {path}"
-| File path -> print $"file: {path}"
-| Missing -> print "missing"
-```
-
-## `print : string -> unit`
-
-Use `print` for script output and quick debugging.
-
-```fsharp
-print "hello"
+| Directory path -> Console.writeLine $"dir: {path}"
+| File path -> Console.writeLine $"file: {path}"
+| Missing -> Console.writeLine "missing"
 ```
 
 ## `ignore : 'a -> unit`

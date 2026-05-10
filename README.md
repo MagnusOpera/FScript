@@ -23,7 +23,7 @@ It is designed for host applications that need:
 ## Language Snapshot
 
 FScript currently includes:
-- bindings and functions: `let`, `let rec`, `and` mutual recursion, lambdas,
+- bindings and functions: `let`, zero-argument functions such as `let f () = ...`, `let rec`, `and` mutual recursion, lambdas,
 - control flow: `if/elif/else`, `match`, `for ... in ... do`,
 - data: list, option, tuple, map, record, discriminated unions,
 - pattern matching: list, option, tuple, record, union cases,
@@ -99,6 +99,11 @@ Run a script with script arguments (after `--`):
 dotnet run --project src/FScript -- samples/fibonacci.fss -- 10
 ```
 
+Run the vintage BASIC sample interpreter:
+```bash
+dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas
+```
+
 Optional sandbox root override:
 ```bash
 dotnet run --project src/FScript -- --root /tmp/sandbox samples/types-showcase.fss
@@ -147,6 +152,7 @@ Useful samples:
 - [`samples/tree.fss`](samples/tree.fss)
 - [`samples/mutual-recursion.fss`](samples/mutual-recursion.fss)
 - [`samples/imports-and-exports.fss`](samples/imports-and-exports.fss)
+- [`samples/basic/basic.fss`](samples/basic/basic.fss) with bundled `.bas` programs such as [`helloworld.bas`](samples/basic/helloworld.bas)
 
 ## Interpreter Architecture
 
@@ -168,7 +174,7 @@ Each extern declares:
 - arity,
 - implementation.
 
-Built-in host extern families include `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, GUIDs, and `print`.
+Built-in host extern families include `Fs.*`, `Console.*`, `Json.*`, `Xml.*`, `Regex.*`, hashing, and GUID helpers.
 `Task.*`, `List.*`, `Map.*`, and `Option.*` are provided by the embedded stdlib prelude.
 
 For details and extension workflow, see [`docs/specs/external-functions.md`](docs/specs/external-functions.md).

@@ -3,7 +3,7 @@ let buzz n = n % 5 = 0
 
 for n in [0..20] do
     match (fizz n, buzz n) with
-    | (true, true) -> print "Fizz Buzz"
-    | (true, _) -> print "Fizz"
-    | (_, true) -> print "Buzz"
-    | _ -> print $"{n}"
+    | (true, true) -> Console.writeLine "Fizz Buzz"
+    | (true, _) -> Console.writeLine "Fizz"
+    | (_, true) -> Console.writeLine "Buzz"
+    | _ -> Console.writeLine $"{n}"

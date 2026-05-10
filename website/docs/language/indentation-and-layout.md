@@ -27,6 +27,7 @@ let describe n =
 
 ```fsharp
 let add x y = x + y
+let tick () = 1
 ```
 
 ### Multi-line parameters (aligned)

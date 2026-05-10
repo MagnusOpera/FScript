@@ -1,0 +1,244 @@
+import "ast.fss" as Ast
+
+type Value =
+    | Number of int
+    | Text of string
+
+type ForFrame =
+    { Variable: string
+      Limit: int
+      ResumeIndex: int }
+
+type State =
+    { Program: (int * Ast.Statement) list
+      LineLookup: int map
+      Variables: Value map
+      CallStack: int list
+      ForStack: ForFrame list
+      CurrentIndex: int }
+
+let fail message =
+    raise message
+
+let is_string_variable name =
+    String.endsWith "$" name
+
+let default_value name =
+    if is_string_variable name then Text "" else Number 0
+
+let value_to_string value =
+    match value with
+    | Number number -> Int.toString number
+    | Text text -> text
+
+let read_console_line () =
+    match Console.readLine () with
+    | Some text -> text
+    | None -> fail "BASIC runtime error: INPUT reached end of input"
+
+let parse_input_value name text =
+    if is_string_variable name then
+        Text text
+    else
+        match Int.tryParse text with
+        | Some value -> Number value
+        | None -> fail $"BASIC runtime error: INPUT for {name} expects an integer"
+
+let as_number context value =
+    match value with
+    | Number number -> number
+    | Text _ -> fail $"BASIC runtime error: {context} expects a numeric value"
+
+let get_variable (state: State) name =
+    state.Variables
+    |> Map.tryGet name
+    |> Option.defaultValue (default_value name)
+
+let set_variable (state: State) name value =
+    match (is_string_variable name, value) with
+    | (true, Text _) ->
+        { state with Variables = state.Variables |> Map.add name value }
+    | (false, Number _) ->
+        { state with Variables = state.Variables |> Map.add name value }
+    | (true, Number _) ->
+        fail $"BASIC runtime error: variable {name} requires a string value"
+    | (false, Text _) ->
+        fail $"BASIC runtime error: variable {name} requires a numeric value"
+
+let numeric_truth value =
+    let number = value |> as_number "condition"
+    if number = 0 then false else true
+
+let compare_values operator left right =
+    match (operator, left, right) with
+    | (Equal, Number a, Number b) -> Number (if a = b then 1 else 0)
+    | (NotEqual, Number a, Number b) -> Number (if a = b then 0 else 1)
+    | (Less, Number a, Number b) -> Number (if a < b then 1 else 0)
+    | (LessEqual, Number a, Number b) -> Number (if a <= b then 1 else 0)
+    | (Greater, Number a, Number b) -> Number (if a > b then 1 else 0)
+    | (GreaterEqual, Number a, Number b) -> Number (if a >= b then 1 else 0)
+    | (Equal, Text a, Text b) -> Number (if a = b then 1 else 0)
+    | (NotEqual, Text a, Text b) -> Number (if a = b then 0 else 1)
+    | (Less, Text _, Text _) ->
+        fail "BASIC runtime error: string comparisons only support = and <>"
+    | (LessEqual, Text _, Text _) ->
+        fail "BASIC runtime error: string comparisons only support = and <>"
+    | (Greater, Text _, Text _) ->
+        fail "BASIC runtime error: string comparisons only support = and <>"
+    | (GreaterEqual, Text _, Text _) ->
+        fail "BASIC runtime error: string comparisons only support = and <>"
+    | _ ->
+        fail "BASIC runtime error: incompatible values in comparison"
+
+let rec eval_expression state expr =
+    match expr with
+    | IntLiteral value -> Number value
+    | StringLiteral value -> Text value
+    | Variable name -> get_variable state name
+    | UnaryMinus value ->
+        let number =
+            value
+            |> eval_expression state
+            |> as_number "unary minus"
+        Number (0 - number)
+    | Binary (operator, left_expr, right_expr) ->
+        let left = eval_expression state left_expr
+        let right = eval_expression state right_expr
+
+        match operator with
+        | Add ->
+            match (left, right) with
+            | (Number a, Number b) -> Number (a + b)
+            | (Text a, Text b) -> Text $"{a}{b}"
+            | _ -> fail "BASIC runtime error: '+' requires both numbers or both strings"
+        | Subtract ->
+            Number ((left |> as_number "subtraction") - (right |> as_number "subtraction"))
+        | Multiply ->
+            Number ((left |> as_number "multiplication") * (right |> as_number "multiplication"))
+        | Divide ->
+            let divisor = right |> as_number "division"
+            if divisor = 0 then
+                fail "BASIC runtime error: division by zero"
+            else
+                Number ((left |> as_number "division") / divisor)
+        | Equal ->
+            compare_values operator left right
+        | NotEqual ->
+            compare_values operator left right
+        | Less ->
+            compare_values operator left right
+        | LessEqual ->
+            compare_values operator left right
+        | Greater ->
+            compare_values operator left right
+        | GreaterEqual ->
+            compare_values operator left right
+
+let advance (state: State) =
+    { state with CurrentIndex = state.CurrentIndex + 1 }
+
+let finish (state: State) =
+    { state with CurrentIndex = List.length state.Program }
+
+let jump_to_line (state: State) target =
+    match state.LineLookup |> Map.tryGet (Int.toString target) with
+    | Some index -> { state with CurrentIndex = index }
+    | None -> fail $"BASIC runtime error: missing target line {target}"
+
+let rec find_matching_next (program: (int * Ast.Statement) list) loop_variable index depth =
+    match List.tryItem index program with
+    | None -> fail $"BASIC runtime error: FOR {loop_variable} has no matching NEXT"
+    | Some (_, statement) ->
+        match statement with
+        | For _ ->
+            find_matching_next program loop_variable (index + 1) (depth + 1)
+        | Next _ when depth = 0 ->
+            index
+        | Next _ ->
+            find_matching_next program loop_variable (index + 1) (depth - 1)
+        | _ ->
+            find_matching_next program loop_variable (index + 1) depth
+
+let rec run_state (state: State) =
+    match List.tryItem state.CurrentIndex state.Program with
+    | None -> ()
+    | Some (_, statement) ->
+        let next_state = execute_statement state statement
+        run_state next_state
+
+and execute_statement (state: State) (statement: Ast.Statement) =
+    match statement with
+    | Rem _ ->
+        advance state
+    | Let (name, expr) ->
+        let value = eval_expression state expr
+        advance (set_variable state name value)
+    | Print expr ->
+        expr |> eval_expression state |> value_to_string |> Console.writeLine
+        advance state
+    | Input name ->
+        let input_text = read_console_line ()
+        let value = parse_input_value name input_text
+        advance (set_variable state name value)
+    | IfThen (condition, target) ->
+        if condition |> eval_expression state |> numeric_truth then
+            jump_to_line state target
+        else
+            advance state
+    | Goto target ->
+        jump_to_line state target
+    | Gosub target ->
+        jump_to_line { state with CallStack = (state.CurrentIndex + 1) :: state.CallStack } target
+    | Return ->
+        match state.CallStack with
+        | next_index :: rest ->
+            { state with CallStack = rest; CurrentIndex = next_index }
+        | [] ->
+            fail "BASIC runtime error: RETURN without GOSUB"
+    | For (name, start_expr, end_expr) ->
+        let start_value = start_expr |> eval_expression state |> as_number $"FOR {name}"
+        let end_value = end_expr |> eval_expression state |> as_number $"FOR {name}"
+        let initialized = set_variable state name (Number start_value)
+
+        if start_value > end_value then
+            let next_index = find_matching_next state.Program name (state.CurrentIndex + 1) 0
+            { initialized with CurrentIndex = next_index + 1 }
+        else
+            { initialized with ForStack = { Variable = name; Limit = end_value; ResumeIndex = state.CurrentIndex + 1 } :: state.ForStack; CurrentIndex = state.CurrentIndex + 1 }
+    | Next name ->
+        match state.ForStack with
+        | frame :: rest when frame.Variable = name ->
+            let current_value = get_variable state name |> as_number $"NEXT {name}"
+            let next_value = current_value + 1
+            let updated = set_variable state name (Number next_value)
+
+            if next_value <= frame.Limit then
+                { updated with CurrentIndex = frame.ResumeIndex }
+            else
+                { updated with ForStack = rest; CurrentIndex = state.CurrentIndex + 1 }
+        | frame :: _ ->
+            fail $"BASIC runtime error: NEXT {name} does not match active FOR {frame.Variable}"
+        | [] ->
+            fail $"BASIC runtime error: NEXT {name} without FOR"
+    | End ->
+        finish state
+
+let build_line_lookup (program: (int * Ast.Statement) list) =
+    let rec loop remaining index lookup =
+        match remaining with
+        | [] -> lookup
+        | (line_number, _) :: tail ->
+            loop tail (index + 1) (lookup |> Map.add (Int.toString line_number) index)
+
+    loop program 0 Map.empty
+
+let run program =
+    let initial =
+        { Program = program
+          LineLookup = build_line_lookup program
+          Variables = Map.empty
+          CallStack = []
+          ForStack = []
+          CurrentIndex = 0 }
+
+    run_state initial

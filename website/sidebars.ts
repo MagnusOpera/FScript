@@ -48,6 +48,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'stdlib/stdlib-overview',
         'stdlib/stdlib-builtins',
+        'stdlib/stdlib-console',
         'stdlib/stdlib-task',
         'stdlib/stdlib-list',
         'stdlib/stdlib-option',

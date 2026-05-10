@@ -77,28 +77,28 @@ let monthlyPrice =
 let missing = "missing"
 let unknown = "unknown"
 
-print $"User: {updated.Name}"
-print $"City: {city}"
-print $"Math score: {mathScore}"
-print $"Has 'science': {hasScience}"
-print $"Patched science score: {patchedScores |> Map.tryGet scienceKey |> Option.defaultValue 0}"
-print $"Map preview: {mapPreview}"
-print $"Subscription price: {monthlyPrice}"
+Console.writeLine $"User: {updated.Name}"
+Console.writeLine $"City: {city}"
+Console.writeLine $"Math score: {mathScore}"
+Console.writeLine $"Has 'science': {hasScience}"
+Console.writeLine $"Patched science score: {patchedScores |> Map.tryGet scienceKey |> Option.defaultValue 0}"
+Console.writeLine $"Map preview: {mapPreview}"
+Console.writeLine $"Subscription price: {monthlyPrice}"
 
 // Structural record equivalence showcase:
 // - literal with matching fields
 // - value created through another named record type (OfficeAddress)
-print $"Structural address from literal: {format_address parisAddress}"
-print $"Structural address from OfficeAddress: {format_address officeAddress}"
-print $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
-print $"HTTP 200: {statusByCode[okCode] |> Option.defaultValue unknown}"
+Console.writeLine $"Structural address from literal: {format_address parisAddress}"
+Console.writeLine $"Structural address from OfficeAddress: {format_address officeAddress}"
+Console.writeLine $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
+Console.writeLine $"HTTP 200: {statusByCode[okCode] |> Option.defaultValue unknown}"
 
 
-updated.Tags |> List.iter print
+updated.Tags |> List.iter Console.writeLine
 
 
 match updated with
 | { Id = id; Pair = (left, right) } ->
-    print $"Record pattern: id={id}, pair=({left}, {right})"
+    Console.writeLine $"Record pattern: id={id}, pair=({left}, {right})"
 | _ ->
-    print "Unexpected"
+    Console.writeLine "Unexpected"

@@ -39,4 +39,4 @@ let build_ops command =
 
 let ops = build_ops "build ."
 
-print $"{primary} | names={names_total} | maps={all_count} | ops={List.length ops}"
+Console.writeLine $"{primary} | names={names_total} | maps={all_count} | ops={List.length ops}"

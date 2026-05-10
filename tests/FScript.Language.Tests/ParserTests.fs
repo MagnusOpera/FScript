@@ -284,6 +284,13 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected lambda")
 
     [<Test>]
+    member _.``Parses unit-parameter lambda expression`` () =
+        let p = Helpers.parse "fun () -> 1"
+        match p.[0] with
+        | SExpr (ELambda ({ Name = "()"; Annotation = Some (TRName "unit") }, _, _)) -> ()
+        | _ -> Assert.Fail("Expected unit-parameter lambda")
+
+    [<Test>]
     member _.``Parses if branches with compact list of multiline records`` () =
         let src =
             "let operations =\n    if context.CI then\n      [ { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 };\n        { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 } ]\n    else\n      [ { Command = \"docker\"\n          Arguments = command\n          ErrorLevel = 0 } ]"
@@ -322,6 +329,13 @@ type ParserTests () =
         match p.[0] with
         | SLet ("show", [ { Name = "node"; Annotation = Some (TRName "Node") } ], _, _, _, _, _) -> ()
         | _ -> Assert.Fail("Expected annotated let parameter")
+
+    [<Test>]
+    member _.``Parses unit-parameter let binding`` () =
+        let p = Helpers.parse "let ping () = 1"
+        match p.[0] with
+        | SLet ("ping", [ { Name = "()"; Annotation = Some (TRName "unit") } ], _, _, _, _, _) -> ()
+        | _ -> Assert.Fail("Expected unit-parameter let binding")
 
     [<Test>]
     member _.``Parses let return type annotation`` () =
@@ -660,7 +674,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses pipeline continuation after multiline lambda argument`` () =
-        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i)\n    |> List.iter print"
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i)\n    |> List.iter Console.writeLine"
         let p = Helpers.parse src
         match p.[0] with
         | SLet ("main", [], _, EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
@@ -668,7 +682,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Parses pipeline continuation after multiline lambda with nested lambda`` () =
-        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i |> fib |> fun x -> $\"{x}\")\n    |> List.iter print"
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i |> fib |> fun x -> $\"{x}\")\n    |> List.iter Console.writeLine"
         let p = Helpers.parse src
         match p.[0] with
         | SLet ("main", [], _, EBinOp ("|>", EBinOp ("|>", _, _, _), _, _), false, _, _) -> ()
@@ -676,7 +690,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Reports indentation error for misindented multiline lambda pipeline`` () =
-        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i\n         |> fib |> fun x -> $\"{x}\")\n    |> List.iter print"
+        let src = "let main =\n    [0..9]\n    |> List.map (fun i ->\n        i\n         |> fib |> fun x -> $\"{x}\")\n    |> List.iter Console.writeLine"
         try
             Helpers.parse src |> ignore
             Assert.Fail("Expected parse exception")

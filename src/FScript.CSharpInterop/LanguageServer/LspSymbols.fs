@@ -53,7 +53,6 @@ module LspSymbols =
 
     let private builtinParameterNames : Map<string, string list> =
         [ "ignore", [ "value" ]
-          "print", [ "message" ]
           "Int.tryParse", [ "value" ]
           "Float.tryParse", [ "value" ]
           "Bool.tryParse", [ "value" ]
@@ -115,7 +114,6 @@ module LspSymbols =
 
         let builtinCoreSignatures =
             [ "ignore", "'a -> unit"
-              "print", "string -> unit"
               "Int.tryParse", "string -> int option"
               "Float.tryParse", "string -> float option"
               "Bool.tryParse", "string -> bool option"
@@ -128,13 +126,14 @@ module LspSymbols =
 
         let builtinParamNames =
             [ "ignore", [ "value" ]
-              "print", [ "message" ]
               "Int.tryParse", [ "value" ]
               "Float.tryParse", [ "value" ]
               "Bool.tryParse", [ "value" ]
               "Int.toString", [ "value" ]
               "Float.toString", [ "value" ]
               "Bool.toString", [ "value" ]
+              "Console.writeLine", [ "message" ]
+              "Console.readLine", [ "unit" ]
               "nameof", [ "name" ]
               "typeof", [ "name" ] ]
             |> Map.ofList

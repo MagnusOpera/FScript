@@ -3,6 +3,7 @@ namespace FScript.Language.Tests
 open NUnit.Framework
 open FsUnit
 open FScript.Language
+open FScript.Runtime
 
 [<TestFixture>]
 type TypeInferenceTests () =
@@ -18,8 +19,10 @@ type TypeInferenceTests () =
         check "\"a\"" TString
 
     [<Test>]
-    member _.``Infers print as built-in function`` () =
-        let typed = Helpers.infer "print \"hello\""
+    member _.``Infers Console.writeLine as injected extern`` () =
+        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all host
+        let typed = Helpers.inferWithExterns externs "Console.writeLine \"hello\""
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TUnit
         | _ -> Assert.Fail("Expected expression")
@@ -555,6 +558,13 @@ type TypeInferenceTests () =
                 "type Package = { name: string }\nlet get_name = fun (value: Package) -> value.name\nget_name"
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal (TFun (TNamed "Package", TString))
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers unit-parameter functions`` () =
+        let typed = Helpers.infer "let ping () = 1\nping ()"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal TInt
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]

@@ -456,6 +456,11 @@ type EvalTests () =
         Helpers.eval "(fun x y -> x + y) 2 3" |> assertInt 5L
 
     [<Test>]
+    member _.``Evaluates unit-parameter lambda and let bindings`` () =
+        Helpers.eval "(fun () -> 41) ()" |> assertInt 41L
+        Helpers.eval "let ping () = 42\nping ()" |> assertInt 42L
+
+    [<Test>]
     member _.``Evaluates function application with indented next-line arguments`` () =
         Helpers.eval "let add x y = x + y\nadd\n    1\n    2" |> assertInt 3L
 
