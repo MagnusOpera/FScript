@@ -72,6 +72,8 @@ Behavior:
 - When injected parameter names are known, hover/signature displays named arrows:
   - `Option.map: (mapper: 't -> 'u) -> (value: 't option) -> 'u option`
 - Go-to-definition on injected stdlib symbols resolves to virtual readonly documents:
+  - `fscript-stdlib:///Console.fss`
+  - `fscript-stdlib:///Task.fss`
   - `fscript-stdlib:///Option.fss`
   - `fscript-stdlib:///List.fss`
   - `fscript-stdlib:///Map.fss`

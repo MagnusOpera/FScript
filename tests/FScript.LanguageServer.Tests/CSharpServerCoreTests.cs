@@ -176,6 +176,98 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_didOpen_accepts_Console_and_Task_bindings_without_unbound_diagnostics()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-console-task-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = "Console.writeLine \"hello\"\nlet pending = Task.spawn (fun () -> 42)\nTask.await pending\n"
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+
+            var diagMsg = LspClient.ReadUntil(client, 10_000, msg =>
+            {
+                if (msg["method"]?.GetValue<string>() != "textDocument/publishDiagnostics")
+                {
+                    return false;
+                }
+
+                var p = msg["params"] as JsonObject;
+                var u = p?["uri"]?.GetValue<string>();
+                return u == uri;
+            });
+
+            var diagnosticsArray = ((diagMsg["params"] as JsonObject)?["diagnostics"] as JsonArray);
+            Assert.That(diagnosticsArray, Is.Not.Null);
+            Assert.That(diagnosticsArray!.Count, Is.EqualTo(0));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_didOpen_reports_print_as_unbound()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-print-unbound-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = "print \"hello\"\n"
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+
+            var diagMsg = LspClient.ReadUntil(client, 10_000, msg =>
+            {
+                if (msg["method"]?.GetValue<string>() != "textDocument/publishDiagnostics")
+                {
+                    return false;
+                }
+
+                var p = msg["params"] as JsonObject;
+                var u = p?["uri"]?.GetValue<string>();
+                var diagnostics = p?["diagnostics"] as JsonArray;
+                return u == uri && diagnostics is { Count: > 0 };
+            });
+
+            var diagnosticsArray = ((diagMsg["params"] as JsonObject)?["diagnostics"] as JsonArray) ?? new JsonArray();
+            var first = diagnosticsArray[0] as JsonObject ?? throw new Exception("Expected a diagnostic.");
+            var message = first["message"]?.GetValue<string>() ?? string.Empty;
+
+            Assert.That(first["code"]?.GetValue<string>(), Is.EqualTo("type"));
+            Assert.That(message, Does.Contain("print"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_typeDefinition_for_Env_returns_no_location()
     {
         var client = LspClient.StartCSharp();
@@ -208,6 +300,137 @@ public sealed class CSharpServerCoreTests
                 msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 142);
 
             Assert.That(definitionResponse["result"], Is.Null);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_hover_shows_Console_writeLine_signature()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-console-hover-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = "Console.writeLine \"hello\"\n"
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var hoverParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 0, ["character"] = 10 }
+            };
+
+            LspClient.SendRequest(client, 143, "textDocument/hover", hoverParams);
+            var hoverResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 143);
+            var hoverResult = hoverResponse["result"] as JsonObject ?? throw new Exception("Expected hover result.");
+            var contents = hoverResult["contents"] as JsonObject ?? throw new Exception("Expected hover contents.");
+            var hoverText = contents["value"]?.GetValue<string>() ?? string.Empty;
+
+            Assert.That(hoverText, Does.Contain("Console.writeLine"));
+            Assert.That(hoverText, Does.Contain("message: string"));
+            Assert.That(hoverText, Does.Contain("injected-function"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [TestCase("Console.writeLine \"hello\"\n", 0, 10, "fscript-stdlib:///Console.fss")]
+    [TestCase("let pending = Task.spawn (fun () -> 42)\nTask.await pending\n", 1, 6, "fscript-stdlib:///Task.fss")]
+    [TestCase("Map.empty |> Map.count\n", 0, 4, "fscript-stdlib:///Map.fss")]
+    public void CSharp_server_definition_for_injected_namespaced_functions_resolves_to_virtual_stdlib_source(
+        string source,
+        int line,
+        int character,
+        string expectedUri)
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = $"file:///tmp/{Guid.NewGuid():N}-injected-definition-test.fss";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var definitionParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = line, ["character"] = character }
+            };
+
+            LspClient.SendRequest(client, 144, "textDocument/definition", definitionParams);
+            var definitionResponse = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 144);
+            var result = definitionResponse["result"] as JsonObject ?? throw new Exception("Expected definition location.");
+
+            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo(expectedUri));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [TestCase("fscript-stdlib:///Console.fss", "module Console", "let writeLine", "let readLine")]
+    [TestCase("fscript-stdlib:///Task.fss", "module Task", "let spawn", "let await")]
+    [TestCase("fscript-stdlib:///Map.fss", "module Map", "let iter", "let remove")]
+    [TestCase("fscript-stdlib:/String.fss", "module String", "let replace", "let endsWith")]
+    public void CSharp_server_stdlibSource_returns_virtual_module_documents(
+        string stdlibUri,
+        string expectedLine1,
+        string expectedLine2,
+        string expectedLine3)
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var requestParams = new JsonObject
+            {
+                ["uri"] = stdlibUri
+            };
+
+            LspClient.SendRequest(client, 145, "fscript/stdlibSource", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 145);
+            var result = response["result"] as JsonObject ?? throw new Exception("Expected stdlibSource result.");
+            Assert.That(result["ok"]?.GetValue<bool>(), Is.True);
+
+            var data = result["data"] as JsonObject ?? throw new Exception("Expected stdlibSource data.");
+            var text = data["text"]?.GetValue<string>() ?? string.Empty;
+
+            Assert.That(text, Does.Contain(expectedLine1));
+            Assert.That(text, Does.Contain(expectedLine2));
+            Assert.That(text, Does.Contain(expectedLine3));
         }
         finally
         {

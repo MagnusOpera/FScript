@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed LSP injected-function navigation so namespaced stdlib and runtime functions like `Console.*`, `Task.*`, and `Map.*` resolve to virtual stdlib sources, and `print` is no longer treated as available.
+
 ## [0.69.0]
 
 

@@ -30,7 +30,7 @@ LSP integration:
 - The language server injects runtime extern schemes (`Registry.all`) during document inference.
 - Hover/completion/signature help expose callable signatures for injected runtime functions and prelude stdlib functions.
 - Injected stdlib functions use named-argument signatures when parameter names are available.
-- Go-to-definition for stdlib injected functions resolves to readonly virtual stdlib sources (`fscript-stdlib:///...`).
+- Go-to-definition for stdlib injected functions resolves to readonly virtual stdlib sources (`fscript-stdlib:///...`) for namespaced stdlib and runtime surfaces such as `Console.*`, `Task.*`, `Map.*`, and `List.*`.
 
 ## Higher-order extern execution
 Higher-order externs are implemented in runtime extern modules and receive an `ExternalCallContext`.

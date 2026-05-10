@@ -11,6 +11,294 @@ open FScript.CSharpInterop
 module LspSymbols =
     open LspModel
 
+    let private stdlibVirtualUri (name: string) = $"fscript-stdlib:///{name}"
+
+    let private normalizeStdlibUri (uri: string) =
+        if String.IsNullOrWhiteSpace(uri) then
+            uri
+        elif uri.StartsWith("fscript-stdlib:/", StringComparison.Ordinal)
+             && not (uri.StartsWith("fscript-stdlib:///", StringComparison.Ordinal)) then
+            "fscript-stdlib:///" + uri.Substring("fscript-stdlib:/".Length)
+        else
+            uri
+
+    let private stdlibDoc (name: string) (text: string) =
+        stdlibVirtualUri name, text
+
+    let private builtinsStdlibDoc =
+        stdlibDoc "Builtins.fss" """// Read-only virtual stdlib reference
+let ignore : 'a -> unit
+"""
+
+    let private consoleStdlibDoc =
+        stdlibDoc "Console.fss" """module Console
+
+let writeLine : string -> unit
+let readLine : unit -> string option
+"""
+
+    let private taskStdlibDoc =
+        stdlibDoc "Task.fss" """module Task
+
+let spawn : (unit -> 'a) -> 'a task
+let await : 'a task -> 'a
+"""
+
+    let private listStdlibDoc =
+        stdlibDoc "List.fss" """module List
+
+let empty : 'a list
+let map : ('a -> 'b) -> 'a list -> 'b list
+let iter : ('a -> unit) -> 'a list -> unit
+let choose : ('a -> 'b option) -> 'a list -> 'b list
+let collect : ('a -> 'b list) -> 'a list -> 'b list
+let exists : ('a -> bool) -> 'a list -> bool
+let contains : 'a -> 'a list -> bool
+let rev : 'a list -> 'a list
+let distinct : 'a list -> 'a list
+let fold : ('state -> 'a -> 'state) -> 'state -> 'a list -> 'state
+let filter : ('a -> bool) -> 'a list -> 'a list
+let length : 'a list -> int
+let tryFind : ('a -> bool) -> 'a list -> 'a option
+let tryGet : ('a -> bool) -> 'a list -> int option
+let tryItem : int -> 'a list -> 'a option
+let tryHead : 'a list -> 'a option
+let tail : 'a list -> 'a list
+let append : 'a list -> 'a list -> 'a list
+"""
+
+    let private optionStdlibDoc =
+        stdlibDoc "Option.fss" """module Option
+
+let defaultValue : 'a -> 'a option -> 'a
+let defaultWith : (unit -> 'a) -> 'a option -> 'a
+let isNone : 'a option -> bool
+let isSome : 'a option -> bool
+let map : ('a -> 'b) -> 'a option -> 'b option
+"""
+
+    let private mapStdlibDoc =
+        stdlibDoc "Map.fss" """module Map
+
+let empty : 'v map
+let tryGet : string -> 'v map -> 'v option
+let containsKey : string -> 'v map -> bool
+let add : string -> 'v -> 'v map -> 'v map
+let ofList : (string * 'v) list -> 'v map
+let fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state
+let count : 'v map -> int
+let filter : (string -> 'v -> bool) -> 'v map -> 'v map
+let choose : (string -> 'v -> 'u option) -> 'v map -> 'u map
+let map : ('v -> 'u) -> 'v map -> 'u map
+let iter : (string -> 'v -> unit) -> 'v map -> unit
+let remove : string -> 'v map -> 'v map
+"""
+
+    let private stringStdlibDoc =
+        stdlibDoc "String.fss" """module String
+
+let replace : string -> string -> string -> string
+let indexOf : string -> string -> int option
+let toLower : string -> string
+let toUpper : string -> string
+let substring : int -> int -> string -> string option
+let concat : string -> string list -> string
+let split : string -> string -> string list
+let endsWith : string -> string -> bool
+"""
+
+    let private intStdlibDoc =
+        stdlibDoc "Int.fss" """module Int
+
+let tryParse : string -> int option
+let toString : int -> string
+"""
+
+    let private floatStdlibDoc =
+        stdlibDoc "Float.fss" """module Float
+
+let tryParse : string -> float option
+let toString : float -> string
+"""
+
+    let private boolStdlibDoc =
+        stdlibDoc "Bool.fss" """module Bool
+
+let tryParse : string -> bool option
+let toString : bool -> string
+"""
+
+    let private fsStdlibDoc =
+        stdlibDoc "Fs.fss" """module Fs
+
+let readText : string -> string option
+let exists : string -> bool
+let kind : string -> FsKind
+let createDirectory : string -> bool
+let writeText : string -> string -> bool
+let combinePath : string -> string -> string
+let parentDirectory : string -> string option
+let extension : string -> string option
+let fileNameWithoutExtension : string -> string
+let glob : string -> string list option
+let enumerateFiles : string -> string -> string list option
+"""
+
+    let private regexStdlibDoc =
+        stdlibDoc "Regex.fss" """module Regex
+
+let matchGroups : string -> string -> string list option
+"""
+
+    let private hashStdlibDoc =
+        stdlibDoc "Hash.fss" """module Hash
+
+let md5 : string -> string option
+"""
+
+    let private guidStdlibDoc =
+        stdlibDoc "Guid.fss" """module Guid
+
+let new : 'a -> string option
+"""
+
+    let private jsonStdlibDoc =
+        stdlibDoc "Json.fss" """module Json
+
+let deserialize : type -> string -> 'a option
+let serialize : 'a -> string option
+"""
+
+    let private xmlStdlibDoc =
+        stdlibDoc "Xml.fss" """module Xml
+
+let queryValues : string -> string -> string list option
+"""
+
+    let private stdlibVirtualSources : Map<string, string> =
+        [ builtinsStdlibDoc
+          consoleStdlibDoc
+          taskStdlibDoc
+          listStdlibDoc
+          optionStdlibDoc
+          mapStdlibDoc
+          stringStdlibDoc
+          intStdlibDoc
+          floatStdlibDoc
+          boolStdlibDoc
+          fsStdlibDoc
+          regexStdlibDoc
+          hashStdlibDoc
+          guidStdlibDoc
+          jsonStdlibDoc
+          xmlStdlibDoc ]
+        |> Map.ofList
+
+    let private tryFindDefinitionSpan (sourceText: string) (localName: string) : Span option =
+        let lines = sourceText.Replace("\r\n", "\n").Split('\n')
+        let pattern = @"^\s*let\s+(" + Regex.Escape(localName) + @")\b"
+
+        lines
+        |> Array.mapi (fun lineIndex lineText -> lineIndex, lineText)
+        |> Array.tryPick (fun (lineIndex, lineText) ->
+            let m = Regex.Match(lineText, pattern, RegexOptions.CultureInvariant)
+            if not m.Success then
+                None
+            else
+                let g = m.Groups[1]
+                Some (
+                    Span.mk
+                        (Span.pos (lineIndex + 1) (g.Index + 1))
+                        (Span.pos (lineIndex + 1) (g.Index + g.Length + 1))
+                ))
+
+    let private stdlibDefinitionEntries : (string * string * string) list =
+        [ ("ignore", stdlibVirtualUri "Builtins.fss", "ignore")
+          ("Console.writeLine", stdlibVirtualUri "Console.fss", "writeLine")
+          ("Console.readLine", stdlibVirtualUri "Console.fss", "readLine")
+          ("Task.spawn", stdlibVirtualUri "Task.fss", "spawn")
+          ("Task.await", stdlibVirtualUri "Task.fss", "await")
+          ("List.empty", stdlibVirtualUri "List.fss", "empty")
+          ("List.map", stdlibVirtualUri "List.fss", "map")
+          ("List.iter", stdlibVirtualUri "List.fss", "iter")
+          ("List.choose", stdlibVirtualUri "List.fss", "choose")
+          ("List.collect", stdlibVirtualUri "List.fss", "collect")
+          ("List.exists", stdlibVirtualUri "List.fss", "exists")
+          ("List.contains", stdlibVirtualUri "List.fss", "contains")
+          ("List.rev", stdlibVirtualUri "List.fss", "rev")
+          ("List.distinct", stdlibVirtualUri "List.fss", "distinct")
+          ("List.fold", stdlibVirtualUri "List.fss", "fold")
+          ("List.filter", stdlibVirtualUri "List.fss", "filter")
+          ("List.length", stdlibVirtualUri "List.fss", "length")
+          ("List.tryFind", stdlibVirtualUri "List.fss", "tryFind")
+          ("List.tryGet", stdlibVirtualUri "List.fss", "tryGet")
+          ("List.tryItem", stdlibVirtualUri "List.fss", "tryItem")
+          ("List.tryHead", stdlibVirtualUri "List.fss", "tryHead")
+          ("List.tail", stdlibVirtualUri "List.fss", "tail")
+          ("List.append", stdlibVirtualUri "List.fss", "append")
+          ("Option.defaultValue", stdlibVirtualUri "Option.fss", "defaultValue")
+          ("Option.defaultWith", stdlibVirtualUri "Option.fss", "defaultWith")
+          ("Option.isNone", stdlibVirtualUri "Option.fss", "isNone")
+          ("Option.isSome", stdlibVirtualUri "Option.fss", "isSome")
+          ("Option.map", stdlibVirtualUri "Option.fss", "map")
+          ("Map.empty", stdlibVirtualUri "Map.fss", "empty")
+          ("Map.tryGet", stdlibVirtualUri "Map.fss", "tryGet")
+          ("Map.containsKey", stdlibVirtualUri "Map.fss", "containsKey")
+          ("Map.add", stdlibVirtualUri "Map.fss", "add")
+          ("Map.ofList", stdlibVirtualUri "Map.fss", "ofList")
+          ("Map.fold", stdlibVirtualUri "Map.fss", "fold")
+          ("Map.count", stdlibVirtualUri "Map.fss", "count")
+          ("Map.filter", stdlibVirtualUri "Map.fss", "filter")
+          ("Map.choose", stdlibVirtualUri "Map.fss", "choose")
+          ("Map.map", stdlibVirtualUri "Map.fss", "map")
+          ("Map.iter", stdlibVirtualUri "Map.fss", "iter")
+          ("Map.remove", stdlibVirtualUri "Map.fss", "remove")
+          ("String.replace", stdlibVirtualUri "String.fss", "replace")
+          ("String.indexOf", stdlibVirtualUri "String.fss", "indexOf")
+          ("String.toLower", stdlibVirtualUri "String.fss", "toLower")
+          ("String.toUpper", stdlibVirtualUri "String.fss", "toUpper")
+          ("String.substring", stdlibVirtualUri "String.fss", "substring")
+          ("String.concat", stdlibVirtualUri "String.fss", "concat")
+          ("String.split", stdlibVirtualUri "String.fss", "split")
+          ("String.endsWith", stdlibVirtualUri "String.fss", "endsWith")
+          ("Int.tryParse", stdlibVirtualUri "Int.fss", "tryParse")
+          ("Int.toString", stdlibVirtualUri "Int.fss", "toString")
+          ("Float.tryParse", stdlibVirtualUri "Float.fss", "tryParse")
+          ("Float.toString", stdlibVirtualUri "Float.fss", "toString")
+          ("Bool.tryParse", stdlibVirtualUri "Bool.fss", "tryParse")
+          ("Bool.toString", stdlibVirtualUri "Bool.fss", "toString")
+          ("Fs.readText", stdlibVirtualUri "Fs.fss", "readText")
+          ("Fs.exists", stdlibVirtualUri "Fs.fss", "exists")
+          ("Fs.kind", stdlibVirtualUri "Fs.fss", "kind")
+          ("Fs.createDirectory", stdlibVirtualUri "Fs.fss", "createDirectory")
+          ("Fs.writeText", stdlibVirtualUri "Fs.fss", "writeText")
+          ("Fs.combinePath", stdlibVirtualUri "Fs.fss", "combinePath")
+          ("Fs.parentDirectory", stdlibVirtualUri "Fs.fss", "parentDirectory")
+          ("Fs.extension", stdlibVirtualUri "Fs.fss", "extension")
+          ("Fs.fileNameWithoutExtension", stdlibVirtualUri "Fs.fss", "fileNameWithoutExtension")
+          ("Fs.glob", stdlibVirtualUri "Fs.fss", "glob")
+          ("Fs.enumerateFiles", stdlibVirtualUri "Fs.fss", "enumerateFiles")
+          ("Regex.matchGroups", stdlibVirtualUri "Regex.fss", "matchGroups")
+          ("Hash.md5", stdlibVirtualUri "Hash.fss", "md5")
+          ("Guid.new", stdlibVirtualUri "Guid.fss", "new")
+          ("Json.deserialize", stdlibVirtualUri "Json.fss", "deserialize")
+          ("Json.serialize", stdlibVirtualUri "Json.fss", "serialize")
+          ("Xml.queryValues", stdlibVirtualUri "Xml.fss", "queryValues") ]
+
+    let private stdlibDefinitionMap : Map<string, string * Span> =
+        stdlibDefinitionEntries
+        |> List.map (fun (qualifiedName, uri, localName) ->
+            let sourceText = stdlibVirtualSources |> Map.find uri
+            let span =
+                match tryFindDefinitionSpan sourceText localName with
+                | Some value -> value
+                | None -> failwith $"Missing stdlib definition span for '{qualifiedName}' in '{uri}'"
+            qualifiedName, (uri, span))
+        |> Map.ofList
+
+    let tryGetStdlibVirtualSource (uri: string) : string option =
+        stdlibVirtualSources |> Map.tryFind (normalizeStdlibUri uri)
+
     let private lspTypeToString (t: Type) =
         let rec go t =
             match t with
@@ -126,14 +414,31 @@ module LspSymbols =
 
         let builtinParamNames =
             [ "ignore", [ "value" ]
+              "Fs.readText", [ "path" ]
+              "Fs.exists", [ "path" ]
+              "Fs.kind", [ "path" ]
+              "Fs.createDirectory", [ "path" ]
+              "Fs.writeText", [ "path"; "content" ]
+              "Fs.combinePath", [ "left"; "right" ]
+              "Fs.parentDirectory", [ "path" ]
+              "Fs.extension", [ "path" ]
+              "Fs.fileNameWithoutExtension", [ "path" ]
+              "Fs.glob", [ "pattern" ]
+              "Fs.enumerateFiles", [ "directory"; "pattern" ]
+              "Regex.matchGroups", [ "pattern"; "input" ]
+              "Hash.md5", [ "value" ]
+              "Guid.new", [ "unit" ]
               "Int.tryParse", [ "value" ]
               "Float.tryParse", [ "value" ]
               "Bool.tryParse", [ "value" ]
               "Int.toString", [ "value" ]
               "Float.toString", [ "value" ]
               "Bool.toString", [ "value" ]
+              "Json.deserialize", [ "targetType"; "json" ]
+              "Json.serialize", [ "value" ]
               "Console.writeLine", [ "message" ]
               "Console.readLine", [ "unit" ]
+              "Xml.queryValues", [ "query"; "xml" ]
               "nameof", [ "name" ]
               "typeof", [ "name" ] ]
             |> Map.ofList
@@ -147,7 +452,7 @@ module LspSymbols =
             builtinParameterNames
             |> Map.fold (fun acc name names -> acc |> Map.add name names) builtinParamNames
 
-        signatures, paramNames, Map.empty
+        signatures, paramNames, stdlibDefinitionMap
 
     let tryFindInjectedTypeDefinition (_typeName: string) : (string * Span) option =
         None

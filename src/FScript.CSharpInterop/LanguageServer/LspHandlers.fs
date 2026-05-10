@@ -601,6 +601,22 @@ module LspHandlers =
             | ex ->
                 sendCommandError idNode "internal" ex.Message
 
+    let handleStdlibSource (idNode: JsonNode) (paramsObj: JsonObject) =
+        match tryGetCommandUri paramsObj with
+        | None ->
+            sendCommandError idNode "internal" "Missing stdlib URI."
+        | Some uri ->
+            match tryGetStdlibVirtualSource uri with
+            | Some text ->
+                let data = JsonObject()
+                data["text"] <- JsonValue.Create(text)
+                let response = JsonObject()
+                response["ok"] <- JsonValue.Create(true)
+                response["data"] <- data
+                LspProtocol.sendResponse idNode (Some response)
+            | None ->
+                sendCommandError idNode "internal" $"Unknown stdlib URI '{uri}'."
+
     let handleHover (idNode: JsonNode) (paramsObj: JsonObject) =
         if not hoverHintsEnabled then
             LspProtocol.sendResponse idNode None
