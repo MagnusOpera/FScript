@@ -827,11 +827,17 @@ module LspHandlers =
                             if left > right || not (isWordChar lineText[left]) then
                                 false
                             else
+                                let word = lineText.Substring(left, right - left + 1)
                                 let before = lineText.Substring(0, left)
                                 let after =
                                     if right + 1 < lineText.Length then lineText.Substring(right + 1)
                                     else String.Empty
-                                before.Contains("|", StringComparison.Ordinal)
+                                let looksLikePatternBinding =
+                                    not (String.IsNullOrWhiteSpace(word))
+                                    && (Char.IsLower(word[0]) || word[0] = '_')
+
+                                looksLikePatternBinding
+                                && before.Contains("|", StringComparison.Ordinal)
                                 && after.Contains("->", StringComparison.Ordinal)
 
                 let declarationLocalBinding =

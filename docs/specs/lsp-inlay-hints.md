@@ -83,6 +83,7 @@ Behavior:
 - Go-to-definition on a local variable usage resolves to the nearest lexical local declaration in scope.
 - This includes function parameters, lambda parameters, local `let` bindings, and pattern-bound variables.
 - Local definition navigation is resolved by lexical AST binding identity (usage span -> declaration span), with boundary-tolerant cursor matching.
+- Go-to-definition on imported union-case usages resolves to the specific constructor declaration span in the imported file, not just the enclosing type definition.
 - If a client immediately follows a successful definition request with a references request at the same cursor position, the server returns the resolved declaration location as a single-location references response.
 - The immediate follow-up suppression does not apply when the cursor is on the declaration identifier itself; in that case, normal references enumeration is returned.
 

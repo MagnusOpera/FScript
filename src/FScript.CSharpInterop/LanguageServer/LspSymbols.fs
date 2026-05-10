@@ -575,6 +575,51 @@ let queryValues : string -> string -> string list option
         let typedByName = Dictionary<string, TypeInfer.TypedStmt>(StringComparer.Ordinal)
         let recordTypeDefsBySignature = Dictionary<string, ResizeArray<string>>(StringComparer.Ordinal)
 
+        let tryFindUnionCaseSpan (typeSpan: Span) (caseName: string) =
+            let isWordBoundary (text: string) index =
+                index < 0
+                || index >= text.Length
+                || not (isWordChar text[index])
+
+            let tryFindInLine (lineText: string) =
+                let mutable found = None
+                let mutable startIndex = 0
+
+                while found.IsNone && startIndex >= 0 && startIndex < lineText.Length do
+                    let idx = lineText.IndexOf(caseName, startIndex, StringComparison.Ordinal)
+                    if idx < 0 then
+                        startIndex <- -1
+                    else
+                        let beforeOk = isWordBoundary lineText (idx - 1)
+                        let afterOk = isWordBoundary lineText (idx + caseName.Length)
+                        if beforeOk && afterOk then
+                            found <- Some idx
+                        else
+                            startIndex <- idx + caseName.Length
+
+                found
+
+            match typeSpan.Start.File with
+            | Some filePath when not (String.IsNullOrWhiteSpace(filePath)) && File.Exists(filePath) ->
+                try
+                    let lines = File.ReadAllLines(filePath)
+                    let startLine = max 1 typeSpan.Start.Line
+                    let endLine = min lines.Length typeSpan.End.Line
+
+                    [ startLine .. endLine ]
+                    |> List.tryPick (fun lineNumber ->
+                        let lineText = lines[lineNumber - 1]
+                        lineText
+                        |> tryFindInLine
+                        |> Option.map (fun idx ->
+                            let startPos = Span.posInFile filePath lineNumber (idx + 1)
+                            let endPos = Span.posInFile filePath lineNumber (idx + caseName.Length + 1)
+                            Span.mk startPos endPos))
+                with _ ->
+                    None
+            | _ ->
+                None
+
         let canonicalRecordSignatureFromType (t: Type) =
             match t with
             | TRecord fields ->
@@ -697,6 +742,7 @@ let queryValues : string -> string -> string list option
                 let caseSymbols =
                     typeDef.Cases
                     |> List.collect (fun (caseName, payload) ->
+                        let caseSpan = tryFindUnionCaseSpan typeDef.Span caseName |> Option.defaultValue typeDef.Span
                         let caseType =
                             match payload with
                             | Some payloadType -> Some (sprintf "%s -> %s" (typeRefToString payloadType) typeDef.Name)
@@ -706,12 +752,12 @@ let queryValues : string -> string -> string list option
                             Kind = 22
                             TypeText = caseType
                             TypeTargetName = Some typeDef.Name
-                            Span = typeDef.Span }
+                            Span = caseSpan }
                           { Name = $"{typeDef.Name}.{caseName}"
                             Kind = 22
                             TypeText = caseType
                             TypeTargetName = Some typeDef.Name
-                            Span = typeDef.Span } ])
+                            Span = caseSpan } ])
 
                 typeSymbol :: caseSymbols
             | SLet(name, args, _, _, _, _, span) ->
@@ -1207,12 +1253,19 @@ let queryValues : string -> string -> string list option
                 || (line1 = span.End.Line && col1 <= span.End.Column)
             startsBefore && endsAfter
 
+        let targetWord = tryGetWordAtOrAdjacentPosition doc.Text line character
         let positions = [ character; character - 1; character + 1; character - 2; character + 2 ] |> List.distinct
 
         let matchesAtPosition pos =
             doc.ResolvedLocalDefinitions
             |> List.filter (fun (usageSpan, _) ->
-                spanContains usageSpan line pos)
+                spanContains usageSpan line pos
+                && match targetWord with
+                   | Some word ->
+                       match tryGetWordAtPosition doc.Text line pos with
+                       | Some candidateWord -> String.Equals(candidateWord, word, StringComparison.Ordinal)
+                       | None -> false
+                   | None -> true)
 
         let exact = matchesAtPosition character
         let candidates =
@@ -2370,8 +2423,8 @@ let queryValues : string -> string -> string list option
         match tryGetWordAtPosition doc.Text line character with
         | None -> None
         | Some word ->
-            let candidates =
-                if word.Contains('.') then
+            if word.Contains('.') then
+                let candidates =
                     let parts = word.Split('.') |> Array.toList
                     let mapped =
                         match parts with
@@ -2385,13 +2438,29 @@ let queryValues : string -> string -> string list option
                             []
 
                     (word :: parts) @ mapped
-                else
-                    [ word ]
-                |> List.distinct
+                    |> List.distinct
 
-            candidates
-            |> List.tryPick (fun candidate ->
-                doc.Symbols |> List.tryFind (fun s -> s.Name = candidate))
+                candidates
+                |> List.tryPick (fun candidate ->
+                    doc.Symbols |> List.tryFind (fun s -> s.Name = candidate))
+            else
+                match doc.Symbols |> List.tryFind (fun s -> s.Name = word) with
+                | Some exact -> Some exact
+                | None ->
+                    let importedMatches =
+                        doc.ImportAliasToInternal
+                        |> Map.toList
+                        |> List.choose (fun (_, internalPrefix) ->
+                            doc.Symbols
+                            |> List.tryFind (fun s ->
+                                s.Name = $"{internalPrefix}.{word}"
+                                || (s.Name.StartsWith($"{internalPrefix}.", StringComparison.Ordinal)
+                                    && s.Name.EndsWith($".{word}", StringComparison.Ordinal))))
+                        |> List.distinctBy (fun s -> s.Name, s.Span.Start.File, s.Span.Start.Line, s.Span.Start.Column)
+
+                    match importedMatches with
+                    | [ single ] -> Some single
+                    | _ -> None
 
     let private splitTopLevelSemicolons (text: string) =
         let parts = ResizeArray<string>()
