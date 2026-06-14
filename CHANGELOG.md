@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.72.0]
+
+
 - Removed macOS Intel release packaging from the release publish workflows and Homebrew asset generation.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.71.1...0.72.0
 
 ## [0.71.1]
 
