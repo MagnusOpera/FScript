@@ -33,7 +33,6 @@ publish:
 	dotnet publish -c $(config) --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(version) -o $(PWD)/.out/dotnet src/FScript
 
 publish-darwin:
-	dotnet publish -c $(config) -r osx-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(version) -o $(PWD)/.out/darwin/x64 src/FScript
 	dotnet publish -c $(config) -r osx-arm64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(version) -o $(PWD)/.out/darwin/arm64 src/FScript
 
 publish-linux:

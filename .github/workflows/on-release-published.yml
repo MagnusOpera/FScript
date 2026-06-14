@@ -157,9 +157,7 @@ jobs:
       - name: Sign binaries
         run: |
           codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --no-strict --entitlements .out/darwin/entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
-          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/x64/fscript --options=runtime --no-strict --entitlements .out/darwin/entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.x64"
           (cd .out/darwin/arm64; zip ../fscript-${{ github.ref_name }}-darwin-arm64.zip ./*)
-          (cd .out/darwin/x64; zip ../fscript-${{ github.ref_name }}-darwin-x64.zip ./*)
 
       - name: Notarize arm64
         uses: GuillaumeFalourd/notary-tools@v1
@@ -172,24 +170,12 @@ jobs:
           xcode_path: '/Applications/Xcode_16.4.app'
           staple: false
 
-      - name: Notarize x64
-        uses: GuillaumeFalourd/notary-tools@v1
-        timeout-minutes: 10
-        with:
-          product_path: '.out/darwin/fscript-${{ github.ref_name }}-darwin-x64.zip'
-          apple_id: ${{ secrets.MAC_DEV_LOGIN }}
-          password: ${{ secrets.MAC_DEV_PASSWORD }}
-          team_id: ${{ secrets.MAC_DEV_TEAM_ID }}
-          xcode_path: '/Applications/Xcode_16.4.app'
-          staple: false
-
       - name: Upload signed macOS artifacts
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: |
             .out/darwin/fscript-${{ github.ref_name }}-darwin-arm64.zip
-            .out/darwin/fscript-${{ github.ref_name }}-darwin-x64.zip
 
       - name: Remove unsigned macOS artifact
         continue-on-error: true

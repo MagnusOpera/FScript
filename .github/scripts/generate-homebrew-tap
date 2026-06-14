@@ -23,7 +23,6 @@ cd "$(mktemp -d)"
 >&2 echo "::info Generating Homebrew formula for FScript ${FSCRIPT_VERSION}"
 >&2 echo "::group::Download release assets"
 >&2 gh release download --repo "${FSCRIPT_GH_REPO}" "${FSCRIPT_VERSION}" \
-  -p "fscript-${FSCRIPT_VERSION}-darwin-x64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-darwin-arm64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-linux-x64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-linux-arm64.zip" \
@@ -31,7 +30,6 @@ cd "$(mktemp -d)"
 >&2 echo "::endgroup::"
 
 for i in \
-  "darwin x64   FSCRIPT_DARWIN_X64" \
   "darwin arm64 FSCRIPT_DARWIN_ARM64" \
   "linux x64    FSCRIPT_LINUX_X64" \
   "linux arm64  FSCRIPT_LINUX_ARM64" \
@@ -56,4 +54,4 @@ for i in \
 done
 
 # shellcheck disable=SC2016
-envsubst '$FSCRIPT_VERSION,$FSCRIPT_SUFFIX,$FSCRIPT_DARWIN_X64_URL,$FSCRIPT_DARWIN_X64_SHA256,$FSCRIPT_DARWIN_ARM64_URL,$FSCRIPT_DARWIN_ARM64_SHA256,$FSCRIPT_LINUX_X64_URL,$FSCRIPT_LINUX_X64_SHA256,$FSCRIPT_LINUX_ARM64_URL,$FSCRIPT_LINUX_ARM64_SHA256' < "${TAP_TEMPLATE_FILE}"
+envsubst '$FSCRIPT_VERSION,$FSCRIPT_SUFFIX,$FSCRIPT_DARWIN_ARM64_URL,$FSCRIPT_DARWIN_ARM64_SHA256,$FSCRIPT_LINUX_X64_URL,$FSCRIPT_LINUX_X64_SHA256,$FSCRIPT_LINUX_ARM64_URL,$FSCRIPT_LINUX_ARM64_SHA256' < "${TAP_TEMPLATE_FILE}"

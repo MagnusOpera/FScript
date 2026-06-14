@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed macOS Intel release packaging from the release publish workflows and Homebrew asset generation.
+
 ## [0.71.1]
 
 

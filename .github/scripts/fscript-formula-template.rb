@@ -4,11 +4,6 @@ class Fscript${FSCRIPT_SUFFIX} < Formula
   homepage "https://github.com/magnusopera/fscript"
   version "${FSCRIPT_VERSION}"
 
-  if OS.mac? && Hardware::CPU.intel?
-    url "${FSCRIPT_DARWIN_X64_URL}"
-    sha256 "${FSCRIPT_DARWIN_X64_SHA256}"
-  end
-
   if OS.mac? && Hardware::CPU.arm?
     url "${FSCRIPT_DARWIN_ARM64_URL}"
     sha256 "${FSCRIPT_DARWIN_ARM64_SHA256}"
