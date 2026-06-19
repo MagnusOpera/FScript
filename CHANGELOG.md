@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.73.0]
+
+
 - Hardened filesystem sandboxing so imports and runtime filesystem externs reject symlink/reparse-point paths and do not traverse unsafe directories.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.72.0...0.73.0
 
 ## [0.72.0]
 
