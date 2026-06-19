@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.74.0]
+
+
 - Added a Fable-compiled JavaScript embedding package for running FScript in Node and browser-compatible ESM hosts.
 - Added website documentation and a browser sandbox for the Fable JavaScript FScript runtime.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.73.0...0.74.0
 
 ## [0.73.0]
 
