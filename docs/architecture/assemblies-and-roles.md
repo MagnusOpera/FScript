@@ -39,6 +39,30 @@ Use this when:
 NuGet:
 - `MagnusOpera.FScript.Language`
 
+Fable:
+- The project is Fable-compatible for source package consumers.
+- Fable hosts should use the JavaScript facade rather than consuming raw F# discriminated unions directly.
+
+### `FScript.JavaScript`
+Role:
+- Fable-compiled JavaScript facade for Node and browser-compatible ESM hosts.
+
+Responsibilities:
+- Compile `FScript.Language` to JavaScript through Fable.
+- Expose stable JS entry points such as `run`, `parse`, `infer`, `evaluate`, `load`, and `invoke`.
+- Provide a small stateful session API for browser sandbox and REPL-like JavaScript hosts.
+- Convert between FScript runtime values and tagged JavaScript objects.
+- Accept JavaScript-provided externs with explicit type schemes.
+- Resolve imports through host-provided virtual source maps or resolver callbacks.
+
+Use this when:
+- You want to run or embed FScript from JavaScript.
+- You need repeated invocation of exported script functions from a JS host.
+- You want to provide JS externs without loading the .NET runtime extern catalog.
+
+npm:
+- `@magnusopera/fscript`
+
 ### `FScript.Runtime`
 Role:
 - Runtime integration layer and extern catalog.
@@ -118,12 +142,20 @@ Use this when:
 3. Host runs parse/infer/eval programmatically.
 4. Host decides output, logging, and error handling behavior.
 
+### JavaScript host path
+1. Host app imports `@magnusopera/fscript` as an ESM package.
+2. Host provides optional JS externs through `extern({ name, arity, scheme, invoke })`.
+3. Host executes `run` for one-shot evaluation or `load` plus `invoke` for repeated calls.
+4. Host receives tagged JS values and structured JS errors.
+5. Host resolves imports from virtual paths using `sources` or `resolveImport`; no file-backed resolver is available in Fable builds.
+
 ## Dependency direction
 - `FScript.Language` has no dependency on `FScript.Runtime`.
+- `FScript.JavaScript` depends on `FScript.Language` and Fable packages.
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
 - `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
 - `FScript.TypeProvider` depends on `FScript.Language` and `FScript.Runtime`.
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
-This keeps the language engine reusable while runtime capabilities remain host-configurable.
+This keeps the language engine reusable while runtime capabilities remain host-configurable. The JavaScript facade is intentionally separate from `.NET` runtime externs: v1 exposes core language hosting, virtual imports, tagged values, and JS-provided externs, while filesystem, console, task, and other runtime modules stay in the .NET runtime layer.

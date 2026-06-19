@@ -14,6 +14,28 @@ module BuiltinFunctions =
         | Some value -> value
         | None -> failwith $"Missing builtin signature for '{name}'"
 
+    let private tryParseInt64 (text: string) =
+#if FABLE_COMPILER
+        match Int64.TryParse(text) with
+        | true, value -> Some value
+        | _ -> None
+#else
+        match Int64.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture) with
+        | true, value -> Some value
+        | _ -> None
+#endif
+
+    let private tryParseDouble (text: string) =
+#if FABLE_COMPILER
+        match Double.TryParse(text) with
+        | true, value -> Some value
+        | _ -> None
+#else
+        match Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
+        | true, value -> Some value
+        | _ -> None
+#endif
+
     let private expectString functionName args =
         match args with
         | [ VString value ] -> value
@@ -107,9 +129,9 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 let text = expectString "Int.tryParse" args
-                match Int64.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture) with
-                | true, value -> VOption (Some (VInt value))
-                | _ -> VOption None) }
+                match tryParseInt64 text with
+                | Some value -> VOption (Some (VInt value))
+                | None -> VOption None) }
 
     let private builtinFloatTryParse : ExternalFunction =
         { Name = "Float.tryParse"
@@ -118,9 +140,9 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 let text = expectString "Float.tryParse" args
-                match Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
-                | true, value -> VOption (Some (VFloat value))
-                | _ -> VOption None) }
+                match tryParseDouble text with
+                | Some value -> VOption (Some (VFloat value))
+                | None -> VOption None) }
 
     let private builtinBoolTryParse : ExternalFunction =
         { Name = "Bool.tryParse"

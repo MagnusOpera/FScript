@@ -75,6 +75,11 @@ const config: Config = {
           dropdownActiveClassDisabled: true,
         },
         {
+          to: '/sandbox',
+          label: 'Sandbox',
+          position: 'left',
+        },
+        {
           href: 'https://github.com/MagnusOpera/FScript',
           label: 'GitHub',
           position: 'right',

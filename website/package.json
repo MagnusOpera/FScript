@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
+    "prepare:fscript": "dotnet tool restore && dotnet fable ../src/FScript.JavaScript/FScript.JavaScript.fsproj --outDir src/generated/fscript --sourceMaps false",
+    "prestart": "npm run prepare:fscript",
     "start": "docusaurus start",
+    "prebuild": "npm run prepare:fscript",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
@@ -12,6 +15,7 @@
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
+    "pretypecheck": "npm run prepare:fscript",
     "typecheck": "tsc",
     "version-docs": "node ./scripts/version-docs.mjs"
   },

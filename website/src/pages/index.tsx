@@ -24,8 +24,13 @@ const features: Feature[] = [
     to: '/manual/examples/guided-examples',
   },
   {
-    title: 'Embed in .NET Hosts',
-    description: 'Expose host capabilities through externs with explicit typing and safety boundaries.',
+    title: 'Try the Sandbox',
+    description: 'Run FScript directly in the browser with the Fable JavaScript runtime.',
+    to: '/sandbox',
+  },
+  {
+    title: 'Embed in Hosts',
+    description: 'Expose .NET or JavaScript host capabilities through typed externs and clear safety boundaries.',
     to: '/manual/embedding/overview',
   },
 ];
@@ -54,6 +59,9 @@ function HomepageHeader() {
           </Link>
           <Link className="button button--secondary button--lg" to="/manual/language/values-and-bindings">
             Read the Manual
+          </Link>
+          <Link className="button button--secondary button--lg" to="/sandbox">
+            Open Sandbox
           </Link>
           <Link className="button button--secondary button--lg" to="/manual/examples/guided-examples">
             Browse Examples

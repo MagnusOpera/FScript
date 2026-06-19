@@ -24,7 +24,8 @@ FScript is designed for host applications that embed a scripting language safely
 ## Recommended reading order
 
 1. [Real-World Embedding (Load, Resolve Type, Execute)](./real-world-embedding)
-2. [F# Type Provider and Use Cases](./type-provider)
-3. [Register Extern Functions](./register-externs)
-4. [Resolver and Includes](./resolver-and-includes)
-5. [Sandbox and Safety](./sandbox-and-safety)
+2. [Fable and JavaScript Hosts](./fable-javascript)
+3. [F# Type Provider and Use Cases](./type-provider)
+4. [Register Extern Functions](./register-externs)
+5. [Resolver and Includes](./resolver-and-includes)
+6. [Sandbox and Safety](./sandbox-and-safety)

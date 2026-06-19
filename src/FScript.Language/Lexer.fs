@@ -6,6 +6,13 @@ module Lexer =
     let private isIdentStart c = Char.IsLetter c || c = '_'
     let private isIdentPart c = Char.IsLetterOrDigit c || c = '_' || c = '\''
 
+    let private parseFloatLiteral (text: string) =
+#if FABLE_COMPILER
+        Double.Parse(text)
+#else
+        Double.Parse(text, Globalization.CultureInfo.InvariantCulture)
+#endif
+
     let private mkSpan sourceName line col length =
         let startPos = { File = sourceName; Line = line; Column = col }
         let endPos = { File = sourceName; Line = line; Column = col + length }
@@ -282,7 +289,7 @@ module Lexer =
                     let text = src.Substring(start, idx - start)
                     let span = mkSpan sourceName line startCol (idx - start)
                     if hasDot then
-                        addToken (FloatLit (Double.Parse(text, Globalization.CultureInfo.InvariantCulture))) span tokens
+                        addToken (FloatLit (parseFloatLiteral text)) span tokens
                     else
                         addToken (IntLit (Int64.Parse(text))) span tokens
                     i <- idx

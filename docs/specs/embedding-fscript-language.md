@@ -25,6 +25,28 @@ Primary entry points are in module `FScript`:
 - `FScript.evalWithExterns : ExternalFunction list -> TypeInfer.TypedProgram -> Value`
 - `FScript.run : string -> Value` (parse + infer + eval without externs)
 
+JavaScript hosts should use the Fable-compiled package surface instead of raw F# discriminated unions. The ESM package is published as `@magnusopera/fscript` and exports:
+
+- `run(source, options?)`
+- `parse(source, options?)`
+- `infer(program, externs?)`
+- `evaluate(typedProgram, externs?)`
+- `load(source, options?)`
+- `invoke(loaded, name, args)`
+- `listFunctions(loaded)`
+- `listValues(loaded)`
+- `getValue(loaded, name)`
+- `formatValue(value)`
+- `toJs(value)`
+- `fromJs(value, expectedType?)`
+- `createSession(options?)`
+- `submit(session, source)`
+- `resetSession(session)`
+- `T` type and scheme builders
+- `extern({ name, arity, scheme, invoke })`
+
+The JavaScript package targets Node and browser-compatible ESM hosts. It embeds `FScript.Language` through Fable and does not include the .NET `FScript.Runtime` extern catalog.
+
 ## Running scripts
 
 ```fsharp
@@ -59,6 +81,85 @@ let program = FScript.parse source
 let typed = FScript.inferWithExterns [ toUpperExtern ] program
 let result = FScript.evalWithExterns [ toUpperExtern ] typed
 ```
+
+## JavaScript embedding
+
+Use `run` for one-shot execution and `load` when the host will invoke exported functions repeatedly.
+
+```javascript
+import { T, extern, run, load, invoke, getValue } from "@magnusopera/fscript";
+
+const shout = extern({
+  name: "Host.shout",
+  arity: 1,
+  scheme: T.scheme(T.func(T.string, T.string)),
+  invoke(args) {
+    return { kind: "string", value: `${args[0].value}!` };
+  }
+});
+
+const value = run("Host.shout \"fable\"", { externs: [shout] });
+// value = { kind: "string", value: "fable!" }
+
+const loaded = load("[<export>] let add x y = x + y\n[<export>] let answer = 42");
+const sum = invoke(loaded, "add", [1, 2]);
+const answer = getValue(loaded, "answer");
+```
+
+JavaScript values crossing the host boundary use tagged objects:
+
+- `{ kind: "unit" }`
+- `{ kind: "int", value: 42n }`
+- `{ kind: "float", value: 3.14 }`
+- `{ kind: "bool", value: true }`
+- `{ kind: "string", value: "text" }`
+- `{ kind: "list", values: [...] }`
+- `{ kind: "tuple", values: [...] }`
+- `{ kind: "record", fields: { ... } }`
+- `{ kind: "map", entries: [{ key, value }] }`
+- `{ kind: "option", value: null | taggedValue }`
+- `{ kind: "union", typeName, caseName, value: null | taggedValue }`
+- `{ kind: "type", name }`
+- `{ kind: "opaque", valueType }`
+
+`int` values are emitted as JavaScript `bigint`. Inputs may use `bigint`, safe integer `number`, string, or tagged `{ kind: "int", value }` forms. Functions, externals, tasks, and union constructors are opaque values; exported functions are invoked through `invoke`.
+
+JavaScript errors thrown by the facade have `kind: "fscript-error"`, `phase` (`parse`, `type`, `eval`, or `host`), `message`, and span data when the underlying language stage provides it.
+
+### JavaScript sessions
+
+Browser sandbox and REPL-like hosts can use the stateful session API:
+
+```javascript
+const session = createSession({
+  rootDirectory: "/",
+  entryFile: "/main.fss"
+});
+
+submit(session, "let add x y = x + y");
+const result = submit(session, "add 20 22");
+// result = { kind: "session-result", hasValue: true, value, text: "42", retainedCount: 1 }
+
+resetSession(session);
+```
+
+Sessions retain submitted declarations and type declarations. Expression-only submissions are evaluated against retained declarations and return a formatted `text` result plus the tagged `value`. The browser session API mirrors the CLI REPL's core state model, but it does not include console-specific controls such as prompts, EOF handling, or default .NET runtime externs.
+
+### JavaScript imports
+
+Fable builds do not use the .NET file-backed import resolver. A JavaScript host must supply imports through virtual paths:
+
+```javascript
+const loaded = load("import \"shared.fss\" as Shared\n[<export>] let value = Shared.inc 41", {
+  rootDirectory: "/",
+  entryFile: "/main.fss",
+  sources: {
+    "/shared.fss": "let inc x = x + 1"
+  }
+});
+```
+
+The facade also accepts `resolveImport(path)` when imports should be loaded lazily. In JavaScript, imports are confined to the virtual `rootDirectory`, must resolve to `.fss` paths, and must return source text from the host-provided source map or callback. File system reads and symlink checks remain .NET-only behavior.
 
 ## Loading once and invoking by name
 

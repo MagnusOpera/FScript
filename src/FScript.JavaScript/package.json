@@ -1,0 +1,16 @@
+{
+  "name": "@magnusopera/fscript",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/Library.js",
+  "exports": "./dist/Library.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "dotnet fable FScript.JavaScript.fsproj --outDir dist --sourceMaps false",
+    "test": "node --test test/*.test.mjs"
+  },
+  "license": "MIT"
+}
