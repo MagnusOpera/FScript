@@ -1,10 +1,17 @@
-.PHONY: build test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
 
 test:
 	dotnet test FScript.sln -c Release
+
+fable-build:
+	dotnet tool restore
+	dotnet fable src/FScript.JavaScript/FScript.JavaScript.fsproj --outDir src/FScript.JavaScript/dist --sourceMaps false
+
+fable-test: fable-build
+	node --test src/FScript.JavaScript/test/*.test.mjs
 
 smoke-tests:
 	@set -e; \

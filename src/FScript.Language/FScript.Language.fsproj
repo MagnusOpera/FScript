@@ -9,7 +9,8 @@
     <Authors>Magnus Opera</Authors>
     <Title>FScript Language Engine</Title>
     <Description>Embeddable FScript language engine: parser, type inference, and evaluator.</Description>
-    <PackageTags>fscript;language;interpreter;fsharp;ml</PackageTags>
+    <PackageTags>fscript;language;interpreter;fsharp;ml;fable-dotnet;fable-javascript</PackageTags>
+    <FablePackageType>library</FablePackageType>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>FScriptIcon.png</PackageIcon>
@@ -41,6 +42,13 @@
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\NUGET.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Package.SDK" Version="1.3.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

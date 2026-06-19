@@ -1,0 +1,250 @@
+.page {
+  min-height: calc(100vh - var(--ifm-navbar-height));
+  background: var(--ifm-background-color);
+}
+
+.shell {
+  width: min(1200px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.title {
+  margin-bottom: 0.25rem;
+  font-size: 2rem;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.selectLabel {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.select {
+  min-width: 9rem;
+  height: 2.35rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+  padding: 0 0.7rem;
+}
+
+.segmented {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(5.25rem, 1fr));
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ifm-background-surface-color);
+}
+
+.segment,
+.segmentActive {
+  height: 2.35rem;
+  border: 0;
+  padding: 0 0.75rem;
+  color: var(--ifm-color-emphasis-800);
+  background: transparent;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.segmentActive {
+  color: #ffffff;
+  background: #2563a9;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.editorPanel,
+.history {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  background: var(--ifm-background-surface-color);
+  overflow: hidden;
+}
+
+.panelHeader {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-width: 5.5rem;
+  min-height: 2.1rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 0.85rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: #1f6fb2;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondaryButton {
+  color: var(--ifm-color-emphasis-800);
+  background: var(--ifm-color-emphasis-100);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+.editor,
+.importEditor {
+  display: block;
+  width: 100%;
+  border: 0;
+  resize: vertical;
+  background: #111827;
+  color: #f8fafc;
+  font: 0.95rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  padding: 1rem;
+  tab-size: 2;
+}
+
+.editor:focus,
+.importEditor:focus {
+  outline: 2px solid #4ea8de;
+  outline-offset: -2px;
+}
+
+.editor {
+  min-height: 32rem;
+}
+
+.importEditor {
+  min-height: 12rem;
+}
+
+.output {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.85rem;
+}
+
+.output[data-status='ok'] {
+  border-top-color: #2e7d5b;
+}
+
+.output[data-status='error'] {
+  border-top-color: #b42318;
+}
+
+.outputHeader {
+  margin-bottom: 0.5rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.outputText,
+.outputDetail,
+.historyItem {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+
+.outputText {
+  color: var(--ifm-font-color-base);
+}
+
+.outputDetail {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-color-emphasis-800);
+}
+
+.history {
+  margin-top: 1rem;
+  padding: 0.85rem;
+}
+
+.historyItem + .historyItem {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+@media (max-width: 900px) {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar {
+    justify-content: space-between;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .editor {
+    min-height: 24rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .shell {
+    width: min(100% - 1rem, 1200px);
+    padding-top: 1rem;
+  }
+
+  .toolbar,
+  .selectLabel,
+  .select,
+  .segmented {
+    width: 100%;
+  }
+
+  .title {
+    font-size: 1.65rem;
+  }
+}

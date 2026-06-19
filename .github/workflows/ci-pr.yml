@@ -51,6 +51,9 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
+      - name: Run Fable JS tests
+        run: make fable-test
+
       - name: Build website
         run: |
           cd website

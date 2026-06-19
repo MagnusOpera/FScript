@@ -1,7 +1,10 @@
 namespace FScript.Language
 
 module Eval =
+#if FABLE_COMPILER
+#else
     open System.Threading.Tasks
+#endif
 
     type ProgramState =
         { TypeDefs: Map<string, Type>
@@ -23,8 +26,15 @@ module Eval =
         { Message = $"Task failed: {ex.Message}"
           Span = unknownSpan }
 
+    let private withRuntimeLock (runtime: RuntimeState) f =
+#if FABLE_COMPILER
+        f ()
+#else
+        lock runtime.SyncRoot f
+#endif
+
     let private raiseIfBackgroundFailed (runtime: RuntimeState) =
-        lock runtime.SyncRoot (fun () ->
+        withRuntimeLock runtime (fun () ->
             match runtime.BackgroundFailure with
             | Some error -> raise (EvalException error)
             | None -> ())
@@ -343,6 +353,9 @@ module Eval =
 
     and private spawnTaskValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (thunk: Value) : Value =
         raiseIfBackgroundFailed runtime
+#if FABLE_COMPILER
+        raise (EvalException { Message = "Task.spawn is not supported in Fable builds"; Span = unknownSpan })
+#else
         let worker =
             try
                 Task.Run(fun () ->
@@ -352,13 +365,13 @@ module Eval =
                     with
                     | EvalException error ->
                         let taskError = wrapTaskFailure error
-                        lock runtime.SyncRoot (fun () ->
+                        withRuntimeLock runtime (fun () ->
                             if runtime.BackgroundFailure.IsNone then
                                 runtime.BackgroundFailure <- Some taskError)
                         TaskFailed taskError
                     | ex ->
                         let taskError = wrapUnexpectedTaskFailure ex
-                        lock runtime.SyncRoot (fun () ->
+                        withRuntimeLock runtime (fun () ->
                             if runtime.BackgroundFailure.IsNone then
                                 runtime.BackgroundFailure <- Some taskError)
                         TaskFailed taskError)
@@ -367,11 +380,15 @@ module Eval =
                 raise (EvalException (wrapUnexpectedTaskFailure ex))
 
         let handle = { Worker = worker; Awaited = false }
-        lock runtime.SyncRoot (fun () -> runtime.PendingTasks.Add(handle))
+        withRuntimeLock runtime (fun () -> runtime.PendingTasks.Add(handle))
         VTask handle
+#endif
 
     and private awaitTaskValue (runtime: RuntimeState) (taskValue: Value) : Value =
         raiseIfBackgroundFailed runtime
+#if FABLE_COMPILER
+        raise (EvalException { Message = "Task.await is not supported in Fable builds"; Span = unknownSpan })
+#else
         match taskValue with
         | VTask handle ->
             handle.Awaited <- true
@@ -380,12 +397,13 @@ module Eval =
                 raiseIfBackgroundFailed runtime
                 value
             | TaskFailed error ->
-                lock runtime.SyncRoot (fun () ->
+                withRuntimeLock runtime (fun () ->
                     if runtime.BackgroundFailure.IsNone then
                         runtime.BackgroundFailure <- Some error)
                 raise (EvalException error)
         | _ ->
             raise (EvalException { Message = "Task.await expects a task"; Span = unknownSpan })
+#endif
 
     and private applyFunctionValue
         (runtime: RuntimeState)

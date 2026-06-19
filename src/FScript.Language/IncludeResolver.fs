@@ -2,10 +2,133 @@ namespace FScript.Language
 
 open System
 open System.Collections.Generic
+#if FABLE_COMPILER
+#else
 open System.IO
 open System.Runtime.InteropServices
+#endif
 
 module IncludeResolver =
+#if FABLE_COMPILER
+    let private pathComparison = StringComparison.Ordinal
+    let private pathsEqual left right =
+        String.Equals(left, right, pathComparison)
+
+    let private makeStringDictionary () =
+        Dictionary<string, string>()
+
+    let private makeStringHashSet () =
+        HashSet<string>()
+
+    let private normalizeSeparators (path: string) =
+        if String.IsNullOrEmpty(path) then
+            ""
+        else
+            path.Replace('\\', '/')
+
+    let private isPathRooted (path: string) =
+        (normalizeSeparators path).StartsWith("/", StringComparison.Ordinal)
+
+    let private trimTrailingDirectorySeparators (path: string) =
+        let normalized = normalizeSeparators path
+        if String.IsNullOrEmpty(normalized) || normalized = "/" then
+            normalized
+        else
+            normalized.TrimEnd('/')
+
+    let private normalizePath (path: string) =
+        let normalized = normalizeSeparators path
+        let isRooted = normalized.StartsWith("/", StringComparison.Ordinal)
+        let parts = normalized.Split([| '/' |], StringSplitOptions.RemoveEmptyEntries)
+
+        let folded =
+            parts
+            |> Array.fold (fun acc part ->
+                match part with
+                | "." -> acc
+                | ".." ->
+                    match acc with
+                    | [] when isRooted -> []
+                    | [] -> [ ".." ]
+                    | ".." :: _ -> part :: acc
+                    | _ :: rest -> rest
+                | _ -> part :: acc) []
+            |> List.rev
+
+        let body = String.concat "/" folded
+        if isRooted then
+            if String.IsNullOrEmpty(body) then "/" else "/" + body
+        elif String.IsNullOrEmpty(body) then
+            "."
+        else
+            body
+
+    let private normalizeFilePath path =
+        normalizePath path
+
+    let private getDirectoryName (path: string) =
+        let normalized = trimTrailingDirectorySeparators path
+        if String.IsNullOrEmpty(normalized) || normalized = "/" then
+            ""
+        else
+            match normalized.LastIndexOf('/') with
+            | -1 -> ""
+            | 0 -> "/"
+            | index -> normalized.Substring(0, index)
+
+    let private combinePath (directory: string) (path: string) =
+        if String.IsNullOrEmpty(directory) then
+            path
+        elif isPathRooted path then
+            path
+        elif directory.EndsWith("/", StringComparison.Ordinal) then
+            directory + path
+        else
+            directory + "/" + path
+
+    let private normalizeDirectoryPath (path: string) =
+        let full = normalizePath path
+        if full.EndsWith("/", StringComparison.Ordinal) then full else full + "/"
+
+    let private ensureFssPath (path: string) (span: Span) =
+        if not (path.EndsWith(".fss", StringComparison.OrdinalIgnoreCase)) then
+            raise (ParseException { Message = "Only '.fss' files can be used with 'import'"; Span = span })
+
+    let private ensureWithinRoot (rootDirectoryWithSeparator: string) (path: string) (span: Span) =
+        let fullPath = normalizePath path
+        let fullRoot = trimTrailingDirectorySeparators rootDirectoryWithSeparator
+        let rootWithSeparator =
+            if fullRoot.EndsWith("/", StringComparison.Ordinal) then fullRoot else fullRoot + "/"
+        let isRootItself = String.Equals(fullPath, fullRoot, pathComparison)
+        let isUnderRoot = fullPath.StartsWith(rootWithSeparator, pathComparison)
+        if not (isRootItself || isUnderRoot) then
+            raise (ParseException { Message = $"Imported file '{fullPath}' is outside of sandbox root"; Span = span })
+        fullPath
+
+    let private getFileNameWithoutExtension (sourceName: string) =
+        let normalized = trimTrailingDirectorySeparators sourceName
+        let fileName =
+            match normalized.LastIndexOf('/') with
+            | -1 -> normalized
+            | index -> normalized.Substring(index + 1)
+        match fileName.LastIndexOf('.') with
+        | index when index > 0 -> fileName.Substring(0, index)
+        | _ -> fileName
+
+    let private resolveImportPath (currentFile: string) (importPath: string) (rootDirectoryWithSeparator: string) (span: Span) =
+        if String.IsNullOrWhiteSpace(importPath) then
+            raise (ParseException { Message = "Import path cannot be empty"; Span = span })
+
+        ensureFssPath importPath span
+
+        let currentDirectory = getDirectoryName currentFile
+        let candidate =
+            if isPathRooted importPath then importPath
+            elif String.IsNullOrEmpty(currentDirectory) then importPath
+            else combinePath currentDirectory importPath
+
+        ensureWithinRoot rootDirectoryWithSeparator candidate span
+#else
     let private pathComparison =
         if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
             StringComparison.OrdinalIgnoreCase
@@ -18,8 +141,17 @@ module IncludeResolver =
         else
             StringComparer.Ordinal
 
+    let private makeStringDictionary () =
+        Dictionary<string, string>(pathStringComparer)
+
+    let private makeStringHashSet () =
+        HashSet<string>(pathStringComparer)
+
     let private pathsEqual left right =
         String.Equals(left, right, pathComparison)
+
+    let private normalizeFilePath path =
+        Path.GetFullPath(path)
 
     let private isDirectorySeparator c =
         c = Path.DirectorySeparatorChar || c = Path.AltDirectorySeparatorChar
@@ -112,6 +244,10 @@ module IncludeResolver =
 
         ensureWithinRoot rootDirectoryWithSeparator candidate span
 
+    let private getFileNameWithoutExtension (sourceName: string) =
+        Path.GetFileNameWithoutExtension(sourceName)
+#endif
+
     let private isValidAliasName (name: string) =
         let startsValid c = Char.IsLetter(c) || c = '_'
         let partValid c = Char.IsLetterOrDigit(c) || c = '_'
@@ -122,7 +258,7 @@ module IncludeResolver =
     let private tryGetSourceModulePrefix (sourceName: string) =
         let stem =
             try
-                Path.GetFileNameWithoutExtension(sourceName)
+                getFileNameWithoutExtension sourceName
             with
             | _ -> sourceName
 
@@ -461,7 +597,7 @@ module IncludeResolver =
             |> List.collect (fun (alias, importPath, span) ->
                 let resolvedPath = resolveImportPath currentFile importPath rootDirectoryWithSeparator span
                 let childPrefix = aliasMappings[alias]
-                (!loadFileRef) stack false resolvedPath (Some childPrefix))
+                loadFileRef.Value stack false resolvedPath (Some childPrefix))
 
         let localStatements = localCode |> Seq.toList
         let rewrittenLocalStatements =
@@ -479,7 +615,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
+        let pathPrefixes = makeStringDictionary ()
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -498,6 +634,10 @@ module IncludeResolver =
         expandProgram dummyRoot fileSpan getOrCreatePrefix loadRef [] false sourceName prefix program
 
     let parseProgramFromFile (rootDirectory: string) (entryFile: string) : Program =
+#if FABLE_COMPILER
+        let p = Span.posInFile entryFile 1 1
+        raise (ParseException { Message = "File-backed imports are not supported in Fable builds; use resolver-backed source imports"; Span = Span.mk p p })
+#else
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let fileSpan path =
             let p = Span.posInFile path 1 1
@@ -506,7 +646,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
+        let pathPrefixes = makeStringDictionary ()
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -514,10 +654,10 @@ module IncludeResolver =
                 let prefix = nextPrefixSegment ()
                 pathPrefixes[path] <- prefix
                 prefix
-        let emittedFiles = HashSet<string>(pathStringComparer)
+        let emittedFiles = makeStringHashSet ()
 
         let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) (prefix: string option) : Program =
-            let fullFilePath = Path.GetFullPath(filePath)
+            let fullFilePath = normalizeFilePath filePath
             let initialSpan = fileSpan fullFilePath
             ensureFssPath fullFilePath initialSpan
             let sandboxedPath = ensureWithinRoot rootDirectoryWithSeparator fullFilePath initialSpan
@@ -538,6 +678,7 @@ module IncludeResolver =
                 expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
         loadFile [] true entryFile None
+#endif
 
     let private parseProgramFromSourceWithIncludesCore
         (rootDirectory: string)
@@ -554,7 +695,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
+        let pathPrefixes = makeStringDictionary ()
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -562,15 +703,15 @@ module IncludeResolver =
                 let prefix = nextPrefixSegment ()
                 pathPrefixes[path] <- prefix
                 prefix
-        let emittedFiles = HashSet<string>(pathStringComparer)
+        let emittedFiles = makeStringHashSet ()
 
-        let entryFullPath = Path.GetFullPath(entryFile)
+        let entryFullPath = normalizeFilePath entryFile
         let entrySpan = fileSpan entryFullPath
         ensureFssPath entryFullPath entrySpan
         let entrySandboxedPath = ensureWithinRoot rootDirectoryWithSeparator entryFullPath entrySpan
 
         let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) (prefix: string option) : Program =
-            let fullFilePath = Path.GetFullPath(filePath)
+            let fullFilePath = normalizeFilePath filePath
             let initialSpan = fileSpan fullFilePath
             ensureFssPath fullFilePath initialSpan
             let sandboxedPath = ensureWithinRoot rootDirectoryWithSeparator fullFilePath initialSpan
@@ -596,7 +737,11 @@ module IncludeResolver =
                             | None ->
                                 raise (ParseException { Message = $"Imported file '{sandboxedPath}' could not be resolved"; Span = fileSpan sandboxedPath })
                         | None ->
+#if FABLE_COMPILER
+                            raise (ParseException { Message = $"Imported file '{sandboxedPath}' could not be resolved; Fable hosts must provide a resolver"; Span = fileSpan sandboxedPath })
+#else
                             File.ReadAllText(sandboxedPath)
+#endif
                 let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
                 let loadRef = ref loadFile
                 expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program

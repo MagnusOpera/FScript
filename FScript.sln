@@ -29,6 +29,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.TypeProvider", "src
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.TypeProvider.Tests", "tests\FScript.TypeProvider.Tests\FScript.TypeProvider.Tests.fsproj", "{42D043DE-8987-4072-8841-DCB2144AC18C}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.JavaScript", "src\FScript.JavaScript\FScript.JavaScript.fsproj", "{CEB16446-D96F-40A7-9771-F90B9A78D7B5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -171,6 +173,18 @@ Global
 		{42D043DE-8987-4072-8841-DCB2144AC18C}.Release|x64.Build.0 = Release|Any CPU
 		{42D043DE-8987-4072-8841-DCB2144AC18C}.Release|x86.ActiveCfg = Release|Any CPU
 		{42D043DE-8987-4072-8841-DCB2144AC18C}.Release|x86.Build.0 = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|x64.Build.0 = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Debug|x86.Build.0 = Debug|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|x64.ActiveCfg = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|x64.Build.0 = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|x86.ActiveCfg = Release|Any CPU
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -187,5 +201,6 @@ Global
 		{9B840598-3B03-457B-B1BE-9701BFD0D40A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{14D91D30-8E5E-482A-940B-CC55F2DE80AA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{42D043DE-8987-4072-8841-DCB2144AC18C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{CEB16446-D96F-40A7-9771-F90B9A78D7B5} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

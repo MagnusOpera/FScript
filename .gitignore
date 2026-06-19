@@ -39,3 +39,5 @@ Thumbs.db
 
 vscode-fscript/dist/
 vscode-fscript/*.vsix
+
+src/FScript.JavaScript/dist/

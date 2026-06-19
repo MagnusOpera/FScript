@@ -36,6 +36,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'embedding/embedding-overview',
         'embedding/real-world-embedding',
+        'embedding/fable-javascript',
         'embedding/type-provider',
         'embedding/register-externs',
         'embedding/resolver-and-includes',

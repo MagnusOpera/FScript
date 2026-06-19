@@ -1,6 +1,9 @@
 namespace FScript.Language
 
+#if FABLE_COMPILER
+#else
 open System.Threading.Tasks
+#endif
 
 type MapKey =
     | MKString of string
@@ -29,8 +32,12 @@ and TaskOutcome =
     | TaskFailed of EvalError
 
 and TaskHandle =
+#if FABLE_COMPILER
+    { mutable Awaited: bool }
+#else
     { Worker: Task<TaskOutcome>
       mutable Awaited: bool }
+#endif
 
 and ExternalCallContext =
     { Apply: Value -> Value -> Value
