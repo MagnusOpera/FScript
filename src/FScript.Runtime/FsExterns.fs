@@ -11,6 +11,34 @@ module FsExterns =
     let private throwBlockedPathAccess (operationName: string) (fullPath: string) =
         raise (HostCommon.evalError $"Access denied for operation '{operationName}' on denied path '{fullPath}'")
 
+    let private tryEnumerateFiles (directory: string) =
+        try
+            Directory.EnumerateFiles(directory) |> Seq.toList
+        with _ ->
+            []
+
+    let private tryEnumerateDirectories (directory: string) =
+        try
+            Directory.EnumerateDirectories(directory) |> Seq.toList
+        with _ ->
+            []
+
+    let private enumerateReachableFiles (ctx: HostContext) (startDirectory: string) =
+        let rec loop directory =
+            seq {
+                for file in tryEnumerateFiles directory do
+                    let full = HostCommon.normalizeFullPath file
+                    if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                        yield full
+
+                for childDirectory in tryEnumerateDirectories directory do
+                    let full = HostCommon.normalizeFullPath childDirectory
+                    if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                        yield! loop full
+            }
+
+        loop startDirectory
+
     let read_text (ctx: HostContext) : ExternalFunction =
         { Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
@@ -147,14 +175,16 @@ module FsExterns =
                   let root = HostCommon.normalizeRoot ctx
                   let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                   try
-                      Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-                      |> Seq.filter (fun full -> not (HostCommon.isDeniedPath ctx full))
-                      |> Seq.map (fun full -> Path.GetRelativePath(root, full).Replace("\\", "/"))
-                      |> Seq.filter regex.IsMatch
-                      |> Seq.map VString
-                      |> Seq.toList
-                      |> VList
-                      |> HostCommon.some
+                      if not (Directory.Exists(root)) || not (HostCommon.isSafePath ctx root) || HostCommon.isDeniedPath ctx root then
+                          HostCommon.none
+                      else
+                          enumerateReachableFiles ctx root
+                          |> Seq.map (fun full -> Path.GetRelativePath(root, full).Replace("\\", "/"))
+                          |> Seq.filter regex.IsMatch
+                          |> Seq.map VString
+                          |> Seq.toList
+                          |> VList
+                          |> HostCommon.some
                   with _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.glob expects (string)") }
 
@@ -165,12 +195,11 @@ module FsExterns =
           Impl = fun _ -> function
               | [ VString directory; VString pattern ] ->
                   match HostCommon.tryResolvePath ctx directory with
-                  | Some fullDirectory when Directory.Exists(fullDirectory) ->
+                  | Some fullDirectory when Directory.Exists(fullDirectory) && not (HostCommon.isDeniedPath ctx fullDirectory) ->
                       let root = HostCommon.normalizeRoot ctx
                       let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                       try
-                          Directory.EnumerateFiles(fullDirectory, "*", SearchOption.AllDirectories)
-                          |> Seq.filter (fun full -> not (HostCommon.isDeniedPath ctx full))
+                          enumerateReachableFiles ctx fullDirectory
                           |> Seq.filter (fun full ->
                               let relativeToDirectory = Path.GetRelativePath(fullDirectory, full) |> normalizeSeparators
                               regex.IsMatch relativeToDirectory)

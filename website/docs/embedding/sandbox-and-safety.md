@@ -12,6 +12,7 @@ Scripts can only perform actions that your host exposes.
 
 - Do not expose risky externs by default.
 - Restrict filesystem scope with root/deny policies.
+- Treat symlinks and reparse points as sandbox boundary risks; built-in `Fs.*` externs reject those paths.
 - Use cancellation and timeouts for execution control.
 - Treat script execution as untrusted input handling.
 

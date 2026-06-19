@@ -53,8 +53,12 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Fs.enumerateFiles : string -> string -> string list option`
 - Denied-path policy:
   - `Fs.glob` and `Fs.enumerateFiles` hide denied entries.
+  - `Fs.glob` and `Fs.enumerateFiles` do not descend into denied or symlink/reparse-point directories.
   - `Fs.readText`, `Fs.writeText`, and `Fs.createDirectory` throw an eval error on denied targets.
   - `Fs.exists` returns `false` and `Fs.kind` returns `FsKind.Missing` for denied targets.
+- Root-boundary policy:
+  - Paths are normalized before root checks.
+  - Symlink/reparse-point paths are treated as unsafe out-of-root paths.
 
 ### Regex
 - `Regex.matchGroups : string -> string -> string list option`

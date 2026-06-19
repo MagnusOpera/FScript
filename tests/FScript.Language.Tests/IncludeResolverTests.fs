@@ -17,6 +17,17 @@ type IncludeResolverTests () =
             if Directory.Exists(path) then
                 Directory.Delete(path, true)
 
+    let skipSymlinkTest (ex: exn) =
+        Assert.Inconclusive($"Symlink creation is not available in this environment: {ex.Message}")
+
+    let createFileSymlinkOrInconclusive linkPath targetPath =
+        try
+            File.CreateSymbolicLink(linkPath, targetPath) |> ignore
+        with
+        | :? PlatformNotSupportedException as ex -> skipSymlinkTest ex
+        | :? UnauthorizedAccessException as ex -> skipSymlinkTest ex
+        | :? IOException as ex -> skipSymlinkTest ex
+
     [<Test>]
     member _.``Import resolver expands imports once`` () =
         withTempDir (fun dir ->
@@ -67,6 +78,22 @@ type IncludeResolverTests () =
                 File.WriteAllText(externalFile, "let outside = 1")
                 let mainPath = Path.Combine(dir, "main.fss")
                 File.WriteAllText(mainPath, "import \"../" + Path.GetFileName(externalFile) + "\" as Outside\nlet x = 1")
+                let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
+                act |> should throw typeof<ParseException>
+            finally
+                if File.Exists(externalFile) then
+                    File.Delete(externalFile))
+
+    [<Test>]
+    member _.``Import resolver blocks symlink paths outside root`` () =
+        withTempDir (fun dir ->
+            let externalFile = Path.Combine(Path.GetTempPath(), $"fscript-include-external-{Guid.NewGuid():N}.fss")
+            try
+                File.WriteAllText(externalFile, "let outside = 1")
+                let linkedPath = Path.Combine(dir, "linked.fss")
+                createFileSymlinkOrInconclusive linkedPath externalFile
+                let mainPath = Path.Combine(dir, "main.fss")
+                File.WriteAllText(mainPath, "import \"linked.fss\" as Linked\nlet x = 1")
                 let act () = IncludeResolver.parseProgramFromFile dir mainPath |> ignore
                 act |> should throw typeof<ParseException>
             finally

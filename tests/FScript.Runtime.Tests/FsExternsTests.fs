@@ -1,5 +1,6 @@
 namespace FScript.Runtime.Tests
 
+open System
 open System.IO
 open NUnit.Framework
 open FScript.Language
@@ -8,6 +9,25 @@ open FScript.Runtime.Tests.HostTestHelpers
 
 [<TestFixture>]
 type FsExternsTests () =
+    let skipSymlinkTest (ex: exn) =
+        Assert.Inconclusive($"Symlink creation is not available in this environment: {ex.Message}")
+
+    let createFileSymlinkOrInconclusive linkPath targetPath =
+        try
+            File.CreateSymbolicLink(linkPath, targetPath) |> ignore
+        with
+        | :? PlatformNotSupportedException as ex -> skipSymlinkTest ex
+        | :? UnauthorizedAccessException as ex -> skipSymlinkTest ex
+        | :? IOException as ex -> skipSymlinkTest ex
+
+    let createDirectorySymlinkOrInconclusive linkPath targetPath =
+        try
+            Directory.CreateSymbolicLink(linkPath, targetPath) |> ignore
+        with
+        | :? PlatformNotSupportedException as ex -> skipSymlinkTest ex
+        | :? UnauthorizedAccessException as ex -> skipSymlinkTest ex
+        | :? IOException as ex -> skipSymlinkTest ex
+
     [<Test>]
     member _.``fs_read_text reads files under root`` () =
         withTempRoot "fscript-host-tests" (fun root ->
@@ -25,6 +45,75 @@ type FsExternsTests () =
             match invoke ext [ VString "../outside.txt" ] with
             | VOption None -> ()
             | _ -> Assert.Fail("Expected None for escaped path"))
+
+    [<Test>]
+    member _.``filesystem probes treat symlink file escapes as missing`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let outside = Path.Combine(Path.GetTempPath(), $"fscript-outside-{Guid.NewGuid():N}.txt")
+            try
+                File.WriteAllText(outside, "secret")
+                createFileSymlinkOrInconclusive (Path.Combine(root, "linked.txt")) outside
+
+                let context = { RootDirectory = root; DeniedPathGlobs = [] }
+                let readText = FsExterns.read_text context
+                let exists = FsExterns.exists context
+                let kind = FsExterns.entry_kind context
+
+                match invoke readText [ VString "linked.txt" ] with
+                | VOption None -> ()
+                | _ -> Assert.Fail("Expected Fs.readText None for symlink escape")
+
+                match invoke exists [ VString "linked.txt" ] with
+                | VBool false -> ()
+                | _ -> Assert.Fail("Expected Fs.exists false for symlink escape")
+
+                match invoke kind [ VString "linked.txt" ] with
+                | VUnionCase("FsKind", "Missing", None) -> ()
+                | _ -> Assert.Fail("Expected Fs.kind Missing for symlink escape")
+            finally
+                if File.Exists(outside) then File.Delete(outside))
+
+    [<Test>]
+    member _.``filesystem writes refuse symlink file escapes`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let outside = Path.Combine(Path.GetTempPath(), $"fscript-outside-{Guid.NewGuid():N}.txt")
+            try
+                File.WriteAllText(outside, "secret")
+                createFileSymlinkOrInconclusive (Path.Combine(root, "linked.txt")) outside
+
+                let writeText = FsExterns.write_text { RootDirectory = root; DeniedPathGlobs = [] }
+                match invoke writeText [ VString "linked.txt"; VString "changed" ] with
+                | VBool false -> ()
+                | _ -> Assert.Fail("Expected Fs.writeText false for symlink escape")
+
+                Assert.That(File.ReadAllText(outside), Is.EqualTo("secret"))
+            finally
+                if File.Exists(outside) then File.Delete(outside))
+
+    [<Test>]
+    member _.``filesystem writes refuse symlink directory escapes`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let outsideDir = Path.Combine(Path.GetTempPath(), $"fscript-outside-dir-{Guid.NewGuid():N}")
+            try
+                Directory.CreateDirectory(outsideDir) |> ignore
+                createDirectorySymlinkOrInconclusive (Path.Combine(root, "linked-dir")) outsideDir
+
+                let context = { RootDirectory = root; DeniedPathGlobs = [] }
+                let writeText = FsExterns.write_text context
+                let createDirectory = FsExterns.create_directory context
+
+                match invoke writeText [ VString "linked-dir/new.txt"; VString "changed" ] with
+                | VBool false -> ()
+                | _ -> Assert.Fail("Expected Fs.writeText false for symlink directory escape")
+
+                match invoke createDirectory [ VString "linked-dir/new" ] with
+                | VBool false -> ()
+                | _ -> Assert.Fail("Expected Fs.createDirectory false for symlink directory escape")
+
+                Assert.That(File.Exists(Path.Combine(outsideDir, "new.txt")), Is.False)
+                Assert.That(Directory.Exists(Path.Combine(outsideDir, "new")), Is.False)
+            finally
+                if Directory.Exists(outsideDir) then Directory.Delete(outsideDir, true))
 
     [<Test>]
     member _.``fs_exists and fs_kind respect root boundary`` () =
@@ -82,6 +171,16 @@ type FsExternsTests () =
             match invoke writeText [ VString "../outside.txt"; VString "nope" ] with
             | VBool false -> ()
             | _ -> Assert.Fail("Expected Fs.writeText false for escaped path"))
+
+    [<Test>]
+    member _.``root with trailing separator still allows children`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            File.WriteAllText(Path.Combine(root, "a.txt"), "hello")
+            let rootWithSeparator = root + string Path.DirectorySeparatorChar
+            let readText = FsExterns.read_text { RootDirectory = rootWithSeparator; DeniedPathGlobs = [] }
+            match invoke readText [ VString "a.txt" ] with
+            | VOption (Some (VString "hello")) -> ()
+            | _ -> Assert.Fail("Expected child file to resolve under trailing-separator root"))
 
     [<Test>]
     member _.``denied glob read write and create_directory fail immediately`` () =
@@ -182,6 +281,40 @@ type FsExternsTests () =
             let readNestedAct () = invoke readText [ VString "src/node_modules/b.txt" ] |> ignore
             Assert.Throws<EvalException>(TestDelegate readRootAct) |> ignore
             Assert.Throws<EvalException>(TestDelegate readNestedAct) |> ignore)
+
+    [<Test>]
+    member _.``glob and enumerate files do not traverse symlink directories`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            let outsideDir = Path.Combine(Path.GetTempPath(), $"fscript-outside-dir-{Guid.NewGuid():N}")
+            try
+                Directory.CreateDirectory(outsideDir) |> ignore
+                File.WriteAllText(Path.Combine(outsideDir, "secret.txt"), "secret")
+                File.WriteAllText(Path.Combine(root, "visible.txt"), "visible")
+                createDirectorySymlinkOrInconclusive (Path.Combine(root, "linked-dir")) outsideDir
+
+                let context = { RootDirectory = root; DeniedPathGlobs = [] }
+                let glob = FsExterns.glob context
+                let enumerateFiles = FsExterns.enumerate_files context
+
+                match invoke glob [ VString "**/*" ] with
+                | VOption (Some (VList values)) ->
+                    let asStrings =
+                        values
+                        |> List.choose (function | VString value -> Some value | _ -> None)
+                    Assert.That(asStrings, Does.Contain("visible.txt"))
+                    Assert.That(asStrings, Does.Not.Contain("linked-dir/secret.txt"))
+                | _ -> Assert.Fail("Expected Fs.glob list")
+
+                match invoke enumerateFiles [ VString "."; VString "**/*" ] with
+                | VOption (Some (VList values)) ->
+                    let asStrings =
+                        values
+                        |> List.choose (function | VString value -> Some value | _ -> None)
+                    Assert.That(asStrings, Does.Contain("visible.txt"))
+                    Assert.That(asStrings, Does.Not.Contain("linked-dir/secret.txt"))
+                | _ -> Assert.Fail("Expected Fs.enumerateFiles list")
+            finally
+                if Directory.Exists(outsideDir) then Directory.Delete(outsideDir, true))
 
     [<Test>]
     member _.``fs_glob filters by pattern`` () =

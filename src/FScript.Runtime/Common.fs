@@ -2,6 +2,7 @@ namespace FScript.Runtime
 
 open System
 open System.IO
+open System.Runtime.InteropServices
 open System.Text.Json
 open System.Text.RegularExpressions
 open FScript.Language
@@ -15,29 +16,104 @@ module internal HostCommon =
     let some v = VOption (Some v)
     let none = VOption None
 
+    let pathComparison =
+        if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+            StringComparison.OrdinalIgnoreCase
+        else
+            StringComparison.Ordinal
+
+    let private isDirectorySeparator c =
+        c = Path.DirectorySeparatorChar || c = Path.AltDirectorySeparatorChar
+
+    let private trimTrailingDirectorySeparators (path: string) =
+        if String.IsNullOrEmpty(path) then
+            path
+        else
+            let root = Path.GetPathRoot(path)
+            let minLength = if isNull root then 0 else root.Length
+            let mutable endIndex = path.Length
+            while endIndex > minLength && isDirectorySeparator path.[endIndex - 1] do
+                endIndex <- endIndex - 1
+            if endIndex = path.Length then path else path.Substring(0, endIndex)
+
+    let normalizeFullPath (path: string) =
+        Path.GetFullPath(path) |> trimTrailingDirectorySeparators
+
     let normalizeRoot (ctx: HostContext) =
-        Path.GetFullPath(ctx.RootDirectory)
+        normalizeFullPath ctx.RootDirectory
 
     let isWithinRoot (root: string) (fullPath: string) =
-        fullPath = root || fullPath.StartsWith(root + string Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        let normalizedRoot = trimTrailingDirectorySeparators root
+        let normalizedFullPath = trimTrailingDirectorySeparators fullPath
+        let rootPath = Path.GetPathRoot(normalizedRoot)
+        let rootIsFilesystemRoot =
+            not (isNull rootPath)
+            && String.Equals(normalizedRoot, trimTrailingDirectorySeparators rootPath, pathComparison)
+
+        if rootIsFilesystemRoot then
+            let fullPathRoot = Path.GetPathRoot(normalizedFullPath)
+            not (isNull fullPathRoot)
+            && String.Equals(trimTrailingDirectorySeparators fullPathRoot, normalizedRoot, pathComparison)
+        else
+            String.Equals(normalizedFullPath, normalizedRoot, pathComparison)
+            || normalizedFullPath.StartsWith(normalizedRoot + string Path.DirectorySeparatorChar, pathComparison)
+
+    let private hasReparsePoint (path: string) =
+        try
+            let attrs = File.GetAttributes(path)
+            (attrs &&& FileAttributes.ReparsePoint) = FileAttributes.ReparsePoint
+        with
+        | :? FileNotFoundException
+        | :? DirectoryNotFoundException -> false
+        | _ -> true
+
+    let private pathContainsReparsePoint (root: string) (fullPath: string) =
+        let rec loop current =
+            if not (isWithinRoot root current) then
+                false
+            elif String.Equals(current, root, pathComparison) then
+                false
+            elif hasReparsePoint current then
+                true
+            else
+                match Path.GetDirectoryName(current) with
+                | null
+                | "" -> false
+                | parent ->
+                    let normalizedParent = trimTrailingDirectorySeparators parent
+                    if String.Equals(normalizedParent, current, pathComparison) then
+                        false
+                    else
+                        loop normalizedParent
+
+        loop (trimTrailingDirectorySeparators fullPath)
+
+    let isSafePath (ctx: HostContext) (fullPath: string) =
+        try
+            let root = normalizeRoot ctx
+            let full = normalizeFullPath fullPath
+            isWithinRoot root full && not (pathContainsReparsePoint root full)
+        with _ ->
+            false
 
     let tryResolvePath (ctx: HostContext) (candidate: string) =
         try
             let root = normalizeRoot ctx
             let full =
-                if Path.IsPathRooted(candidate) then Path.GetFullPath(candidate)
-                else Path.GetFullPath(Path.Combine(root, candidate))
-            if isWithinRoot root full then
+                if Path.IsPathRooted(candidate) then normalizeFullPath candidate
+                else normalizeFullPath (Path.Combine(root, candidate))
+            if isWithinRoot root full && not (pathContainsReparsePoint root full) then
                 Some full
             else None
         with _ -> None
 
     let toRelativeNormalizedPath (ctx: HostContext) (fullPath: string) =
         let root = normalizeRoot ctx
-        if isWithinRoot root fullPath then
-            Path.GetRelativePath(root, fullPath).Replace("\\", "/")
+        let full = normalizeFullPath fullPath
+        if isWithinRoot root full then
+            Path.GetRelativePath(root, full).Replace("\\", "/")
         else
-            fullPath.Replace("\\", "/")
+            full.Replace("\\", "/")
 
     let globToRegex (glob: string) =
         let escaped = Regex.Escape(glob.Replace("\\", "/"))

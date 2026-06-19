@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Hardened filesystem sandboxing so imports and runtime filesystem externs reject symlink/reparse-point paths and do not traverse unsafe directories.
+
 ## [0.72.0]
 
 

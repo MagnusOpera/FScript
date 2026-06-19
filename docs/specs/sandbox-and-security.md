@@ -19,6 +19,7 @@ This document defines the security model for running FScript programs with host 
 - The CLI allows overriding root with `--root <path>` (or `-r <path>`).
 - `import` file resolution is constrained to `RootDirectory`.
 - Import paths are resolved relative to the current script file.
+- Import paths that traverse existing symlink/reparse-point components are rejected.
 - Import cycles are rejected.
 - `import` is only available for file-based execution; stdin source mode rejects `import`.
 
@@ -28,9 +29,11 @@ Filesystem extern behavior:
 - `Fs.glob` evaluates patterns under `RootDirectory`.
 - Access is granted for paths within `RootDirectory` (or exactly equal to it).
 - Out-of-bound paths return `None`/`false`/`FsKind.Missing` depending on function shape.
+- Existing symlink/reparse-point components from `RootDirectory` to the target are treated as unsafe and out-of-bound.
 - Denied paths are matched by glob against root-relative paths.
 - Examples: `.git` blocks only the root `.git` subtree, `**/node_modules` blocks all nested `node_modules` subtrees.
 - Denied entries are hidden from `Fs.glob` and `Fs.enumerateFiles`.
+- `Fs.glob` and `Fs.enumerateFiles` prune denied and unsafe directories before descending into them.
 - Read/write/mkdir operations on denied targets fail immediately with `EvalException`.
 
 ## Runtime safety behavior

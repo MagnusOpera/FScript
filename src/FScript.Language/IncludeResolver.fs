@@ -3,8 +3,73 @@ namespace FScript.Language
 open System
 open System.Collections.Generic
 open System.IO
+open System.Runtime.InteropServices
 
 module IncludeResolver =
+    let private pathComparison =
+        if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+            StringComparison.OrdinalIgnoreCase
+        else
+            StringComparison.Ordinal
+
+    let private pathStringComparer =
+        if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
+            StringComparer.OrdinalIgnoreCase
+        else
+            StringComparer.Ordinal
+
+    let private pathsEqual left right =
+        String.Equals(left, right, pathComparison)
+
+    let private isDirectorySeparator c =
+        c = Path.DirectorySeparatorChar || c = Path.AltDirectorySeparatorChar
+
+    let private trimTrailingDirectorySeparators (path: string) =
+        if String.IsNullOrEmpty(path) then
+            path
+        else
+            let root = Path.GetPathRoot(path)
+            let minLength = if isNull root then 0 else root.Length
+            let mutable endIndex = path.Length
+            while endIndex > minLength && isDirectorySeparator path.[endIndex - 1] do
+                endIndex <- endIndex - 1
+            if endIndex = path.Length then path else path.Substring(0, endIndex)
+
+    let private isFilesystemRoot (path: string) =
+        let root = Path.GetPathRoot(path)
+        not (isNull root)
+        && pathsEqual (trimTrailingDirectorySeparators path) (trimTrailingDirectorySeparators root)
+
+    let private hasReparsePoint (path: string) =
+        try
+            let attrs = File.GetAttributes(path)
+            (attrs &&& FileAttributes.ReparsePoint) = FileAttributes.ReparsePoint
+        with
+        | :? FileNotFoundException
+        | :? DirectoryNotFoundException -> false
+        | _ -> true
+
+    let private pathContainsReparsePoint (root: string) (fullPath: string) =
+        let normalizedRoot = trimTrailingDirectorySeparators root
+        let rec loop current =
+            let normalizedCurrent = trimTrailingDirectorySeparators current
+            if pathsEqual normalizedCurrent normalizedRoot then
+                false
+            elif hasReparsePoint normalizedCurrent then
+                true
+            else
+                match Path.GetDirectoryName(normalizedCurrent) with
+                | null
+                | "" -> false
+                | parent ->
+                    let normalizedParent = trimTrailingDirectorySeparators parent
+                    if pathsEqual normalizedParent normalizedCurrent then
+                        false
+                    else
+                        loop normalizedParent
+
+        loop fullPath
+
     let private normalizeDirectoryPath (path: string) =
         let full = Path.GetFullPath(path)
         if full.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal) then
@@ -18,11 +83,19 @@ module IncludeResolver =
 
     let private ensureWithinRoot (rootDirectoryWithSeparator: string) (path: string) (span: Span) =
         let fullPath = Path.GetFullPath(path)
-        let fullRoot = rootDirectoryWithSeparator.TrimEnd(Path.DirectorySeparatorChar)
-        let isRootItself = String.Equals(fullPath, fullRoot, StringComparison.OrdinalIgnoreCase)
-        let isUnderRoot = fullPath.StartsWith(rootDirectoryWithSeparator, StringComparison.OrdinalIgnoreCase)
+        let fullRoot = trimTrailingDirectorySeparators rootDirectoryWithSeparator
+        let isRootItself = String.Equals(fullPath, fullRoot, pathComparison)
+        let isUnderRoot =
+            if isFilesystemRoot fullRoot then
+                let fullPathRoot = Path.GetPathRoot(fullPath)
+                not (isNull fullPathRoot)
+                && pathsEqual (trimTrailingDirectorySeparators fullPathRoot) fullRoot
+            else
+                fullPath.StartsWith(rootDirectoryWithSeparator, pathComparison)
         if not (isRootItself || isUnderRoot) then
             raise (ParseException { Message = $"Imported file '{fullPath}' is outside of sandbox root"; Span = span })
+        if pathContainsReparsePoint fullRoot fullPath then
+            raise (ParseException { Message = $"Imported file '{fullPath}' traverses a symlink or reparse point"; Span = span })
         fullPath
 
     let private resolveImportPath (currentFile: string) (importPath: string) (rootDirectoryWithSeparator: string) (span: Span) =
@@ -406,7 +479,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -433,7 +506,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -441,7 +514,7 @@ module IncludeResolver =
                 let prefix = nextPrefixSegment ()
                 pathPrefixes[path] <- prefix
                 prefix
-        let emittedFiles = HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let emittedFiles = HashSet<string>(pathStringComparer)
 
         let rec loadFile (stack: string list) (isMainFile: bool) (filePath: string) (prefix: string option) : Program =
             let fullFilePath = Path.GetFullPath(filePath)
@@ -449,7 +522,7 @@ module IncludeResolver =
             ensureFssPath fullFilePath initialSpan
             let sandboxedPath = ensureWithinRoot rootDirectoryWithSeparator fullFilePath initialSpan
 
-            if stack |> List.exists (fun p -> String.Equals(p, sandboxedPath, StringComparison.OrdinalIgnoreCase)) then
+            if stack |> List.exists (fun p -> pathsEqual p sandboxedPath) then
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
                 let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
@@ -481,7 +554,7 @@ module IncludeResolver =
         let nextPrefixSegment () =
             counter <- counter + 1
             $"__imp{counter}"
-        let pathPrefixes = Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        let pathPrefixes = Dictionary<string, string>(pathStringComparer)
         let getOrCreatePrefix (path: string) =
             match pathPrefixes.TryGetValue(path) with
             | true, prefix -> prefix
@@ -489,7 +562,7 @@ module IncludeResolver =
                 let prefix = nextPrefixSegment ()
                 pathPrefixes[path] <- prefix
                 prefix
-        let emittedFiles = HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        let emittedFiles = HashSet<string>(pathStringComparer)
 
         let entryFullPath = Path.GetFullPath(entryFile)
         let entrySpan = fileSpan entryFullPath
@@ -502,7 +575,7 @@ module IncludeResolver =
             ensureFssPath fullFilePath initialSpan
             let sandboxedPath = ensureWithinRoot rootDirectoryWithSeparator fullFilePath initialSpan
 
-            if stack |> List.exists (fun p -> String.Equals(p, sandboxedPath, StringComparison.OrdinalIgnoreCase)) then
+            if stack |> List.exists (fun p -> pathsEqual p sandboxedPath) then
                 let cycleChain = (sandboxedPath :: stack |> List.rev) @ [ sandboxedPath ]
                 let message = sprintf "Import cycle detected: %s" (String.concat " -> " cycleChain)
                 raise (ParseException { Message = message; Span = fileSpan sandboxedPath })
@@ -513,7 +586,7 @@ module IncludeResolver =
                     emittedFiles.Add(sandboxedPath) |> ignore
 
                 let source =
-                    if String.Equals(sandboxedPath, entrySandboxedPath, StringComparison.OrdinalIgnoreCase) then
+                    if pathsEqual sandboxedPath entrySandboxedPath then
                         entrySource
                     else
                         match resolveImportedSource with
