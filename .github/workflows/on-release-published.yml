@@ -84,7 +84,7 @@ jobs:
   release-npm:
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: ${{ env.RELEASE_TAG }}
+      RELEASE_VERSION: ${{ github.event.release.tag_name }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
       - name: Setup Node.js
