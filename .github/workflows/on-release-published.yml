@@ -1,18 +1,7 @@
 name: 🌍 Release
-run-name: Release ${{ github.event.release.tag_name || github.event.inputs.version || github.ref_name }}
+run-name: Release ${{ github.event.release.tag_name }}
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release tag to publish, for example 0.74.0'
-        required: true
-        type: string
-      npm_only:
-        description: 'Only publish the audited npm tarball for the selected release'
-        required: false
-        default: false
-        type: boolean
   release:
     types: [published]
 
@@ -22,15 +11,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-publish-${{ github.event.release.tag_name || github.event.inputs.version || github.ref_name }}
+  group: release-publish-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.version || github.ref_name }}
+  RELEASE_TAG: ${{ github.event.release.tag_name }}
 
 jobs:
   deploy-website:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -73,7 +61,6 @@ jobs:
         uses: actions/deploy-pages@v4
 
   release-nuget:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Setup .NET
@@ -136,7 +123,6 @@ jobs:
           npm publish "${packages[0]}" --access public --provenance
 
   publish-vscode-marketplace:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -164,7 +150,6 @@ jobs:
         run: ./.github/scripts/publish-vscode-marketplace.sh
 
   publish-open-vsx:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -192,7 +177,6 @@ jobs:
         run: ./.github/scripts/publish-open-vsx.sh
 
   sign-and-notarize:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     runs-on: macos-latest
     steps:
       - name: Download unsigned macOS artifacts
@@ -265,12 +249,11 @@ jobs:
             }
 
   update-homebrew-tap:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.npm_only != 'true' }}
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
       - sign-and-notarize
     with:
-      ref: ${{ github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name) || github.event.inputs.version && format('refs/tags/{0}', github.event.inputs.version) || github.ref }}
-      version: ${{ github.event.release.tag_name || github.event.inputs.version || github.ref_name }}
+      ref: ${{ format('refs/tags/{0}', github.event.release.tag_name) }}
+      version: ${{ github.event.release.tag_name }}
       dry-run: false
     secrets: inherit
