@@ -79,6 +79,86 @@ jobs:
             dotnet nuget push "$pkg" --skip-duplicate --api-key "${{ secrets.NUGET_KEY }}" --source https://api.nuget.org/v3/index.json
           done
 
+  release-npm:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+      PACKAGE_NAME: '@magnusopera/fscript'
+    steps:
+      - name: Checkout released ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref_name }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.201
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Restore Fable tool
+        run: dotnet tool restore
+
+      - name: Apply npm package publishing metadata
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'src/FScript.JavaScript/package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.description = 'Fable-compiled JavaScript facade for the FScript language engine.';
+          pkg.keywords = ['fscript', 'fable', 'fsharp', 'scripting', 'interpreter'];
+          pkg.homepage = 'https://magnusopera.github.io/FScript/manual/embedding/fable-javascript';
+          pkg.bugs = { url: 'https://github.com/MagnusOpera/FScript/issues' };
+          pkg.repository = {
+            type: 'git',
+            url: 'git+https://github.com/MagnusOpera/FScript.git',
+            directory: 'src/FScript.JavaScript',
+          };
+          pkg.publishConfig = { access: 'public' };
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
+      - name: Sync npm package version to release
+        working-directory: src/FScript.JavaScript
+        run: npm version "${RELEASE_VERSION}" --no-git-tag-version --allow-same-version
+
+      - name: Build npm package
+        working-directory: src/FScript.JavaScript
+        run: npm run build
+
+      - name: Include generated Fable modules in npm package
+        run: rm -f src/FScript.JavaScript/dist/fable_modules/.gitignore
+
+      - name: Test npm package
+        working-directory: src/FScript.JavaScript
+        run: npm test
+
+      - name: Inspect npm package contents
+        working-directory: src/FScript.JavaScript
+        run: npm pack --dry-run
+
+      - name: Publish npm package
+        working-directory: src/FScript.JavaScript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_KEY }}
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NPM_KEY secret is not configured."
+            exit 1
+          fi
+
+          if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published; skipping."
+            exit 0
+          fi
+
+          npm publish --access public --provenance
+
   publish-vscode-marketplace:
     runs-on: ubuntu-latest
     timeout-minutes: 15

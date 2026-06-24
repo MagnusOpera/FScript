@@ -8,10 +8,10 @@ test:
 
 fable-build:
 	dotnet tool restore
-	dotnet fable src/FScript.JavaScript/FScript.JavaScript.fsproj --outDir src/FScript.JavaScript/dist --sourceMaps false
+	cd src/FScript.JavaScript && npm run build
 
 fable-test: fable-build
-	node --test src/FScript.JavaScript/test/*.test.mjs
+	cd src/FScript.JavaScript && npm test
 
 smoke-tests:
 	@set -e; \

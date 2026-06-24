@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added npm publishing for the Fable JavaScript package when a release is published.
+
 ## [0.74.0]
 
 
