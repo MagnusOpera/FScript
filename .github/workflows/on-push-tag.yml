@@ -67,6 +67,16 @@ jobs:
           cp entitlements.plist .out/darwin/entitlements.plist
           (cd .out/darwin; zip -r ../fscript-${BUILD_VERSION}-darwin-unsigned.zip ./*)
 
+      - name: Pack npm package
+        shell: bash
+        run: |
+          dotnet tool restore
+          cd src/FScript.JavaScript
+          npm version "${BUILD_VERSION}" --no-git-tag-version --allow-same-version
+          npm run build
+          npm test
+          npm pack --pack-destination ../../.out
+
       - name: Extract version suffix
         run: |
           s=${{ github.ref_name }}
@@ -90,4 +100,5 @@ jobs:
           files: |
             .out/*.zip
             .out/*.nupkg
+            .out/*.tgz
             vscode-fscript/*.vsix

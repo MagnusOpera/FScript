@@ -1,8 +1,18 @@
 name: 🌍 Release
-run-name: Release ${{ github.ref_name }}
+run-name: Release ${{ github.event.release.tag_name || inputs.version || github.ref_name }}
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to publish, for example 0.74.0'
+        required: false
+        type: string
+      npm_only:
+        description: 'Only publish the audited npm tarball for the selected release'
+        required: false
+        default: false
+        type: boolean
   release:
     types: [published]
 
@@ -12,11 +22,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-publish-${{ github.ref_name }}
+  group: release-publish-${{ github.event.release.tag_name || inputs.version || github.ref_name }}
   cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version || github.ref_name }}
 
 jobs:
   deploy-website:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -25,7 +39,7 @@ jobs:
       - name: Checkout released ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,7 +55,7 @@ jobs:
 
       - name: Build website
         env:
-          FSCRIPT_DOCS_LAST_VERSION: ${{ github.event.release.tag_name || github.ref_name || 'current' }}
+          FSCRIPT_DOCS_LAST_VERSION: ${{ env.RELEASE_TAG || 'current' }}
         run: |
           cd website
           npm run build
@@ -59,6 +73,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
   release-nuget:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     runs-on: ubuntu-latest
     steps:
       - name: Setup .NET
@@ -69,7 +84,7 @@ jobs:
       - name: Download GitHub release artifacts
         uses: robinraju/release-downloader@v1.11
         with:
-          tag: ${{ github.ref_name }}
+          tag: ${{ env.RELEASE_TAG }}
           fileName: '*.nupkg'
 
       - name: Push packages to NuGet
@@ -82,68 +97,22 @@ jobs:
   release-npm:
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+      RELEASE_VERSION: ${{ env.RELEASE_TAG }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
-      - name: Checkout released ref
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name || github.ref_name }}
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.201
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Restore Fable tool
-        run: dotnet tool restore
-
-      - name: Apply npm package publishing metadata
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = 'src/FScript.JavaScript/package.json';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          pkg.description = 'Fable-compiled JavaScript facade for the FScript language engine.';
-          pkg.keywords = ['fscript', 'fable', 'fsharp', 'scripting', 'interpreter'];
-          pkg.homepage = 'https://magnusopera.github.io/FScript/manual/embedding/fable-javascript';
-          pkg.bugs = { url: 'https://github.com/MagnusOpera/FScript/issues' };
-          pkg.repository = {
-            type: 'git',
-            url: 'git+https://github.com/MagnusOpera/FScript.git',
-            directory: 'src/FScript.JavaScript',
-          };
-          pkg.publishConfig = { access: 'public' };
-          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
-          NODE
-
-      - name: Sync npm package version to release
-        working-directory: src/FScript.JavaScript
-        run: npm version "${RELEASE_VERSION}" --no-git-tag-version --allow-same-version
-
-      - name: Build npm package
-        working-directory: src/FScript.JavaScript
-        run: npm run build
-
-      - name: Include generated Fable modules in npm package
-        run: rm -f src/FScript.JavaScript/dist/fable_modules/.gitignore
-
-      - name: Test npm package
-        working-directory: src/FScript.JavaScript
-        run: npm test
-
-      - name: Inspect npm package contents
-        working-directory: src/FScript.JavaScript
-        run: npm pack --dry-run
+      - name: Download npm package artifact
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          fileName: '*.tgz'
 
       - name: Publish npm package
-        working-directory: src/FScript.JavaScript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_KEY }}
         run: |
@@ -152,14 +121,22 @@ jobs:
             exit 1
           fi
 
+          shopt -s nullglob
+          packages=(./*.tgz)
+          if [[ "${#packages[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one audited npm .tgz release asset, found ${#packages[@]}."
+            exit 1
+          fi
+
           if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
             echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published; skipping."
             exit 0
           fi
 
-          npm publish --access public --provenance
+          npm publish "${packages[0]}" --access public --provenance
 
   publish-vscode-marketplace:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -174,7 +151,7 @@ jobs:
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
         with:
-          tag: ${{ github.ref_name }}
+          tag: ${{ env.RELEASE_TAG }}
           fileName: '*.vsix'
 
       - name: Install VS Code publishing tool
@@ -187,6 +164,7 @@ jobs:
         run: ./.github/scripts/publish-vscode-marketplace.sh
 
   publish-open-vsx:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -201,7 +179,7 @@ jobs:
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
         with:
-          tag: ${{ github.ref_name }}
+          tag: ${{ env.RELEASE_TAG }}
           fileName: '*.vsix'
 
       - name: Install Open VSX publishing tool
@@ -214,18 +192,19 @@ jobs:
         run: ./.github/scripts/publish-open-vsx.sh
 
   sign-and-notarize:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     runs-on: macos-latest
     steps:
       - name: Download unsigned macOS artifacts
         uses: robinraju/release-downloader@v1.11
         with:
-          tag: ${{ github.ref_name }}
+          tag: ${{ env.RELEASE_TAG }}
           fileName: 'fscript-*-darwin-unsigned.zip'
 
       - name: Extract binaries
         run: |
           mkdir -p .out/darwin
-          unzip -d .out/darwin fscript-${{ github.ref_name }}-darwin-unsigned.zip
+          unzip -d .out/darwin fscript-${{ env.RELEASE_TAG }}-darwin-unsigned.zip
           test -f .out/darwin/entitlements.plist
 
       - name: Add cert to keychain
@@ -237,13 +216,13 @@ jobs:
       - name: Sign binaries
         run: |
           codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --no-strict --entitlements .out/darwin/entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
-          (cd .out/darwin/arm64; zip ../fscript-${{ github.ref_name }}-darwin-arm64.zip ./*)
+          (cd .out/darwin/arm64; zip ../fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip ./*)
 
       - name: Notarize arm64
         uses: GuillaumeFalourd/notary-tools@v1
         timeout-minutes: 10
         with:
-          product_path: '.out/darwin/fscript-${{ github.ref_name }}-darwin-arm64.zip'
+          product_path: '.out/darwin/fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip'
           apple_id: ${{ secrets.MAC_DEV_LOGIN }}
           password: ${{ secrets.MAC_DEV_PASSWORD }}
           team_id: ${{ secrets.MAC_DEV_TEAM_ID }}
@@ -253,9 +232,9 @@ jobs:
       - name: Upload signed macOS artifacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
-            .out/darwin/fscript-${{ github.ref_name }}-darwin-arm64.zip
+            .out/darwin/fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip
 
       - name: Remove unsigned macOS artifact
         continue-on-error: true
@@ -263,7 +242,7 @@ jobs:
         with:
           script: |
             try {
-              const tag = context.ref.replace('refs/tags/', '');
+              const tag = process.env.RELEASE_TAG;
               const unsignedName = `fscript-${tag}-darwin-unsigned.zip`;
               const { data: release } = await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
@@ -286,11 +265,12 @@ jobs:
             }
 
   update-homebrew-tap:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.npm_only }}
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
       - sign-and-notarize
     with:
-      ref: ${{ github.ref }}
-      version: ${{ github.ref_name }}
+      ref: ${{ github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name) || inputs.version && format('refs/tags/{0}', inputs.version) || github.ref }}
+      version: ${{ github.event.release.tag_name || inputs.version || github.ref_name }}
       dry-run: false
     secrets: inherit
