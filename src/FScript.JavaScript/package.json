@@ -1,7 +1,7 @@
 {
   "name": "@magnusopera/fscript",
   "version": "0.0.0",
-  "description": "Fable-compiled JavaScript facade for the FScript language engine.",
+  "description": "Embeddable FScript language engine: parser, type inference, and evaluator.",
   "type": "module",
   "main": "./dist/Library.js",
   "exports": "./dist/Library.js",
