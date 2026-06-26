@@ -199,7 +199,22 @@ jobs:
 
       - name: Sign binaries
         run: |
-          codesign --force --timestamp --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" .out/darwin/arm64/fscript --options=runtime --no-strict --entitlements .out/darwin/entitlements.plist --identifier "${{ secrets.MAC_CERT_BUNDLE_ID }}.arm64"
+          expected_identifier="io.magnusopera.fscript.arm64"
+          codesign \
+            --force \
+            --timestamp \
+            --options=runtime \
+            --no-strict \
+            --entitlements .out/darwin/entitlements.plist \
+            --identifier "$expected_identifier" \
+            --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" \
+            .out/darwin/arm64/fscript
+          codesign --verify --verbose=4 .out/darwin/arm64/fscript
+          actual_identifier="$(codesign -dv --verbose=4 .out/darwin/arm64/fscript 2>&1 | sed -n 's/^Identifier=//p')"
+          if [ "$actual_identifier" != "$expected_identifier" ]; then
+            echo "Expected codesign identifier '$expected_identifier' but found '$actual_identifier'" >&2
+            exit 1
+          fi
           (cd .out/darwin/arm64; zip ../fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip ./*)
 
       - name: Notarize arm64

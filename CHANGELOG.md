@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed macOS release signing to use the explicit arm64 code-signing identifier.
+
 ## [0.75.0]
 
 
