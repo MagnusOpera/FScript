@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.76.0]
+
+
 - Fixed macOS release signing to use the explicit arm64 code-signing identifier.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.75.0...0.76.0
 
 ## [0.75.0]
 
