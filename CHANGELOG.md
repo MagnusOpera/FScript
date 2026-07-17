@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Redesigned the documentation website as an example-led product showcase with clearer learning and embedding paths.
+
 ## [0.76.0]
 
 

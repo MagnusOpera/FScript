@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'FScript',
-  tagline: 'A lightweight, embeddable interpreter with an F#/ML-style language.',
+  tagline: 'A compact, statically typed language built to live inside your product.',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -76,12 +76,12 @@ const config: Config = {
         },
         {
           to: '/sandbox',
-          label: 'Sandbox',
+          label: 'Playground',
           position: 'left',
         },
         {
           href: 'https://github.com/MagnusOpera/FScript',
-          label: 'GitHub',
+          label: 'GitHub ↗',
           position: 'right',
         },
       ],

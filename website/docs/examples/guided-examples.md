@@ -6,6 +6,17 @@ slug: /examples/guided-examples
 
 This chapter is example-first: each section includes complete code you can copy into a `.fss` file and run directly.
 
+## Choose an example
+
+| Start here when you want to… | Example |
+| --- | --- |
+| Read inputs and produce a result | [Hello with script arguments](#1-hello-with-script-arguments) |
+| Learn branching without ceremony | [FizzBuzz with `for` + `match`](#2-fizzbuzz-with-for--match) |
+| Transform real data | [Collections and pattern matching](#3-collections-and-pattern-matching) |
+| Model recursive domain data | [Recursive records and traversal](#4-recursive-records-and-traversal) |
+| Split a script into modules | [Imports + exports](#5-imports--exports-multi-file) |
+| Call a script from an application | [An embedded pricing rule](#6-an-embedded-pricing-rule) |
+
 ## 1) Hello with script arguments
 
 This first example introduces:
@@ -175,10 +186,54 @@ let main =
 main
 ```
 
+## 6) An embedded pricing rule
+
+This example shows the full product-facing loop: keep a business rule in FScript, export one intentional entry point, and invoke it from a JavaScript host.
+
+### File: `pricing.fss`
+
+```fsharp
+type Customer =
+  { Plan: string
+    Seats: int }
+
+[<export>] let quote (customer: Customer) =
+  let pricePerSeat =
+    match customer.Plan with
+    | "scale" -> 29
+    | "team" -> 19
+    | _ -> 9
+
+  pricePerSeat * customer.Seats
+```
+
+### File: `pricing.mjs`
+
+```javascript
+import { readFile } from "node:fs/promises";
+import { load, invoke } from "@magnusopera/fscript";
+
+const source = await readFile(new URL("./pricing.fss", import.meta.url), "utf8");
+const script = load(source);
+const result = invoke(script, "quote", [{ Plan: "scale", Seats: 12 }]);
+
+console.log(result.value); // 348n
+```
+
+Install the package and run the host:
+
+```bash
+npm install @magnusopera/fscript
+node pricing.mjs
+```
+
+The script owns the changeable rule. The host owns loading, input, output, and every external capability. For typed extern functions and production concerns, continue with the [Fable and JavaScript host guide](../embedding/fable-javascript).
+
 ## Suggested order
 
 1. Run example 1 and 2 to get comfortable with flow and syntax.
 2. Run example 3 to practice pattern matching on real data.
 3. Run example 4 to practice recursion with typed data.
 4. Run example 5 when you are ready for multi-file scripts and host-facing exports.
-5. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.
+5. Run example 6 when you are ready to cross the script/host boundary.
+6. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.
