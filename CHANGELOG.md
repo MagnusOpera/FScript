@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.77.0]
+
+
 - Redesigned the documentation website as an example-led product showcase with clearer learning and embedding paths.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.76.0...0.77.0
 
 ## [0.76.0]
 
