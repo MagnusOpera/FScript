@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed macOS notarization on current GitHub runners by using the active Xcode notary tool instead of a removed hard-coded Xcode version.
+
 ## [0.77.0]
 
 
