@@ -21,9 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce changelog updates on every commit
-        env:
-          REQUIRE_CHANGELOG_ALWAYS: "true"
+      - name: Enforce changelog updates for functional changes
         run: .github/scripts/check-unreleased-changelog.sh
 
       - name: Setup .NET
