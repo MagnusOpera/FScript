@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 759 567" role="img" aria-labelledby="title">
+  <title id="title">Magnus Opera</title>
+  <defs>
+    <linearGradient id="warm" gradientUnits="userSpaceOnUse" x1="257" y1="287" x2="759" y2="287">
+      <stop offset="0" stop-color="#ff0080" />
+      <stop offset="1" stop-color="#ff8000" />
+    </linearGradient>
+    <linearGradient id="cool" gradientUnits="userSpaceOnUse" x1="0" y1="280" x2="502" y2="280">
+      <stop offset="0" stop-color="#7a7ecf" />
+      <stop offset="1" stop-color="#00bbff" />
+    </linearGradient>
+  </defs>
+  <path d="M724 220 399 20c-60-37-138 6-138 78v29h41c9-47 64-73 108-47l258 152c37 22 37 75 0 97L409 485c-48 29-109-3-112-57h-39v44c-1 74 79 120 142 81l324-205c47-29 47-98 0-128Z" fill="url(#warm)" />
+  <path d="M467 213 142 13C81-24 4 20 3 91L0 465c-1 74 80 120 142 81l325-205c47-29 47-98 0-128Zm-55 113L159 481c-48 30-111-5-110-61l3-285c0-54 60-87 107-59l253 153c37 22 37 74 0 97Z" fill="url(#cool)" />
+</svg>

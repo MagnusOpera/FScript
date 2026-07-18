@@ -52,9 +52,9 @@ const config: Config = {
   themeConfig: {
     image: 'img/fscript-social-card.png',
     colorMode: {
-      defaultMode: 'light',
+      defaultMode: 'dark',
       disableSwitch: false,
-      respectPrefersColorScheme: true,
+      respectPrefersColorScheme: false,
     },
     navbar: {
       title: 'FScript',
@@ -88,35 +88,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      links: [
-        {
-          title: 'Docs',
-          items: [
-            {
-              label: 'Getting Started',
-              to: '/manual/learn/quickstart',
-            },
-            {
-              label: 'Embedding',
-              to: '/manual/embedding/overview',
-            },
-          ],
-        },
-        {
-          title: 'Project',
-          items: [
-            {
-              label: 'Repository',
-              href: 'https://github.com/MagnusOpera/FScript',
-            },
-            {
-              label: 'Changelog',
-              href: 'https://github.com/MagnusOpera/FScript/blob/main/CHANGELOG.md',
-            },
-          ],
-        },
-      ],
-      copyright: `Copyright © ${new Date().getFullYear()} Magnus Opera.`,
+      copyright: `<span class="footer-brand">© ${new Date().getFullYear()} <a href="https://magnusopera.io"><img src="/FScript/img/magnus-opera-logo.svg" alt="" /> Magnus Opera SAS</a></span>`,
     },
     prism: {
       theme: prismThemes.github,
