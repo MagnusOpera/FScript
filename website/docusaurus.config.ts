@@ -1,6 +1,9 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import versions from './versions.json';
+
+const latestReleasedVersion = versions[0] ?? 'current';
 
 const config: Config = {
   title: 'FScript',
@@ -31,12 +34,15 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           routeBasePath: 'manual',
-          // On release/tag builds we set FSCRIPT_DOCS_LAST_VERSION to the tag (e.g. 0.60.0)
-          // so the freshly released docs are treated as latest and don't show "unmaintained".
+          // Release builds can temporarily make the new snapshot the default. Regular builds
+          // keep Next as the default while the newest numbered snapshot remains maintained.
           lastVersion: process.env.FSCRIPT_DOCS_LAST_VERSION ?? 'current',
           versions: {
             current: {
               label: 'Next',
+            },
+            [latestReleasedVersion]: {
+              banner: 'none',
             },
           },
           editUrl: 'https://github.com/MagnusOpera/FScript/tree/main/website/',

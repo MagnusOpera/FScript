@@ -9,6 +9,7 @@
     "start": "docusaurus start",
     "prebuild": "npm run prepare:fscript",
     "build": "docusaurus build",
+    "postbuild": "node ./scripts/verify-docs-versioning.mjs",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
