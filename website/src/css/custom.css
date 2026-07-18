@@ -25,10 +25,6 @@
   --ifm-navbar-background-color: rgba(10, 12, 11, .94);
 }
 
-.navbar {
-  backdrop-filter: blur(14px);
-}
-
 .navbar__brand {
   letter-spacing: -.03em;
 }
