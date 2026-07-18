@@ -5,6 +5,7 @@ All notable changes to FScript are documented in this file.
 ## [Unreleased]
 
 - Fixed the documentation site to identify the latest released version as actively maintained.
+- Restored the unreleased-version notice on the `Next` documentation.
 
 ## [0.77.1]
 

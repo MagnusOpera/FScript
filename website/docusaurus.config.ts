@@ -40,6 +40,7 @@ const config: Config = {
           versions: {
             current: {
               label: 'Next',
+              banner: 'unreleased',
             },
             [latestReleasedVersion]: {
               banner: 'none',

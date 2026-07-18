@@ -23,4 +23,18 @@ if (html.includes('no longer actively maintained')) {
   throw new Error(`Maintained documentation ${maintainedVersion} is marked as unmaintained.`);
 }
 
+const nextPage = process.env.FSCRIPT_DOCS_LAST_VERSION === maintainedVersion
+  ? path.join(root, 'build', 'manual', 'next', 'index.html')
+  : path.join(root, 'build', 'manual', 'index.html');
+
+if (!existsSync(nextPage)) {
+  throw new Error(`Next documentation page was not built: ${nextPage}`);
+}
+
+const nextHtml = readFileSync(nextPage, 'utf8');
+if (!nextHtml.includes('This is unreleased documentation')) {
+  throw new Error('Next documentation is missing its unreleased-version banner.');
+}
+
 console.log(`Verified maintained documentation version: ${maintainedVersion}`);
+console.log('Verified unreleased documentation banner for Next');
