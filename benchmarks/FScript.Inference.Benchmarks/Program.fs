@@ -56,4 +56,19 @@ let main args =
     |> summarize "ordinary inference"
     measure iterations (fun () -> TypeInfer.inferProgramWithLocalVariableTypes program |> ignore)
     |> summarize "with local capture"
+
+    let expression = $"transform{bindingCount} 42" |> Parser.parseProgram
+    let legacyProgram = program @ expression
+    let initialSubmission = Interactive.create [] |> fun session -> Interactive.submit session program
+    let mutable interactiveSession = initialSubmission.Session
+
+    printfn "Interactive submission benchmark: one expression against retained bindings"
+    measure iterations (fun () ->
+        let typed = TypeInfer.inferProgram legacyProgram
+        Eval.evalProgram typed |> ignore)
+    |> summarize "replay full history"
+    measure iterations (fun () ->
+        let submission = Interactive.submit interactiveSession expression
+        interactiveSession <- submission.Session)
+    |> summarize "incremental submission"
     0

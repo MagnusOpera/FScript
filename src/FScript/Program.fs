@@ -281,7 +281,9 @@ let printVersion () =
         | v -> v.ToString()
 
 let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
-    let mutable baseProgram: Program = parseEnvironmentPrelude None []
+    let initialProgram = parseEnvironmentPrelude None []
+    let initialSubmission = Interactive.create externs |> fun session -> Interactive.submit session initialProgram
+    let mutable session = initialSubmission.Session
     let mutable pendingLines: string list = []
     let mutable pendingBlankLines = 0
     let mutable running = true
@@ -295,9 +297,9 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
     let tryRunPending () =
         let source = String.concat "\n" pendingLines
         let parsed = FScript.parse source
-        let candidate = baseProgram @ parsed
-        let typed = TypeInfer.inferProgramWithExterns externs candidate
-        let state = Eval.evalProgramWithExternsState externs typed
+        let submission = Interactive.submit session parsed
+        let typed = submission.TypedProgram
+        let state = submission.State
         let hasExpression =
             parsed
             |> List.exists (function
@@ -311,12 +313,7 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
                 | None -> Console.WriteLine(Pretty.valueToString state.LastValue)
             | None ->
                 Console.WriteLine(Pretty.valueToString state.LastValue)
-        let retained =
-            parsed
-            |> List.filter (function
-                | SExpr _ -> false
-                | _ -> true)
-        baseProgram <- baseProgram @ retained
+        session <- submission.Session
         pendingLines <- []
         pendingBlankLines <- 0
 

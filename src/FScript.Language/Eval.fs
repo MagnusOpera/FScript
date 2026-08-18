@@ -773,17 +773,8 @@ module Eval =
 
         applyMany fnValue args
 
-    let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
+    let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
         let reserved = BuiltinSignatures.builtinReservedNames
-        let runtime =
-            { SyncRoot = obj ()
-              PendingTasks = ResizeArray()
-              BackgroundFailure = None }
-
-        externs
-        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
-        |> Option.iter (fun ext ->
-            raise (EvalException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
         program
         |> List.tryPick (function
@@ -800,6 +791,89 @@ module Eval =
             | _ -> None)
         |> Option.iter (fun name ->
             raise (EvalException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+
+    let private evaluateStatements (runtime: RuntimeState) (typeDefs: Map<string, Type>) (initialEnv: Env) (program: TypeInfer.TypedProgram) =
+        validateTopLevelBindings program
+
+        let mutable env = initialEnv
+        let mutable lastValue = VUnit
+        for stmt in program do
+            raiseIfBackgroundFailed runtime
+            match stmt with
+            | TypeInfer.TSType _ ->
+                ()
+            | TypeInfer.TSLet(name, expr, _, isRec, _, span) ->
+                if isRec then
+                    match expr with
+                    | ELambda (param, lambdaBody, _) ->
+                        let recEnv = ref env
+                        let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
+                        let finalEnv = env |> Map.add name selfValue
+                        recEnv.Value <- finalEnv
+                        env <- finalEnv
+                    | _ ->
+                        raise (EvalException { Message = "let rec requires a function binding"; Span = span })
+                else
+                    let v = evalExpr runtime typeDefs env expr
+                    env <- env |> Map.add name v
+            | TypeInfer.TSLetPattern(pattern, expr, _, _, span) ->
+                let v = evalExpr runtime typeDefs env expr
+                match patternMatch typeDefs pattern v with
+                | Some bindings ->
+                    env <- Map.fold (fun acc k value -> Map.add k value acc) env bindings
+                | None ->
+                    raise (EvalException { Message = "Let pattern did not match value"; Span = span })
+            | TypeInfer.TSLetRecGroup(bindings, _, _) ->
+                if not bindings.IsEmpty then
+                    let recEnv = ref env
+                    let recEntries =
+                        bindings
+                        |> List.map (fun (name, expr, _, bindingSpan) ->
+                            match expr with
+                            | ELambda (param, lambdaBody, _) ->
+                                name, VClosure (param.Name, lambdaBody, recEnv)
+                            | _ ->
+                                raise (EvalException { Message = "let rec requires a function binding"; Span = bindingSpan }))
+                    let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
+                    recEnv.Value <- finalEnv
+                    env <- finalEnv
+            | TypeInfer.TSExpr texpr ->
+                lastValue <- evalExpr runtime typeDefs env texpr.Expr
+
+        raiseIfBackgroundFailed runtime
+
+        let unawaitedCount =
+            runtime.PendingTasks
+            |> Seq.filter (fun handle -> not handle.Awaited)
+            |> Seq.length
+
+        if unawaitedCount > 0 then
+            let noun = if unawaitedCount = 1 then "task" else "tasks"
+            raise (EvalException { Message = $"Program completed with {unawaitedCount} unawaited {noun}"; Span = unknownSpan })
+
+        { TypeDefs = typeDefs
+          Env = env
+          LastValue = lastValue }
+
+    let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
+        let runtime =
+            { SyncRoot = obj ()
+              PendingTasks = ResizeArray()
+              BackgroundFailure = None }
+
+        evaluateStatements runtime state.TypeDefs state.Env program
+
+    let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
+        let reserved = BuiltinSignatures.builtinReservedNames
+        let runtime =
+            { SyncRoot = obj ()
+              PendingTasks = ResizeArray()
+              BackgroundFailure = None }
+
+        externs
+        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
+        |> Option.iter (fun ext ->
+            raise (EvalException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun def -> def.Name, def))
@@ -899,66 +973,7 @@ module Eval =
         env <-
             constructorValues
             |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
-        let mutable lastValue = VUnit
-        for stmt in program do
-            raiseIfBackgroundFailed runtime
-            match stmt with
-            | TypeInfer.TSType _ ->
-                ()
-            | TypeInfer.TSLet(name, expr, _, isRec, _, span) ->
-                if isRec then
-                    match expr with
-                    | ELambda (param, lambdaBody, _) ->
-                        let recEnv = ref env
-                        let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
-                        let finalEnv = env |> Map.add name selfValue
-                        recEnv.Value <- finalEnv
-                        env <- finalEnv
-                    | _ ->
-                        raise (EvalException { Message = "let rec requires a function binding"; Span = span })
-                else
-                    let v = evalExpr runtime typeDefs env expr
-                    env <- env |> Map.add name v
-            | TypeInfer.TSLetPattern(pattern, expr, _, _, span) ->
-                let v = evalExpr runtime typeDefs env expr
-                match patternMatch typeDefs pattern v with
-                | Some bindings ->
-                    env <- Map.fold (fun acc k value -> Map.add k value acc) env bindings
-                | None ->
-                    raise (EvalException { Message = "Let pattern did not match value"; Span = span })
-            | TypeInfer.TSLetRecGroup(bindings, _, span) ->
-                if bindings.IsEmpty then
-                    ()
-                else
-                    let recEnv = ref env
-                    let recEntries =
-                        bindings
-                        |> List.map (fun (name, expr, _, bindingSpan) ->
-                            match expr with
-                            | ELambda (param, lambdaBody, _) ->
-                                name, VClosure (param.Name, lambdaBody, recEnv)
-                            | _ ->
-                                raise (EvalException { Message = "let rec requires a function binding"; Span = bindingSpan }))
-                    let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
-                    recEnv.Value <- finalEnv
-                    env <- finalEnv
-            | TypeInfer.TSExpr texpr ->
-                lastValue <- evalExpr runtime typeDefs env texpr.Expr
-
-        raiseIfBackgroundFailed runtime
-
-        let unawaitedCount =
-            runtime.PendingTasks
-            |> Seq.filter (fun handle -> not handle.Awaited)
-            |> Seq.length
-
-        if unawaitedCount > 0 then
-            let noun = if unawaitedCount = 1 then "task" else "tasks"
-            raise (EvalException { Message = $"Program completed with {unawaitedCount} unawaited {noun}"; Span = unknownSpan })
-
-        { TypeDefs = typeDefs
-          Env = env
-          LastValue = lastValue }
+        evaluateStatements runtime typeDefs env program
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
         (evalProgramWithExternsState externs program).LastValue

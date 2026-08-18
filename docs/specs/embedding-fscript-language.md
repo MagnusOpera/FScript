@@ -143,7 +143,7 @@ const result = submit(session, "add 20 22");
 resetSession(session);
 ```
 
-Sessions retain submitted declarations and type declarations. Expression-only submissions are evaluated against retained declarations and return a formatted `text` result plus the tagged `value`. The browser session API mirrors the CLI REPL's core state model, but it does not include console-specific controls such as prompts, EOF handling, or default .NET runtime externs.
+Sessions retain submitted declarations, inferred binding schemes, runtime values, and type declarations. Expression-only submissions are inferred and evaluated incrementally against that retained state and return a formatted `text` result plus the tagged `value`. Adding a type declaration rebuilds the session from its retained program so the declaration can safely affect record-shape resolution. The browser session API mirrors the CLI REPL's core state model, but it does not include console-specific controls such as prompts, EOF handling, or default .NET runtime externs.
 
 ### JavaScript imports
 

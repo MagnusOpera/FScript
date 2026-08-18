@@ -31,7 +31,7 @@ type LoadedScriptHandle =
 
 type SessionHandle =
     { kind: string
-      mutable retainedProgram: FScript.Language.Program
+      mutable interactiveSession: Interactive.Session
       options: obj
       externs: ExternalFunction list }
 
@@ -369,12 +369,6 @@ let private hasExpression statements =
         | SExpr _ -> true
         | _ -> false)
 
-let private retainedStatements statements =
-    statements
-    |> List.filter (function
-        | SExpr _ -> false
-        | _ -> true)
-
 let private loadTyped typed externs =
     let state = Eval.evalProgramWithExternsState externs typed
     let exportedNames = declaredExportedNames typed |> List.distinct |> List.sort
@@ -448,33 +442,33 @@ let run (source: string) (options: obj) : obj =
 
 let createSession (options: obj) : obj =
     withStructuredErrors (fun () ->
+        let externs = externsFromOptions options
         ({ kind = "session"
-           retainedProgram = []
+           interactiveSession = Interactive.create externs
            options = options
-           externs = externsFromOptions options }: SessionHandle)
+           externs = externs }: SessionHandle)
         |> box)
 
 let resetSession (session: obj) : obj =
     withStructuredErrors (fun () ->
         let session = unbox<SessionHandle> session
-        session.retainedProgram <- []
+        session.interactiveSession <- Interactive.create session.externs
         box session)
 
 let submit (session: obj) (source: string) : obj =
     withStructuredErrors (fun () ->
         let session = unbox<SessionHandle> session
         let parsed = parseSource source session.options session.externs
-        let candidate = session.retainedProgram @ parsed.program
-        let typed = TypeInfer.inferProgramWithExterns session.externs candidate
-        let state = Eval.evalProgramWithExternsState session.externs typed
+        let submission = Interactive.submit session.interactiveSession parsed.program
+        session.interactiveSession <- submission.Session
+        let state = submission.State
         let submittedHasExpression = hasExpression parsed.program
-        session.retainedProgram <- session.retainedProgram @ retainedStatements parsed.program
         createObj
             [ "kind" ==> "session-result"
               "hasValue" ==> submittedHasExpression
               "value" ==> (if submittedHasExpression then valueToTagged state.LastValue else nullObj)
               "text" ==> (if submittedHasExpression then Pretty.valueToString state.LastValue else "")
-              "retainedCount" ==> session.retainedProgram.Length ])
+              "retainedCount" ==> submission.RetainedCount ])
 
 let listFunctions (loaded: obj) : string array =
     withStructuredErrors (fun () ->

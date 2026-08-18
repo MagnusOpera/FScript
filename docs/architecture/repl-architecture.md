@@ -17,7 +17,7 @@ This keeps pipelines (`cat file | fscript`) deterministic and prevents accidenta
 
 REPL mode is implemented in `runRepl` with these mutable state values:
 
-- `baseProgram`: retained top-level declarations for session state.
+- `session`: retained inference bindings, runtime environment, and top-level declarations.
 - `pendingLines`: current buffered input.
 - `pendingBlankLines`: blank-line counter while pending.
 - `running`: loop flag.
@@ -32,18 +32,18 @@ Prompt behavior:
 When input is submitted, REPL runs the same language pipeline as non-interactive execution:
 
 1. Parse pending source into AST statements.
-2. Append parsed statements to retained `baseProgram`.
-3. Type-infer combined program with runtime externs.
-4. Evaluate combined program and read `LastValue`.
+2. Type-infer the submitted statements against retained binding schemes.
+3. Evaluate the submitted statements against the retained runtime environment.
+4. Read `LastValue` from the resulting session state.
 5. Print result for expression submissions.
 
-This reuses the same parser, type inference, and evaluator behavior as script-file execution.
+The initial submission uses the whole-program pipeline. Later submissions are incremental. A submission containing a type declaration falls back to whole-program inference and evaluation because a new type can change how earlier record shapes resolve.
 
 ## Retention model
 
 After successful execution:
 
-- Non-expression statements from current input are appended to `baseProgram`.
+- Non-expression statements from current input are retained by the interactive session.
 - Expression statements are not retained.
 
 Result:

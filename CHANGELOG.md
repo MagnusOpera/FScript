@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made REPL and JavaScript sessions infer and evaluate new submissions incrementally instead of replaying session history.
 - Reduced type inference allocation by avoiding no-op substitution, environment, generalization, and record-key work.
 - Reduced script type-checking overhead by skipping editor-only local-variable telemetry during ordinary inference.
 - Speed up non-recursive filesystem enumeration patterns without changing their results.

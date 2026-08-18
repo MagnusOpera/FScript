@@ -31,6 +31,7 @@ Responsibilities:
 - Type system and Hindley-Milner inference.
 - Optional per-inference local-variable type capture for editor features; ordinary script inference does not allocate this telemetry.
 - Evaluator and value model.
+- Incremental inference and evaluation state for REPL-like hosts.
 - Pretty-printing of evaluation results.
 
 Use this when:
