@@ -29,6 +29,7 @@ Responsibilities:
 - Core language model and AST.
 - Lexer and parser.
 - Type system and Hindley-Milner inference.
+- Optional per-inference local-variable type capture for editor features; ordinary script inference does not allocate this telemetry.
 - Evaluator and value model.
 - Pretty-printing of evaluation results.
 

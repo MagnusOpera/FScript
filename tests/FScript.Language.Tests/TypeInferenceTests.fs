@@ -413,6 +413,24 @@ type TypeInferenceTests () =
         remainingTypes |> List.iter (fun t -> t |> should equal (TMap (TString, TInt)))
 
     [<Test>]
+    member _.``Ordinary inference and local capture produce the same concrete result`` () =
+        let program =
+            Helpers.parse
+                "let transform value =\n    let identity item = item\n    let pair = (identity value, identity value)\n    pair\ntransform 42"
+
+        let ordinary = TypeInfer.inferProgram program
+        let captured, locals = TypeInfer.inferProgramWithLocalVariableTypes program
+
+        let lastType typed =
+            match typed |> List.last with
+            | TypeInfer.TSExpr expression -> expression.Type
+            | _ -> failwith "Expected expression"
+
+        lastType ordinary |> should equal (TTuple [ TInt; TInt ])
+        lastType captured |> should equal (TTuple [ TInt; TInt ])
+        locals |> should not' (be Empty)
+
+    [<Test>]
     member _.``Infers match on map literal-key pattern without tail`` () =
         let typed =
             Helpers.infer

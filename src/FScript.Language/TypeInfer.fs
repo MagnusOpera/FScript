@@ -33,7 +33,26 @@ module TypeInfer =
         Map.fold (fun acc k v -> Map.add k v acc) s1 s2'
 
     let private occurs (v: int) (t: Type) =
-        Types.ftvType t |> Set.contains v
+        let rec loop current =
+            match current with
+            | TVar currentVar -> currentVar = v
+            | TList item
+            | TTask item
+            | TOption item -> loop item
+            | TTuple items -> items |> List.exists loop
+            | TRecord fields -> fields |> Map.exists (fun _ fieldType -> loop fieldType)
+            | TMap (keyType, valueType)
+            | TFun (keyType, valueType) -> loop keyType || loop valueType
+            | TUnit
+            | TInt
+            | TFloat
+            | TBool
+            | TString
+            | TNamed _
+            | TUnion _
+            | TTypeToken -> false
+
+        loop t
 
     let private unify (typeDefs: Map<string, Type>) (t1: Type) (t2: Type) (span: Span) : Subst =
         let rec uni (seen: Set<Type * Type>) a b =
@@ -142,28 +161,23 @@ module TypeInfer =
         { mutable ScopeStack: Set<string> list
           LocalVariableTypes: ResizeArray<LocalVariableTypeCapture> }
 
-    let mutable private telemetry: InferenceTelemetry option = None
+    let private createTelemetry () =
+        { ScopeStack = [ Set.empty ]
+          LocalVariableTypes = ResizeArray() }
 
-    let private beginTelemetry () =
-        telemetry <- Some { ScopeStack = [ Set.empty ]; LocalVariableTypes = ResizeArray() }
+    let private capturedLocalVariableTypes (telemetry: InferenceTelemetry option) : LocalVariableTypeInfo list =
+        match telemetry with
+        | Some t ->
+            t.LocalVariableTypes
+            |> Seq.map (fun item ->
+                ({ Name = item.Name
+                   Span = item.Span
+                   Type = item.Type }: LocalVariableTypeInfo))
+            |> Seq.toList
+        | None ->
+            []
 
-    let private endTelemetry () =
-        let captured : LocalVariableTypeInfo list =
-            match telemetry with
-            | Some t ->
-                t.LocalVariableTypes
-                |> Seq.map (fun item ->
-                    ({ Name = item.Name
-                       Span = item.Span
-                       Type = item.Type }: LocalVariableTypeInfo))
-                |> Seq.toList
-            | None ->
-                []
-
-        telemetry <- None
-        captured
-
-    let private withLocalBindings (names: string list) (work: unit -> 'T) : 'T =
+    let private withLocalBindings (telemetry: InferenceTelemetry option) (names: string list) (work: unit -> 'T) : 'T =
         match telemetry with
         | None -> work ()
         | Some t ->
@@ -186,7 +200,7 @@ module TypeInfer =
                 | _ :: tail -> t.ScopeStack <- tail
                 | [] -> ()
 
-    let private recordLocalVariableUse (name: string) (span: Span) (varType: Type) =
+    let private recordLocalVariableUse (telemetry: InferenceTelemetry option) (name: string) (span: Span) (varType: Type) =
         match telemetry with
         | None -> ()
         | Some t ->
@@ -198,7 +212,7 @@ module TypeInfer =
             if Set.contains name current then
                 t.LocalVariableTypes.Add({ Name = name; Span = span; Type = varType })
 
-    let private recordLocalVariableDeclaration (name: string) (span: Span) (varType: Type) =
+    let private recordLocalVariableDeclaration (telemetry: InferenceTelemetry option) (name: string) (span: Span) (varType: Type) =
         if System.String.IsNullOrWhiteSpace(name) || name = "_" then
             ()
         else
@@ -207,7 +221,7 @@ module TypeInfer =
             | Some t ->
                 t.LocalVariableTypes.Add({ Name = name; Span = span; Type = varType })
 
-    let private applySubstToCapturedLocals (startIndex: int) (subst: Subst) =
+    let private applySubstToCapturedLocals (telemetry: InferenceTelemetry option) (startIndex: int) (subst: Subst) =
         match telemetry with
         | None -> ()
         | Some t ->
@@ -215,7 +229,7 @@ module TypeInfer =
                 let entry = t.LocalVariableTypes[i]
                 entry.Type <- applyType subst entry.Type
 
-    let private currentTelemetryCaptureCount () =
+    let private currentTelemetryCaptureCount (telemetry: InferenceTelemetry option) =
         match telemetry with
         | Some t -> t.LocalVariableTypes.Count
         | None -> 0
@@ -385,12 +399,12 @@ module TypeInfer =
             |> Map.ofList
             |> TRecord
 
-    let rec private inferPattern (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (pat: Pattern) : Map<string, Type> * Type =
+    let rec private inferPattern (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (pat: Pattern) : Map<string, Type> * Type =
         match pat with
         | PWildcard _ -> Map.empty, Types.freshVar()
         | PVar (name, _) ->
             let tv = Types.freshVar()
-            recordLocalVariableDeclaration name (Ast.spanOfPattern pat) tv
+            recordLocalVariableDeclaration telemetry name (Ast.spanOfPattern pat) tv
             Map.ofList [ name, tv ], tv
         | PLiteral (lit, _) ->
             let t =
@@ -404,18 +418,18 @@ module TypeInfer =
             let tv = Types.freshVar()
             Map.empty, TList tv
         | PCons (p1, p2, span) ->
-            let startIndex = currentTelemetryCaptureCount ()
-            let env1, t1 = inferPattern typeDefs constructors p1
-            let env2, t2 = inferPattern typeDefs constructors p2
+            let startIndex = currentTelemetryCaptureCount telemetry
+            let env1, t1 = inferPattern telemetry typeDefs constructors p1
+            let env2, t2 = inferPattern telemetry typeDefs constructors p2
             let s = unify Map.empty t2 (TList t1) span
-            applySubstToCapturedLocals startIndex s
+            applySubstToCapturedLocals telemetry startIndex s
             let env = Map.fold (fun acc k v -> Map.add k v acc) env1 env2
             env |> Map.map (fun _ ty -> applyType s ty), applyType s (TList t1)
         | PTuple (ps, _) ->
             let env, types =
                 ps
                 |> List.fold (fun (envAcc, typesAcc) p ->
-                    let envPart, tPart = inferPattern typeDefs constructors p
+                    let envPart, tPart = inferPattern telemetry typeDefs constructors p
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, tPart :: typesAcc) (Map.empty, [])
             env, TTuple (List.rev types)
@@ -423,12 +437,12 @@ module TypeInfer =
             let env, fieldTypes =
                 fields
                 |> List.fold (fun (envAcc, fieldAcc) (name, p) ->
-                    let envPart, tPart = inferPattern typeDefs constructors p
+                    let envPart, tPart = inferPattern telemetry typeDefs constructors p
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
             env, TRecord fieldTypes
         | PMap (clauses, tailPattern, span) ->
-            let startIndex = currentTelemetryCaptureCount ()
+            let startIndex = currentTelemetryCaptureCount telemetry
             let ensureSupportedMapKeyType (t: Type) =
                 match t with
                 | TString
@@ -442,8 +456,8 @@ module TypeInfer =
             let mutable envAcc : Map<string, Type> = Map.empty
 
             for (keyPattern, valuePattern) in clauses do
-                let keyEnv, keyTypePart = inferPattern typeDefs constructors keyPattern
-                let valueEnv, currentValueType = inferPattern typeDefs constructors valuePattern
+                let keyEnv, keyTypePart = inferPattern telemetry typeDefs constructors keyPattern
+                let valueEnv, currentValueType = inferPattern telemetry typeDefs constructors valuePattern
 
                 let sKey = unify typeDefs (applyType sAcc keyTypePart) (applyType sAcc mapKeyType) span
                 sAcc <- compose sKey sAcc
@@ -461,7 +475,7 @@ module TypeInfer =
 
             match tailPattern with
             | Some tail ->
-                let tailEnv, tailType = inferPattern typeDefs constructors tail
+                let tailEnv, tailType = inferPattern telemetry typeDefs constructors tail
                 let expectedTailType = TMap (applyType sAcc mapKeyType, applyType sAcc valueType)
                 let sTail = unify typeDefs (applyType sAcc tailType) expectedTailType span
                 sAcc <- compose sTail sAcc
@@ -469,10 +483,10 @@ module TypeInfer =
             | None -> ()
 
             ensureSupportedMapKeyType (applyType sAcc mapKeyType)
-            applySubstToCapturedLocals startIndex sAcc
+            applySubstToCapturedLocals telemetry startIndex sAcc
             envAcc |> Map.map (fun _ t -> applyType sAcc t), TMap (applyType sAcc mapKeyType, applyType sAcc valueType)
         | PSome (p, _) ->
-            let env, t = inferPattern typeDefs constructors p
+            let env, t = inferPattern telemetry typeDefs constructors p
             env, TOption t
         | PNone _ ->
             let tv = Types.freshVar()
@@ -490,10 +504,10 @@ module TypeInfer =
                 match sigInfo.Payload, payload with
                 | None, None -> Map.empty, unionType
                 | Some expectedPayload, Some payloadPattern ->
-                    let startIndex = currentTelemetryCaptureCount ()
-                    let envP, tP = inferPattern typeDefs constructors payloadPattern
+                    let startIndex = currentTelemetryCaptureCount telemetry
+                    let envP, tP = inferPattern telemetry typeDefs constructors payloadPattern
                     let s = unify typeDefs tP expectedPayload span
-                    applySubstToCapturedLocals startIndex s
+                    applySubstToCapturedLocals telemetry startIndex s
                     envP |> Map.map (fun _ t -> applyType s t), unionType
                 | None, Some _ ->
                     raise (TypeException { Message = sprintf "Union case '%s' does not take a payload" constructorName; Span = span })
@@ -528,7 +542,7 @@ module TypeInfer =
             | _ -> ()
         loop t
 
-    let rec private inferExpr (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+    let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
         match expr with
         | EUnit _ ->
             emptySubst, TUnit, asTyped expr TUnit
@@ -544,11 +558,11 @@ module TypeInfer =
             match env |> Map.tryFind name with
             | Some scheme ->
                 let t = instantiate scheme
-                recordLocalVariableUse name span t
+                recordLocalVariableUse telemetry name span t
                 emptySubst, t, asTyped expr t
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EParen (inner, _) ->
-            let s, t, _ = inferExpr typeDefs constructors env inner
+            let s, t, _ = inferExpr telemetry typeDefs constructors env inner
             s, t, asTyped expr t
         | ETypeOf (name, span) ->
             if typeDefs.ContainsKey name then
@@ -566,7 +580,7 @@ module TypeInfer =
                 match part with
                 | IPText _ -> ()
                 | IPExpr pexpr ->
-                    let s1, _, _ = inferExpr typeDefs constructors (applyEnv sAcc env) pexpr
+                    let s1, _, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) pexpr
                     sAcc <- compose s1 sAcc
             sAcc, TString, asTyped expr TString
         | ELambda (param, body, _) ->
@@ -574,42 +588,42 @@ module TypeInfer =
                 match param.Annotation with
                 | Some tref -> annotationTypeFromRef typeDefs param.Span tref
                 | None -> Types.freshVar()
-            recordLocalVariableDeclaration param.Name param.Span tv
+            recordLocalVariableDeclaration telemetry param.Name param.Span tv
             let env' = env |> Map.add param.Name (Forall([], tv))
             let s1, tBody, _ =
-                withLocalBindings [ param.Name ] (fun () ->
-                    inferExpr typeDefs constructors env' body)
+                withLocalBindings telemetry [ param.Name ] (fun () ->
+                    inferExpr telemetry typeDefs constructors env' body)
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
             s1, tFun, asTyped expr tFun
         | EApply (fn, arg, span) ->
-            let s1, t1, _ = inferExpr typeDefs constructors env fn
+            let s1, t1, _ = inferExpr telemetry typeDefs constructors env fn
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr typeDefs constructors env2 arg
+            let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 arg
             let tv = Types.freshVar()
             let s3 = unify typeDefs (applyType s2 t1) (TFun (t2, tv)) span
             let s = compose s3 (compose s2 s1)
             let tRes = applyType s tv
             s, tRes, asTyped expr tRes
         | EIf (cond, tExpr, fExpr, span) ->
-            let s1, tCond, _ = inferExpr typeDefs constructors env cond
+            let s1, tCond, _ = inferExpr telemetry typeDefs constructors env cond
             let sBool = unify typeDefs tCond TBool span
             let env2 = applyEnv (compose sBool s1) env
-            let s2, tThen, _ = inferExpr typeDefs constructors env2 tExpr
+            let s2, tThen, _ = inferExpr telemetry typeDefs constructors env2 tExpr
             let env3 = applyEnv (compose s2 (compose sBool s1)) env
-            let s3, tElse, _ = inferExpr typeDefs constructors env3 fExpr
+            let s3, tElse, _ = inferExpr telemetry typeDefs constructors env3 fExpr
             let s4 = unify typeDefs (applyType s3 tThen) tElse span
             let s = compose s4 (compose s3 (compose s2 (compose sBool s1)))
             let tRes = applyType s tElse
             s, tRes, asTyped expr tRes
         | ERaise (value, span) ->
-            let s1, t1, _ = inferExpr typeDefs constructors env value
+            let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
             let s2 = unify typeDefs (applyType s1 t1) TString span
             let s = compose s2 s1
             let tRes = Types.freshVar()
             s, tRes, asTyped expr tRes
         | EFor (name, source, body, span) ->
-            let s1, tSource, _ = inferExpr typeDefs constructors env source
+            let s1, tSource, _ = inferExpr telemetry typeDefs constructors env source
             let tv = Types.freshVar()
             let sList = unify typeDefs (applyType s1 tSource) (TList tv) span
             let sSource = compose sList s1
@@ -618,8 +632,8 @@ module TypeInfer =
                 applyEnv sSource env
                 |> Map.add name (Forall([], itemType))
             let s2, tBody, _ =
-                withLocalBindings [ name ] (fun () ->
-                    inferExpr typeDefs constructors envBody body)
+                withLocalBindings telemetry [ name ] (fun () ->
+                    inferExpr telemetry typeDefs constructors envBody body)
             let sBodyUnit = unify typeDefs (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
             let s = compose sBodyUnit (compose s2 sSource)
             s, TUnit, asTyped expr TUnit
@@ -628,8 +642,8 @@ module TypeInfer =
                 let tv = Types.freshVar()
                 let envRec = env |> Map.add name (Forall([], tv))
                 let s1, t1, _ =
-                    withLocalBindings [ name ] (fun () ->
-                        inferExpr typeDefs constructors envRec value)
+                    withLocalBindings telemetry [ name ] (fun () ->
+                        inferExpr telemetry typeDefs constructors envRec value)
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
                 let sRet =
                     match returnAnnotation with
@@ -643,12 +657,12 @@ module TypeInfer =
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
                 let s3, tBody, _ =
-                    withLocalBindings [ name ] (fun () ->
-                        inferExpr typeDefs constructors env2 body)
+                    withLocalBindings telemetry [ name ] (fun () ->
+                        inferExpr telemetry typeDefs constructors env2 body)
                 let s = compose s3 sValue
                 s, tBody, asTyped expr tBody
             else
-                let s1, t1, _ = inferExpr typeDefs constructors env value
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
                 let sDiscard =
                     if name = "_" then
                         unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr value)
@@ -666,17 +680,17 @@ module TypeInfer =
                 let scheme = Types.generalize env1 (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
                 let s2, t2, _ =
-                    withLocalBindings [ name ] (fun () ->
-                        inferExpr typeDefs constructors env2 body)
+                    withLocalBindings telemetry [ name ] (fun () ->
+                        inferExpr telemetry typeDefs constructors env2 body)
                 let s = compose s2 sValue
                 s, t2, asTyped expr t2
         | ELetPattern (pat, value, body, span) ->
-            let startIndex = currentTelemetryCaptureCount ()
-            let s1, tValue, _ = inferExpr typeDefs constructors env value
-            let envPat, tPat = inferPattern typeDefs constructors pat
+            let startIndex = currentTelemetryCaptureCount telemetry
+            let s1, tValue, _ = inferExpr telemetry typeDefs constructors env value
+            let envPat, tPat = inferPattern telemetry typeDefs constructors pat
             let s2 = unify typeDefs (applyType s1 tValue) tPat span
             let sValue = compose s2 s1
-            applySubstToCapturedLocals startIndex sValue
+            applySubstToCapturedLocals telemetry startIndex sValue
             let env1 = applyEnv sValue env
             let envPatTyped = envPat |> Map.map (fun _ ty -> applyType sValue ty)
             let env2 =
@@ -686,8 +700,8 @@ module TypeInfer =
                     Map.add name scheme state) env1
             let boundNames = envPatTyped |> Map.toList |> List.map fst
             let sBody, tBody, _ =
-                withLocalBindings boundNames (fun () ->
-                    inferExpr typeDefs constructors env2 body)
+                withLocalBindings telemetry boundNames (fun () ->
+                    inferExpr telemetry typeDefs constructors env2 body)
             let s = compose sBody sValue
             s, tBody, asTyped expr tBody
         | ELetRecGroup (bindings, body, span) ->
@@ -710,10 +724,10 @@ module TypeInfer =
 
             let mutable sRec = emptySubst
             let recursiveNames = freshByName |> Map.toList |> List.map fst
-            withLocalBindings recursiveNames (fun () ->
+            withLocalBindings telemetry recursiveNames (fun () ->
                 for (name, _, exprVal, bindingSpan) in foldedBindings do
                     let envForBinding = applyEnv sRec envRec
-                    let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
+                    let s1, t1, _ = inferExpr telemetry typeDefs constructors envForBinding exprVal
                     let expected = applyType s1 (applyType sRec freshByName.[name])
                     let s2 = unify typeDefs expected t1 bindingSpan
                     sRec <- compose s2 (compose s1 sRec))
@@ -739,16 +753,16 @@ module TypeInfer =
                 |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
 
             let sBody, tBody, _ =
-                withLocalBindings recursiveNames (fun () ->
-                    inferExpr typeDefs constructors envBody body)
+                withLocalBindings telemetry recursiveNames (fun () ->
+                    inferExpr telemetry typeDefs constructors envBody body)
             let s = compose sBody sRec
             s, tBody, asTyped expr tBody
         | EMatch (scrutinee, cases, span) ->
-            let s1, tScrut, _ = inferExpr typeDefs constructors env scrutinee
+            let s1, tScrut, _ = inferExpr telemetry typeDefs constructors env scrutinee
             let mutable sAcc = s1
             let mutable resultTypeOpt : Type option = None
             for (pat, guard, body, caseSpan) in cases do
-                let envPat, tPat = inferPattern typeDefs constructors pat
+                let envPat, tPat = inferPattern telemetry typeDefs constructors pat
                 let sPat =
                     match pat, applyType sAcc tScrut, tPat with
                     | PRecord _, TRecord scrutFields, TRecord patFields ->
@@ -781,16 +795,16 @@ module TypeInfer =
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
                 let caseBoundNames = envPat |> Map.toList |> List.map fst
                 let sBody, tBody, _ =
-                    withLocalBindings caseBoundNames (fun () ->
+                    withLocalBindings telemetry caseBoundNames (fun () ->
                         let mutable envBodyCase = envCase'
                         match guard with
                         | Some guardExpr ->
-                            let sGuard, tGuard, _ = inferExpr typeDefs constructors envBodyCase guardExpr
+                            let sGuard, tGuard, _ = inferExpr telemetry typeDefs constructors envBodyCase guardExpr
                             let sGuardBool = unify typeDefs (applyType sGuard tGuard) TBool caseSpan
                             sAcc <- compose sGuardBool (compose sGuard sAcc)
                             envBodyCase <- applyEnv (compose sGuardBool sGuard) envBodyCase
                         | None -> ()
-                        inferExpr typeDefs constructors envBodyCase body)
+                        inferExpr telemetry typeDefs constructors envBodyCase body)
                 let tBody' = applyType sBody tBody
                 resultTypeOpt <-
                     match resultTypeOpt with
@@ -806,15 +820,15 @@ module TypeInfer =
             let tv = Types.freshVar()
             let mutable sAcc = emptySubst
             for item in items do
-                let s1, t1, _ = inferExpr typeDefs constructors (applyEnv sAcc env) item
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) item
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
                 sAcc <- compose s2 (compose s1 sAcc)
             let tRes = TList (applyType sAcc tv)
             sAcc, tRes, asTyped expr tRes
         | ERange (startExpr, endExpr, span) ->
-            let s1, tStart, _ = inferExpr typeDefs constructors env startExpr
+            let s1, tStart, _ = inferExpr telemetry typeDefs constructors env startExpr
             let env2 = applyEnv s1 env
-            let s2, tEnd, _ = inferExpr typeDefs constructors env2 endExpr
+            let s2, tEnd, _ = inferExpr telemetry typeDefs constructors env2 endExpr
             let s3 = unify typeDefs (applyType s2 tStart) TInt span
             let s4 = unify typeDefs (applyType s3 (applyType s2 tEnd)) TInt span
             let s = compose s4 (compose s3 (compose s2 s1))
@@ -824,7 +838,7 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             let mutable inferred : Type list = []
             for item in items do
-                let s1, t1, _ = inferExpr typeDefs constructors (applyEnv sAcc env) item
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) item
                 sAcc <- compose s1 sAcc
                 inferred <- inferred @ [ applyType sAcc t1 ]
             let tRes = TTuple inferred
@@ -833,7 +847,7 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
             for (name, valueExpr) in fields do
-                let s1, t1, _ = inferExpr typeDefs constructors (applyEnv sAcc env) valueExpr
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) valueExpr
                 sAcc <- compose s1 sAcc
                 inferred <- inferred.Add(name, applyType sAcc t1)
             let recordTypeName = resolveNamedRecordByFieldSet typeDefs (inferred |> Map.keys |> Set.ofSeq) span
@@ -846,7 +860,7 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
             for (name, valueExpr) in fields do
-                let s1, t1, _ = inferExpr typeDefs constructors (applyEnv sAcc env) valueExpr
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) valueExpr
                 sAcc <- compose s1 sAcc
                 inferred <- inferred.Add(name, applyType sAcc t1)
             let tRes = TRecord inferred
@@ -866,20 +880,20 @@ module TypeInfer =
                 match entry with
                 | MEKeyValue (keyExpr, valueExpr) ->
                     let envForKey = applyEnv sAcc env
-                    let sKey, tKey, _ = inferExpr typeDefs constructors envForKey keyExpr
+                    let sKey, tKey, _ = inferExpr telemetry typeDefs constructors envForKey keyExpr
                     let sKeyType = unify typeDefs (applyType sKey tKey) (applyType sKey (applyType sAcc keyType)) (Ast.spanOfExpr keyExpr)
                     let sAfterKey = compose sKeyType (compose sKey sAcc)
                     ensureSupportedMapKeyType (applyType sAfterKey keyType)
 
                     let envForValue = applyEnv sAfterKey env
-                    let sValue, tValue, _ = inferExpr typeDefs constructors envForValue valueExpr
+                    let sValue, tValue, _ = inferExpr telemetry typeDefs constructors envForValue valueExpr
                     let expectedValueType = applyType sValue (applyType sAfterKey valueType)
                     let sValueType = unify typeDefs expectedValueType tValue (Ast.spanOfExpr valueExpr)
 
                     sAcc <- compose sValueType (compose sValue sAfterKey)
                 | MESpread spreadExpr ->
                     let envForSpread = applyEnv sAcc env
-                    let sSpread, tSpread, _ = inferExpr typeDefs constructors envForSpread spreadExpr
+                    let sSpread, tSpread, _ = inferExpr telemetry typeDefs constructors envForSpread spreadExpr
                     let expectedSpreadType = TMap (applyType sSpread (applyType sAcc keyType), applyType sSpread (applyType sAcc valueType))
                     let sSpreadMap = unify typeDefs (applyType sSpread tSpread) expectedSpreadType (Ast.spanOfExpr spreadExpr)
                     sAcc <- compose sSpreadMap (compose sSpread sAcc)
@@ -888,7 +902,7 @@ module TypeInfer =
             let tRes = TMap (applyType sAcc keyType, applyType sAcc valueType)
             sAcc, tRes, asTyped expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr typeDefs constructors env baseExpr
+            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
             let baseFields =
                 match applyType sBase tBase with
                 | TRecord fields -> fields
@@ -904,7 +918,7 @@ module TypeInfer =
                     | Some t -> t
                     | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" name; Span = Ast.spanOfExpr valueExpr })
                 let envForField = applyEnv sAcc env
-                let sField, tField, _ = inferExpr typeDefs constructors envForField valueExpr
+                let sField, tField, _ = inferExpr telemetry typeDefs constructors envForField valueExpr
                 let expected = applyType sField (applyType sAcc expectedFieldType)
                 let sEq = unify typeDefs expected tField (Ast.spanOfExpr valueExpr)
                 sAcc <- compose sEq (compose sField sAcc)
@@ -912,7 +926,7 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
         | EStructuralRecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr typeDefs constructors env baseExpr
+            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
             let baseFields =
                 match applyType sBase tBase with
                 | TRecord fields -> fields
@@ -925,7 +939,7 @@ module TypeInfer =
             let mutable resultFields = baseFields
             for (name, valueExpr) in updates do
                 let envForField = applyEnv sAcc env
-                let sField, tField, _ = inferExpr typeDefs constructors envForField valueExpr
+                let sField, tField, _ = inferExpr telemetry typeDefs constructors envForField valueExpr
                 let tFieldApplied = applyType sField tField
                 let expected =
                     match resultFields.TryFind name with
@@ -965,17 +979,17 @@ module TypeInfer =
                     let t = instantiate scheme
                     emptySubst, t, asTyped expr t
                 | None ->
-                    let s1, tTarget, _ = inferExpr typeDefs constructors env target
+                    let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
                     let sField, tField = inferRecordField s1 tTarget
                     sField, tField, asTyped expr tField
             | _ ->
-                let s1, tTarget, _ = inferExpr typeDefs constructors env target
+                let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
                 let sField, tField = inferRecordField s1 tTarget
                 sField, tField, asTyped expr tField
         | EIndexGet (target, keyExpr, span) ->
-            let s1, tTarget, _ = inferExpr typeDefs constructors env target
+            let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
             let env2 = applyEnv s1 env
-            let s2, tKey, _ = inferExpr typeDefs constructors env2 keyExpr
+            let s2, tKey, _ = inferExpr telemetry typeDefs constructors env2 keyExpr
             let targetType = applyType s2 tTarget
             let keyType = applyType s2 tKey
             match targetType, keyType with
@@ -1019,26 +1033,26 @@ module TypeInfer =
         | EBinOp (op, a, b, span) ->
             match op with
             | "|>" ->
-                let s1, tLeft, _ = inferExpr typeDefs constructors env a
+                let s1, tLeft, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
-                let s2, tRight, _ = inferExpr typeDefs constructors env2 b
+                let s2, tRight, _ = inferExpr telemetry typeDefs constructors env2 b
                 let tv = Types.freshVar()
                 let s3 = unify typeDefs (applyType s2 tRight) (TFun (applyType s2 tLeft, tv)) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s tv
                 s, tRes, asTyped expr tRes
             | "::" ->
-                let s1, tHead, _ = inferExpr typeDefs constructors env a
+                let s1, tHead, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
-                let s2, tTail, _ = inferExpr typeDefs constructors env2 b
+                let s2, tTail, _ = inferExpr telemetry typeDefs constructors env2 b
                 let s3 = unify typeDefs (applyType s2 tTail) (TList tHead) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s (TList tHead)
                 s, tRes, asTyped expr tRes
             | "@" ->
-                let s1, t1, _ = inferExpr typeDefs constructors env a
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
-                let s2, t2, _ = inferExpr typeDefs constructors env2 b
+                let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 b
                 let tv = Types.freshVar()
                 let s3 = unify typeDefs (applyType s2 t1) (TList tv) span
                 let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
@@ -1046,9 +1060,9 @@ module TypeInfer =
                 let tRes = TList (applyType s tv)
                 s, tRes, asTyped expr tRes
             | _ ->
-                let s1, t1, _ = inferExpr typeDefs constructors env a
+                let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
-                let s2, t2, _ = inferExpr typeDefs constructors env2 b
+                let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 b
                 let s3 = unify typeDefs (applyType s2 t1) t2 span
                 let t = applyType s3 t2
                 let resultType =
@@ -1065,23 +1079,23 @@ module TypeInfer =
                 let s = compose s3 (compose s2 s1)
                 s, resultType, asTyped expr resultType
         | ESome (value, _) ->
-            let s1, t1, _ = inferExpr typeDefs constructors env value
+            let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
             s1, TOption t1, asTyped expr (TOption t1)
         | ENone _ ->
             let tv = Types.freshVar()
             emptySubst, TOption tv, asTyped expr (TOption tv)
         | ECons (head, tail, span) ->
-            let s1, t1, _ = inferExpr typeDefs constructors env head
+            let s1, t1, _ = inferExpr telemetry typeDefs constructors env head
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr typeDefs constructors env2 tail
+            let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 tail
             let s3 = unify typeDefs (applyType s2 t2) (TList t1) span
             let s = compose s3 (compose s2 s1)
             let tRes = applyType s (TList t1)
             s, tRes, asTyped expr tRes
         | EAppend (a, b, span) ->
-            let s1, t1, _ = inferExpr typeDefs constructors env a
+            let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
             let env2 = applyEnv s1 env
-            let s2, t2, _ = inferExpr typeDefs constructors env2 b
+            let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 b
             let tv = Types.freshVar()
             let s3 = unify typeDefs (applyType s2 t1) (TList tv) span
             let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
@@ -1127,7 +1141,7 @@ module TypeInfer =
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
-    let private inferProgramWithExternsRawAndLocals (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+    let private inferProgramWithExternsRawAndLocals (captureLocalVariables: bool) (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
             @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
@@ -1175,9 +1189,12 @@ module TypeInfer =
             (envFromExterns externs, constructorSchemes)
             ||> List.fold (fun acc (name, scheme) -> acc.Add(name, scheme))
 
-        beginTelemetry ()
+        let telemetry =
+            if captureLocalVariables then Some(createTelemetry ())
+            else None
+
+        let typed = ResizeArray<TypedStmt>()
         try
-            let typed = ResizeArray<TypedStmt>()
             for i, stmt in program |> List.indexed do
                 match stmt with
                 | SType def ->
@@ -1194,7 +1211,7 @@ module TypeInfer =
                     if isRec then
                         let tv = Types.freshVar()
                         let envRec = env |> Map.add name (Forall([], tv))
-                        let s1, t1, _ = inferExpr typeDefs constructors envRec exprVal
+                        let s1, t1, _ = inferExpr telemetry typeDefs constructors envRec exprVal
                         let s2 = unify typeDefs (applyType s1 tv) t1 span
                         let sRet =
                             match returnAnnotation with
@@ -1204,7 +1221,7 @@ module TypeInfer =
                                 unify typeDefs inferredReturn expectedReturn span
                             | None -> emptySubst
                         let s = compose sRet (compose s2 s1)
-                        applySubstToCapturedLocals startIndex s
+                        applySubstToCapturedLocals telemetry startIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes span inferred
@@ -1212,7 +1229,7 @@ module TypeInfer =
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
                     else
-                        let s1, t1, _ = inferExpr typeDefs constructors env exprVal
+                        let s1, t1, _ = inferExpr telemetry typeDefs constructors env exprVal
                         let sRet =
                             match returnAnnotation with
                             | Some tref ->
@@ -1221,7 +1238,7 @@ module TypeInfer =
                                 unify typeDefs inferredReturn expectedReturn span
                             | None -> emptySubst
                         let s = compose sRet s1
-                        applySubstToCapturedLocals startIndex s
+                        applySubstToCapturedLocals telemetry startIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes span inferred
@@ -1234,11 +1251,11 @@ module TypeInfer =
                         | Some t -> t.LocalVariableTypes.Count
                         | None -> 0
 
-                    let s1, tValue, _ = inferExpr typeDefs constructors env expr
-                    let envPat, tPat = inferPattern typeDefs constructors pattern
+                    let s1, tValue, _ = inferExpr telemetry typeDefs constructors env expr
+                    let envPat, tPat = inferPattern telemetry typeDefs constructors pattern
                     let s2 = unify typeDefs (applyType s1 tValue) tPat span
                     let s = compose s2 s1
-                    applySubstToCapturedLocals startIndex s
+                    applySubstToCapturedLocals telemetry startIndex s
                     let envBase = applyEnv s env
                     let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
                     typedBindings
@@ -1275,7 +1292,7 @@ module TypeInfer =
                     let mutable sRec = emptySubst
                     for (name, _, exprVal, bindingSpan) in foldedBindings do
                         let envForBinding = applyEnv sRec envRec
-                        let s1, t1, _ = inferExpr typeDefs constructors envForBinding exprVal
+                        let s1, t1, _ = inferExpr telemetry typeDefs constructors envForBinding exprVal
                         let expected = applyType s1 (applyType sRec freshByName.[name])
                         let s2 = unify typeDefs expected t1 bindingSpan
                         sRec <- compose s2 (compose s1 sRec)
@@ -1289,7 +1306,7 @@ module TypeInfer =
                             sRec <- compose sRet sRec
                         | None -> ()
 
-                    applySubstToCapturedLocals startIndex sRec
+                    applySubstToCapturedLocals telemetry startIndex sRec
 
                     let envGeneralize = applyEnv sRec env
                     let schemes =
@@ -1314,25 +1331,24 @@ module TypeInfer =
                         | Some t -> t.LocalVariableTypes.Count
                         | None -> 0
 
-                    let s1, t1, typedExpr = inferExpr typeDefs constructors env expr
+                    let s1, t1, typedExpr = inferExpr telemetry typeDefs constructors env expr
                     let sDiscard =
                         if i < (program.Length - 1) then
                             unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr expr)
                         else
                             emptySubst
                     let s = compose sDiscard s1
-                    applySubstToCapturedLocals startIndex s
+                    applySubstToCapturedLocals telemetry startIndex s
                     validateMapKeyTypes (Ast.spanOfExpr expr) (applyType s t1)
                     env <- applyEnv s env
                     typed.Add(TSExpr typedExpr)
 
-            typed |> Seq.toList, endTelemetry ()
+            typed |> Seq.toList, capturedLocalVariableTypes telemetry
         with _ ->
-            let _ = endTelemetry ()
             reraise ()
 
     let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        inferProgramWithExternsRawAndLocals externs program |> fst
+        inferProgramWithExternsRawAndLocals false externs program |> fst
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -1362,7 +1378,7 @@ module TypeInfer =
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        inferProgramWithExternsRawAndLocals externs program
+        inferProgramWithExternsRawAndLocals true externs program
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program

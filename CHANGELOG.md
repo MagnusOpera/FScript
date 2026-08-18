@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Reduced script type-checking overhead by skipping editor-only local-variable telemetry during ordinary inference.
 - Speed up non-recursive filesystem enumeration patterns without changing their results.
 - Fixed the documentation site to identify the latest released version as actively maintained.
 - Restored the unreleased-version notice on the `Next` documentation.
