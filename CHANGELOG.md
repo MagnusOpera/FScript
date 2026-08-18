@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.78.1]
+
+
 - Fixed npm release publishing to grant the provenance identity permission required by GitHub Actions.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.78.0...0.78.1
 
 ## [0.78.0]
 
