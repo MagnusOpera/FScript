@@ -6,31 +6,46 @@ module TypeInfer =
 
     let private emptySubst : Subst = Map.empty
 
-    let rec private applyType (s: Subst) (t: Type) : Type =
-        match t with
-        | TVar v ->
-            match s |> Map.tryFind v with
-            | Some mapped -> applyType s mapped
-            | None -> t
-        | TList t1 -> TList (applyType s t1)
-        | TTask t1 -> TTask (applyType s t1)
-        | TTuple ts -> TTuple (ts |> List.map (applyType s))
-        | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> applyType s t1))
-        | TMap (tk, tv) -> TMap (applyType s tk, applyType s tv)
-        | TOption t1 -> TOption (applyType s t1)
-        | TFun (a, b) -> TFun (applyType s a, applyType s b)
-        | _ -> t
+    let private applyType (s: Subst) (t: Type) : Type =
+        if Map.isEmpty s then
+            t
+        else
+            let rec apply current =
+                match current with
+                | TVar v ->
+                    match s |> Map.tryFind v with
+                    | Some mapped -> apply mapped
+                    | None -> current
+                | TList t1 -> TList (apply t1)
+                | TTask t1 -> TTask (apply t1)
+                | TTuple ts -> TTuple (ts |> List.map apply)
+                | TRecord fields -> TRecord (fields |> Map.map (fun _ t1 -> apply t1))
+                | TMap (tk, tv) -> TMap (apply tk, apply tv)
+                | TOption t1 -> TOption (apply t1)
+                | TFun (a, b) -> TFun (apply a, apply b)
+                | _ -> current
 
-    let private applyScheme (s: Subst) (Forall (vars, t)) =
-        let s' = vars |> List.fold (fun acc v -> Map.remove v acc) s
-        Forall (vars, applyType s' t)
+            apply t
+
+    let private applyScheme (s: Subst) ((Forall (vars, t)) as scheme) =
+        if Map.isEmpty s then
+            scheme
+        else
+            let s' = vars |> List.fold (fun acc v -> Map.remove v acc) s
+            Forall (vars, applyType s' t)
 
     let private applyEnv (s: Subst) (env: Map<string, Scheme>) =
-        env |> Map.map (fun _ sc -> applyScheme s sc)
+        if Map.isEmpty s then env
+        else env |> Map.map (fun _ sc -> applyScheme s sc)
 
     let private compose (s1: Subst) (s2: Subst) : Subst =
-        let s2' = s2 |> Map.map (fun _ t -> applyType s1 t)
-        Map.fold (fun acc k v -> Map.add k v acc) s1 s2'
+        if Map.isEmpty s1 then
+            s2
+        elif Map.isEmpty s2 then
+            s1
+        else
+            let s2' = s2 |> Map.map (fun _ t -> applyType s1 t)
+            Map.fold (fun acc k v -> Map.add k v acc) s1 s2'
 
     let private occurs (v: int) (t: Type) =
         let rec loop current =
@@ -78,13 +93,12 @@ module TypeInfer =
                         let s1 = uni seen' (applyType sAcc x) (applyType sAcc y)
                         compose s1 sAcc) emptySubst
                 | TRecord xf, TRecord yf ->
-                    let xKeys = Set.ofSeq xf.Keys
-                    let yKeys = Set.ofSeq yf.Keys
                     let fieldsToCheck, otherFields =
-                        if Set.isSubset xKeys yKeys then xf, yf
-                        elif Set.isSubset yKeys xKeys then yf, xf
-                        else
-                            raise (TypeException { Message = "Record field set mismatch"; Span = span })
+                        if xf.Count <= yf.Count then xf, yf
+                        else yf, xf
+
+                    if fieldsToCheck |> Map.exists (fun name _ -> not (otherFields.ContainsKey name)) then
+                        raise (TypeException { Message = "Record field set mismatch"; Span = span })
 
                     fieldsToCheck
                     |> Map.toList

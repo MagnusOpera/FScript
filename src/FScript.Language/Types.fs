@@ -52,8 +52,12 @@ module Types =
         env |> Map.values |> Seq.map ftvScheme |> Seq.fold Set.union Set.empty
 
     let generalize env t =
-        let vars = Set.difference (ftvType t) (ftvEnv env) |> Set.toList
-        Forall (vars, t)
+        let typeVariables = ftvType t
+        if Set.isEmpty typeVariables then
+            Forall ([], t)
+        else
+            let vars = Set.difference typeVariables (ftvEnv env) |> Set.toList
+            Forall (vars, t)
 
     let rec typeToString t =
         let rec go t =
