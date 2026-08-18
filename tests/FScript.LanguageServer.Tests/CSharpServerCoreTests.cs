@@ -7,6 +7,56 @@ namespace FScript.LanguageServer.Tests;
 [TestFixture]
 public sealed class CSharpServerCoreTests
 {
+    [Test]
+    public void CSharp_server_keeps_inlay_hints_after_a_type_error()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-error-recovery-inlay-test.fss";
+            var source = "let answer = 42\nlet broken = missing\nlet message = \"ok\"\n";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var requestParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 0, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 3, ["character"] = 0 }
+                }
+            };
+            LspClient.SendRequest(client, 901, "textDocument/inlayHint", requestParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue id && id.TryGetValue<int>(out var value) && value == 901);
+            var labels = (response["result"] as JsonArray ?? new JsonArray())
+                .OfType<JsonObject>()
+                .Select(item => item["label"]?.GetValue<string>() ?? string.Empty)
+                .ToList();
+
+            Assert.That(labels, Does.Contain(": int"));
+            Assert.That(labels, Does.Contain(": string"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
     private static List<(int line, int start, int length, int tokenType)> DecodeSemanticTokens(JsonArray data)
     {
         var result = new List<(int line, int start, int length, int tokenType)>();

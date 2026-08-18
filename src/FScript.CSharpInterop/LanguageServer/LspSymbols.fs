@@ -811,31 +811,7 @@ let queryValues : string -> string -> string list option
 
         resolveTypeTarget
 
-    let private inferTopLevelTypesBestEffort (externs: ExternalFunction list) (program: Program) : Map<string, Type> =
-        let mutable accepted: Program = []
-        let mutable result: Map<string, Type> = Map.empty
-
-        let tryInferWithCurrent (candidate: Program) =
-            try
-                let typed, _ = InteropServices.inferProgramWithExternsAndLocalVariableTypes externs candidate
-                Some typed
-            with
-            | _ -> None
-
-        let extractTypeForName (typed: TypeInfer.TypedProgram) (targetName: string) =
-            typed
-            |> List.tryPick (fun stmt ->
-                match stmt with
-                | TypeInfer.TSLet (name, _, t, _, _, _) when name = targetName ->
-                    Some t
-                | TypeInfer.TSLetPattern (_, _, bindings, _, _) ->
-                    bindings |> Map.tryFind targetName
-                | TypeInfer.TSLetRecGroup (bindings, _, _) ->
-                    bindings
-                    |> List.tryPick (fun (name, _, t, _) ->
-                        if name = targetName then Some t else None)
-                | _ -> None)
-
+    let private inferBestEffort (externs: ExternalFunction list) (program: Program) : Map<string, Type> * TypeInfer.LocalVariableTypeInfo list =
         let rec collectPatternNames (pat: Pattern) : string list =
             match pat with
             | PVar (name, _) -> [ name ]
@@ -862,81 +838,71 @@ let queryValues : string -> string -> string list option
             | PNone _
             | PTypeRef _ -> []
 
-        for stmt in program do
-            match stmt with
-            | SType _ ->
-                accepted <- accepted @ [ stmt ]
-            | SLet (name, _, _, _, _, _, _) ->
-                let candidate = accepted @ [ stmt ]
-                match tryInferWithCurrent candidate with
-                | Some typed ->
-                    accepted <- candidate
-                    match extractTypeForName typed name with
-                    | Some t -> result <- result |> Map.add name t
-                    | None -> ()
-                | None -> ()
-            | SLetPattern (pattern, _, _, _) ->
-                let candidate = accepted @ [ stmt ]
-                match tryInferWithCurrent candidate with
-                | Some typed ->
-                    accepted <- candidate
-                    for name in collectPatternNames pattern do
-                        match extractTypeForName typed name with
-                        | Some t -> result <- result |> Map.add name t
-                        | None -> ()
-                | None -> ()
-            | SLetRecGroup (bindings, _, _) ->
-                let candidate = accepted @ [ stmt ]
-                match tryInferWithCurrent candidate with
-                | Some typed ->
-                    accepted <- candidate
-                    for (name, _, _, _, _) in bindings do
-                        match extractTypeForName typed name with
-                        | Some t -> result <- result |> Map.add name t
-                        | None -> ()
-                | None -> ()
-            | SExpr _ ->
-                ()
-            | SImport _ ->
-                ()
+        let typeDeclarations =
+            program
+            |> List.choose (function
+                | SType _ as statement -> Some statement
+                | _ -> None)
 
-        result
-
-    let private inferLocalVariableTypesBestEffort (externs: ExternalFunction list) (program: Program) : TypeInfer.LocalVariableTypeInfo list =
-        let mutable accepted: Program = []
+        let mutable acceptedBindings: Map<string, ExternalFunction> = Map.empty
+        let mutable topLevelTypes: Map<string, Type> = Map.empty
         let collected = Dictionary<(string * int * int * int * int * string), TypeInfer.LocalVariableTypeInfo>()
 
-        let tryInferWithCurrent (candidate: Program) =
+        let bindingExtern name bindingType =
+            { Name = name
+              Scheme = Forall(Types.ftvType bindingType |> Set.toList, bindingType)
+              Arity = 0
+              Impl = fun _ _ -> VUnit }
+
+        let tryInfer statement =
             try
-                let _, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes externs candidate
-                Some localTypes
+                let inferenceExterns = externs @ (acceptedBindings |> Map.values |> Seq.toList)
+                let candidate = typeDeclarations @ [ statement ]
+                let typed, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes inferenceExterns candidate
+                Some(typed, localTypes)
             with
             | _ -> None
+
+        let extractTypeForName (typed: TypeInfer.TypedProgram) targetName =
+            typed
+            |> List.tryPick (function
+                | TypeInfer.TSLet(name, _, bindingType, _, _, _) when name = targetName -> Some bindingType
+                | TypeInfer.TSLetPattern(_, _, bindings, _, _) -> bindings |> Map.tryFind targetName
+                | TypeInfer.TSLetRecGroup(bindings, _, _) ->
+                    bindings
+                    |> List.tryPick (fun (name, _, bindingType, _) ->
+                        if name = targetName then Some bindingType else None)
+                | _ -> None)
 
         let keyOf (entry: TypeInfer.LocalVariableTypeInfo) =
             let file = entry.Span.Start.File |> Option.defaultValue ""
             (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column, file)
 
         for stmt in program do
-            match stmt with
-            | SType _ ->
-                accepted <- accepted @ [ stmt ]
-            | SLet _
-            | SLetPattern _
-            | SLetRecGroup _ ->
-                let candidate = accepted @ [ stmt ]
-                match tryInferWithCurrent candidate with
-                | Some localTypes ->
-                    accepted <- candidate
+            let targetNames =
+                match stmt with
+                | SLet(name, _, _, _, _, _, _) -> [ name ]
+                | SLetPattern(pattern, _, _, _) -> collectPatternNames pattern
+                | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
+                | SType _
+                | SExpr _
+                | SImport _ -> []
+
+            if not targetNames.IsEmpty then
+                match tryInfer stmt with
+                | Some(typed, localTypes) ->
+                    for name in targetNames do
+                        match extractTypeForName typed name with
+                        | Some bindingType ->
+                            topLevelTypes <- topLevelTypes |> Map.add name bindingType
+                            acceptedBindings <- acceptedBindings |> Map.add name (bindingExtern name bindingType)
+                        | None -> ()
+
                     for entry in localTypes do
                         collected[keyOf entry] <- entry
                 | None -> ()
-            | SExpr _ ->
-                ()
-            | SImport _ ->
-                ()
 
-        collected.Values |> Seq.toList
+        topLevelTypes, (collected.Values |> Seq.toList)
 
     let collectVariableOccurrences (program: Program) : Map<string, Span list> =
         let addOccurrence name span (acc: Map<string, Span list>) =
@@ -2304,8 +2270,7 @@ let queryValues : string -> string -> string list option
             | TypeException err ->
                 diagnostics.Add(diagnostic 1 "type" err.Span err.Message)
                 symbols <- buildSymbolsFromProgram program None
-                let bestEffortTypes = inferTopLevelTypesBestEffort runtimeExterns program
-                let bestEffortLocalTypes = inferLocalVariableTypesBestEffort runtimeExterns program
+                let bestEffortTypes, bestEffortLocalTypes = inferBestEffort runtimeExterns program
                 let localTypesFromReturnedRecords =
                     inferLocalTypesFromReturnedRecordFields program functionDeclaredReturnTargets localBindings
                 let resolveTypeTarget = buildTopLevelTypeTargetFromProgram program

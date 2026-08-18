@@ -64,6 +64,7 @@ Behavior:
 ## Known limitations
 
 - Hints are inference-driven; if inference is incomplete or blocked by errors, hints may be missing.
+- When whole-document inference fails, each recoverable top-level declaration is inferred once against previously accepted binding schemes so hints remain available without repeatedly inferring the entire valid prefix.
 - Labels are concise and intentionally avoid full generic-style displays beyond FScript surface semantics.
 
 ## Injected Function Signature and Definition Behavior
