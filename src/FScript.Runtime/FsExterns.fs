@@ -39,6 +39,19 @@ module FsExterns =
 
         loop startDirectory
 
+    let private enumerateCandidateFiles (ctx: HostContext) (startDirectory: string) (pattern: string) =
+        let normalizedPattern = normalizeSeparators pattern
+        if normalizedPattern.Contains("/") then
+            enumerateReachableFiles ctx startDirectory
+        else
+            tryEnumerateFiles startDirectory
+            |> Seq.choose (fun file ->
+                let full = HostCommon.normalizeFullPath file
+                if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                    Some full
+                else
+                    None)
+
     let read_text (ctx: HostContext) : ExternalFunction =
         { Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
@@ -199,7 +212,7 @@ module FsExterns =
                       let root = HostCommon.normalizeRoot ctx
                       let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                       try
-                          enumerateReachableFiles ctx fullDirectory
+                          enumerateCandidateFiles ctx fullDirectory pattern
                           |> Seq.filter (fun full ->
                               let relativeToDirectory = Path.GetRelativePath(fullDirectory, full) |> normalizeSeparators
                               regex.IsMatch relativeToDirectory)

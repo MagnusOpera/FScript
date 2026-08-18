@@ -51,6 +51,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Fs.fileNameWithoutExtension : string -> string`
 - `Fs.glob : string -> string list option`
 - `Fs.enumerateFiles : string -> string -> string list option`
+- `Fs.enumerateFiles` searches only the requested directory when its pattern contains no path separator; use a path pattern such as `**/*.fs` for recursive matching.
 - Denied-path policy:
   - `Fs.glob` and `Fs.enumerateFiles` hide denied entries.
   - `Fs.glob` and `Fs.enumerateFiles` do not descend into denied or symlink/reparse-point directories.

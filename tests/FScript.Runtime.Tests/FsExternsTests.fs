@@ -357,9 +357,26 @@ type FsExternsTests () =
     member _.``fs_enumerate_files respects root and pattern`` () =
         withTempRoot "fscript-host-tests" (fun root ->
             Directory.CreateDirectory(Path.Combine(root, "sub")) |> ignore
+            Directory.CreateDirectory(Path.Combine(root, "sub", "nested")) |> ignore
             File.WriteAllText(Path.Combine(root, "sub", "a.txt"), "a")
             File.WriteAllText(Path.Combine(root, "sub", "b.md"), "b")
+            File.WriteAllText(Path.Combine(root, "sub", "nested", "c.txt"), "c")
             let ext = FsExterns.enumerate_files { RootDirectory = root; DeniedPathGlobs = [] }
             match invoke ext [ VString "sub"; VString "*.txt" ] with
             | VOption (Some (VList [ VString "sub/a.txt" ])) -> ()
             | _ -> Assert.Fail("Expected only sub/a.txt"))
+
+    [<Test>]
+    member _.``fs_enumerate_files keeps recursive glob behavior`` () =
+        withTempRoot "fscript-host-tests" (fun root ->
+            Directory.CreateDirectory(Path.Combine(root, "sub", "nested")) |> ignore
+            File.WriteAllText(Path.Combine(root, "sub", "a.txt"), "a")
+            File.WriteAllText(Path.Combine(root, "sub", "nested", "b.txt"), "b")
+            let ext = FsExterns.enumerate_files { RootDirectory = root; DeniedPathGlobs = [] }
+            match invoke ext [ VString "sub"; VString "**/*.txt" ] with
+            | VOption (Some (VList values)) ->
+                values
+                |> List.choose (function | VString value -> Some value | _ -> None)
+                |> Set.ofList
+                |> fun files -> Assert.That((files = Set [ "sub/a.txt"; "sub/nested/b.txt" ]), Is.True)
+            | _ -> Assert.Fail("Expected root and nested txt files"))
