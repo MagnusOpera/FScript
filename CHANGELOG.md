@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed concurrent type inference potentially reusing fresh type-variable identities.
 - Updated the Fable compiler, core library, and packaging SDK to their latest stable releases.
 - Kept language-server hints responsive in erroneous files by inferring each recoverable declaration only once.
 - Made REPL and JavaScript sessions infer and evaluate new submissions incrementally instead of replaying session history.

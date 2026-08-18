@@ -28,8 +28,12 @@ module Types =
     let mutable private nextId = 0
 
     let freshVar () =
+#if FABLE_COMPILER
         let id = nextId
         nextId <- nextId + 1
+#else
+        let id = System.Threading.Interlocked.Increment(&nextId) - 1
+#endif
         TVar id
 
     let rec ftvType t =

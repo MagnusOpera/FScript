@@ -118,6 +118,7 @@ This document specifies the value and type system used by the interpreter.
 
 ## Type inference model
 - Hindley–Milner style inference.
+- Independent inference calls may run concurrently; fresh type-variable identities remain isolated from races between callers.
 - Let-polymorphism.
 - Structural typing for record values.
 - Field access is typed when the target expression is inferred as a record.

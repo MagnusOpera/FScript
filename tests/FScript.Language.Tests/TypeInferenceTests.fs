@@ -8,6 +8,16 @@ open FScript.Runtime
 [<TestFixture>]
 type TypeInferenceTests () =
     [<Test>]
+    member _.``Allocates unique type variables for parallel callers`` () =
+        let variables =
+            Array.Parallel.init 100_000 (fun _ ->
+                match Types.freshVar () with
+                | TVar id -> id
+                | _ -> failwith "Expected a type variable")
+
+        variables |> Array.distinct |> Array.length |> should equal variables.Length
+
+    [<Test>]
     member _.``Infers primitive literal types`` () =
         let check src expected =
             match Helpers.infer src |> List.last with
