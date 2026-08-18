@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.78.0]
+
+
 - Fixed concurrent type inference potentially reusing fresh type-variable identities.
 - Updated the Fable compiler, core library, and packaging SDK to their latest stable releases.
 - Kept language-server hints responsive in erroneous files by inferring each recoverable declaration only once.
@@ -13,6 +16,8 @@ All notable changes to FScript are documented in this file.
 - Speed up non-recursive filesystem enumeration patterns without changing their results.
 - Fixed the documentation site to identify the latest released version as actively maintained.
 - Restored the unreleased-version notice on the `Next` documentation.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.77.1...0.78.0
 
 ## [0.77.1]
 
