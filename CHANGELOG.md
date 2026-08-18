@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed npm release publishing to grant the provenance identity permission required by GitHub Actions.
+
 ## [0.78.0]
 
 
