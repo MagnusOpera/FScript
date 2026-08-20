@@ -7,7 +7,7 @@ const latestReleasedVersion = versions[0] ?? 'current';
 
 const config: Config = {
   title: 'FScript',
-  tagline: 'A compact, statically typed language built to live inside your product.',
+  tagline: 'A typed language for rules that run inside your application.',
   favicon: 'img/favicon.ico',
 
   future: {

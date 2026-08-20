@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Rewrote the website around concrete FScript behavior and removed vague product slogans.
+- Fixed oversized homepage headings to wrap in balanced lines across desktop widths.
+
 ## [0.78.1]
 
 

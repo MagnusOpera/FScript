@@ -223,15 +223,15 @@ export default function Sandbox() {
   }
 
   return (
-    <Layout title="FScript Sandbox" description="Run FScript in the browser with the Fable JavaScript runtime.">
+    <Layout title="FScript sandbox" description="Edit and run FScript in your browser.">
       <main className={styles.page}>
         <section className={styles.shell}>
           <div className={styles.header}>
             <div>
               <Heading as="h1" className={styles.title}>
-                FScript Sandbox
+                FScript sandbox
               </Heading>
-              <p className={styles.subtitle}>Browser execution powered by the Fable JavaScript facade.</p>
+              <p className={styles.subtitle}>Edit an example and run it with the JavaScript build of FScript.</p>
             </div>
             <div className={styles.toolbar}>
               <label className={styles.selectLabel}>
@@ -307,7 +307,7 @@ export default function Sandbox() {
 
           {mode === 'session' && history.length > 0 ? (
             <section className={styles.history} aria-label="Session history">
-              <div className={styles.outputHeader}>Session History</div>
+              <div className={styles.outputHeader}>Session history</div>
               {history.map((item, index) => (
                 <pre key={`${index}-${item.length}`} className={styles.historyItem}>
                   {item}

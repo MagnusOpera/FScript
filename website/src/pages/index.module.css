@@ -301,7 +301,7 @@
 .main { color: var(--home-ink); background: var(--home-paper); }
 
 .statementSection { padding: clamp(6rem, 10vw, 10rem) 0; }
-.statementGrid { display: grid; grid-template-columns: .32fr 1fr; gap: 3rem; align-items: start; }
+.statementGrid { display: grid; grid-template-columns: minmax(10rem, .24fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: start; }
 .sectionKicker { color: #61665f; }
 .sectionKicker::before { content: ''; display: inline-block; width: 1.7rem; height: 2px; margin-right: .65rem; vertical-align: middle; background: currentColor; }
 
@@ -315,9 +315,11 @@
   font-size: clamp(2.7rem, 5.1vw, 5.6rem);
   line-height: .98;
   letter-spacing: -.06em;
+  text-wrap: balance;
 }
 
-.statementCopy { max-width: 52rem; margin: 2rem 0 0; color: #5b605a; font-size: 1.15rem; line-height: 1.75; }
+.statementTitle { max-width: 19ch; }
+.statementCopy { max-width: 42rem; margin: 2rem 0 0; color: #5b605a; font-size: 1.15rem; line-height: 1.75; }
 
 .metricStrip { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 5rem; border-top: 1px solid #c8c6bd; border-bottom: 1px solid #c8c6bd; }
 .metricStrip > div { display: flex; gap: 1.3rem; align-items: flex-start; padding: 1.7rem 1.2rem; border-right: 1px solid #c8c6bd; }
