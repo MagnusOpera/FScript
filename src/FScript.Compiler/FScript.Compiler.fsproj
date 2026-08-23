@@ -8,6 +8,8 @@
     <Compile Include="Hir.fs" />
     <Compile Include="HirLowering.fs" />
     <Compile Include="HirValidation.fs" />
+    <Compile Include="Lir.fs" />
+    <Compile Include="LirInterpreter.fs" />
     <Compile Include="Compiler.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -7,7 +7,8 @@ type CompileInput =
       Externs: ExternalFunction list }
 
 type CompiledProgram =
-    { Hir: Hir.Program }
+    { Hir: Hir.Program
+      Lir: Lir.Program }
 
 module Compiler =
     let compile input =
@@ -16,7 +17,9 @@ module Compiler =
             |> TypeInfer.inferResolvedProgramWithExterns input.Externs
             |> HirLowering.lower
             |> Result.bind HirValidation.validate
-            |> Result.map (fun hir -> { Hir = hir })
+            |> Result.bind (fun hir ->
+                hir |> LirLowering.lower |> LirValidation.validate
+                |> Result.map (fun lir -> { Hir = hir; Lir = lir }))
         with
         | TypeException error ->
             Error

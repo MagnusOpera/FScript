@@ -18,6 +18,9 @@ type HirTests() =
             Assert.That(actual, Does.Contain("primitive IntAdd"))
             Assert.That(actual, Does.Contain("entry"))
             Assert.That(Hir.format compiled.Hir, Is.EqualTo(actual))
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 3L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
     member _.``Reports unsupported HIR forms as diagnostics`` () =

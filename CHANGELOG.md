@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added executable LIR lowering and interpretation for primitive, curried-function, application, and conditional programs.
 - Added a reusable compiler assembly with deterministic typed HIR lowering, validation, diagnostics, and debug output.
 - Added a compatibility-preserving resolved inference result with expression-level type information for compiler frontends.
 - Documented the semantic baseline and architecture for typed IR, executable LIR, and compiled backends.
