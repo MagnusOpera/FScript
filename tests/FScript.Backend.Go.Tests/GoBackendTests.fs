@@ -33,6 +33,15 @@ type GoBackendTests() =
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4004"))
 
     [<Test>]
+    member _.``Go backend validates caller-provided LIR`` () =
+        let compiled = match Compiler.compile { Program = Parser.parseProgram "1"; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let entry = compiled.Lir.Entry.Value
+        let invalid = { compiled.Lir with Entry = Some { entry with Node = Lir.Load(Lir.SymbolId 999999) } }
+        match GoBackend.generate { ModuleName = "fscript.generated/invalid" } invalid with
+        | Ok _ -> Assert.Fail("Expected invalid LIR to be rejected")
+        | Error diagnostics -> Assert.That(diagnostics |> List.exists (fun diagnostic -> diagnostic.Code.StartsWith("FSL2")), Is.True)
+
+    [<Test>]
     member _.``Go backend rejects only reachable host externs`` () =
         let external =
             { Name = "Host.value"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1

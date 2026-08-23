@@ -643,7 +643,7 @@ func Environment() map[string]any {
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
 
-    let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
+    let private generateValidated options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
         currentTypes.Value <- Some(program.Types |> List.map (fun declaration -> declaration.Name, declaration) |> Map.ofList)
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
@@ -710,3 +710,6 @@ func Environment() map[string]any {
         | None, Some span, _ -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
         | None, None, Some(name, span) -> Error [ { Code = "FSB4006"; Stage = GoGeneration; Message = $"Host external '{name}' is not supported by the Go backend."; Span = Some span } ]
         | None, None, None -> generateCore options program
+
+    let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
+        program |> LirValidation.validate |> Result.bind (generateValidated options)
