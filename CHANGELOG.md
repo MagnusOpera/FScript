@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Compiled every shipped sample by preserving interpolation scopes, intrinsic types, recursive representations, and structural record-width conversions.
+
 - Lowered source patterns into backend-neutral executable LIR projection and decision plans.
 
 - Preserved value-first pipeline evaluation through resolved inference and compiled backends.

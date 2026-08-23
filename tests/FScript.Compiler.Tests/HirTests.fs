@@ -52,13 +52,13 @@ type HirTests() =
     member _.``Canonical HIR add snapshot is stable`` () =
         let compiled = compiledAdd ()
         let declarations = compiled.Hir.Declarations |> List.filter (fun declaration -> declaration.Name = "add" || declaration.Name.StartsWith("$expression"))
-        Assert.That(Hir.format { compiled.Hir with Declarations = declarations }, Is.EqualTo(snapshot "add.hir"))
+        Assert.That(Hir.format { compiled.Hir with Types = []; Declarations = declarations }, Is.EqualTo(snapshot "add.hir"))
 
     [<Test>]
     member _.``Canonical LIR add snapshot is stable`` () =
         let compiled = compiledAdd ()
         let declarations = compiled.Lir.Declarations |> List.filter (fun declaration -> declaration.Name = "add" || declaration.Name.StartsWith("$expression"))
-        Assert.That(Lir.format { compiled.Lir with Declarations = declarations }, Is.EqualTo(snapshot "add.lir"))
+        Assert.That(Lir.format { compiled.Lir with Types = []; Declarations = declarations }, Is.EqualTo(snapshot "add.lir"))
 
     [<Test>]
     member _.``HIR and LIR preserve named type declarations`` () =
@@ -67,8 +67,8 @@ type HirTests() =
             match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
             | Ok value -> value
             | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
-        let hirType = compiled.Hir.Types |> List.exactlyOne
-        let lirType = compiled.Lir.Types |> List.exactlyOne
+        let hirType = compiled.Hir.Types |> List.find (fun item -> item.Name = "Person")
+        let lirType = compiled.Lir.Types |> List.find (fun item -> item.Name = "Person")
         Assert.That(hirType.Name, Is.EqualTo("Person"))
         Assert.That((match hirType.Definition with TRecord _ -> true | _ -> false), Is.True)
         Assert.That(lirType.Name, Is.EqualTo("Person"))
@@ -89,7 +89,8 @@ type HirTests() =
         Assert.That(declarationId "first", Is.EqualTo(resolvedId TypeInfer.DeclarationSymbol "first"))
         Assert.That(declarationId "Choice.Pick", Is.EqualTo(resolvedId TypeInfer.UnionCaseSymbol "Choice.Pick"))
         Assert.That(declarationId "apply", Is.EqualTo(resolvedId TypeInfer.DeclarationSymbol "apply"))
-        Assert.That(compiled.Hir.Types.Head.Id |> Hir.symbolNumber, Is.EqualTo(resolvedId TypeInfer.TypeSymbol "Choice"))
+        let choiceType = compiled.Hir.Types |> List.find (fun item -> item.Name = "Choice")
+        Assert.That(choiceType.Id |> Hir.symbolNumber, Is.EqualTo(resolvedId TypeInfer.TypeSymbol "Choice"))
         let rec bindings (expression: Hir.Expression) =
             let patternBindings (pattern: Hir.Pattern) =
                 let rec collect (pattern: Hir.Pattern) =
@@ -138,7 +139,8 @@ type HirTests() =
     member _.``HIR attaches structured export and import attributes`` () =
         let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\n[<Export>] let answer = 42"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
-        Assert.That((compiled.Hir.Types.Head.Attributes |> List.map _.Name) = [ "Import" ], Is.True)
+        let personType = compiled.Hir.Types |> List.find (fun item -> item.Name = "Person")
+        Assert.That((personType.Attributes |> List.map _.Name) = [ "Import" ], Is.True)
         let answer = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "answer")
         Assert.That((answer.Attributes |> List.map _.Name) = [ "Export" ], Is.True)
 
@@ -146,8 +148,9 @@ type HirTests() =
     member _.``HIR retains custom attributes on ordinary declarations`` () =
         let source = "[<BackendHint(\"fast\", stable)>]\ntype Person = { Name: string }\n[<Trace(\"answer\")>] let answer = 42"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
-        Assert.That(compiled.Hir.Types.Head.Attributes.Head.Name, Is.EqualTo("BackendHint"))
-        Assert.That(compiled.Hir.Types.Head.Attributes.Head.Arguments = [ "fast"; "stable" ], Is.True)
+        let personType = compiled.Hir.Types |> List.find (fun item -> item.Name = "Person")
+        Assert.That(personType.Attributes.Head.Name, Is.EqualTo("BackendHint"))
+        Assert.That(personType.Attributes.Head.Arguments = [ "fast"; "stable" ], Is.True)
         let answer = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "answer")
         Assert.That(answer.Attributes.Head.Name, Is.EqualTo("Trace"))
 
@@ -202,3 +205,24 @@ type HirTests() =
             [ [ Lir.OptionValue; Lir.TupleItem 0 ]
               [ Lir.OptionValue; Lir.TupleItem 1 ] ]
         Assert.That((projections = expected), Is.True)
+
+    [<Test>]
+    member _.``Compiler emits intrinsic types and validates their union payload plans`` () =
+        let source = "match Fs.kind \".\" with | FsKind.Directory path -> path | _ -> \"missing\""
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(compiled.Lir.Types |> List.map _.Name, Does.Contain("Environment"))
+        Assert.That(compiled.Lir.Types |> List.map _.Name, Does.Contain("FsKind"))
+        let fsKind = compiled.Lir.Types |> List.find (fun item -> item.Name = "FsKind")
+        match fsKind.Definition with
+        | TUnion(_, cases) -> Assert.That(cases |> Map.containsKey "Directory", Is.True)
+        | _ -> Assert.Fail("Expected intrinsic FsKind union")
+
+    [<Test>]
+    member _.``LIR validates recursive named representations without recursion overflow`` () =
+        let source = "type rec Tree = | Leaf of int | Branch of (Tree * Tree)\nlet rec sum tree = match tree with | Leaf value -> value | Branch (left, right) -> sum left + sum right\nsum (Branch (Leaf 1, Leaf 2))"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Ok compiled -> Assert.That(compiled.Lir.Types |> List.map _.Name, Does.Contain("Tree"))
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

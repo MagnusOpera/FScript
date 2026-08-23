@@ -720,6 +720,17 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected interpolated string")
 
     [<Test>]
+    member _.``Interpolation placeholders retain absolute source spans`` () =
+        let program = Parser.parseProgramWithSourceName (Some "sample.fss") "let name = \"Ada\"\n$\"hello {name}\""
+        match program with
+        | [ _; SExpr(EInterpolatedString([ IPText "hello "; IPExpr(EVar("name", span)) ], _)) ] ->
+            Assert.That(span.Start.File, Is.EqualTo(Some "sample.fss"))
+            Assert.That(span.Start.Line, Is.EqualTo(2))
+            Assert.That(span.Start.Column, Is.EqualTo(10))
+            Assert.That(span.End.Column, Is.EqualTo(14))
+        | _ -> Assert.Fail("Expected interpolated variable placeholder")
+
+    [<Test>]
     member _.``Parses interpolated placeholder containing string literal`` () =
         let p = Helpers.parse "$\"{if true then \"missing\" else \"none\"}\""
         match p.[0] with

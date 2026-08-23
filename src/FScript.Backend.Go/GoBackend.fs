@@ -20,8 +20,10 @@ module GoBackend =
         currentTypes.Value |> Option.bind (Map.tryFind name)
     let private declaredTypeName (declaration: Lir.TypeDeclaration) = $"record{Lir.symbolNumber declaration.Id}"
     let private tryRecordDeclaration name =
-        tryDeclaredType name
-        |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TRecord fields -> Some(declaration, fields) | _ -> None)
+        if name = "Environment" then None
+        else
+            tryDeclaredType name
+            |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TRecord fields -> Some(declaration, fields) | _ -> None)
     let private tryUnionDeclaration name =
         tryDeclaredType name
         |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TUnion(_, cases) -> Some(declaration, cases) | _ -> None)

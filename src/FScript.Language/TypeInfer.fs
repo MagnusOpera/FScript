@@ -1674,6 +1674,11 @@ module TypeInfer =
             globalEnvironment <- Map.add name (allocate name BuiltinSymbol syntheticSpan (Some scheme)) globalEnvironment
         for external in externs |> List.sortBy _.Name do
             globalEnvironment <- Map.add external.Name (allocate external.Name ExternSymbol syntheticSpan (Some external.Scheme)) globalEnvironment
+        for definition in BuiltinTypes.typeDefs do
+            globalEnvironment <- Map.add definition.Name (allocate definition.Name TypeSymbol definition.Span None) globalEnvironment
+            for caseName, _ in definition.Cases do
+                let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
+                globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
         for statement in typed do
             match statement with
             | TSType definition ->
@@ -1969,16 +1974,33 @@ module TypeInfer =
                 | ResolvedForEach(_, source, body) -> [ source; body ]
                 | ResolvedConstant _ | ResolvedReference _ | ResolvedNone | ResolvedTypeToken _ -> []
             let coercion =
-                match expression with
-                | EApply(fn, argument, _) ->
-                    match finalType fn, finalType argument with
-                    | TFun((TNamed target as targetType), _), (TRecord _ as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some target }
-                    | TFun((TRecord _ as targetType), _), (TNamed source as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some source }
+                let recordShape = function
+                    | TRecord fields -> Some fields
+                    | TNamed name ->
+                        match Map.tryFind name resolvedTypeDefinitions with
+                        | Some(TRecord fields) -> Some fields
+                        | _ -> None
                     | _ -> None
-                | EBinOp("|>", argument, fn, _) ->
-                    match finalType fn, finalType argument with
-                    | TFun((TNamed target as targetType), _), (TRecord _ as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some target }
-                    | TFun((TRecord _ as targetType), _), (TNamed source as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some source }
+                let conversion targetType sourceType =
+                    match recordShape targetType, recordShape sourceType with
+                    | Some targetFields, Some sourceFields
+                        when targetType <> sourceType
+                             && targetFields
+                                |> Map.forall (fun name targetField ->
+                                    sourceFields |> Map.tryFind name |> Option.exists ((=) targetField)) ->
+                        Some
+                            { SourceType = sourceType
+                              TargetType = targetType
+                              TargetName = match targetType with TNamed name -> Some name | _ -> None }
+                    | _ -> None
+                match node with
+                | ResolvedApply(fn, argument) ->
+                    match fn.Type with
+                    | TFun(targetType, _) -> conversion targetType argument.Type
+                    | _ -> None
+                | ResolvedPipe(argument, fn) ->
+                    match fn.Type with
+                    | TFun(targetType, _) -> conversion targetType argument.Type
                     | _ -> None
                 | _ -> None
             { Type = expressionType; Span = Ast.spanOfExpr expression; Reference = reference

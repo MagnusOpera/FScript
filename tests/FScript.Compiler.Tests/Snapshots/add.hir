@@ -1,14 +1,14 @@
-decl %72 add: ('a -> ('a -> int))
-  lambda %73 x: 'a : ('a -> ('a -> int))
-    lambda %74 y: 'a : ('a -> int)
+decl %77 add: ('a -> ('a -> int))
+  lambda %78 x: 'a : ('a -> ('a -> int))
+    lambda %79 y: 'a : ('a -> int)
       primitive IntAdd : int
-        ref %73 : 'a
-        ref %74 : 'a
-decl %75 $expression75: int
+        ref %78 : 'a
+        ref %79 : 'a
+decl %80 $expression80: int
   apply : int
     apply : (int -> int)
-      ref %72 : (int -> (int -> int))
+      ref %77 : (int -> (int -> int))
       const int 1 : int
     const int 2 : int
 entry
-  ref %75 : int
+  ref %80 : int

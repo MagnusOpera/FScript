@@ -202,19 +202,41 @@ module HirLowering =
                 match statement.Node with
                 | TypeInfer.ResolvedTypeDeclaration definition -> Some(statement, definition)
                 | _ -> None)
+        let declaredTypeNames = typeDefinitions |> List.map (snd >> _.Binding.Name) |> Set.ofList
+        let builtinTypeDefinitions =
+            [ "Environment", TRecord(Map.ofList [ "ScriptName", TOption TString; "Arguments", TList TString ])
+              "FsKind", TUnion("FsKind", Map.ofList [ "File", Some TString; "Directory", Some TString; "Missing", None ]) ]
+            |> List.filter (fun (name, _) -> not (Set.contains name declaredTypeNames))
+            |> List.map (fun (name, definition) -> name, definition, findSymbol state TypeInfer.TypeSymbol name syntheticSpan)
         let unionDefinitions =
             typeDefinitions
             |> List.choose (fun (statement, definition) ->
                 match definition.Definition with
                 | TUnion(name, cases) -> Some(statement, definition, name, cases)
                 | _ -> None)
-        let constructorSymbols =
-            unionDefinitions
-            |> List.collect (fun (_, definition, name, cases) ->
+        let constructorDefinitions =
+            let referencedSymbols = resolved.SymbolReferences |> List.map _.SymbolId |> Set.ofList
+            let builtins =
+                builtinTypeDefinitions
+                |> List.collect (fun (name, definition, _) ->
+                    match definition with
+                    | TUnion(_, cases) ->
+                        cases
+                        |> Map.toList
+                        |> List.map (fun (caseName, payload) ->
+                            name, caseName, payload, syntheticSpan,
+                            findSymbol state TypeInfer.UnionCaseSymbol $"{name}.{caseName}" syntheticSpan)
+                        |> List.filter (fun (_, _, _, _, id) -> Set.contains (Hir.symbolNumber id) referencedSymbols)
+                    | _ -> [])
+            let source =
+                unionDefinitions
+                |> List.collect (fun (_, definition, name, cases) ->
                 cases
                 |> Map.toList
-                |> List.map (fun (caseName, _) ->
-                    name, caseName, findSymbol state TypeInfer.UnionCaseSymbol $"{name}.{caseName}" definition.Binding.Span))
+                |> List.map (fun (caseName, payload) ->
+                    name, caseName, payload, definition.Binding.Span,
+                    findSymbol state TypeInfer.UnionCaseSymbol $"{name}.{caseName}" definition.Binding.Span))
+            builtins @ source
         let mutable declarations =
             let builtinDeclarations =
                 BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst |> List.map (fun (name, scheme) ->
@@ -231,11 +253,8 @@ module HirLowering =
                         | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
                     ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = schemeFor externSymbols.[external.Name] external.Scheme; Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
-            builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
-                let _, definition, _, cases = unionDefinitions |> List.find (fun (_, _, name, _) -> name = typeName)
+            builtinDeclarations @ externalDeclarations @ (constructorDefinitions |> List.map (fun (typeName, caseName, payloadType, span, id) ->
                 let unionType = TNamed typeName
-                let payloadType = cases.[caseName]
-                let span = definition.Binding.Span
                 let value =
                     match payloadType with
                     | None -> ({ Type = unionType; Span = span; Node = Hir.UnionCase(typeName, caseName, None) }: Hir.Expression)
@@ -348,15 +367,24 @@ module HirLowering =
                        Fields = definition.Fields
                        Span = definition.Binding.Span }: Hir.ImportedRecord)))
         let hirTypes =
-            typeDefinitions
-            |> List.map (fun (statement, definition) ->
+            (builtinTypeDefinitions
+             |> List.map (fun (name, definition, id) ->
+                 ({ Id = id
+                    Name = name
+                    IsRecursive = false
+                    Definition = definition
+                    Attributes = []
+                    Import = None
+                    Span = syntheticSpan }: Hir.TypeDeclaration)))
+            @ (typeDefinitions
+               |> List.map (fun (statement, definition) ->
                 ({ Id = Hir.SymbolId definition.Binding.SymbolId
                    Name = definition.Binding.Name
                    IsRecursive = definition.IsRecursive
                    Definition = definition.Definition
                    Attributes = attributesOf statement
                    Import = importedRecords |> List.tryFind (fun imported -> imported.Name = definition.Binding.Name)
-                   Span = definition.Binding.Span }: Hir.TypeDeclaration))
+                   Span = definition.Binding.Span }: Hir.TypeDeclaration)))
         let diagnostics = errors @ state.Diagnostics
         if diagnostics.IsEmpty then Ok { Types = hirTypes; ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
         else Error diagnostics

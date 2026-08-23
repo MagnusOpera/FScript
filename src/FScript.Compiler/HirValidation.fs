@@ -131,4 +131,9 @@ module HirValidation =
                 | values -> List.min values
             let invalid = unresolved |> Set.filter (fun id -> Hir.symbolNumber id >= firstDeclaration)
             if invalid.IsEmpty then Ok program
-            else Error [ Diagnostic.hir "FSH1102" "HIR contains unresolved symbol references." None ]
+            else
+                let identifiers =
+                    invalid
+                    |> Seq.map (Hir.symbolNumber >> string)
+                    |> String.concat ", "
+                Error [ Diagnostic.hir "FSH1102" $"HIR contains unresolved symbol references: {identifiers}." None ]

@@ -60,12 +60,12 @@ module Parser =
         | BoolLit v -> LBool v
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
-    let rec parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
-        let tokens = Lexer.tokenizeWithSourceName sourceName src
+    let rec private parseProgramWithSourceNameAndOrigin (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Program =
+        let tokens = Lexer.tokenizeWithSourceNameAndOrigin sourceName startLine startColumn src
         let stream = TokenStream(tokens)
 
-        let parseSingleExpression (exprText: string) =
-            let parsed = parseProgramWithSourceName None exprText
+        let parseSingleExpression (originLine: int) (originColumn: int) (exprText: string) =
+            let parsed = parseProgramWithSourceNameAndOrigin sourceName originLine originColumn exprText
             match parsed with
             | [ SExpr expr ] -> expr
             | _ ->
@@ -110,7 +110,15 @@ module Parser =
                 let exprText = s.Substring(start, i - start - 1)
                 if System.String.IsNullOrWhiteSpace(exprText) then
                     raise (ParseException { Message = "Interpolation placeholder cannot be empty"; Span = span })
-                let expr = parseSingleExpression exprText
+                let mutable originLine = span.Start.Line
+                let mutable originColumn = span.Start.Column + 2
+                for offset = 0 to start - 1 do
+                    if s.[offset] = '\n' then
+                        originLine <- originLine + 1
+                        originColumn <- 1
+                    else
+                        originColumn <- originColumn + 1
+                let expr = parseSingleExpression originLine originColumn exprText
                 expr, i
 
             let mutable i = 0
@@ -1696,6 +1704,9 @@ module Parser =
                 program.Add(stmt)
                 stream.SkipNewlines()
         program |> Seq.toList
+
+    let parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
+        parseProgramWithSourceNameAndOrigin sourceName 1 1 src
 
     let parseProgram (src: string) : Program =
         parseProgramWithSourceName None src

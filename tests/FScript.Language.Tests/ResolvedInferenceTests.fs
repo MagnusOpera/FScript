@@ -100,6 +100,42 @@ type ResolvedInferenceTests() =
         | None -> Assert.Fail("Expected structural-to-named record coercion evidence")
 
     [<Test>]
+    member _.``Resolved interpolation references retain their lexical parameter`` () =
+        let source = "let first (value: int) = $\"{value}\"\nlet second (value: string) = $\"{value}\"\nsecond \"ok\""
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let parameterIds =
+            resolved.Symbols
+            |> List.filter (fun symbol -> symbol.Kind = TypeInfer.ParameterSymbol && symbol.Name = "value")
+            |> List.map _.SymbolId
+        let interpolationReferences =
+            resolved.ResolvedStatements
+            |> List.collect _.Expressions
+            |> List.collect flatten
+            |> List.choose (fun expression ->
+                match expression.Node with
+                | TypeInfer.ResolvedReference reference when reference.Name = "value" -> Some(reference.SymbolId, reference.Type)
+                | _ -> None)
+        Assert.That(parameterIds.Length, Is.EqualTo(2))
+        let expected = [ (parameterIds.[0], TInt); (parameterIds.[1], TString) ]
+        Assert.That((interpolationReferences = expected), Is.True)
+
+    [<Test>]
+    member _.``Resolved applications retain structural width coercion evidence`` () =
+        let source = "let city (value: {| City: string |}) = value.City\ncity {| City = \"Paris\"; Zip = 75000 |}"
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let evidence =
+            resolved.ResolvedStatements
+            |> List.collect _.Expressions
+            |> List.collect flatten
+            |> List.choose _.RecordCoercion
+            |> List.exactlyOne
+        match evidence.SourceType, evidence.TargetType with
+        | TRecord sourceFields, TRecord targetFields ->
+            Assert.That(sourceFields.Count, Is.EqualTo(2))
+            Assert.That(targetFields.Count, Is.EqualTo(1))
+        | _ -> Assert.Fail("Expected structural record width coercion")
+
+    [<Test>]
     member _.``Resolved statements preserve structured export metadata`` () =
         let resolved = Helpers.parse "[<Export>] let answer = 42" |> TypeInfer.inferResolvedProgram
         match resolved.ResolvedStatements |> List.tryPick _.Export with
