@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Enforced deterministic non-generic Go output and cross-runtime conformance for structural width, recursive records, and distinct failure categories.
+
 - Rejected malformed HIR, LIR, and loaded IR artifacts containing unknown semantic types, nested invalid spans, or any unresolved symbol ID.
 
 - Compiled every shipped sample by preserving interpolation scopes, intrinsic types, recursive representations, and structural record-width conversions.

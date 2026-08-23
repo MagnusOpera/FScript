@@ -3,6 +3,7 @@ namespace FScript.Backend.Go.Tests
 open System
 open System.Diagnostics
 open System.IO
+open System.Text.RegularExpressions
 open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
@@ -123,6 +124,24 @@ type GoBackendTests() =
             Assert.That(program, Does.Contain("Tag"))
             Assert.That(program, Does.Contain("Case0 int64"))
             Assert.That(program, Does.Contain("FScriptUnion() fsruntime.Union"))
+
+    [<Test>]
+    member _.``Go generation is deterministic targets Go 1.25 and emits no generic declarations`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "let identity value = value\nidentity [1; 2]"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let generate () =
+            match GoBackend.generate { ModuleName = "fscript.generated/deterministic" } compiled.Lir with
+            | Ok files -> files
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let first = generate ()
+        let second = generate ()
+        Assert.That((first = second), Is.True)
+        let goMod = first |> List.find (fun file -> file.RelativePath = "go.mod") |> _.Content
+        Assert.That(goMod, Does.Contain("go 1.25"))
+        for file in first |> List.filter (fun file -> file.RelativePath.EndsWith(".go")) do
+            Assert.That(Regex.IsMatch(file.Content, @"func\s+(?:\([^)]*\)\s*)?[A-Za-z_][A-Za-z0-9_]*\s*\["), Is.False, file.RelativePath)
 
     [<Test>]
     member _.``Go emitter delegates LIR pattern plans to the runtime`` () =

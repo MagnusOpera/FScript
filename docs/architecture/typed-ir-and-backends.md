@@ -96,7 +96,7 @@ Imported Go record types use `[<Import("module/path", "TypeName")>] type Name = 
 
 ## Cross-runtime conformance
 
-The conformance suite evaluates one source program through the legacy evaluator, a serialized-and-deserialized LIR program, and a generated Go executable. It compares successful results and failure categories across nested structural equality, named/structural record conversion, unions, higher-order and polymorphic functions, mutual recursion, and ordered maps. Named semantic types are resolved to their record or union representation while HIR is built, so a named record crossing a function boundary cannot accidentally receive the union representation in a downstream consumer.
+The conformance suite evaluates one source program through the legacy evaluator, a serialized-and-deserialized LIR program, and a generated Go executable. It compares successful results across nested structural equality, named/structural width conversion, unions, higher-order and polymorphic functions, mutual recursion, recursive records, and ordered maps; it also normalizes raised errors, exhausted matches, and division by zero into shared failure categories. Named semantic types are resolved to their record or union representation while HIR is built, so a named record crossing a function boundary cannot accidentally receive the union representation in a downstream consumer.
 
 ## Previous experiment
 

@@ -9,6 +9,7 @@ open NUnit.Framework
 
 module private Harness =
     type Outcome = { Value: string; Stdout: string list }
+    type FailureCategory = Raised | MatchFailure | DivisionByZero
 
     let private quoteString (value: string) =
         "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t") + "\""
@@ -82,6 +83,30 @@ module private Harness =
         finally
             if Directory.Exists directory then Directory.Delete(directory, true)
 
+    let legacyFailure source =
+        try
+            legacy source |> ignore
+            None
+        with
+        | :? DivideByZeroException -> Some DivisionByZero
+        | EvalException error when error.Message = "No match cases matched" -> Some MatchFailure
+        | EvalException _ -> Some Raised
+
+    let lirFailure source =
+        match lir source with
+        | Ok _ -> None
+        | Error "FSI3005" -> Some DivisionByZero
+        | Error "FSI3012" -> Some MatchFailure
+        | Error "FSI3011" -> Some Raised
+        | Error code -> failwith $"Unexpected LIR failure category {code}"
+
+    let goFailure source =
+        match go source with
+        | Ok _ -> None
+        | Error error when error.Contains("integer divide by zero") || error.Contains("division by zero") -> Some DivisionByZero
+        | Error error when error.Contains("Match failure.") -> Some MatchFailure
+        | Error _ -> Some Raised
+
 [<TestFixture>]
 type ConformanceTests() =
     [<OneTimeSetUp>]
@@ -122,6 +147,8 @@ type ConformanceTests() =
     [<TestCase("(Map.count Map.empty, Map.tryGet \"a\" (Map.ofList [(\"a\", 1)]), Map.containsKey \"a\" (Map.ofList [(\"a\", 1)]), Map.add \"b\" 2 (Map.ofList [(\"a\", 1)]), Map.fold (fun state key value -> state + value) 0 (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.filter (fun key value -> value > 1) (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.choose (fun key value -> if value > 1 then Some value else None) (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.map (fun value -> value + 1) (Map.ofList [(\"a\", 1)]), Map.iter (fun key value -> ignore value) (Map.ofList [(\"a\", 1)]), Map.remove \"a\" (Map.ofList [(\"a\", 1); (\"b\", 2)]))")>]
     [<TestCase("Map.ofList [(\"b\", 2); (\"a\", 1)]")>]
     [<TestCase("[\"a\"; \"b\"] |> String.concat \",\"")>]
+    [<TestCase("type Contact = { City: string; Zip: int; Country: string }\nlet city (value: {| City: string |}) = value.City\ncity { City = \"Paris\"; Zip = 75000; Country = \"FR\" }")>]
+    [<TestCase("type rec Node = { Value: int; Next: Node option }\nlet rec sum (node: Node) = match node.Next with | Some next -> node.Value + sum next | None -> node.Value\nsum { Value = 1; Next = Some { Value = 2; Next = None } }")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with
@@ -135,13 +162,11 @@ type ConformanceTests() =
             Assert.That(System.String.Join("\n", actual.Stdout), Is.EqualTo(System.String.Join("\n", expected.Stdout)), source)
         | Error error -> Assert.Fail($"Go failed with {error}: {source}")
 
-    [<Test>]
-    member _.``Failure categories conform`` () =
-        let source = "raise \"boom\""
-        Assert.Throws<EvalException>(fun () -> Harness.legacy source |> ignore) |> ignore
-        match Harness.lir source with
-        | Error code -> Assert.That(code, Is.EqualTo("FSI3011"))
-        | Ok value -> Assert.Fail($"Expected LIR failure, got {value}")
-        match Harness.go source with
-        | Ok value -> Assert.Fail($"Expected generated Go failure, got {value}")
-        | Error error -> Assert.That(error, Does.Contain("boom"))
+    [<TestCase("raise \"boom\"")>]
+    [<TestCase("match 1 with | 2 -> 0")>]
+    [<TestCase("1 / 0")>]
+    member _.``Failure categories conform`` (source: string) =
+        let expected = Harness.legacyFailure source
+        Assert.That(expected.IsSome, Is.True, source)
+        Assert.That(Harness.lirFailure source, Is.EqualTo(expected), source)
+        Assert.That(Harness.goFailure source, Is.EqualTo(expected), source)
