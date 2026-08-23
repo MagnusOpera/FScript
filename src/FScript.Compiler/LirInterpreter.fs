@@ -38,6 +38,17 @@ module LirInterpreter =
         | VOption(Some a), VOption(Some b) -> equal a b
         | _ -> false
 
+    let rec private formatValue = function
+        | VUnit -> "()" | VInt value -> string value | VFloat value -> value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+        | VBool value -> value.ToString().ToLowerInvariant() | VString value -> value
+        | VTuple values -> "(" + (values |> List.map formatValue |> String.concat ", ") + ")"
+        | VList values -> "[" + (values |> List.map formatValue |> String.concat ";") + "]"
+        | VRecord fields ->
+            let rendered = fields |> Map.toList |> List.map (fun (name, value) -> name + " = " + formatValue value) |> String.concat "; "
+            "{ " + rendered + " }"
+        | VOption None -> "None" | VOption(Some value) -> $"Some {formatValue value}"
+        | VClosure _ -> "<function>"
+
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
 
@@ -167,6 +178,30 @@ module LirInterpreter =
                                 | Ok _ -> fail "FSI3013" guard.Span "Match guard must evaluate to Boolean."
                                 | Error errors -> Error errors
                 run cases)
+        | Lir.Range(startValue, endValue) ->
+            match evaluate environment startValue, evaluate environment endValue with
+            | Ok(VInt first), Ok(VInt last) ->
+                let step = if first <= last then 1L else -1L
+                Ok(VList([ first .. step .. last ] |> List.map VInt))
+            | Ok _, Ok _ -> fail "FSI3014" expression.Span "Range endpoints must be integers."
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | Lir.RecordUpdate(target, fields) ->
+            match evaluate environment target with
+            | Ok(VRecord existing) ->
+                fields |> List.map (fun (name, item) -> evaluate environment item |> Result.map (fun value -> name, value))
+                |> collect |> Result.map (fun updates -> VRecord(List.fold (fun state (name, value) -> Map.add name value state) existing updates))
+            | Ok _ -> fail "FSI3015" expression.Span "Record update requires a record."
+            | Error errors -> Error errors
+        | Lir.IndexGet(target, index) ->
+            match evaluate environment target, evaluate environment index with
+            | Ok(VList values), Ok(VInt position) ->
+                if position < 0L || position >= int64 values.Length then Ok(VOption None)
+                else Ok(VOption(Some values.[int position]))
+            | Ok _, Ok _ -> fail "FSI3016" expression.Span "Index access requires a list and integer index."
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | Lir.Interpolate parts ->
+            parts |> List.map (function Lir.TextPart text -> Ok text | Lir.ValuePart item -> evaluate environment item |> Result.map formatValue)
+            |> collect |> Result.map (String.concat "" >> VString)
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

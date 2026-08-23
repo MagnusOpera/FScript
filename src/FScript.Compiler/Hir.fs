@@ -53,6 +53,14 @@ module Hir =
         | Let of SymbolId * string * bool * Expression * Expression
         | Fail of Expression
         | Match of Expression * MatchCase list
+        | Range of Expression * Expression
+        | RecordUpdate of Expression * (string * Expression) list
+        | IndexGet of Expression * Expression
+        | Interpolate of InterpolationPart list
+
+    and InterpolationPart =
+        | TextPart of string
+        | ValuePart of Expression
 
     and Pattern =
         { Type: Type
@@ -146,6 +154,14 @@ module Hir =
                 lines.Add(typed $"match {cases.Length} cases")
                 expression (indent + 2) target
                 cases |> List.iter (fun case -> expression (indent + 2) case.Body)
+            | Range(startValue, endValue) -> lines.Add(typed "range"); expression (indent + 2) startValue; expression (indent + 2) endValue
+            | RecordUpdate(target, fields) ->
+                lines.Add(typed "record-update"); expression (indent + 2) target
+                fields |> List.iter (fun (_, item) -> expression (indent + 2) item)
+            | IndexGet(target, index) -> lines.Add(typed "index-get"); expression (indent + 2) target; expression (indent + 2) index
+            | Interpolate parts ->
+                lines.Add(typed "interpolate")
+                parts |> List.iter (function TextPart _ -> () | ValuePart item -> expression (indent + 2) item)
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))

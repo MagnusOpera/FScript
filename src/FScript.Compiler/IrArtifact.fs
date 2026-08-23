@@ -148,6 +148,27 @@ module IrArtifact =
                 writer.WritePropertyName("body"); writeExpression writer case.Body; writer.WritePropertyName("span"); writeSpan writer case.Span
                 writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.Range(startValue, endValue) ->
+            writer.WriteString("kind", "range"); writer.WritePropertyName("start"); writeExpression writer startValue
+            writer.WritePropertyName("end"); writeExpression writer endValue
+        | Lir.RecordUpdate(target, fields) ->
+            writer.WriteString("kind", "record-update"); writer.WritePropertyName("target"); writeExpression writer target
+            writer.WriteStartArray("fields")
+            for name, field in fields do
+                writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("value"); writeExpression writer field; writer.WriteEndObject()
+            writer.WriteEndArray()
+        | Lir.IndexGet(target, index) ->
+            writer.WriteString("kind", "index-get"); writer.WritePropertyName("target"); writeExpression writer target
+            writer.WritePropertyName("index"); writeExpression writer index
+        | Lir.Interpolate parts ->
+            writer.WriteString("kind", "interpolate"); writer.WriteStartArray("parts")
+            for part in parts do
+                writer.WriteStartObject()
+                match part with
+                | Lir.TextPart text -> writer.WriteString("kind", "text"); writer.WriteString("text", text)
+                | Lir.ValuePart item -> writer.WriteString("kind", "value"); writer.WritePropertyName("value"); writeExpression writer item
+                writer.WriteEndObject()
+            writer.WriteEndArray()
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -256,6 +277,17 @@ module IrArtifact =
                        Body = readExpression (property "body" item)
                        Span = readSpan (property "span" item) }: Lir.DecisionCase)) |> Seq.toList
                 Lir.DecisionTree(readExpression (property "target" element), cases)
+            | "range" -> Lir.Range(readExpression (property "start" element), readExpression (property "end" element))
+            | "record-update" ->
+                let fields = (property "fields" element).EnumerateArray() |> Seq.map (fun item -> stringProperty "name" item, readExpression (property "value" item)) |> Seq.toList
+                Lir.RecordUpdate(readExpression (property "target" element), fields)
+            | "index-get" -> Lir.IndexGet(readExpression (property "target" element), readExpression (property "index" element))
+            | "interpolate" ->
+                Lir.Interpolate((property "parts" element).EnumerateArray() |> Seq.map (fun item ->
+                    match stringProperty "kind" item with
+                    | "text" -> Lir.TextPart(stringProperty "text" item)
+                    | "value" -> Lir.ValuePart(readExpression (property "value" item))
+                    | kind -> invalidOp $"Unknown interpolation part '{kind}'.") |> Seq.toList)
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

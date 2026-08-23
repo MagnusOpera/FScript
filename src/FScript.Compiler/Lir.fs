@@ -41,6 +41,14 @@ module Lir =
         | Let of SymbolId * string * bool * Expression * Expression
         | Fail of Expression
         | DecisionTree of Expression * DecisionCase list
+        | Range of Expression * Expression
+        | RecordUpdate of Expression * (string * Expression) list
+        | IndexGet of Expression * Expression
+        | Interpolate of InterpolationPart list
+
+    and InterpolationPart =
+        | TextPart of string
+        | ValuePart of Expression
 
     and Pattern =
         { Type: Type
@@ -136,6 +144,10 @@ module LirLowering =
                        Guard = Option.map expression case.Guard
                        Body = expression case.Body
                        Span = case.Span }: Lir.DecisionCase)))
+            | Hir.Range(startValue, endValue) -> Lir.Range(expression startValue, expression endValue)
+            | Hir.RecordUpdate(target, fields) -> Lir.RecordUpdate(expression target, fields |> List.map (fun (name, item) -> name, expression item))
+            | Hir.IndexGet(target, index) -> Lir.IndexGet(expression target, expression index)
+            | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

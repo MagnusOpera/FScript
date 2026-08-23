@@ -75,3 +75,18 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt expected))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Executes ranges indexing updates and interpolation`` () =
+        let cases =
+            [ "[1..3]", LirValue.VList [ LirValue.VInt 1L; LirValue.VInt 2L; LirValue.VInt 3L ]
+              "[1; 2][1]", LirValue.VOption(Some(LirValue.VInt 2L))
+              "let value = {| Count = 1 |}\n{| value with Count = 2 |}.Count", LirValue.VInt 2L
+              "$\"value {1 + 2}\"", LirValue.VString "value 3" ]
+        for source, expected in cases do
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok compiled ->
+                match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+                | Ok result -> Assert.That(result.Value, Is.EqualTo(expected), source)
+                | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

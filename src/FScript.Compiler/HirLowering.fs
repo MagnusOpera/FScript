@@ -200,6 +200,29 @@ module HirLowering =
                         | Ok loweredGuard, Ok loweredBody -> Ok({ Pattern = loweredPattern; Guard = loweredGuard; Body = loweredBody; Span = caseSpan }: Hir.MatchCase)
                         | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e))
                 |> collectResults |> Result.map (fun loweredCases -> make (Hir.Match(loweredTarget, loweredCases)))
+        | ERange(startValue, endValue, _) ->
+            match lowerExpression state environment TInt startValue, lowerExpression state environment TInt endValue with
+            | Ok startItem, Ok endItem -> Ok(make (Hir.Range(startItem, endItem)))
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | ERecordUpdate(target, fields, _) | EStructuralRecordUpdate(target, fields, _) ->
+            match lowerExpression state environment inferred target with
+            | Error errors -> Error errors
+            | Ok loweredTarget ->
+                let fieldTypes = match inferred with TRecord values -> values | _ -> Map.empty
+                fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
+                |> collectResults |> Result.map (fun loweredFields -> make (Hir.RecordUpdate(loweredTarget, loweredFields)))
+        | EIndexGet(target, index, _) ->
+            let targetType = expressionType state target (Types.freshVar())
+            let indexType = match targetType with TList _ -> TInt | TMap(key, _) -> key | _ -> Types.freshVar()
+            match lowerExpression state environment targetType target, lowerExpression state environment indexType index with
+            | Ok loweredTarget, Ok loweredIndex -> Ok(make (Hir.IndexGet(loweredTarget, loweredIndex)))
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | ENameOf(name, _) -> Ok(make (Hir.Constant(Hir.String name)))
+        | EInterpolatedString(parts, _) ->
+            parts |> List.map (function
+                | IPText text -> Ok(Hir.TextPart text)
+                | IPExpr item -> lowerExpression state environment (expressionType state item (Types.freshVar())) item |> Result.map Hir.ValuePart)
+            |> collectResults |> Result.map (Hir.Interpolate >> make)
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
 
     let lower (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =

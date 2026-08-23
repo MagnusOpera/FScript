@@ -42,7 +42,12 @@ type IrArtifactTests() =
 
     [<Test>]
     member _.``IR artifact round trips lexical let and fail nodes`` () =
-        for source in [ "let f x = (let y = x + 1\n    y\n)\nf 2"; "raise \"failure\""; "match Some 2 with\n    | Some x when x > 0 -> x\n    | None -> 0" ] do
+        for source in
+            [ "let f x = (let y = x + 1\n    y\n)\nf 2"
+              "raise \"failure\""
+              "match Some 2 with\n    | Some x when x > 0 -> x\n    | None -> 0"
+              "([1..3][0], $\"answer {42}\")"
+              "let value = {| Count = 1 |}\n{| value with Count = 2 |}" ] do
             let bytes = compile source |> _.Lir |> IrArtifact.serialize
             match IrArtifact.deserialize bytes with
             | Ok _ -> ()

@@ -182,6 +182,28 @@ module GoBackend =
                 match failure with
                 | Some error -> Error error
                 | None -> Ok $"func() {goType expression.Type} {{ matchValue := {targetCode}; {clauses}fsruntime.Fail(\"Match failure.\"); var zero {goType expression.Type}; return zero }}()")
+        | Lir.Range(startValue, endValue) ->
+            match emitExpression environment startValue, emitExpression environment endValue with
+            | Ok first, Ok last -> Ok $"fsruntime.Range({first}, {last})"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.RecordUpdate(target, fields) ->
+            match emitExpression environment target,
+                  (fields |> List.map (fun (name, item) -> emitExpression environment item |> Result.map (fun code -> System.Text.Json.JsonSerializer.Serialize(name) + ": " + code)) |> collect) with
+            | Ok targetCode, Ok values ->
+                let joined = String.concat ", " values
+                Ok $"fsruntime.UpdateRecord({targetCode}, map[string]any{{{joined}}})"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.IndexGet(target, index) ->
+            match emitExpression environment target, emitExpression environment index with
+            | Ok targetCode, Ok indexCode -> Ok $"fsruntime.Index({targetCode}, {indexCode})"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.Interpolate parts ->
+            parts |> List.map (function
+                | Lir.TextPart text -> Ok(System.Text.Json.JsonSerializer.Serialize(text))
+                | Lir.ValuePart item -> emitExpression environment item)
+            |> collect |> Result.map (fun values ->
+                let joined = String.concat ", " values
+                $"fsruntime.Interpolate([]any{{{joined}}})")
         | Lir.Operation _ -> Error "Invalid operation arity"
 
     and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =
@@ -213,8 +235,8 @@ module GoBackend =
                 let programSource = $"package fscriptprogram\n\nimport \"{moduleName}/internal/fsruntime\"\n\n{declarations}\nfunc Run() any {{ return {entryCode} }}\n"
                 Ok
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
-                      { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n)\n\nfunc main() {{ fmt.Println(fscriptprogram.Run()) }}\n" }
+                      { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"{moduleName}/internal/fsruntime\"\n)\n\nfunc main() {{ fmt.Println(fsruntime.Format(fscriptprogram.Run())) }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
-                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n)\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
+                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n\t\"strings\"\n)\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Range(first int64, last int64) []any { step := int64(1); if first > last { step = -1 }; values := []any{}; for current := first; ; current += step { values = append(values, current); if current == last { break } }; return values }\nfunc UpdateRecord(value any, updates map[string]any) map[string]any { result := map[string]any{}; for key, item := range Record(value) { result[key] = item }; for key, item := range updates { result[key] = item }; return result }\nfunc Index(value any, index any) Option { values := List(value); position := Int(index); if position < 0 || position >= int64(len(values)) { return None() }; return Some(values[position]) }\nfunc Format(value any) string { switch item := value.(type) { case bool: if item { return \"true\" }; return \"false\"; case Option: if !item.HasValue { return \"None\" }; return \"Some \" + Format(item.Value); case []any: parts := make([]string, len(item)); for index, value := range item { parts[index] = Format(value) }; return \"[\" + strings.Join(parts, \";\") + \"]\"; default: return fmt.Sprint(value) } }\nfunc Interpolate(values []any) string { var result strings.Builder; for _, value := range values { result.WriteString(Format(value)) }; return result.String() }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
