@@ -71,6 +71,8 @@ Responsibilities:
 
 `FScript.Backend.Go` depends on `FScript.Compiler`; the core compiler has no dependency on the Go backend or a Go installation.
 
+Consumer tests follow the same dependency boundary: `FScript.Interpreter.Lir.Tests` owns executable LIR conformance and `FScript.Backend.Go.Tests` owns generated-project integration. `FScript.Compiler.Tests` references neither consumer and covers HIR, lowering, LIR validation, and artifacts only.
+
 NuGet:
 - `MagnusOpera.FScript.Language`
 

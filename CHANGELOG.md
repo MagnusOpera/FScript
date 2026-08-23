@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added dedicated LIR-interpreter and Go-backend test assemblies, and completed higher-order collection intrinsics in LIR execution.
 - Added compiled local binding patterns, sequential list iteration, and record/union type tokens across LIR artifacts, interpretation, and Go generation.
 - Split LIR execution and Go generation into independent `FScript.Interpreter.Lir` and `FScript.Backend.Go` assemblies.
 - Added serializable host-extern linkage that remains inert when unused and reports a dedicated LIR diagnostic when reached.

@@ -71,8 +71,21 @@ module LirInterpreter =
         let rec count = function TFun(_, result) -> 1 + count result | _ -> 0
         count valueType
 
-    let private invokeIntrinsic span name arguments =
+    let private invokeIntrinsic apply span name arguments =
         let unsupported () = fail "FSI3020" span $"Intrinsic '{name}' is not yet executable in LIR."
+        let expectBool = function Ok(VBool value) -> Ok value | Ok _ -> fail "FSI3022" span $"Intrinsic '{name}' callback must return bool." | Error errors -> Error errors
+        let rec mapCallback callback acc = function
+            | [] -> Ok(List.rev acc)
+            | value :: rest -> apply callback value |> Result.bind (fun mapped -> mapCallback callback (mapped :: acc) rest)
+        let rec filterCallback callback acc = function
+            | [] -> Ok(List.rev acc)
+            | value :: rest -> apply callback value |> expectBool |> Result.bind (fun keep -> filterCallback callback (if keep then value :: acc else acc) rest)
+        let mapSet key value entries =
+            let rec loop acc = function
+                | [] -> List.rev ((key, value) :: acc)
+                | (existing, _) :: rest when equal existing key -> List.rev acc @ ((key, value) :: rest)
+                | entry :: rest -> loop (entry :: acc) rest
+            loop [] entries
         match name, arguments with
         | "ignore", [ _ ] -> Ok VUnit
         | "Int.tryParse", [ VString value ] -> match System.Int64.TryParse value with true, parsed -> Ok(VOption(Some(VInt parsed))) | _ -> Ok(VOption None)
@@ -91,7 +104,36 @@ module LirInterpreter =
         | "String.split", [ VString separator; VString value ] -> value.Split([| separator |], System.StringSplitOptions.None) |> Array.toList |> List.map VString |> VList |> Ok
         | "String.endsWith", [ VString suffix; VString value ] -> Ok(VBool(value.EndsWith(suffix, System.StringComparison.Ordinal)))
         | "List.length", [ VList values ] -> Ok(VInt(int64 values.Length))
+        | "List.empty", [] -> Ok(VList [])
+        | "List.map", [ callback; VList values ] -> mapCallback callback [] values |> Result.map VList
+        | "List.iter", [ callback; VList values ] -> mapCallback callback [] values |> Result.map (fun _ -> VUnit)
+        | "List.choose", [ callback; VList values ] ->
+            mapCallback callback [] values |> Result.bind (fun mapped ->
+                mapped |> List.fold (fun state value ->
+                    match state, value with
+                    | Ok acc, VOption(Some item) -> Ok(item :: acc)
+                    | Ok acc, VOption None -> Ok acc
+                    | Ok _, _ -> fail "FSI3022" span "List.choose callback must return option."
+                    | Error errors, _ -> Error errors) (Ok []) |> Result.map (List.rev >> VList))
+        | "List.collect", [ callback; VList values ] ->
+            mapCallback callback [] values |> Result.bind (fun mapped ->
+                mapped |> List.fold (fun state value ->
+                    match state, value with Ok acc, VList items -> Ok(acc @ items) | Ok _, _ -> fail "FSI3022" span "List.collect callback must return list." | Error errors, _ -> Error errors) (Ok []) |> Result.map VList)
+        | "List.exists", [ callback; VList values ] ->
+            let rec loop = function [] -> Ok(VBool false) | value :: rest -> apply callback value |> expectBool |> Result.bind (fun found -> if found then Ok(VBool true) else loop rest)
+            loop values
         | "List.rev", [ VList values ] -> Ok(VList(List.rev values))
+        | "List.distinct", [ VList values ] -> values |> List.fold (fun acc value -> if List.exists (equal value) acc then acc else acc @ [ value ]) [] |> VList |> Ok
+        | "List.fold", [ callback; state; VList values ] ->
+            values |> List.fold (fun result value -> result |> Result.bind (fun current -> apply callback current |> Result.bind (fun partial -> apply partial value))) (Ok state)
+        | "List.filter", [ callback; VList values ] -> filterCallback callback [] values |> Result.map VList
+        | "List.tryFind", [ callback; VList values ] ->
+            let rec loop = function [] -> Ok(VOption None) | value :: rest -> apply callback value |> expectBool |> Result.bind (fun found -> if found then Ok(VOption(Some value)) else loop rest)
+            loop values
+        | "List.tryGet", [ callback; VList values ] ->
+            let rec loop index = function [] -> Ok(VOption None) | value :: rest -> apply callback value |> expectBool |> Result.bind (fun found -> if found then Ok(VOption(Some(VInt index))) else loop (index + 1L) rest)
+            loop 0L values
+        | "List.tryItem", [ VInt index; VList values ] -> if index < 0L || index >= int64 values.Length then Ok(VOption None) else Ok(VOption(Some values.[int index]))
         | "List.tryHead", [ VList values ] -> Ok(VOption(List.tryHead values))
         | "List.tail", [ VList(_ :: tail) ] -> Ok(VList tail)
         | "List.append", [ VList left; VList right ] -> Ok(VList(left @ right))
@@ -99,9 +141,34 @@ module LirInterpreter =
         | "Option.isNone", [ VOption value ] -> Ok(VBool value.IsNone)
         | "Option.isSome", [ VOption value ] -> Ok(VBool value.IsSome)
         | "Option.defaultValue", [ fallback; VOption value ] -> Ok(Option.defaultValue fallback value)
+        | "Option.defaultWith", [ fallback; VOption(Some value) ] -> Ok value
+        | "Option.defaultWith", [ fallback; VOption None ] -> apply fallback VUnit
+        | "Option.map", [ callback; VOption(Some value) ] -> apply callback value |> Result.map (Some >> VOption)
+        | "Option.map", [ _; VOption None ] -> Ok(VOption None)
+        | "Map.empty", [] -> Ok(VMap [])
         | "Map.count", [ VMap entries ] -> Ok(VInt(int64 entries.Length))
         | "Map.containsKey", [ key; VMap entries ] -> Ok(VBool(entries |> List.exists (fst >> equal key)))
         | "Map.tryGet", [ key; VMap entries ] -> Ok(VOption(entries |> List.tryPick (fun (itemKey, value) -> if equal itemKey key then Some value else None)))
+        | "Map.add", [ key; value; VMap entries ] -> Ok(VMap(mapSet key value entries))
+        | "Map.ofList", [ VList pairs ] ->
+            pairs |> List.fold (fun state pair -> match state, pair with Ok entries, VTuple [ key; value ] -> Ok(mapSet key value entries) | Ok _, _ -> fail "FSI3022" span "Map.ofList expects key/value tuples." | Error errors, _ -> Error errors) (Ok []) |> Result.map VMap
+        | "Map.fold", [ callback; state; VMap entries ] ->
+            entries |> List.fold (fun result (key, value) -> result |> Result.bind (fun current -> apply callback current |> Result.bind (fun withKey -> apply withKey key |> Result.bind (fun withValue -> apply withValue value)))) (Ok state)
+        | "Map.filter", [ callback; VMap entries ] ->
+            let rec loop acc = function [] -> Ok(VMap(List.rev acc)) | (key, value as entry) :: rest -> apply callback key |> Result.bind (fun partial -> apply partial value |> expectBool |> Result.bind (fun keep -> loop (if keep then entry :: acc else acc) rest))
+            loop [] entries
+        | "Map.choose", [ callback; VMap entries ] ->
+            let rec loop acc = function
+                | [] -> Ok(VMap(List.rev acc))
+                | (key, value) :: rest -> apply callback key |> Result.bind (fun partial -> apply partial value |> Result.bind (function VOption(Some chosen) -> loop ((key, chosen) :: acc) rest | VOption None -> loop acc rest | _ -> fail "FSI3022" span "Map.choose callback must return option."))
+            loop [] entries
+        | "Map.map", [ callback; VMap entries ] ->
+            let rec loop acc = function [] -> Ok(VMap(List.rev acc)) | (key, value) :: rest -> apply callback value |> Result.bind (fun mapped -> loop ((key, mapped) :: acc) rest)
+            loop [] entries
+        | "Map.iter", [ callback; VMap entries ] ->
+            let rec loop = function [] -> Ok VUnit | (key, value) :: rest -> apply callback key |> Result.bind (fun partial -> apply partial value |> Result.bind (fun _ -> loop rest))
+            loop entries
+        | "Map.remove", [ key; VMap entries ] -> Ok(VMap(entries |> List.filter (fst >> equal key >> not)))
         | _ -> unsupported ()
 
     let rec private matchPattern (pattern: Lir.Pattern) value =
@@ -145,16 +212,7 @@ module LirInterpreter =
         | Lir.MakeClosure(id, name, _, body) -> Ok(VClosure(id, name, body, ref environment))
         | Lir.CallClosure(fn, argument) ->
             match evaluate environment fn, evaluate environment argument with
-            | Ok(VClosure(parameter, _, body, captured)), Ok value -> evaluate (captured.Value |> Map.add parameter value) body
-            | Ok(VIntrinsic(name, existing)), Ok value ->
-                let arguments = existing @ [ value ]
-                if arguments.Length = intrinsicArity name then invokeIntrinsic expression.Span name arguments
-                else Ok(VIntrinsic(name, arguments))
-            | Ok(VExternal(name, arity, existing)), Ok value ->
-                let arguments = existing @ [ value ]
-                if arguments.Length = arity then fail "FSI3021" expression.Span $"Host external '{name}' is not executable from LIR."
-                else Ok(VExternal(name, arity, arguments))
-            | Ok _, Ok _ -> fail "FSI3003" expression.Span "Attempted to call a non-function value."
+            | Ok fnValue, Ok value -> applyValue expression.Span fnValue value
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
         | Lir.Branch(condition, whenTrue, whenFalse) ->
@@ -287,7 +345,9 @@ module LirInterpreter =
                     | Ok _ -> fail "FSI3017" expression.Span "Map spread requires a map."
                     | Error errors -> Error errors
             build [] entries
-        | Lir.Intrinsic name -> Ok(VIntrinsic(name, []))
+        | Lir.Intrinsic name ->
+            if intrinsicArity name = 0 then invokeIntrinsic (applyValue expression.Span) expression.Span name []
+            else Ok(VIntrinsic(name, []))
         | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
         | Lir.ForEach(id, _, _, source, body) ->
             match evaluate environment source with
@@ -300,6 +360,19 @@ module LirInterpreter =
             | Ok _ -> fail "FSI3018" expression.Span "For-loop source must be a list."
             | Error errors -> Error errors
         | Lir.TypeToken tokenType -> Ok(VTypeToken tokenType)
+
+    and private applyValue span fn value =
+        match fn with
+        | VClosure(parameter, _, body, captured) -> evaluate (captured.Value |> Map.add parameter value) body
+        | VIntrinsic(name, existing) ->
+            let arguments = existing @ [ value ]
+            if arguments.Length = intrinsicArity name then invokeIntrinsic (applyValue span) span name arguments
+            else Ok(VIntrinsic(name, arguments))
+        | VExternal(name, arity, existing) ->
+            let arguments = existing @ [ value ]
+            if arguments.Length = arity then fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
+            else Ok(VExternal(name, arity, arguments))
+        | _ -> fail "FSI3003" span "Attempted to call a non-function value."
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

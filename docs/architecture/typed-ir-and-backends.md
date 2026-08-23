@@ -30,6 +30,8 @@ Top-level mutual-recursive declarations are initialized as an atomic closure gro
 
 Language builtins are explicit `Intrinsic` declarations rather than magic unresolved references. Consumers accumulate their curried arguments according to the catalog signature and dispatch only at full application. The initial portable implementations cover scalar parsing/formatting, strings, simple list and option operations, and map queries; a reachable catalog entry without an implementation receives a stage-specific unsupported diagnostic or runtime failure.
 
+The LIR interpreter implements the pure builtin catalog, including callbacks for list mapping, selection, collection, folding, filtering and search; lazy option fallback and mapping; and ordered-map construction, folds, transforms, iteration, and removal. Callback application goes through the same curried closure path as ordinary source calls, preserving failure propagation and evaluation order.
+
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.
 
 Local binding patterns reuse the same single-scrutinee decision-tree representation as `match`. Sequential `for ... in ... do ...` is explicit in HIR and LIR so each consumer evaluates the input list once, visits values in order, and discards each body result before returning unit. `typeof` resolves declared record and union definitions during HIR construction and carries the semantic type as a serializable type-token node.

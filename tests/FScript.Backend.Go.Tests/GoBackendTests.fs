@@ -1,4 +1,4 @@
-namespace FScript.Compiler.Tests
+namespace FScript.Backend.Go.Tests
 
 open System
 open System.Diagnostics
