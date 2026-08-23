@@ -48,14 +48,9 @@ out/hello-go/
   internal/
     fscriptprogram/
       program.go
-    fsruntime/
-      closures.go
-      environment.go
-      patterns.go
-      runtime.go
 ```
 
-The project declares `go 1.25`, contains no Go generic declarations, and includes the FScript-owned runtime helpers it needs.
+The project declares `go 1.25`; its generated program package contains the concrete types and specialized helpers it needs, with no separate erased runtime package.
 
 ## Inspect and run
 

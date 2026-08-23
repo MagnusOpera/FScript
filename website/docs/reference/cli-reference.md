@@ -34,7 +34,7 @@ Generate an inspectable Go 1.25 source project without invoking `go build`:
 fscript compile program.fss --target go --output ./out
 ```
 
-The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, generated program source, and the required FScript runtime package. Unsupported features use structured compiler/backend diagnostic codes.
+The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, and specialized typed program source. Unsupported features use structured compiler/backend diagnostic codes.
 
 Continue with [Compile to Go](../compiler/compile-to-go.md) or [Interpret IR](../compiler/interpret-ir.md).
 

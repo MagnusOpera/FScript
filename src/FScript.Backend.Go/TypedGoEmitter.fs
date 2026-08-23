@@ -434,7 +434,7 @@ module TypedGoEmitter =
             | "Bool.toString", _ -> build (fun args _ -> $"strconv.FormatBool({args.[0]})")
             | "Int.tryParse", TFun(_, TOption TInt) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseInt({args.[0]}, 10, 64)\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
             | "Float.tryParse", TFun(_, TOption TFloat) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseFloat({args.[0]}, 64)\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
-            | "Bool.tryParse", TFun(_, TOption TBool) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseBool({args.[0]})\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
+            | "Bool.tryParse", TFun(_, TOption TBool) -> build (fun args resultType -> iife resultType $"if strings.EqualFold({args.[0]}, \"true\") {{\n\treturn {goType resultType}{{HasValue: true, Value: true}}\n}}\nif strings.EqualFold({args.[0]}, \"false\") {{\n\treturn {goType resultType}{{HasValue: true, Value: false}}\n}}\nreturn {goType resultType}{{}}")
             | "String.toLower", _ -> build (fun args _ -> $"strings.ToLower({args.[0]})")
             | "String.toUpper", _ -> build (fun args _ -> $"strings.ToUpper({args.[0]})")
             | "String.replace", _ -> build (fun args _ -> $"strings.ReplaceAll({args.[2]}, {args.[0]}, {args.[1]})")
@@ -442,9 +442,9 @@ module TypedGoEmitter =
             | "String.concat", _ -> build (fun args _ -> $"strings.Join({args.[1]}, {args.[0]})")
             | "String.split", _ -> build (fun args _ -> $"strings.Split({args.[1]}, {args.[0]})")
             | "String.indexOf", TFun(_, TFun(_, TOption TInt)) ->
-                build (fun args resultType -> iife resultType $"index := strings.Index({args.[1]}, {args.[0]})\nif index < 0 {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: int64(index)}}")
+                build (fun args resultType -> iife resultType $"index := strings.Index({args.[1]}, {args.[0]})\nif index < 0 {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: int64(utf8.RuneCountInString({args.[1]}[:index]))}}")
             | "String.substring", TFun(_, TFun(_, TFun(_, TOption TString))) ->
-                build (fun args resultType -> iife resultType $"start, length, value := {args.[0]}, {args.[1]}, {args.[2]}\nif start < 0 || length < 0 || start+length > int64(len(value)) {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value[start : start+length]}}")
+                build (fun args resultType -> iife resultType $"start, length := {args.[0]}, {args.[1]}\nvalue := []rune({args.[2]})\nif start < 0 || length < 0 || start+length > int64(len(value)) {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: string(value[start : start+length])}}")
             | "List.length", TFun(TList _, _) -> build (fun args _ -> $"int64(len({args.[0]}))")
             | "List.rev", TFun(TList itemType, resultType) -> build (fun args _ -> iife resultType $"values := {args.[0]}\nresult := make([]{goType itemType}, len(values))\nfor index := range values {{\n\tresult[len(values)-index-1] = values[index]\n}}\nreturn result")
             | "List.append", TFun(TList itemType, _) -> build (fun args _ -> $"append(append([]{goType itemType}{{}}, {args.[0]}...), {args.[1]}...)")
@@ -542,6 +542,15 @@ module TypedGoEmitter =
             | Lir.Operation(operation, [ left; right ]) ->
                 let leftCode, rightCode = emitChild left, emitChild right
                 match operation with
+                | Lir.StructuralEqual when left.Type <> right.Type ->
+                    match left.Type, right.Type with
+                    | (TNamed _ | TRecord _), (TNamed _ | TRecord _) ->
+                        let leftFields, rightFields = recordFields left.Type, recordFields right.Type
+                        let shared = leftFields |> Map.toList |> List.filter (fun (name, fieldType) -> Map.tryFind name rightFields = Some fieldType)
+                        let checks = shared |> List.map (fun (name, fieldType) -> $"{equality fieldType}(leftValue.{emittedField left.Type name}, rightValue.{emittedField right.Type name})")
+                        let result = if checks.IsEmpty then "true" else String.concat " && " checks
+                        $"func() bool {{\n\tleftValue := {leftCode}\n\trightValue := {rightCode}\n\treturn {result}\n}}()"
+                    | _ -> $"{equality left.Type}({leftCode}, {rightCode})"
                 | Lir.StructuralEqual -> $"{equality left.Type}({leftCode}, {rightCode})"
                 | Lir.IntAdd | Lir.FloatAdd -> $"({leftCode} + {rightCode})"
                 | Lir.IntSubtract | Lir.FloatSubtract -> $"({leftCode} - {rightCode})"
@@ -783,7 +792,9 @@ module TypedGoEmitter =
               if generatedBody.Contains("strconv.", StringComparison.Ordinal) then
                   "\t\"strconv\""
               if generatedBody.Contains("strings.", StringComparison.Ordinal) then
-                  "\t\"strings\"" ]
+                  "\t\"strings\""
+              if generatedBody.Contains("utf8.", StringComparison.Ordinal) then
+                  "\t\"unicode/utf8\"" ]
         let targetStandardImports, targetExternalImports =
             importModules
             |> Map.toList

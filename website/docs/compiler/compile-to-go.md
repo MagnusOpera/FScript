@@ -26,10 +26,6 @@ The generated project contains:
 go.mod
 main.go
 internal/fscriptprogram/program.go
-internal/fsruntime/closures.go
-internal/fsruntime/environment.go
-internal/fsruntime/patterns.go
-internal/fsruntime/runtime.go
 ```
 
 It declares Go 1.25, uses no Go generics, and is already `gofmt`-compatible.

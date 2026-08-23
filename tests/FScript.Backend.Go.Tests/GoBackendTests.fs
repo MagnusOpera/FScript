@@ -40,6 +40,27 @@ type GoBackendTests() =
         | Error error -> Assert.That(error, Does.Contain("Open type variable"))
 
     [<Test>]
+    member _.``Go backend reports open reachable results`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "let identity value = value\nidentity"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/open" } compiled.Lir with
+        | Ok _ -> Assert.Fail("Expected FSB4007")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4007"))
+
+    [<Test>]
+    member _.``Go backend rejects cloning effectful generalized initializers`` () =
+        let source = "let generalized =\n  let _ = Console.writeLine \"effect\"\n  fun value -> value\n(generalized 1, generalized \"x\")"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/effectful" } compiled.Lir with
+        | Ok _ -> Assert.Fail("Expected FSB4008")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4008"))
+
+    [<Test>]
     member _.``Go monomorphization closes quicksort declarations and functions`` () =
         let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/quicksort.fss"))
         let compiled =
@@ -52,6 +73,47 @@ type GoBackendTests() =
             Assert.That(specialized.Declarations |> List.exists (fun item -> item.Name = "quicksort" && item.Type = TFun(TList TInt, TList TInt)), Is.True)
             Assert.That(specialized.Declarations |> List.forall (fun item -> not (GoSpecialization.containsVariable item.Type)), Is.True)
             Assert.That(specialized.Functions |> List.forall (fun item -> not (GoSpecialization.containsVariable item.ParameterType) && not (GoSpecialization.containsVariable item.ReturnType)), Is.True)
+
+    [<Test>]
+    member _.``Quicksort uses the zero-erasure Go path`` () =
+        requireGo ()
+        let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/quicksort.fss"))
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/quicksort" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let generated = files |> List.map _.Content |> String.concat "\n"
+            Assert.That(generated, Does.Contain("[]int64"))
+            Assert.That(Regex.IsMatch(generated, @"\bany\b|interface\s*\{"), Is.False)
+            Assert.That(generated, Does.Not.Contain("fsruntime"))
+            let directory = Path.Combine(Path.GetTempPath(), $"fscript-quicksort-{Guid.NewGuid():N}")
+            try
+                for file in files do
+                    let path = Path.Combine(directory, file.RelativePath)
+                    match Path.GetDirectoryName(path) with
+                    | null -> ()
+                    | parent -> Directory.CreateDirectory(parent) |> ignore
+                    File.WriteAllText(path, file.Content)
+                let run command arguments =
+                    let start = ProcessStartInfo(command, WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true)
+                    for argument in arguments do start.ArgumentList.Add(argument)
+                    use proc =
+                        match Process.Start(start) with
+                        | null -> failwith $"Failed to start {command}."
+                        | value -> value
+                    let output, error = proc.StandardOutput.ReadToEnd(), proc.StandardError.ReadToEnd()
+                    proc.WaitForExit()
+                    Assert.That(proc.ExitCode, Is.EqualTo(0), output + error)
+                    output
+                Assert.That(run "gofmt" [ "-d"; directory ], Is.Empty)
+                run "go" [ "test"; "./..." ] |> ignore
+                let output = run "go" [ "run"; "." ]
+                Assert.That(output, Does.Contain("quicksort output: [1;2;2;3;3;4;5;6;7;8;9]"))
+            finally
+                if Directory.Exists directory then Directory.Delete(directory, true)
 
     [<Test>]
     member _.``Typed Go vertical slice emits no dynamic carriers`` () =
