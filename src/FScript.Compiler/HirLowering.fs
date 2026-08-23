@@ -316,6 +316,7 @@ module HirLowering =
             resolved.TypedProgram
             |> List.collect (function
                 | TypeInfer.TSLet(name, _, _, _, _, _) -> [ name ]
+                | TypeInfer.TSLetPattern(_, _, bindings, _, _) -> bindings |> Map.keys |> Seq.toList
                 | TypeInfer.TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
                 | _ -> [])
             |> List.distinct
@@ -345,7 +346,7 @@ module HirLowering =
                         let body = ({ Type = unionType; Span = definition.Span; Node = Hir.UnionCase(typeName, caseName, Some({ Type = itemType; Span = definition.Span; Node = Hir.Reference parameter })) }: Hir.Expression)
                         ({ Type = TFun(itemType, unionType); Span = definition.Span; Node = Hir.Lambda(parameter, "value", itemType, body) }: Hir.Expression)
                 ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Span = definition.Span; Value = value }: Hir.Declaration)))
-        let mutable entry = None
+        let mutable entry: Hir.Expression option = None
         let mutable errors = []
         for statement in resolved.TypedProgram do
             match statement with
@@ -363,8 +364,48 @@ module HirLowering =
                 | Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSExpr expression ->
                 match lowerExpression state topLevel expression.Type expression.Expr with
-                | Ok value -> entry <- Some value
+                | Ok value ->
+                    let id = newSymbol state
+                    let name = $"$expression{Hir.symbolNumber id}"
+                    declarations <- declarations @
+                        [ ({ Id = id
+                             Name = name
+                             Scheme = Types.generalize Map.empty expression.Type
+                             IsRecursive = false
+                             IsExported = false
+                             Span = value.Span
+                             Value = value }: Hir.Declaration) ]
+                    entry <- Some { Type = expression.Type; Span = value.Span; Node = Hir.Reference id }
                 | Error diagnostics -> errors <- errors @ diagnostics
+            | TypeInfer.TSLetPattern(pattern, expression, bindings, isExported, span) ->
+                let bindingType = expressionType state expression (Types.freshVar())
+                match lowerExpression state topLevel bindingType expression, lowerPattern state bindingType pattern with
+                | Ok value, Ok(loweredPattern, patternBindings) ->
+                    let temporaryId = newSymbol state
+                    declarations <- declarations @
+                        [ ({ Id = temporaryId
+                             Name = $"$pattern{Hir.symbolNumber temporaryId}"
+                             Scheme = Types.generalize Map.empty bindingType
+                             IsRecursive = false
+                             IsExported = false
+                             Span = span
+                             Value = value }: Hir.Declaration) ]
+                    let target = ({ Type = bindingType; Span = span; Node = Hir.Reference temporaryId }: Hir.Expression)
+                    let unitBody = ({ Type = TUnit; Span = span; Node = Hir.Constant Hir.Unit }: Hir.Expression)
+                    let check = ({ Type = TUnit; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = unitBody; Span = span } ]) }: Hir.Expression)
+                    let checkId = newSymbol state
+                    declarations <- declarations @
+                        [ ({ Id = checkId; Name = $"$patternCheck{Hir.symbolNumber checkId}"; Scheme = Forall([], TUnit); IsRecursive = false; IsExported = false; Span = span; Value = check }: Hir.Declaration) ]
+                    for name, inferred in bindings |> Map.toList do
+                        match patternBindings |> Map.tryFind name with
+                        | None -> errors <- errors @ [ Diagnostic.hir "FSH1006" $"Pattern binding '{name}' was not resolved." (Some span) ]
+                        | Some patternId ->
+                            let body = ({ Type = inferred; Span = span; Node = Hir.Reference patternId }: Hir.Expression)
+                            let projection = ({ Type = inferred; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = body; Span = span } ]) }: Hir.Expression)
+                            declarations <- declarations @
+                                [ ({ Id = Map.find name topLevel; Name = name; Scheme = Types.generalize Map.empty inferred; IsRecursive = false; IsExported = isExported; Span = span; Value = projection }: Hir.Declaration) ]
+                | Error a, Error b -> errors <- errors @ a @ b
+                | Error diagnostics, _ | _, Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSLetRecGroup(bindings, isExported, groupSpan) ->
                 for name, expression, inferred, span in bindings do
                     match lowerExpression state topLevel inferred expression with
@@ -379,6 +420,5 @@ module HirLowering =
                                  Value = value }: Hir.Declaration) ]
                     | Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSType _ -> ()
-            | _ -> errors <- errors @ [ Diagnostic.hir "FSH1098" "Top-level declaration form is not yet supported by HIR lowering." None ]
         if errors.IsEmpty then Ok { Declarations = declarations; Entry = entry }
         else Error errors
