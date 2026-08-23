@@ -12,3 +12,5 @@ The IR form writes `<directory>/<program-name>.fsir`. The Go form writes a proje
 Both forms create missing parent directories and deterministically replace files owned by the selected output on a repeated invocation. An unknown target is rejected before the output directory is created. Filesystem failures are reported as `FSA5101` diagnostics.
 
 Generated projects declare `go 1.25`, use no Go generics, and are already formatted for an empty `gofmt -d` result. Generation itself does not invoke Go; building or running the resulting project remains the caller's responsibility.
+
+See the complete workflows in [Compile FScript to Go](./compile-to-go.md) and [Compile and Interpret FScript IR](./interpret-ir.md). The normative representations are documented in the [typed HIR](../specs/typed-hir.md) and [executable LIR](../specs/executable-lir.md) specifications.

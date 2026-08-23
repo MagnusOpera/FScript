@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Documented the typed HIR, executable LIR, Go compilation workflow, and IR interpreter API.
+
 - Preserved integral float representations and IEEE zero-division results in generated Go.
 
 - Executed floating-point comparisons and empty-list tail failures consistently in LIR and generated Go.
