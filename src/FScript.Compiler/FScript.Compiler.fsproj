@@ -10,6 +10,7 @@
     <Compile Include="HirValidation.fs" />
     <Compile Include="Lir.fs" />
     <Compile Include="LirInterpreter.fs" />
+    <Compile Include="IrArtifact.fs" />
     <Compile Include="GoBackend.fs" />
     <Compile Include="Compiler.fs" />
   </ItemGroup>

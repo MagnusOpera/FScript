@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added deterministic, versioned JSON `.fsir` serialization and validated deserialization for executable LIR.
 - Added deterministic Go 1.25 project generation for the initial primitive and curried-function compiler slice.
 - Added executable LIR lowering and interpretation for primitive, curried-function, application, and conditional programs.
 - Added a reusable compiler assembly with deterministic typed HIR lowering, validation, diagnostics, and debug output.

@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="HirTests.fs" />
+    <Compile Include="IrArtifactTests.fs" />
     <Compile Include="GoBackendTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
