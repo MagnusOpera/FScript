@@ -120,6 +120,20 @@ type ResolvedInferenceTests() =
         Assert.That((interpolationReferences = expected), Is.True)
 
     [<Test>]
+    member _.``Resolved top-level shadowing keeps sequential lexical identities`` () =
+        let resolved = Helpers.parse "let value = 1\nlet value = value + 1\nvalue" |> TypeInfer.inferResolvedProgram
+        let declarations =
+            resolved.Symbols
+            |> List.filter (fun symbol -> symbol.Kind = TypeInfer.DeclarationSymbol && symbol.Name = "value")
+            |> List.map _.SymbolId
+        let references =
+            resolved.SymbolReferences
+            |> List.filter (fun reference -> reference.Kind = TypeInfer.DeclarationSymbol && reference.Name = "value")
+            |> List.map _.SymbolId
+        Assert.That(declarations.Length, Is.EqualTo(2))
+        Assert.That((references = declarations), Is.True)
+
+    [<Test>]
     member _.``Resolved applications retain structural width coercion evidence`` () =
         let source = "let city (value: {| City: string |}) = value.City\ncity {| City = \"Paris\"; Zip = 75000 |}"
         let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram

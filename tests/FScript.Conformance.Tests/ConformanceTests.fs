@@ -149,6 +149,7 @@ type ConformanceTests() =
     [<TestCase("[\"a\"; \"b\"] |> String.concat \",\"")>]
     [<TestCase("type Contact = { City: string; Zip: int; Country: string }\nlet city (value: {| City: string |}) = value.City\ncity { City = \"Paris\"; Zip = 75000; Country = \"FR\" }")>]
     [<TestCase("type rec Node = { Value: int; Next: Node option }\nlet rec sum (node: Node) = match node.Next with | Some next -> node.Value + sum next | None -> node.Value\nsum { Value = 1; Next = Some { Value = 2; Next = None } }")>]
+    [<TestCase("let value = 1\nlet value = value + 1\nvalue")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with

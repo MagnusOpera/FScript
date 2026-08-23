@@ -14,6 +14,8 @@ source -> parser/includes -> inference + resolved typed tree -> HIR -> LIR
 
 Resolved inference assigns deterministic program-local IDs to builtins, externs, types, union cases, declarations, parameters, pattern bindings, and locals in normalized source traversal. Declaration schemes and instantiated reference types normalize type variables from zero, so results do not depend on the process-global fresh-variable counter. The legacy `TypedProgram` remains a projection with unchanged public entry points.
 
+Top-level reference resolution walks declarations in source order. A non-recursive initializer sees the preceding environment, a recursive declaration or group sees its own complete group, and a later shadowing declaration replaces the name only after its initializer is resolved. Reference occurrences are consumed in traversal order as well as matched by name and span, so repeated included source locations cannot collapse distinct lexical identities.
+
 `FScript.Compiler` is a reusable, initially non-packaged .NET assembly. It owns HIR, HIR validation, lowering, LIR, LIR validation, and artifact serialization. It depends on `FScript.Language`; the language assembly never depends on the compiler.
 
 Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` owns execution and runtime LIR values. `FScript.Backend.Go` owns representation selection, Go emission, and embedded runtime templates. Both reference `FScript.Compiler`, while the compiler references neither consumer. Public modules retain the `FScript.Compiler` namespace so the API surface remains source-compatible while assembly ownership is explicit.

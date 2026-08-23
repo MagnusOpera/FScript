@@ -1679,6 +1679,7 @@ module TypeInfer =
             for caseName, _ in definition.Cases do
                 let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
                 globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+        let builtinEnvironment = globalEnvironment
         for statement in typed do
             match statement with
             | TSType definition ->
@@ -1776,15 +1777,39 @@ module TypeInfer =
             | ERange(first, last, _) -> visitSame first; visitSame last
             | EInterpolatedString(parts, _) -> parts |> List.iter (function IPText _ -> () | IPExpr item -> visitSame item)
             | EUnit _ | ELiteral _ | ENone _ -> ()
+        let allocated kind name span =
+            symbols
+            |> Seq.find (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
+            |> _.SymbolId
+        let mutable resolutionEnvironment = builtinEnvironment
         for statement in typed do
             match statement with
-            | TSLet(_, expression, _, _, _, _) -> visit globalEnvironment expression
-            | TSLetPattern(pattern, expression, _, _, _) -> visit globalEnvironment expression; bindPattern PatternBindingSymbol globalEnvironment pattern |> ignore
-            | TSLetRecGroup(bindings, _, _) -> bindings |> List.iter (fun (_, expression, _, _) -> visit globalEnvironment expression)
-            | TSExpr expression -> visit globalEnvironment expression.Expr
-            | TSBackendImport _ -> ()
-            | TSType _ -> ()
+            | TSType definition ->
+                resolutionEnvironment <- Map.add definition.Name (allocated TypeSymbol definition.Name definition.Span) resolutionEnvironment
+                for caseName, _ in definition.Cases do
+                    let id = allocated UnionCaseSymbol $"{definition.Name}.{caseName}" definition.Span
+                    resolutionEnvironment <- resolutionEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+            | TSLet(name, expression, _, recursive, _, span) ->
+                let id = allocated DeclarationSymbol name span
+                visit (if recursive then Map.add name id resolutionEnvironment else resolutionEnvironment) expression
+                resolutionEnvironment <- Map.add name id resolutionEnvironment
+            | TSLetPattern(pattern, expression, bindings, _, span) ->
+                visit resolutionEnvironment expression
+                bindPattern PatternBindingSymbol resolutionEnvironment pattern |> ignore
+                for name, _ in bindings |> Map.toList do
+                    resolutionEnvironment <- Map.add name (allocated DeclarationSymbol name span) resolutionEnvironment
+            | TSLetRecGroup(bindings, _, _) ->
+                let recursiveEnvironment =
+                    bindings
+                    |> List.fold (fun environment (name, _, _, span) ->
+                        Map.add name (allocated DeclarationSymbol name span) environment) resolutionEnvironment
+                bindings |> List.iter (fun (_, expression, _, _) -> visit recursiveEnvironment expression)
+                resolutionEnvironment <- recursiveEnvironment
+            | TSExpr expression -> visit resolutionEnvironment expression.Expr
+            | TSBackendImport(name, _, _, span) ->
+                resolutionEnvironment <- Map.add name (allocated DeclarationSymbol name span) resolutionEnvironment
         let resolvedReferences = references |> Seq.toList
+        let mutable remainingReferenceOccurrences = resolvedReferences
         let finalType expression = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables
         let declarations =
             (BuiltinTypes.typeDefs |> List.map (fun definition -> definition.Name, definition))
@@ -1823,7 +1848,20 @@ module TypeInfer =
             { SymbolId = id; Name = name; Type = bindingType; Span = span }
         let referenceAt expression =
             let span = Ast.spanOfExpr expression
-            resolvedReferences |> List.tryFind (fun item -> item.Span = span)
+            let expectedName =
+                match expression with
+                | EVar(name, _) | ENameOf(name, _) | ETypeOf(name, _) -> Some name
+                | EFieldGet(EVar(moduleName, _), fieldName, _) -> Some $"{moduleName}.{fieldName}"
+                | _ -> None
+            let matches (item: ResolvedSymbolReference) =
+                item.Span = span && expectedName |> Option.forall ((=) item.Name)
+            let rec consume preceding = function
+                | [] -> None
+                | item :: tail when matches item ->
+                    remainingReferenceOccurrences <- List.rev preceding @ tail
+                    Some item
+                | item :: tail -> consume (item :: preceding) tail
+            consume [] remainingReferenceOccurrences
         let rec resolvePattern (expected: Type) (pattern: Pattern) : ResolvedPattern =
             let span = Ast.spanOfPattern pattern
             let make node : ResolvedPattern = { Type = expected; Span = span; Node = node }
