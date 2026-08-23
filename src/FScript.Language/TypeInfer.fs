@@ -1352,15 +1352,26 @@ module TypeInfer =
                 | None -> acc
         loop [] pat
 
+    let rec private unwrapStatementAttributes statement =
+        match statement with
+        | SAttributed(attributes, inner, _) ->
+            let nested, unwrapped = unwrapStatementAttributes inner
+            attributes @ nested, unwrapped
+        | value -> [], value
+
+    let private unwrapProgramAttributes (program: Program) =
+        program |> List.map unwrapStatementAttributes |> List.unzip
+
     let private topLevelBindingNames (program: Program) : string list =
         program
-        |> List.collect (function
+        |> List.collect (unwrapStatementAttributes >> snd >> function
             | SLet(name, _, _, _, _, _, _) -> [ name ]
             | SLetPattern(pat, _, _, _) -> patternBindingNames pat
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
     let private inferProgramWithExternsRawAndLocals (captureTelemetry: bool) (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list * ResolvedExpressionType list =
+        let _, program = unwrapProgramAttributes program
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
             @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
@@ -1424,6 +1435,8 @@ module TypeInfer =
                     typed.Add(TSType def)
                 | SImport (_, _, span) ->
                     raise (TypeException { Message = "'import' must be resolved before type inference"; Span = span })
+                | SAttributed(_, _, span) ->
+                    raise (TypeException { Message = "Attributed statements must be normalized before type inference"; Span = span })
                 | SBackendImport(name, signature, import, span) ->
                     let importedType = annotationTypeFromRef typeDefs span signature
                     match importedType with
@@ -1622,7 +1635,8 @@ module TypeInfer =
         typed, locals
 
     let inferResolvedProgramWithExterns (externs: ExternalFunction list) (program: Program) : ResolvedProgram =
-        let typed, _, expressions = inferProgramWithExternsRawAndLocals true externs program
+        let statementAttributes, semanticProgram = unwrapProgramAttributes program
+        let typed, _, expressions = inferProgramWithExternsRawAndLocals true externs semanticProgram
         let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
         let mutable nextSymbol = 0
         let symbols = ResizeArray<ResolvedSymbol>()
@@ -1974,7 +1988,7 @@ module TypeInfer =
             { Type = expressionType; Span = Ast.spanOfExpr expression; Reference = reference
               Primitive = primitive; RecordCoercion = coercion; Node = node; Children = children }
         let resolvedStatements =
-            typed |> List.map (fun statement ->
+            (statementAttributes, typed) ||> List.map2 (fun declaredAttributes statement ->
                 let roots =
                     match statement with
                     | TSLet(_, expression, _, _, _, _) | TSLetPattern(_, expression, _, _, _) -> [ expression ]
@@ -2061,7 +2075,9 @@ module TypeInfer =
                     | TSLet(_, _, _, _, _, span) | TSLetPattern(_, _, _, _, span)
                     | TSLetRecGroup(_, _, span) | TSBackendImport(_, _, _, span) -> span
                     | TSExpr expression -> expression.Span
-                  Attributes = attributes
+                  Attributes =
+                    declaredAttributes @ attributes
+                    |> List.sortBy (fun attribute -> attribute.Span.Start.Line, attribute.Span.Start.Column)
                   Export = export
                   Node = node
                   Patterns = patterns

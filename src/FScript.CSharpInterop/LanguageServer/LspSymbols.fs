@@ -880,15 +880,19 @@ let queryValues : string -> string -> string list option
             (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column, file)
 
         for stmt in program do
+            let rec withoutAttributes = function
+                | SAttributed(_, inner, _) -> withoutAttributes inner
+                | statement -> statement
             let targetNames =
-                match stmt with
+                match withoutAttributes stmt with
                 | SLet(name, _, _, _, _, _, _) -> [ name ]
                 | SLetPattern(pattern, _, _, _) -> collectPatternNames pattern
                 | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
                 | SBackendImport(name, _, _, _) -> [ name ]
                 | SType _
                 | SExpr _
-                | SImport _ -> []
+                | SImport _
+                | SAttributed _ -> []
 
             if not targetNames.IsEmpty then
                 match tryInfer stmt with
@@ -1197,6 +1201,8 @@ let queryValues : string -> string -> string list option
                     resolveStmts scopesWithNames rest (acc @ inBindings)
                 | SBackendImport(name, _, _, span) ->
                     resolveStmts (pushBindings scopes [ name, span ]) rest acc
+                | SAttributed(_, inner, _) ->
+                    resolveStmts scopes (inner :: rest) acc
                 | SExpr expr ->
                     let inExpr = resolveExpr scopes expr
                     resolveStmts scopes rest (acc @ inExpr)

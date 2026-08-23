@@ -34,7 +34,7 @@ Backend `Import` requires exactly a target module path and member name, a comple
   - tuple destructuring is supported for non-`rec` `let` bindings only
   - `[<export>] let` requires a single identifier binding (tuple patterns are rejected)
   - `[<export>]` is only valid on top-level `let` bindings
-  - attribute names are case-sensitive (`[<export>]` is valid, `[<Export>]` is not)
+  - ordinary attribute names are case-sensitive; `export` and `Export` are accepted aliases for the built-in export marker
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`
@@ -252,3 +252,4 @@ let ops =
 - An imported record schema uses `[<Import("module/path", "TypeName")>] type Name = { Field: type; ... }`.
 - `Import` takes exactly two non-empty arguments and is valid only on a top-level type declaration or bodyless typed `let`.
 - Imported record field spelling is preserved exactly for backend adapters; the initial Go backend requires exported, uppercase primitive fields.
+- Other top-level type and `let` attributes are retained as structured name, string/identifier arguments, and source span for compiler consumers. Unknown attributes do not change language semantics by themselves.

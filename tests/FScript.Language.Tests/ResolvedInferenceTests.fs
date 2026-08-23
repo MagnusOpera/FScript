@@ -115,3 +115,12 @@ type ResolvedInferenceTests() =
         let imports = resolved.ResolvedStatements |> List.collect _.Attributes |> List.filter (fun attribute -> attribute.Name = "Import")
         Assert.That(imports.Length, Is.EqualTo(2))
         Assert.That(imports |> List.map _.Arguments, Does.Contain([ "strings"; "ToUpper" ]))
+
+    [<Test>]
+    member _.``Resolved statements retain custom structured attributes`` () =
+        let source = "[<BackendHint(\"fast\", stable)>]\nlet answer = 42"
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let attribute = resolved.ResolvedStatements.Head.Attributes |> List.exactlyOne
+        Assert.That(attribute.Name, Is.EqualTo("BackendHint"))
+        Assert.That(attribute.Arguments = [ "fast"; "stable" ], Is.True)
+        Assert.That(attribute.Span.Start.Line, Is.EqualTo(1))

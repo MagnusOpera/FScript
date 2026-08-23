@@ -65,6 +65,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
 - Both `[<export>]` and `[<Export>]` normalize to a structured `Export` attribute in resolved statements and HIR. `Import` attributes retain their two arguments and attribute span on ordinary HIR function/type declarations in addition to dedicated backend linkage.
+- Other top-level declaration attributes remain case-sensitive and flow unchanged through resolved statements and HIR; they carry string or identifier arguments but have no evaluator semantics unless a future consumer recognizes them.
 
 The compiler-owned runtime catalog is declarative and contains no executable host delegates:
 

@@ -143,6 +143,15 @@ type HirTests() =
         Assert.That((answer.Attributes |> List.map _.Name) = [ "Export" ], Is.True)
 
     [<Test>]
+    member _.``HIR retains custom attributes on ordinary declarations`` () =
+        let source = "[<BackendHint(\"fast\", stable)>]\ntype Person = { Name: string }\n[<Trace(\"answer\")>] let answer = 42"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(compiled.Hir.Types.Head.Attributes.Head.Name, Is.EqualTo("BackendHint"))
+        Assert.That(compiled.Hir.Types.Head.Attributes.Head.Arguments = [ "fast"; "stable" ], Is.True)
+        let answer = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "answer")
+        Assert.That(answer.Attributes.Head.Name, Is.EqualTo("Trace"))
+
+    [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =

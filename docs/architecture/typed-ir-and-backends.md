@@ -32,7 +32,7 @@ HIR and LIR expose canonical debug printers with stable artifact-local IDs and n
 
 HIR declaration schemes are taken directly from the resolved frontend after deterministic type-variable normalization; lowering does not generalize source declarations again. Synthetic declarations may derive a local scheme because they have no frontend declaration counterpart.
 
-Resolved statements expose normalized structured attributes as name, argument list, and source span. HIR attaches these attributes to ordinary value and type declarations while retaining dedicated export and target-import linkage for consumers that need semantic access without reparsing attribute arguments.
+Resolved statements expose normalized structured attributes as name, argument list, and source span. The parser retains unknown attributes instead of assigning semantics to them, and HIR attaches them to ordinary value and type declarations while retaining dedicated export and target-import linkage for consumers that need semantic access without reparsing attribute arguments.
 
 HIR validation rejects duplicate and unresolved symbols, invalid declaration spans, and schemes inconsistent with their values. LIR validation rechecks artifact-local references and spans, then verifies closure calls, branches and decision guards, primitive signatures, aggregate representations, declaration value types, intrinsic catalog membership, and complete target-import linkage. Artifact deserialization runs the same LIR validator, so malformed JSON cannot bypass compiler invariants.
 

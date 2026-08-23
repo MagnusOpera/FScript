@@ -379,9 +379,12 @@ module IncludeResolver =
         loop [] expr
 
     let private rewriteModuleScopedStatements (selfPrefix: string option) (aliases: Map<string, string>) (statements: Stmt list) : Stmt list =
+        let rec unwrap = function
+            | SAttributed(_, statement, _) -> unwrap statement
+            | statement -> statement
         let topLevelValueNames =
             statements
-                |> List.collect (function
+                |> List.collect (unwrap >> function
                 | SLet(name, _, _, _, _, _, _) -> [ name ]
                 | SLetPattern(pattern, _, _, _) -> collectPatternBindings pattern |> Set.toList
                 | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
@@ -390,7 +393,7 @@ module IncludeResolver =
 
         let topLevelTypeNames =
             statements
-            |> List.choose (function | SType def -> Some def.Name | _ -> None)
+            |> List.choose (unwrap >> function | SType def -> Some def.Name | _ -> None)
             |> Set.ofList
 
         let rewriteValueName boundNames name =
@@ -524,8 +527,8 @@ module IncludeResolver =
                     def.Cases
                     |> List.map (fun (name, payload) -> name, payload |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames)) }
 
-        statements
-        |> List.map (function
+        let rec rewriteStatement = function
+            | SAttributed(attributes, statement, span) -> SAttributed(attributes, rewriteStatement statement, span)
             | SType def ->
                 SType (rewriteTypeDef def)
             | SLet(name, args, returnAnnotation, valueExpr, isRec, isExported, span) ->
@@ -555,7 +558,8 @@ module IncludeResolver =
                 SBackendImport(qualifySelfName name, rewriteTypeRef aliases selfPrefix topLevelTypeNames signature, import, span)
             | SExpr expr ->
                 SExpr (rewriteExpr Set.empty expr)
-            | SImport _ -> failwith "Unexpected unresolved import directive")
+            | SImport _ -> failwith "Unexpected unresolved import directive"
+        statements |> List.map rewriteStatement
 
     let private expandProgram
         (rootDirectoryWithSeparator: string)
