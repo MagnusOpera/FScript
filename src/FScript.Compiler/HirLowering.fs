@@ -350,6 +350,7 @@ module HirLowering =
                 | TypeInfer.TSLet(name, _, _, _, _, _) -> [ name ]
                 | TypeInfer.TSLetPattern(_, _, bindings, _, _) -> bindings |> Map.keys |> Seq.toList
                 | TypeInfer.TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
+                | TypeInfer.TSBackendImport(name, _, _, _) -> [ name ]
                 | _ -> [])
             |> List.distinct
             |> List.fold (fun env name -> env |> Map.add name (newSymbol state)) (Map.fold (fun env name id -> Map.add name id env) builtins externSymbols)
@@ -452,6 +453,15 @@ module HirLowering =
                                  Span = span
                                  Value = value }: Hir.Declaration) ]
                     | Error diagnostics -> errors <- errors @ diagnostics
+            | TypeInfer.TSBackendImport(name, importedType, import, span) ->
+                declarations <- declarations @
+                    [ ({ Id = Map.find name topLevel
+                         Name = name
+                         Scheme = Forall([], importedType)
+                         IsRecursive = false
+                         IsExported = false
+                         Span = span
+                         Value = { Type = importedType; Span = span; Node = Hir.TargetImport(import.ModulePath, import.MemberName) } }: Hir.Declaration) ]
             | TypeInfer.TSType _ -> ()
         if errors.IsEmpty then Ok { Declarations = declarations; Entry = entry }
         else Error errors

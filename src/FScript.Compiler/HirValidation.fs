@@ -61,6 +61,7 @@ module HirValidation =
                 | Hir.Intrinsic _ -> Set.empty
                 | Hir.HostExternal _ -> Set.empty
                 | Hir.RuntimeContext -> Set.empty
+                | Hir.TargetImport _ -> Set.empty
                 | Hir.ForEach(id, _, _, source, body) -> Set.union (references source) (references body |> Set.remove id)
                 | Hir.TypeToken _ -> Set.empty
             let declared = declarationIds |> Set.ofList

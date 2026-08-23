@@ -63,6 +63,7 @@ module Hir =
         | Intrinsic of string
         | HostExternal of string * int
         | RuntimeContext
+        | TargetImport of string * string
         | ForEach of SymbolId * string * Type * Expression * Expression
         | TypeToken of Type
 
@@ -190,6 +191,7 @@ module Hir =
             | Intrinsic name -> lines.Add(typed $"intrinsic {name}")
             | HostExternal(name, arity) -> lines.Add(typed $"host-extern {name}/{arity}")
             | RuntimeContext -> lines.Add(typed "runtime-context")
+            | TargetImport(modulePath, memberName) -> lines.Add(typed $"target-import {modulePath}.{memberName}")
             | ForEach(id, name, _, source, body) ->
                 lines.Add(typed (sprintf "for %%%d %s" (symbolNumber id) name)); expression (indent + 2) source; expression (indent + 2) body
             | TypeToken tokenType -> lines.Add(typed $"typeof {formatType tokenType}")

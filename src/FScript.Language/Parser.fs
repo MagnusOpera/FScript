@@ -1451,6 +1451,8 @@ module Parser =
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | [SLetRecGroup(_, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
+                | SBackendImport(_, _, _, span) :: _ ->
+                    raise (ParseException { Message = "Backend imports are only supported at top level"; Span = span })
                 | SLet(name, args, returnAnnotation, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
@@ -1554,7 +1556,7 @@ module Parser =
                 | None ->
                     SLet(bindingName, args |> Seq.toList, returnAnnotation, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
 
-        and parseAttributeName () =
+        and parseAttribute () =
             stream.Expect(LBracket, "Expected '[' in attribute") |> ignore
             stream.Expect(Less, "Expected '<' in attribute") |> ignore
             let nameTok = stream.ExpectIdent("Expected attribute name")
@@ -1562,9 +1564,36 @@ module Parser =
                 match nameTok.Kind with
                 | Ident n -> n
                 | _ -> ""
+            let arguments = ResizeArray<string>()
+            if stream.Match(LParen) then
+                let mutable doneArguments = false
+                while not doneArguments do
+                    let argument = stream.Next()
+                    match argument.Kind with
+                    | StringLit value | Ident value -> arguments.Add(value)
+                    | _ -> raise (ParseException { Message = "Attribute arguments must be strings or identifiers"; Span = argument.Span })
+                    if stream.Match(Comma) then ()
+                    else
+                        stream.Expect(RParen, "Expected ')' after attribute arguments") |> ignore
+                        doneArguments <- true
             stream.Expect(Greater, "Expected '>' in attribute") |> ignore
             stream.Expect(RBracket, "Expected ']' in attribute") |> ignore
-            name, nameTok.Span
+            { Name = name; Arguments = arguments |> Seq.toList; Span = nameTok.Span }
+
+        and parseBackendImport (attribute: Attribute) =
+            let letToken = stream.Expect(Let, "Expected 'let' after Import attribute")
+            let nameToken = stream.ExpectIdent("Expected imported binding name")
+            let name = match nameToken.Kind with Ident value -> value | _ -> ""
+            stream.Expect(Colon, "Imported binding requires a complete type signature") |> ignore
+            let signature = parseTypeRef()
+            if stream.Peek().Kind = Equals then
+                raise (ParseException { Message = "Imported bindings must not have a body"; Span = stream.Peek().Span })
+            match attribute.Arguments with
+            | [ modulePath; memberName ] when not (System.String.IsNullOrWhiteSpace modulePath) && not (System.String.IsNullOrWhiteSpace memberName) ->
+                let span = mkSpanFrom letToken.Span nameToken.Span
+                SBackendImport(name, signature, { ModulePath = modulePath; MemberName = memberName; Span = attribute.Span }, span)
+            | _ ->
+                raise (ParseException { Message = "Import requires module path and member name: [<Import(\"module/path\", \"Member\")>]"; Span = attribute.Span })
 
         and parseStmt () : Stmt =
             stream.SkipNewlines()
@@ -1574,18 +1603,25 @@ module Parser =
 
             let mutable isExported = false
             let mutable hasAttributes = false
+            let mutable backendImport: Attribute option = None
             let mutable parsingAttributes = true
             while parsingAttributes do
                 if stream.Peek().Kind = LBracket && stream.PeekAt(1).Kind = Less then
                     hasAttributes <- true
-                    let name, span = parseAttributeName()
-                    match name with
+                    let attribute = parseAttribute()
+                    match attribute.Name with
                     | "export" ->
                         if isExported then
-                            raise (ParseException { Message = "Duplicate attribute 'export'"; Span = span })
+                            raise (ParseException { Message = "Duplicate attribute 'export'"; Span = attribute.Span })
+                        if not attribute.Arguments.IsEmpty then
+                            raise (ParseException { Message = "Export does not accept arguments"; Span = attribute.Span })
                         isExported <- true
+                    | "Import" ->
+                        if backendImport.IsSome then
+                            raise (ParseException { Message = "Duplicate attribute 'Import'"; Span = attribute.Span })
+                        backendImport <- Some attribute
                     | _ ->
-                        raise (ParseException { Message = $"Unknown attribute '{name}'"; Span = span })
+                        raise (ParseException { Message = $"Unknown attribute '{attribute.Name}'"; Span = attribute.Span })
                     stream.SkipNewlines()
                 else
                     parsingAttributes <- false
@@ -1627,7 +1663,10 @@ module Parser =
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
                 parseTypeDecl()
             | Let ->
-                parseLetStmt isExported
+                match backendImport with
+                | Some attribute when isExported -> raise (ParseException { Message = "Import and Export cannot be combined initially"; Span = attribute.Span })
+                | Some attribute -> parseBackendImport attribute
+                | None -> parseLetStmt isExported
             | _ when hasAttributes ->
                 raise (ParseException { Message = "'[<export>]' must be followed by a top-level let binding"; Span = stream.Peek().Span })
             | _ ->

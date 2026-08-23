@@ -196,6 +196,7 @@ module TypeInfer =
         | TSLet of string * Expr * Type * bool * bool * Span
         | TSLetPattern of Pattern * Expr * Map<string, Type> * bool * Span
         | TSLetRecGroup of (string * Expr * Type * Span) list * bool * Span
+        | TSBackendImport of string * Type * BackendImport * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
@@ -1272,6 +1273,13 @@ module TypeInfer =
                     typed.Add(TSType def)
                 | SImport (_, _, span) ->
                     raise (TypeException { Message = "'import' must be resolved before type inference"; Span = span })
+                | SBackendImport(name, signature, import, span) ->
+                    let importedType = annotationTypeFromRef typeDefs span signature
+                    match importedType with
+                    | TFun _ ->
+                        env <- Map.add name (Forall([], importedType)) env
+                        typed.Add(TSBackendImport(name, importedType, import, span))
+                    | _ -> raise (TypeException { Message = "Backend imports require a complete function signature"; Span = span })
                 | SLet(name, args, returnAnnotation, expr, isRec, isExported, span) ->
                     let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                     let startIndex =
@@ -1526,6 +1534,8 @@ module TypeInfer =
             | TSLetRecGroup(bindings, _, _) ->
                 for name, _, inferred, span in bindings do
                     globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSBackendImport(name, importedType, _, span) ->
+                globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Forall([], importedType)))) globalEnvironment
             | TSExpr _ -> ()
         let recordReference environment name expression span =
             environment |> Map.tryFind name |> Option.iter (fun id ->
@@ -1590,6 +1600,7 @@ module TypeInfer =
             | TSLetPattern(pattern, expression, _, _, _) -> visit globalEnvironment expression; bindPattern PatternBindingSymbol globalEnvironment pattern |> ignore
             | TSLetRecGroup(bindings, _, _) -> bindings |> List.iter (fun (_, expression, _, _) -> visit globalEnvironment expression)
             | TSExpr expression -> visit globalEnvironment expression.Expr
+            | TSBackendImport _ -> ()
             | TSType _ -> ()
         { TypedProgram = typed
           ExpressionTypes = expressions

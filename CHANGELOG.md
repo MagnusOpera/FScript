@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added bodyless `[<Import("module", "Member")>]` declarations with typed HIR/LIR linkage and primitive Go package bindings.
 - Added compiler runtime-context IR so LIR and generated Go programs receive `Env.ScriptName` and executable arguments without host linkage.
 - Added versioned `.fsir` compiler/language metadata, normalized source SHA-256 records, ordered dependencies, and strict metadata validation.
 - Exposed deterministic resolved frontend symbols, normalized declaration schemes, and instantiated lexical reference types without changing legacy inference APIs.

@@ -66,6 +66,8 @@ Compiler bindings classify names as portable intrinsics, backend runtime primiti
 
 The LIR interpreter rejects reachable target imports it cannot supply. The Go backend initially rejects unsupported host externs and tasks with backend diagnostics. Imports describe complete ordinary FScript declarations plus target linkage and do not create a second foreign type system.
 
+Initial Go imports use `[<Import("module/path", "Member")>] let name : complete -> signature` with no body. The frontend requires a function type and records linkage separately from its FScript signature. Go emission uses deterministic package aliases and currently accepts only primitive/unit arguments and results; other representations receive `FSB4003`. The LIR interpreter keeps unused imports inert and reports `FSI3023` only when one is fully applied.
+
 ## Previous experiment
 
 The `feature/in-memory-execution` branch is useful only as evidence about closures, invocation, and host integration. Its dynamic-method/in-memory assembly backend is not an IR layer and is neither copied nor referenced by the new compiler architecture.

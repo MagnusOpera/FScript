@@ -20,6 +20,16 @@ type Param =
       Annotation: TypeRef option
       Span: Span }
 
+type Attribute =
+    { Name: string
+      Arguments: string list
+      Span: Span }
+
+type BackendImport =
+    { ModulePath: string
+      MemberName: string
+      Span: Span }
+
 type Literal =
     | LInt of int64
     | LFloat of float
@@ -87,6 +97,7 @@ and Stmt =
     | SLet of string * Param list * TypeRef option * Expr * bool * bool * Span
     | SLetPattern of Pattern * Expr * bool * Span
     | SLetRecGroup of (string * Param list * TypeRef option * Expr * Span) list * bool * Span
+    | SBackendImport of string * TypeRef * BackendImport * Span
     | SExpr of Expr
 
 type Program = Stmt list

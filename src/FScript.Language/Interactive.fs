@@ -55,6 +55,7 @@ module Interactive =
                 groupBindings
                 |> List.fold (fun state (name, _, bindingType, _) ->
                     state |> Map.add name (inferenceBinding name bindingType)) current
+            | TypeInfer.TSBackendImport(name, importedType, _, _) -> current |> Map.add name (inferenceBinding name importedType)
             | TypeInfer.TSType _
             | TypeInfer.TSExpr _ -> current) bindings
 

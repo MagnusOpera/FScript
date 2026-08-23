@@ -219,3 +219,19 @@ type LirInterpreterTests() =
             | Ok result ->
                 Assert.That(result.Value, Is.EqualTo(LirValue.VTuple [ LirValue.VOption(Some(LirValue.VString "sample.fss")); LirValue.VList [ LirValue.VString "one"; LirValue.VString "two" ] ]))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Rejects only reachable target imports`` () =
+        let compile source = Compiler.compile { Program = Parser.parseProgram source; Externs = [] }
+        match compile "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\n1" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 1L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        match compile "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Fail("Expected target-import diagnostic")
+            | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3023"))

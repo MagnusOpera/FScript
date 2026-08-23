@@ -22,6 +22,7 @@ type LirValue =
     | VExternal of string * int * LirValue list
     | VTypeToken of Type
     | VRuntimeContext
+    | VTargetImport of string * string * int * LirValue list
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -64,6 +65,7 @@ module LirInterpreter =
         | VExternal _ -> "<external>"
         | VTypeToken value -> $"<type {Types.typeToString value}>"
         | VRuntimeContext -> "<runtime-context>"
+        | VTargetImport _ -> "<target-import>"
 
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
@@ -72,6 +74,8 @@ module LirInterpreter =
         let (Forall(_, valueType)) = FScript.Language.BuiltinSignatures.builtinSchemes.[name]
         let rec count = function TFun(_, result) -> 1 + count result | _ -> 0
         count valueType
+
+    let rec private arityFromType = function TFun(_, result) -> 1 + arityFromType result | _ -> 0
 
     let private invokeIntrinsic apply span name arguments =
         let unsupported () = fail "FSI3020" span $"Intrinsic '{name}' is not yet executable in LIR."
@@ -397,6 +401,7 @@ module LirInterpreter =
             else Ok(VIntrinsic(name, []))
         | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
         | Lir.RuntimeContext -> Ok VRuntimeContext
+        | Lir.TargetImport(modulePath, memberName) -> Ok(VTargetImport(modulePath, memberName, arityFromType expression.Type, []))
         | Lir.ForEach(id, _, _, source, body) ->
             match evaluate environment source with
             | Ok(VList values) ->
@@ -420,6 +425,10 @@ module LirInterpreter =
             let arguments = existing @ [ value ]
             if arguments.Length = arity then fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
             else Ok(VExternal(name, arity, arguments))
+        | VTargetImport(modulePath, memberName, arity, existing) ->
+            let arguments = existing @ [ value ]
+            if arguments.Length = arity then fail "FSI3023" span $"Target import '{modulePath}.{memberName}' is not executable from LIR."
+            else Ok(VTargetImport(modulePath, memberName, arity, arguments))
         | _ -> fail "FSI3003" span "Attempted to call a non-function value."
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect

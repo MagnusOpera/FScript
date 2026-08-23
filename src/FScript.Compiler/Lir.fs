@@ -51,6 +51,7 @@ module Lir =
         | Intrinsic of string
         | HostExternal of string * int
         | RuntimeContext
+        | TargetImport of string * string
         | ForEach of SymbolId * string * Type * Expression * Expression
         | TypeToken of Type
 
@@ -173,6 +174,7 @@ module LirLowering =
             | Hir.Intrinsic name -> Lir.Intrinsic name
             | Hir.HostExternal(name, arity) -> Lir.HostExternal(name, arity)
             | Hir.RuntimeContext -> Lir.RuntimeContext
+            | Hir.TargetImport(modulePath, memberName) -> Lir.TargetImport(modulePath, memberName)
             | Hir.ForEach(id, name, itemType, source, body) -> Lir.ForEach(symbol id, name, itemType, expression source, expression body)
             | Hir.TypeToken tokenType -> Lir.TypeToken tokenType
         { Type = value.Type; Span = value.Span; Node = node }

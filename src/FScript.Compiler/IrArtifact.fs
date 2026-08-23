@@ -35,7 +35,11 @@ module IrArtifact =
 
     let private dependencies (program: Lir.Program) =
         program.Declarations
-        |> List.choose (fun declaration -> match declaration.Value.Node with Lir.HostExternal(name, _) -> Some name | _ -> None)
+        |> List.choose (fun declaration ->
+            match declaration.Value.Node with
+            | Lir.HostExternal(name, _) -> Some $"host:{name}"
+            | Lir.TargetImport(modulePath, memberName) -> Some $"target:{modulePath}:{memberName}"
+            | _ -> None)
         |> List.distinct
         |> List.sort
 
@@ -229,6 +233,7 @@ module IrArtifact =
         | Lir.Intrinsic name -> writer.WriteString("kind", "intrinsic"); writer.WriteString("name", name)
         | Lir.HostExternal(name, arity) -> writer.WriteString("kind", "host-external"); writer.WriteString("name", name); writer.WriteNumber("arity", arity)
         | Lir.RuntimeContext -> writer.WriteString("kind", "runtime-context")
+        | Lir.TargetImport(modulePath, memberName) -> writer.WriteString("kind", "target-import"); writer.WriteString("modulePath", modulePath); writer.WriteString("memberName", memberName)
         | Lir.ForEach(id, name, itemType, source, body) ->
             writer.WriteString("kind", "for-each"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
             writer.WritePropertyName("itemType"); writeType writer itemType; writer.WritePropertyName("source"); writeExpression writer source
@@ -387,6 +392,7 @@ module IrArtifact =
             | "intrinsic" -> Lir.Intrinsic(stringProperty "name" element)
             | "host-external" -> Lir.HostExternal(stringProperty "name" element, (property "arity" element).GetInt32())
             | "runtime-context" -> Lir.RuntimeContext
+            | "target-import" -> Lir.TargetImport(stringProperty "modulePath" element, stringProperty "memberName" element)
             | "for-each" -> Lir.ForEach(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
                                          readType (property "itemType" element), readExpression (property "source" element), readExpression (property "body" element))
             | "type-token" -> Lir.TypeToken(readType (property "tokenType" element))

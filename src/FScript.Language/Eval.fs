@@ -802,6 +802,14 @@ module Eval =
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
+            | TypeInfer.TSBackendImport(name, importedType, import, span) ->
+                let rec arity = function TFun(_, result) -> 1 + arity result | _ -> 0
+                let external =
+                    { Name = name
+                      Scheme = Forall([], importedType)
+                      Arity = arity importedType
+                      Impl = fun _ _ -> raise (EvalException { Message = $"Backend import '{import.ModulePath}.{import.MemberName}' is not executable in the legacy evaluator"; Span = span }) }
+                env <- Map.add name (VExternal(external, [])) env
             | TypeInfer.TSLet(name, expr, _, isRec, _, span) ->
                 if isRec then
                     match expr with

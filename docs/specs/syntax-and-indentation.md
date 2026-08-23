@@ -10,9 +10,12 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
   - `[<export>] let` / `[<export>] let rec` bindings
+  - bodyless `[<Import("module/path", "Member")>] let name : complete -> signature` declarations
   - expressions
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
 - Comments use `//` line-comment syntax.
+
+Backend `Import` requires exactly a target module path and member name, a complete function signature, and no body. It cannot be combined with `export` and is not allowed in expression blocks. The legacy evaluator reports an explicit error if an imported function is called; compiled consumers use the retained target linkage.
 
 ## Core expression forms
 - Literals: `int`, `float`, `bool`, `string`, `()`

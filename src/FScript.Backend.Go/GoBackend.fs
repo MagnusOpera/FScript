@@ -8,6 +8,10 @@ type GoOptions = { ModuleName: string }
 type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
+    let private importAlias (modulePath: string) =
+        let hash = Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(modulePath)) |> Convert.ToHexString
+        "goimport" + hash.Substring(0, 8).ToLowerInvariant()
+
     let rec private goType = function
         | TUnit -> "struct{}"
         | TInt -> "int64"
@@ -189,6 +193,21 @@ module GoBackend =
                 cast resultType $"fsruntime.Intrinsic(\"__host:\" + {quoted}, []any{{{values}}})"
         build 0 [] externalType
 
+    let private emitTargetImport modulePath memberName importType =
+        let alias = importAlias modulePath
+        let rec build index arguments = function
+            | TFun(argumentType, resultType) ->
+                let raw = $"targetArg{index}"
+                let argument = $"targetValue{index}"
+                let body = build (index + 1) (arguments @ [ argument ]) resultType
+                $"fsruntime.Closure{{Call: func({raw} any) any {{ {argument} := {cast argumentType raw}; return {body} }}}}"
+            | resultType ->
+                let joined = String.concat ", " arguments
+                match resultType with
+                | TUnit -> $"func() any {{ {alias}.{memberName}({joined}); return struct{{}}{{}} }}()"
+                | _ -> $"{alias}.{memberName}({joined})"
+        build 0 [] importType
+
     let rec private emitExpression environment (expression: Lir.Expression) =
         match expression.Node with
         | Lir.Constant value -> Ok(constant value)
@@ -328,6 +347,7 @@ module GoBackend =
         | Lir.Intrinsic name -> Ok(emitIntrinsic name expression.Type)
         | Lir.HostExternal(name, _) -> Ok(emitHostExternal name expression.Type)
         | Lir.RuntimeContext -> Ok "fsruntime.Environment()"
+        | Lir.TargetImport(modulePath, memberName) -> Ok(emitTargetImport modulePath memberName expression.Type)
         | Lir.ForEach(id, _, itemType, source, body) ->
             let name = identifier "forValue" id
             let scoped = environment |> Map.add id name
@@ -434,6 +454,15 @@ func Environment() map[string]any {
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
+            let targetImports =
+                program.Declarations
+                |> List.choose (fun declaration -> match declaration.Value.Node with Lir.TargetImport(modulePath, memberName) -> Some(modulePath, memberName, declaration.Type, declaration.Span) | _ -> None)
+                |> List.sortBy (fun (modulePath, memberName, _, _) -> modulePath, memberName)
+            let rec directlyRepresentable = function
+                | TUnit | TInt | TFloat | TBool | TString -> true
+                | TFun(argument, result) -> directlyRepresentable argument && directlyRepresentable result
+                | _ -> false
+            let unsupportedImport = targetImports |> List.tryFind (fun (_, _, importType, _) -> not (directlyRepresentable importType))
             let names =
                 program.Declarations
                 |> List.fold (fun env declaration -> env |> Map.add declaration.Id (identifier "value" declaration.Id)) Map.empty
@@ -449,14 +478,20 @@ func Environment() map[string]any {
                 match program.Entry with
                 | None -> Ok "struct{}{}"
                 | Some value -> emitExpression names value
-            match error, entry with
-            | Some(message, span), _ ->
+            match unsupportedImport, error, entry with
+            | Some(modulePath, memberName, _, span), _, _ ->
+                Error [ { Code = "FSB4003"; Stage = GoGeneration; Message = $"Go import '{modulePath}.{memberName}' uses a type that is not directly representable."; Span = Some span } ]
+            | None, Some(message, span), _ ->
                 Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = message; Span = Some span } ]
-            | None, Error message ->
+            | None, None, Error message ->
                 Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = message; Span = None } ]
-            | None, Ok entryCode ->
+            | None, None, Ok entryCode ->
                 let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
-                let programSource = $"package fscriptprogram\n\nimport \"{moduleName}/internal/fsruntime\"\n\n{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
+                let importLines =
+                    ($"\t\"{moduleName}/internal/fsruntime\"") ::
+                    (targetImports |> List.map (fun (modulePath, _, _, _) -> modulePath) |> List.distinct |> List.map (fun path -> $"\t{importAlias path} {System.Text.Json.JsonSerializer.Serialize(path)}"))
+                    |> String.concat "\n"
+                let programSource = $"package fscriptprogram\n\nimport (\n{importLines}\n)\n\n{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
                 let printExpression =
                     match program.Entry with
                     | Some { Type = TUnit } -> "_ = fsruntime.Format(fscriptprogram.Run()); fmt.Println(\"()\")"

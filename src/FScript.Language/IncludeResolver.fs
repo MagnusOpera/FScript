@@ -551,6 +551,8 @@ module IncludeResolver =
                         let bound = rewrittenArgs |> List.fold (fun s p -> Set.add p.Name s) names
                         rewrittenName, rewrittenArgs, rewrittenReturnAnnotation, rewriteExpr bound valueExpr, bindingSpan)
                 SLetRecGroup(rewrittenBindings, isExported, span)
+            | SBackendImport(name, signature, import, span) ->
+                SBackendImport(qualifySelfName name, rewriteTypeRef aliases selfPrefix topLevelTypeNames signature, import, span)
             | SExpr expr ->
                 SExpr (rewriteExpr Set.empty expr)
             | SImport _ -> failwith "Unexpected unresolved import directive")

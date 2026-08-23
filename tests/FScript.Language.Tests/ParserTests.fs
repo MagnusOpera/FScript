@@ -809,3 +809,16 @@ type ParserTests () =
     member _.``Rejects export attribute in nested expression block`` () =
         let act () = Helpers.parse "(let x =\n    [<export>] let y = 1\n    y\n)" |> ignore
         act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Parses bodyless backend import attributes`` () =
+        match Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string" with
+        | [ SBackendImport("upper", TRFun(TRName "string", TRName "string"), import, _) ] ->
+            import.ModulePath |> should equal "strings"
+            import.MemberName |> should equal "ToUpper"
+        | _ -> Assert.Fail("Expected backend import")
+
+    [<Test>]
+    member _.``Rejects backend imports with bodies`` () =
+        let act () = Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string = fun value -> value" |> ignore
+        act |> should throw typeof<ParseException>
