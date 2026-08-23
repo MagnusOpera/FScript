@@ -40,6 +40,20 @@ type GoBackendTests() =
         | Error error -> Assert.That(error, Does.Contain("Open type variable"))
 
     [<Test>]
+    member _.``Go monomorphization closes quicksort declarations and functions`` () =
+        let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/quicksort.fss"))
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoMonomorphization.specialize compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok specialized ->
+            Assert.That(specialized.Declarations |> List.exists (fun item -> item.Name = "quicksort" && item.Type = TFun(TList TInt, TList TInt)), Is.True)
+            Assert.That(specialized.Declarations |> List.forall (fun item -> not (GoSpecialization.containsVariable item.Type)), Is.True)
+            Assert.That(specialized.Functions |> List.forall (fun item -> not (GoSpecialization.containsVariable item.ParameterType) && not (GoSpecialization.containsVariable item.ReturnType)), Is.True)
+
+    [<Test>]
     member _.``Go backend reports reachable tasks explicitly`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with

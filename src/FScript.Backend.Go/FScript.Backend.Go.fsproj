@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="GoSpecialization.fs" />
+    <Compile Include="GoMonomorphization.fs" />
     <Compile Include="GoBackend.fs" />
   </ItemGroup>
   <ItemGroup>

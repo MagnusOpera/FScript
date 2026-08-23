@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Specialized reachable Go declarations, local bindings, and lifted functions by concrete HM instantiation.
+
 - Added deterministic Go representation and HM-instantiation analysis ahead of source emission.
 
 - Defined a zero-erasure Go representation policy based on whole-program HM specialization.
