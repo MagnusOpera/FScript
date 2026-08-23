@@ -35,7 +35,7 @@ module GoBackend =
         | TTypeToken -> "string"
         | TVar _ -> "any"
         | TFun _ -> "fsruntime.Closure"
-        | TTuple _ -> "[]any"
+        | TTuple _ -> "fsruntime.Tuple"
         | TList _ -> "[]any"
         | TOption _ -> "fsruntime.Option"
         | TRecord _ -> "map[string]any"
@@ -75,7 +75,8 @@ module GoBackend =
         | TFloat -> $"fsruntime.Float({code})"
         | TBool -> $"fsruntime.Bool({code})"
         | TString -> $"fsruntime.String({code})"
-        | TList _ | TTuple _ -> $"fsruntime.List({code})"
+        | TList _ -> $"fsruntime.List({code})"
+        | TTuple _ -> $"fsruntime.AsTuple({code})"
         | TRecord _ -> $"fsruntime.Record({code})"
         | TOption _ -> $"fsruntime.AsOption({code})"
         | TNamed "Environment" -> $"fsruntime.Record({code})"
@@ -157,8 +158,8 @@ module GoBackend =
             let test, assignments = combine [ headPart; tailPart ]
             $"len(fsruntime.List({valueCode})) > 0 && ({test})", assignments
         | Lir.TuplePattern items ->
-            items |> List.mapi (fun index item -> emitPattern $"fsruntime.List({valueCode})[{index}]" item)
-            |> combine |> fun (test, assignments) -> $"len(fsruntime.List({valueCode})) == {items.Length} && ({test})", assignments
+            items |> List.mapi (fun index item -> emitPattern $"fsruntime.AsTuple({valueCode})[{index}]" item)
+            |> combine |> fun (test, assignments) -> $"len(fsruntime.AsTuple({valueCode})) == {items.Length} && ({test})", assignments
         | Lir.RecordPattern fields ->
             fields |> List.map (fun (name, item) ->
                 let quoted = System.Text.Json.JsonSerializer.Serialize(name)
@@ -248,7 +249,12 @@ module GoBackend =
                     | _ -> Ok $"({l} {token} {r})"
                 | None -> Error $"Unsupported Go operation {op}"
             | Error error, _ | _, Error error -> Error error
-        | Lir.Tuple items | Lir.List items ->
+        | Lir.Tuple items ->
+            items |> List.map (emitExpression environment) |> collect
+            |> Result.map (fun values ->
+                let joined = String.concat ", " values
+                $"fsruntime.Tuple{{{joined}}}")
+        | Lir.List items ->
             items |> List.map (emitExpression environment) |> collect
             |> Result.map (fun values ->
                 let joined = String.concat ", " values

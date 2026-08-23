@@ -66,6 +66,8 @@ Artifact metadata records the actual compiler and language assembly versions, no
 - Structural equality and record conversions are explicit LIR operations/helpers; Go `==` and Go nominal assignability never define FScript semantics.
 - LIR remains structured and non-SSA until a concrete optimization requirement justifies a control-flow IR.
 
+Generated Go uses `fsruntime.Tuple` for tuple shapes and `[]any` only for erased lists. This preserves tuple/list formatting and prevents tuple patterns or `(key, value)` map inputs from depending on a shared slice representation.
+
 ## Runtime and foreign calls
 
 Compiler bindings classify names as portable intrinsics, backend runtime primitives, target imports, or unsupported host externs. This metadata is distinct from executable .NET `ExternalFunction` implementations.

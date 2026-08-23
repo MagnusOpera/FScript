@@ -73,7 +73,7 @@ func matchRuntimePattern(value any, pattern Pattern) (map[int]any, bool) {
 		}
 		return mergePatternBindings(left, right)
 	case "tuple":
-		values, ok := value.([]any)
+		values, ok := value.(Tuple)
 		if !ok || len(values) != len(pattern.Items) {
 			return nil, false
 		}

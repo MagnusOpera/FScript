@@ -12,6 +12,7 @@ type Option struct {
 	HasValue bool
 	Value    any
 }
+type Tuple []any
 type Union struct {
 	TypeName string
 	CaseName string
@@ -36,6 +37,7 @@ func Float(value any) float64         { return value.(float64) }
 func Bool(value any) bool             { return value.(bool) }
 func String(value any) string         { return value.(string) }
 func List(value any) []any            { return value.([]any) }
+func AsTuple(value any) Tuple         { return value.(Tuple) }
 func Record(value any) map[string]any { return value.(map[string]any) }
 func AsOption(value any) Option       { return value.(Option) }
 func AsUnion(value any) Union         { return value.(Union) }
@@ -271,6 +273,12 @@ func Format(value any) string {
 			parts[index] = Format(value)
 		}
 		return "[" + strings.Join(parts, ";") + "]"
+	case Tuple:
+		parts := make([]string, len(item))
+		for index, value := range item {
+			parts[index] = Format(value)
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
 	default:
 		return fmt.Sprint(value)
 	}

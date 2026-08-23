@@ -98,6 +98,7 @@ type ConformanceTests() =
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Shape = | Point | Circle of int\nmatch Circle 3 with | Point -> 0 | Circle radius -> radius")>]
     [<TestCase("let identity value = value\nidentity 42")>]
+    [<TestCase("(1, 2)")>]
     [<TestCase("List.fold (fun state value -> state + value) 0 [1; 2; 3]")>]
     [<TestCase("let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10")>]
     [<TestCase("match { [\"answer\"] = 42 }[\"answer\"] with | Some value -> value | None -> 0")>]

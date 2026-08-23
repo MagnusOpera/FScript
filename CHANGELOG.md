@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a distinct generated-Go tuple representation with tuple formatting, pattern matching, map-pair handling, and cross-runtime coverage.
 - Added an explicit identity LIR optimization pass between lowering and validation for future semantic transformations.
 - Embedded preformatted Go runtime templates and made every generated project pass a zero-diff `gofmt` gate without production toolchain dependence.
 - Added portable `Console.writeLine` execution and stdout capture across LIR and generated Go conformance runs.

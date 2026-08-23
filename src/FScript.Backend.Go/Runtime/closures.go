@@ -140,7 +140,7 @@ func DispatchIntrinsic(name string, args []any) any {
 	case "Map.ofList":
 		values := []MapEntry{}
 		for _, pair := range List(args[0]) {
-			tuple := List(pair)
+			tuple := AsTuple(pair)
 			values = mapSet(values, tuple[0], tuple[1], true)
 		}
 		return OrderedMap{Entries: values}
