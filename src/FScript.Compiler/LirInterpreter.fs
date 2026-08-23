@@ -18,6 +18,7 @@ type LirValue =
     | VOption of LirValue option
     | VUnion of string * string * LirValue option
     | VMap of (LirValue * LirValue) list
+    | VIntrinsic of string * LirValue list
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -55,9 +56,48 @@ module LirInterpreter =
         | VMap entries ->
             entries |> List.map (fun (key, value) -> $"[{formatValue key}] = {formatValue value}") |> String.concat "; " |> fun value -> "{ " + value + " }"
         | VClosure _ -> "<function>"
+        | VIntrinsic _ -> "<intrinsic>"
 
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
+
+    let private intrinsicArity name =
+        let (Forall(_, valueType)) = FScript.Language.BuiltinSignatures.builtinSchemes.[name]
+        let rec count = function TFun(_, result) -> 1 + count result | _ -> 0
+        count valueType
+
+    let private invokeIntrinsic span name arguments =
+        let unsupported () = fail "FSI3020" span $"Intrinsic '{name}' is not yet executable in LIR."
+        match name, arguments with
+        | "ignore", [ _ ] -> Ok VUnit
+        | "Int.tryParse", [ VString value ] -> match System.Int64.TryParse value with true, parsed -> Ok(VOption(Some(VInt parsed))) | _ -> Ok(VOption None)
+        | "Float.tryParse", [ VString value ] -> match System.Double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with true, parsed -> Ok(VOption(Some(VFloat parsed))) | _ -> Ok(VOption None)
+        | "Bool.tryParse", [ VString value ] -> match System.Boolean.TryParse value with true, parsed -> Ok(VOption(Some(VBool parsed))) | _ -> Ok(VOption None)
+        | "Int.toString", [ VInt value ] -> Ok(VString(string value))
+        | "Float.toString", [ VFloat value ] -> Ok(VString(value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))
+        | "Bool.toString", [ VBool value ] -> Ok(VString(value.ToString().ToLowerInvariant()))
+        | "String.replace", [ VString oldValue; VString newValue; VString value ] -> Ok(VString(value.Replace(oldValue, newValue)))
+        | "String.indexOf", [ VString needle; VString value ] -> let index = value.IndexOf(needle, System.StringComparison.Ordinal) in Ok(VOption(if index < 0 then None else Some(VInt(int64 index))))
+        | "String.toLower", [ VString value ] -> Ok(VString(value.ToLowerInvariant()))
+        | "String.toUpper", [ VString value ] -> Ok(VString(value.ToUpperInvariant()))
+        | "String.substring", [ VInt start; VInt length; VString value ] when start >= 0L && length >= 0L && start + length <= int64 value.Length -> Ok(VOption(Some(VString(value.Substring(int start, int length)))))
+        | "String.substring", [ VInt _; VInt _; VString _ ] -> Ok(VOption None)
+        | "String.concat", [ VString separator; VList values ] -> values |> List.choose (function VString value -> Some value | _ -> None) |> String.concat separator |> VString |> Ok
+        | "String.split", [ VString separator; VString value ] -> value.Split([| separator |], System.StringSplitOptions.None) |> Array.toList |> List.map VString |> VList |> Ok
+        | "String.endsWith", [ VString suffix; VString value ] -> Ok(VBool(value.EndsWith(suffix, System.StringComparison.Ordinal)))
+        | "List.length", [ VList values ] -> Ok(VInt(int64 values.Length))
+        | "List.rev", [ VList values ] -> Ok(VList(List.rev values))
+        | "List.tryHead", [ VList values ] -> Ok(VOption(List.tryHead values))
+        | "List.tail", [ VList(_ :: tail) ] -> Ok(VList tail)
+        | "List.append", [ VList left; VList right ] -> Ok(VList(left @ right))
+        | "List.contains", [ value; VList values ] -> Ok(VBool(List.exists (equal value) values))
+        | "Option.isNone", [ VOption value ] -> Ok(VBool value.IsNone)
+        | "Option.isSome", [ VOption value ] -> Ok(VBool value.IsSome)
+        | "Option.defaultValue", [ fallback; VOption value ] -> Ok(Option.defaultValue fallback value)
+        | "Map.count", [ VMap entries ] -> Ok(VInt(int64 entries.Length))
+        | "Map.containsKey", [ key; VMap entries ] -> Ok(VBool(entries |> List.exists (fst >> equal key)))
+        | "Map.tryGet", [ key; VMap entries ] -> Ok(VOption(entries |> List.tryPick (fun (itemKey, value) -> if equal itemKey key then Some value else None)))
+        | _ -> unsupported ()
 
     let rec private matchPattern (pattern: Lir.Pattern) value =
         let combine left right =
@@ -101,6 +141,10 @@ module LirInterpreter =
         | Lir.CallClosure(fn, argument) ->
             match evaluate environment fn, evaluate environment argument with
             | Ok(VClosure(parameter, _, body, captured)), Ok value -> evaluate (captured.Value |> Map.add parameter value) body
+            | Ok(VIntrinsic(name, existing)), Ok value ->
+                let arguments = existing @ [ value ]
+                if arguments.Length = intrinsicArity name then invokeIntrinsic expression.Span name arguments
+                else Ok(VIntrinsic(name, arguments))
             | Ok _, Ok _ -> fail "FSI3003" expression.Span "Attempted to call a non-function value."
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
@@ -234,6 +278,7 @@ module LirInterpreter =
                     | Ok _ -> fail "FSI3017" expression.Span "Map spread requires a map."
                     | Error errors -> Error errors
             build [] entries
+        | Lir.Intrinsic name -> Ok(VIntrinsic(name, []))
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

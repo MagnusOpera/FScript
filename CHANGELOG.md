@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added explicit portable intrinsic declarations and LIR/Go execution for scalar parsing and formatting plus core string, list, option, and map queries.
 - Added atomic top-level mutual-recursive closure initialization in the LIR interpreter and generated Go projects.
 - Added deterministic ordered-map construction, left-precedence spreading, indexing, equality, serialization, and Go runtime support.
 - Added declared-union constructors, payloads, structural equality, pattern matching, artifact serialization, and Go runtime representation.

@@ -47,6 +47,7 @@ module Lir =
         | Interpolate of InterpolationPart list
         | UnionCase of string * string * Expression option
         | Map of MapEntry list
+        | Intrinsic of string
 
     and MapEntry =
         | KeyValue of Expression * Expression
@@ -158,6 +159,7 @@ module LirLowering =
             | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
             | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
             | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression key, expression item) | Hir.Spread item -> Lir.Spread(expression item)))
+            | Hir.Intrinsic name -> Lir.Intrinsic name
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

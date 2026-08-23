@@ -178,7 +178,12 @@ module HirLowering =
             fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
             |> collectResults |> Result.map (Hir.Record >> make)
         | EFieldGet(target, name, _) ->
-            lowerExpression state environment (expressionType state target (TRecord Map.empty)) target |> Result.map (fun value -> make (Hir.FieldGet(value, name)))
+            match target with
+            | EVar(moduleName, _) ->
+                match environment |> Map.tryFind $"{moduleName}.{name}" with
+                | Some id -> Ok(make (Hir.Reference id))
+                | None -> lowerExpression state environment (expressionType state target (TRecord Map.empty)) target |> Result.map (fun value -> make (Hir.FieldGet(value, name)))
+            | _ -> lowerExpression state environment (expressionType state target (TRecord Map.empty)) target |> Result.map (fun value -> make (Hir.FieldGet(value, name)))
         | ESome(item, _) ->
             let itemType = match inferred with TOption value -> value | _ -> Types.freshVar()
             lowerExpression state environment itemType item |> Result.map (Hir.SomeValue >> make)
@@ -291,7 +296,12 @@ module HirLowering =
             constructorSymbols |> List.fold (fun env (typeName, caseName, id) -> env |> Map.add caseName id |> Map.add $"{typeName}.{caseName}" id) topLevel
 
         let mutable declarations =
-            constructorSymbols |> List.map (fun (typeName, caseName, id) ->
+            let builtinDeclarations =
+                BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst |> List.map (fun (name, scheme) ->
+                    let (Forall(_, valueType)) = scheme
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    ({ Id = builtins.[name]; Name = name; Scheme = scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
+            builtinDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
                 let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef
                 let value =
@@ -301,7 +311,7 @@ module HirLowering =
                         let parameter = newSymbol state
                         let body = ({ Type = unionType; Span = definition.Span; Node = Hir.UnionCase(typeName, caseName, Some({ Type = itemType; Span = definition.Span; Node = Hir.Reference parameter })) }: Hir.Expression)
                         ({ Type = TFun(itemType, unionType); Span = definition.Span; Node = Hir.Lambda(parameter, "value", itemType, body) }: Hir.Expression)
-                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Span = definition.Span; Value = value }: Hir.Declaration))
+                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Span = definition.Span; Value = value }: Hir.Declaration)))
         let mutable entry = None
         let mutable errors = []
         for statement in resolved.TypedProgram do

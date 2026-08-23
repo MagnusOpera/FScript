@@ -120,3 +120,15 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VBool true))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<TestCase("String.toUpper \"hello\"", "HELLO")>]
+    [<TestCase("Int.toString (List.length [1; 2; 3])", "3")>]
+    [<TestCase("Int.toString (Option.defaultValue 9 None)", "9")>]
+    [<TestCase("Int.toString (Map.count { [\"a\"] = 1 })", "1")>]
+    member _.``Executes portable scalar and collection intrinsics`` (source: string, expected: string) =
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VString expected))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

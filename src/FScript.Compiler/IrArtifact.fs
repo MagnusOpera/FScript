@@ -184,6 +184,7 @@ module IrArtifact =
                 | Lir.Spread value -> writer.WriteString("kind", "spread"); writer.WritePropertyName("value"); writeExpression writer value
                 writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.Intrinsic name -> writer.WriteString("kind", "intrinsic"); writer.WriteString("name", name)
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -315,6 +316,7 @@ module IrArtifact =
                     | "key-value" -> Lir.KeyValue(readExpression (property "key" item), readExpression (property "value" item))
                     | "spread" -> Lir.Spread(readExpression (property "value" item))
                     | kind -> invalidOp $"Unknown map entry '{kind}'.") |> Seq.toList)
+            | "intrinsic" -> Lir.Intrinsic(stringProperty "name" element)
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

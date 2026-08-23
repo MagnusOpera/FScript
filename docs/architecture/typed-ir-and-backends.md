@@ -26,6 +26,8 @@ Matches lower to a structured decision tree whose target is evaluated once. Case
 
 Top-level mutual-recursive declarations are initialized as an atomic closure group. The interpreter creates every closure against the preceding environment, extends that environment with the complete group, and updates all captures together. Generated Go declares typed slots for all declarations and assigns them in source order from `init`, allowing closures in one recursive group to refer to every peer.
 
+Language builtins are explicit `Intrinsic` declarations rather than magic unresolved references. Consumers accumulate their curried arguments according to the catalog signature and dispatch only at full application. The initial portable implementations cover scalar parsing/formatting, strings, simple list and option operations, and map queries; a reachable catalog entry without an implementation receives a stage-specific unsupported diagnostic or runtime failure.
+
 Serialized `.fsir` files contain one closed resolved program plus explicit foreign linkage declarations. JSON format versions are internal and may be rejected rather than upgraded.
 
 ## Representation policy
