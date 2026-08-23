@@ -141,13 +141,13 @@ function HomepageHeader() {
       <div className={styles.orbTwo} aria-hidden="true" />
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}><span>Open source</span> · Embeds in .NET and JavaScript</div>
+          <div className={styles.eyebrow}><span>Open source</span> · Embed in .NET and JavaScript · Compile to Go</div>
           <Heading as="h1" className={styles.heroTitle}>
             Change the rules.<br /><em>Keep the host.</em>
           </Heading>
           <p className={styles.heroLead}>
-            Load <code>.fss</code> files, check their types, and run them inside your process.
-            Your application decides which functions scripts can call.
+            Load <code>.fss</code> files, check their types, and run them inside your process—or compile
+            validated executable IR into a standalone Go project.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
@@ -164,7 +164,8 @@ function HomepageHeader() {
           <div className={styles.heroProof}>
             <span>Static type inference</span>
             <span>Pattern matching</span>
-            <span>Explicit host functions</span>
+            <span>Versioned IR</span>
+            <span>Go backend</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
@@ -177,8 +178,8 @@ function HomepageHeader() {
       </div>
       <div className={styles.heroTicker} aria-label="How FScript runs">
         <div>
-          <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>CALL EXPORTS</span><i>✦</i>
-          <span>REGISTER EXTERNS</span><i>✦</i><span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i>
+          <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>BUILD HIR</span><i>✦</i>
+          <span>EXECUTE LIR</span><i>✦</i><span>GENERATE GO</span><i>✦</i><span>LOAD .FSS</span><i>✦</i>
         </div>
       </div>
     </header>
@@ -188,8 +189,8 @@ function HomepageHeader() {
 export default function Home() {
   return (
     <Layout
-      title="FScript, a typed language for embedded rules"
-      description="Load typed FScript rules inside a .NET or JavaScript application and control the functions they can call.">
+      title="FScript: embed typed rules or compile them to Go"
+      description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone Go source.">
       <HomepageHeader />
       <main className={styles.main}>
         <section className={styles.statementSection}>
@@ -267,6 +268,37 @@ export default function Home() {
               </div>
               <div className={styles.boundaryLabel}>CAPABILITY BOUNDARY</div>
             </div>
+          </div>
+        </section>
+
+        <section className={styles.compilerSection}>
+          <div className={`container ${styles.compilerHeader}`}>
+            <div>
+              <p className={styles.sectionKicker}>One typed pipeline, two executable targets</p>
+              <Heading as="h2">Inspect the IR.<br /><em>Ship the program.</em></Heading>
+            </div>
+            <p>
+              FScript lowers resolved types and language semantics into validated LIR. Execute that LIR
+              directly from .NET or generate a complete Go 1.25 project with no Go generics.
+            </p>
+          </div>
+          <div className={`container ${styles.compilerPipeline}`} aria-label="FScript compiler pipeline">
+            <span>FScript source</span><i>→</i><span>Typed HIR</span><i>→</i><span>Executable LIR</span>
+            <i>→</i><b>IR interpreter</b><i className={styles.pipelineOr}>or</i><b>Go project</b>
+          </div>
+          <div className={`container ${styles.compilerCards}`}>
+            <Link className={styles.compilerCard} to="/manual/compiler/interpret-ir">
+              <small>.FSIR / .NET</small>
+              <Heading as="h3">Interpret validated LIR</Heading>
+              <p>Serialize one whole program, validate it on load, provide explicit arguments, and execute without returning to the parser AST.</p>
+              <b>Open the IR guide <Arrow /></b>
+            </Link>
+            <Link className={styles.compilerCard} to="/manual/compiler/go">
+              <small>GO 1.25</small>
+              <Heading as="h3">Generate inspectable Go</Heading>
+              <p>Emit concrete records and unions, closures, ordered collections, pattern plans, and a self-contained FScript runtime.</p>
+              <b>Open the Go guide <Arrow /></b>
+            </Link>
           </div>
         </section>
 

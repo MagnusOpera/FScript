@@ -367,6 +367,25 @@
 .bridge i { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: 50%; color: #fff; background: #5e3ee9; font-style: normal; }
 .boundaryLabel { position: absolute; right: 0; bottom: -1.7rem; left: 0; color: #766ab0; text-align: center; font: 750 .64rem var(--ifm-font-family-monospace); letter-spacing: .18em; }
 
+.compilerSection { padding: clamp(6rem, 10vw, 10rem) 0; color: #f5f7f2; background: #0c100e; }
+.compilerHeader { display: grid; grid-template-columns: 1.2fr .55fr; gap: 4rem; align-items: end; }
+.compilerHeader h2 { margin: 0; color: #fff; font-size: clamp(2.7rem, 5.1vw, 5.6rem); line-height: .98; letter-spacing: -.06em; }
+.compilerHeader h2 em { color: var(--home-mint); font-family: Georgia, 'Times New Roman', serif; font-weight: 400; letter-spacing: -.06em; }
+.compilerHeader > p { margin: 0 0 .4rem; color: #929b94; line-height: 1.7; }
+.compilerSection .sectionKicker { color: #778079; }
+.compilerPipeline { display: flex; gap: .8rem; align-items: center; justify-content: center; margin-top: 4rem; padding: 1.25rem; border: 1px solid #303832; background: #121814; font: 750 .69rem/1.3 var(--ifm-font-family-monospace); letter-spacing: .08em; text-transform: uppercase; }
+.compilerPipeline span, .compilerPipeline b { padding: .75rem .9rem; border: 1px solid #39423b; color: #bcc5bd; background: #171e19; }
+.compilerPipeline b { border-color: rgba(98,230,167,.42); color: var(--home-mint); background: rgba(98,230,167,.07); }
+.compilerPipeline i { color: #667168; font-style: normal; }
+.compilerPipeline .pipelineOr { color: #8e978f; text-transform: lowercase; }
+.compilerCards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; margin-top: 1.1rem; }
+.compilerCard { display: flex; min-height: 310px; flex-direction: column; padding: 2rem; border: 1px solid #303832; color: #f6f8f4 !important; background: #141a16; text-decoration: none !important; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.compilerCard:hover { transform: translateY(-5px); border-color: var(--home-mint); box-shadow: 8px 9px 0 rgba(98,230,167,.1); }
+.compilerCard small { color: var(--home-mint); font: 800 .68rem/1 var(--ifm-font-family-monospace); letter-spacing: .14em; }
+.compilerCard h3 { margin: 2rem 0 .8rem; color: #fff; font-size: 2rem; letter-spacing: -.045em; }
+.compilerCard p { max-width: 40rem; color: #929b94; line-height: 1.65; }
+.compilerCard b { display: flex; justify-content: space-between; margin-top: auto; padding-top: 1rem; border-top: 1px solid #343c36; color: var(--home-mint); font-size: .78rem; text-transform: uppercase; }
+
 .learningSection { padding: clamp(6rem, 10vw, 10rem) 0; }
 .learningHeader { display: grid; grid-template-columns: 1.2fr .55fr; gap: 4rem; align-items: end; }
 .learningHeader > p { margin: 0 0 .4rem; color: #636760; line-height: 1.7; }
@@ -404,9 +423,10 @@
   .heroCopy { max-width: 48rem; }
   .heroVisual { margin-top: 4rem; }
   .mascotMark { right: 1rem; }
-  .statementGrid, .sectionHeading, .boundaryGrid, .learningHeader { grid-template-columns: 1fr; }
+  .statementGrid, .sectionHeading, .boundaryGrid, .compilerHeader, .learningHeader { grid-template-columns: 1fr; }
   .statementGrid, .sectionHeading { gap: 1rem; }
   .metricStrip, .exampleGrid, .learningGrid { grid-template-columns: 1fr; }
+  .compilerPipeline { flex-wrap: wrap; }
   .metricStrip > div { border-right: 0; border-bottom: 1px solid #c8c6bd; }
   .metricStrip > div:last-child { border-bottom: 0; }
   .exampleCard > p { min-height: 0; }
@@ -431,6 +451,8 @@
   .codeArea pre { font-size: .66rem; }
   .heroTicker div { justify-content: flex-start; }
   .statementTitle, .sectionHeading h2, .boundaryCopy h2, .learningHeader h2, .ctaInner h2 { font-size: 2.65rem; }
+  .compilerHeader h2 { font-size: 2.65rem; }
+  .compilerCards { grid-template-columns: 1fr; }
   .boundaryDiagram { padding: 1.1rem; }
   .hostBox, .languageBox { padding: 1.3rem; }
   .hostBox strong, .languageBox strong { font-size: 1.8rem; }

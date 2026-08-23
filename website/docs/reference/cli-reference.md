@@ -36,6 +36,8 @@ fscript compile program.fss --target go --output ./out
 
 The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, generated program source, and the required FScript runtime package. Unsupported features use structured compiler/backend diagnostic codes.
 
+Continue with [Compile to Go](../compiler/compile-to-go.md) or [Interpret IR](../compiler/interpret-ir.md).
+
 ## From source
 
 ```bash
