@@ -75,6 +75,22 @@ type GoBackendTests() =
             Assert.That(generated, Does.Contain("func("))
 
     [<Test>]
+    member _.``Specialized Go builtins use concrete collection helpers`` () =
+        let source = "(List.map (fun value -> value + 1) [1; 2], Option.defaultValue 0 (Some 3), Map.add \"b\" 2 (Map.ofList [(\"a\", 1)]))"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/typedbuiltins" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let generated = files |> List.map _.Content |> String.concat "\n"
+            Assert.That(generated, Does.Contain("[]int64"))
+            Assert.That(generated, Does.Contain("Entries []entry_"))
+            Assert.That(Regex.IsMatch(generated, @"\bany\b|interface\s*\{"), Is.False)
+            Assert.That(generated, Does.Not.Contain("reflect."))
+
+    [<Test>]
     member _.``Go backend reports reachable tasks explicitly`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with

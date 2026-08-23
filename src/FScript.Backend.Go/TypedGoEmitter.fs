@@ -67,7 +67,12 @@ module TypedGoEmitter =
         | TTask _ | TVar _ -> false
 
     let private typedIntrinsics =
-        set [ "ignore" ]
+        set [ "ignore"; "Int.tryParse"; "Float.tryParse"; "Bool.tryParse"; "Int.toString"; "Float.toString"; "Bool.toString"
+              "String.replace"; "String.indexOf"; "String.toLower"; "String.toUpper"; "String.substring"; "String.concat"; "String.split"; "String.endsWith"
+              "List.empty"; "List.map"; "List.iter"; "List.choose"; "List.collect"; "List.exists"; "List.contains"; "List.rev"; "List.distinct"
+              "List.fold"; "List.filter"; "List.length"; "List.tryFind"; "List.tryGet"; "List.tryItem"; "List.tryHead"; "List.tail"; "List.append"
+              "Option.defaultValue"; "Option.defaultWith"; "Option.isNone"; "Option.isSome"; "Option.map"
+              "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.fold"; "Map.count"; "Map.filter"; "Map.choose"; "Map.map"; "Map.iter"; "Map.remove" ]
 
     let rec private supportedExpression (functions: Map<Lir.FunctionId, Lir.Function>) (expression: Lir.Expression) =
         let supported = supportedExpression functions
@@ -106,6 +111,7 @@ module TypedGoEmitter =
         let functions = program.Functions |> List.map (fun item -> item.Id, item) |> Map.ofList
         let namedDefinitions = program.Types |> List.map (fun item -> item.Name, item.Definition) |> Map.ofList
         let types = HashSet<Type>()
+        types.Add(TOption TString) |> ignore
         let rec collectType value =
             if types.Add value then
                 match value with
@@ -147,12 +153,8 @@ module TypedGoEmitter =
 
         let typeDeclarations = StringBuilder()
         typeDeclarations.AppendLine("type typeToken struct{ Value string }") |> ignore
-        typeDeclarations.AppendLine("type optionString struct {") |> ignore
-        typeDeclarations.AppendLine("\tHasValue bool") |> ignore
-        typeDeclarations.AppendLine("\tValue    string") |> ignore
-        typeDeclarations.AppendLine("}") |> ignore
         typeDeclarations.AppendLine("type environment struct {") |> ignore
-        typeDeclarations.AppendLine("\tScriptName optionString") |> ignore
+        typeDeclarations.AppendLine($"\tScriptName {goType (TOption TString)}") |> ignore
         typeDeclarations.AppendLine("\tArguments  []string") |> ignore
         typeDeclarations.AppendLine("}") |> ignore
         let appendStructFields fields =
@@ -348,10 +350,10 @@ module TypedGoEmitter =
                     let inner = curry (index + 1) resultType (arguments @ [ argument ]) body
                     $"func({argument} {goType argumentType}) {goType resultType} {{\n\treturn {indent inner}\n}}"
                 | resultType -> body arguments resultType
-            let returning expression _ = "func() " + goType intrinsicType + " { return " + expression + " }()"
             let build body = curry 0 intrinsicType [] body
-            let option itemType hasValue value =
-                if hasValue then $"{goType (TOption itemType)}{{HasValue: true, Value: {value}}}" else $"{goType (TOption itemType)}{{}}"
+            let iife resultType body = $"func() {goType resultType} {{\n\t{indent body}\n}}()"
+            let sortedMap resultType setup =
+                iife resultType $"{setup}\nfor outer := 1; outer < len(result.Entries); outer++ {{\n\tfor inner := outer; inner > 0 && result.Entries[inner].Key < result.Entries[inner-1].Key; inner-- {{\n\t\tresult.Entries[inner], result.Entries[inner-1] = result.Entries[inner-1], result.Entries[inner]\n\t}}\n}}\nreturn result"
             match name, intrinsicType with
             | "List.empty", TList _ -> $"{goType intrinsicType}{{}}"
             | "Map.empty", TMap _ -> $"{goType intrinsicType}{{}}"
@@ -359,9 +361,9 @@ module TypedGoEmitter =
             | "Int.toString", _ -> build (fun args _ -> $"strconv.FormatInt({args.[0]}, 10)")
             | "Float.toString", _ -> build (fun args _ -> $"strconv.FormatFloat({args.[0]}, 'g', -1, 64)")
             | "Bool.toString", _ -> build (fun args _ -> $"strconv.FormatBool({args.[0]})")
-            | "Int.tryParse", TFun(_, TOption TInt) -> build (fun args _ -> $"func() {goType (TOption TInt)} {{ value, err := strconv.ParseInt({args.[0]}, 10, 64); if err != nil {{ return {goType (TOption TInt)}{{}} }}; return {goType (TOption TInt)}{{HasValue: true, Value: value}} }}()")
-            | "Float.tryParse", TFun(_, TOption TFloat) -> build (fun args _ -> $"func() {goType (TOption TFloat)} {{ value, err := strconv.ParseFloat({args.[0]}, 64); if err != nil {{ return {goType (TOption TFloat)}{{}} }}; return {goType (TOption TFloat)}{{HasValue: true, Value: value}} }}()")
-            | "Bool.tryParse", TFun(_, TOption TBool) -> build (fun args _ -> $"func() {goType (TOption TBool)} {{ value, err := strconv.ParseBool({args.[0]}); if err != nil {{ return {goType (TOption TBool)}{{}} }}; return {goType (TOption TBool)}{{HasValue: true, Value: value}} }}()")
+            | "Int.tryParse", TFun(_, TOption TInt) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseInt({args.[0]}, 10, 64)\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
+            | "Float.tryParse", TFun(_, TOption TFloat) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseFloat({args.[0]}, 64)\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
+            | "Bool.tryParse", TFun(_, TOption TBool) -> build (fun args resultType -> iife resultType $"value, err := strconv.ParseBool({args.[0]})\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value}}")
             | "String.toLower", _ -> build (fun args _ -> $"strings.ToLower({args.[0]})")
             | "String.toUpper", _ -> build (fun args _ -> $"strings.ToUpper({args.[0]})")
             | "String.replace", _ -> build (fun args _ -> $"strings.ReplaceAll({args.[2]}, {args.[0]}, {args.[1]})")
@@ -369,31 +371,58 @@ module TypedGoEmitter =
             | "String.concat", _ -> build (fun args _ -> $"strings.Join({args.[1]}, {args.[0]})")
             | "String.split", _ -> build (fun args _ -> $"strings.Split({args.[1]}, {args.[0]})")
             | "String.indexOf", TFun(_, TFun(_, TOption TInt)) ->
-                build (fun args _ -> let resultType = TOption TInt in $"func() {goType resultType} {{ index := strings.Index({args.[1]}, {args.[0]}); if index < 0 {{ return {goType resultType}{{}} }}; return {goType resultType}{{HasValue: true, Value: int64(index)}} }}()")
+                build (fun args resultType -> iife resultType $"index := strings.Index({args.[1]}, {args.[0]})\nif index < 0 {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: int64(index)}}")
             | "String.substring", TFun(_, TFun(_, TFun(_, TOption TString))) ->
-                build (fun args _ -> let resultType = TOption TString in $"func() {goType resultType} {{ start, length, value := {args.[0]}, {args.[1]}, {args.[2]}; if start < 0 || length < 0 || start + length > int64(len(value)) {{ return {goType resultType}{{}} }}; return {goType resultType}{{HasValue: true, Value: value[start:start+length]}} }}()")
+                build (fun args resultType -> iife resultType $"start, length, value := {args.[0]}, {args.[1]}, {args.[2]}\nif start < 0 || length < 0 || start+length > int64(len(value)) {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: value[start : start+length]}}")
             | "List.length", TFun(TList _, _) -> build (fun args _ -> $"int64(len({args.[0]}))")
-            | "List.rev", TFun(TList itemType, _) -> build (fun args _ -> $"func() []{goType itemType} {{ values := {args.[0]}; result := make([]{goType itemType}, len(values)); for index := range values {{ result[len(values)-index-1] = values[index] }}; return result }}()")
+            | "List.rev", TFun(TList itemType, resultType) -> build (fun args _ -> iife resultType $"values := {args.[0]}\nresult := make([]{goType itemType}, len(values))\nfor index := range values {{\n\tresult[len(values)-index-1] = values[index]\n}}\nreturn result")
             | "List.append", TFun(TList itemType, _) -> build (fun args _ -> $"append(append([]{goType itemType}{{}}, {args.[0]}...), {args.[1]}...)")
-            | "List.tryHead", TFun(TList itemType, _) -> build (fun args _ -> $"func() {goType (TOption itemType)} {{ values := {args.[0]}; if len(values) == 0 {{ return {goType (TOption itemType)}{{}} }}; return {goType (TOption itemType)}{{HasValue: true, Value: values[0]}} }}()")
-            | "List.tail", TFun(TList itemType, _) -> build (fun args _ -> $"func() []{goType itemType} {{ values := {args.[0]}; if len(values) == 0 {{ return []{goType itemType}{{}} }}; return append([]{goType itemType}{{}}, values[1:]...) }}()")
-            | "List.tryItem", TFun(_, TFun(TList itemType, _)) -> build (fun args _ -> $"func() {goType (TOption itemType)} {{ index, values := {args.[0]}, {args.[1]}; if index < 0 || index >= int64(len(values)) {{ return {goType (TOption itemType)}{{}} }}; return {goType (TOption itemType)}{{HasValue: true, Value: values[index]}} }}()")
-            | "List.map", TFun(TFun(itemType, mappedType), _) -> build (fun args _ -> $"func() []{goType mappedType} {{ result := make([]{goType mappedType}, 0, len({args.[1]})); for _, item := range {args.[1]} {{ result = append(result, {args.[0]}(item)) }}; return result }}()")
-            | "List.iter", TFun(TFun(itemType, _), _) -> build (fun args _ -> $"func() struct{{}} {{ for _, item := range {args.[1]} {{ _ = {args.[0]}(item) }}; return struct{{}}{{}} }}()")
-            | "List.choose", TFun(TFun(itemType, TOption chosenType), _) -> build (fun args _ -> $"func() []{goType chosenType} {{ result := []{goType chosenType}{{}}; for _, item := range {args.[1]} {{ chosen := {args.[0]}(item); if chosen.HasValue {{ result = append(result, chosen.Value) }} }}; return result }}()")
-            | "List.collect", TFun(TFun(itemType, TList collectedType), _) -> build (fun args _ -> $"func() []{goType collectedType} {{ result := []{goType collectedType}{{}}; for _, item := range {args.[1]} {{ result = append(result, {args.[0]}(item)...) }}; return result }}()")
-            | "List.exists", TFun(TFun(itemType, TBool), _) -> build (fun args _ -> $"func() bool {{ for _, item := range {args.[1]} {{ if {args.[0]}(item) {{ return true }} }}; return false }}()")
-            | "List.contains", TFun(itemType, _) -> let equal = equality itemType in build (fun args _ -> $"func() bool {{ for _, item := range {args.[1]} {{ if {equal}({args.[0]}, item) {{ return true }} }}; return false }}()")
-            | "List.distinct", TFun(TList itemType, _) -> let equal = equality itemType in build (fun args _ -> $"func() []{goType itemType} {{ result := []{goType itemType}{{}}; for _, item := range {args.[0]} {{ found := false; for _, existing := range result {{ if {equal}(item, existing) {{ found = true; break }} }}; if !found {{ result = append(result, item) }} }}; return result }}()")
-            | "List.filter", TFun(TFun(itemType, TBool), _) -> build (fun args _ -> $"func() []{goType itemType} {{ result := []{goType itemType}{{}}; for _, item := range {args.[1]} {{ if {args.[0]}(item) {{ result = append(result, item) }} }}; return result }}()")
-            | "List.tryFind", TFun(TFun(itemType, TBool), _) -> build (fun args _ -> $"func() {goType (TOption itemType)} {{ for _, item := range {args.[1]} {{ if {args.[0]}(item) {{ return {goType (TOption itemType)}{{HasValue: true, Value: item}} }} }}; return {goType (TOption itemType)}{{}} }}()")
-            | "List.tryGet", TFun(TFun(itemType, TBool), _) -> build (fun args _ -> $"func() {goType (TOption TInt)} {{ for index, item := range {args.[1]} {{ if {args.[0]}(item) {{ return {goType (TOption TInt)}{{HasValue: true, Value: int64(index)}} }} }}; return {goType (TOption TInt)}{{}} }}()")
-            | "List.fold", TFun(_, TFun(stateType, TFun(TList itemType, _))) -> build (fun args _ -> $"func() {goType stateType} {{ state := {args.[1]}; for _, item := range {args.[2]} {{ state = {args.[0]}(state)(item) }}; return state }}()")
-            | "Option.defaultValue", TFun(itemType, _) -> build (fun args _ -> $"func() {goType itemType} {{ if {args.[1]}.HasValue {{ return {args.[1]}.Value }}; return {args.[0]} }}()")
-            | "Option.defaultWith", TFun(TFun(_, itemType), _) -> build (fun args _ -> $"func() {goType itemType} {{ if {args.[1]}.HasValue {{ return {args.[1]}.Value }}; return {args.[0]}(struct{{}}{{}}) }}()")
+            | "List.tryHead", TFun(TList itemType, resultType) -> build (fun args _ -> iife resultType $"values := {args.[0]}\nif len(values) == 0 {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: values[0]}}")
+            | "List.tail", TFun(TList itemType, resultType) -> build (fun args _ -> iife resultType $"values := {args.[0]}\nif len(values) == 0 {{\n\tpanic(\"List.tail requires a non-empty list.\")\n}}\nreturn append([]{goType itemType}{{}}, values[1:]...)")
+            | "List.tryItem", TFun(_, TFun(TList itemType, resultType)) -> build (fun args _ -> iife resultType $"index, values := {args.[0]}, {args.[1]}\nif index < 0 || index >= int64(len(values)) {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: values[index]}}")
+            | "List.map", TFun(TFun(_, mappedType), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"result := make([]{goType mappedType}, 0, len({args.[1]}))\nfor _, item := range {args.[1]} {{\n\tresult = append(result, {args.[0]}(item))\n}}\nreturn result")
+            | "List.iter", TFun(TFun(_, _), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"for _, item := range {args.[1]} {{\n\t_ = {args.[0]}(item)\n}}\nreturn struct{{}}{{}}")
+            | "List.choose", TFun(TFun(_, TOption chosenType), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"result := []{goType chosenType}{{}}\nfor _, item := range {args.[1]} {{\n\tchosen := {args.[0]}(item)\n\tif chosen.HasValue {{\n\t\tresult = append(result, chosen.Value)\n\t}}\n}}\nreturn result")
+            | "List.collect", TFun(TFun(_, TList collectedType), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"result := []{goType collectedType}{{}}\nfor _, item := range {args.[1]} {{\n\tresult = append(result, {args.[0]}(item)...)\n}}\nreturn result")
+            | "List.exists", TFun(TFun(_, TBool), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"for _, item := range {args.[1]} {{\n\tif {args.[0]}(item) {{\n\t\treturn true\n\t}}\n}}\nreturn false")
+            | "List.contains", TFun(itemType, TFun(_, resultType)) -> let equal = equality itemType in build (fun args _ -> iife resultType $"for _, item := range {args.[1]} {{\n\tif {equal}({args.[0]}, item) {{\n\t\treturn true\n\t}}\n}}\nreturn false")
+            | "List.distinct", TFun(TList itemType, resultType) -> let equal = equality itemType in build (fun args _ -> iife resultType $"result := []{goType itemType}{{}}\nfor _, item := range {args.[0]} {{\n\tfound := false\n\tfor _, existing := range result {{\n\t\tif {equal}(item, existing) {{\n\t\t\tfound = true\n\t\t\tbreak\n\t\t}}\n\t}}\n\tif !found {{\n\t\tresult = append(result, item)\n\t}}\n}}\nreturn result")
+            | "List.filter", TFun(TFun(_, TBool), TFun(TList itemType, resultType)) -> build (fun args _ -> iife resultType $"result := []{goType itemType}{{}}\nfor _, item := range {args.[1]} {{\n\tif {args.[0]}(item) {{\n\t\tresult = append(result, item)\n\t}}\n}}\nreturn result")
+            | "List.tryFind", TFun(TFun(itemType, TBool), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"for _, item := range {args.[1]} {{\n\tif {args.[0]}(item) {{\n\t\treturn {goType resultType}{{HasValue: true, Value: item}}\n\t}}\n}}\nreturn {goType resultType}{{}}")
+            | "List.tryGet", TFun(TFun(_, TBool), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"for index, item := range {args.[1]} {{\n\tif {args.[0]}(item) {{\n\t\treturn {goType resultType}{{HasValue: true, Value: int64(index)}}\n\t}}\n}}\nreturn {goType resultType}{{}}")
+            | "List.fold", TFun(_, TFun(stateType, TFun(_, resultType))) -> build (fun args _ -> iife resultType $"state := {args.[1]}\nfor _, item := range {args.[2]} {{\n\tstate = {args.[0]}(state)(item)\n}}\nreturn state")
+            | "Option.defaultValue", TFun(itemType, _) -> build (fun args resultType -> iife resultType $"if {args.[1]}.HasValue {{\n\treturn {args.[1]}.Value\n}}\nreturn {args.[0]}")
+            | "Option.defaultWith", TFun(TFun(_, itemType), _) -> build (fun args resultType -> iife resultType $"if {args.[1]}.HasValue {{\n\treturn {args.[1]}.Value\n}}\nreturn {args.[0]}(struct{{}}{{}})")
             | "Option.isNone", _ -> build (fun args _ -> $"!{args.[0]}.HasValue")
             | "Option.isSome", _ -> build (fun args _ -> $"{args.[0]}.HasValue")
-            | "Option.map", TFun(TFun(itemType, mappedType), _) -> build (fun args _ -> $"func() {goType (TOption mappedType)} {{ if !{args.[1]}.HasValue {{ return {goType (TOption mappedType)}{{}} }}; return {goType (TOption mappedType)}{{HasValue: true, Value: {args.[0]}({args.[1]}.Value)}} }}()")
+            | "Option.map", TFun(TFun(_, mappedType), TFun(_, resultType)) -> build (fun args _ -> iife resultType $"if !{args.[1]}.HasValue {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: {args.[0]}({args.[1]}.Value)}}")
+            | "Map.tryGet", TFun(_, TFun(TMap(_, valueType), resultType)) ->
+                build (fun args _ -> iife resultType $"for _, entry := range {args.[1]}.Entries {{\n\tif entry.Key == {args.[0]} {{\n\t\treturn {goType resultType}{{HasValue: true, Value: entry.Value}}\n\t}}\n}}\nreturn {goType resultType}{{}}")
+            | "Map.containsKey", _ ->
+                build (fun args resultType -> iife resultType $"for _, entry := range {args.[1]}.Entries {{\n\tif entry.Key == {args.[0]} {{\n\t\treturn true\n\t}}\n}}\nreturn false")
+            | "Map.count", _ -> build (fun args _ -> $"int64(len({args.[0]}.Entries))")
+            | "Map.add", TFun(_, TFun(_, TFun(sourceType, resultType))) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> sortedMap resultType $"result := {goType resultType}{{Entries: append([]{entryType}{{}}, {args.[2]}.Entries...)}}\nfound := false\nfor index := range result.Entries {{\n\tif result.Entries[index].Key == {args.[0]} {{\n\t\tresult.Entries[index].Value = {args.[1]}\n\t\tfound = true\n\t\tbreak\n\t}}\n}}\nif !found {{\n\tresult.Entries = append(result.Entries, {entryType}{{Key: {args.[0]}, Value: {args.[1]}}})\n}}")
+            | "Map.ofList", TFun(TList(TTuple [ TString; valueType ]), resultType) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> sortedMap resultType $"result := {goType resultType}{{}}\nset := func(key string, value {goType valueType}) {{\n\tfor index := range result.Entries {{\n\t\tif result.Entries[index].Key == key {{\n\t\t\tresult.Entries[index].Value = value\n\t\t\treturn\n\t\t}}\n\t}}\n\tresult.Entries = append(result.Entries, {entryType}{{Key: key, Value: value}})\n}}\nfor _, pair := range {args.[0]} {{\n\tset(pair.Item0, pair.Item1)\n}}")
+            | "Map.fold", TFun(_, TFun(stateType, TFun(_, resultType))) ->
+                build (fun args _ -> iife resultType $"state := {args.[1]}\nfor _, entry := range {args.[2]}.Entries {{\n\tstate = {args.[0]}(state)(entry.Key)(entry.Value)\n}}\nreturn state")
+            | "Map.filter", TFun(_, TFun(TMap(_, valueType), resultType)) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> iife resultType $"result := {goType resultType}{{Entries: make([]{entryType}, 0, len({args.[1]}.Entries))}}\nfor _, entry := range {args.[1]}.Entries {{\n\tif {args.[0]}(entry.Key)(entry.Value) {{\n\t\tresult.Entries = append(result.Entries, entry)\n\t}}\n}}\nreturn result")
+            | "Map.choose", TFun(_, TFun(_, resultType)) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> iife resultType $"result := {goType resultType}{{}}\nfor _, entry := range {args.[1]}.Entries {{\n\tchosen := {args.[0]}(entry.Key)(entry.Value)\n\tif chosen.HasValue {{\n\t\tresult.Entries = append(result.Entries, {entryType}{{Key: entry.Key, Value: chosen.Value}})\n\t}}\n}}\nreturn result")
+            | "Map.map", TFun(_, TFun(_, resultType)) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> iife resultType $"result := {goType resultType}{{}}\nfor _, entry := range {args.[1]}.Entries {{\n\tresult.Entries = append(result.Entries, {entryType}{{Key: entry.Key, Value: {args.[0]}(entry.Value)}})\n}}\nreturn result")
+            | "Map.iter", _ ->
+                build (fun args resultType -> iife resultType $"for _, entry := range {args.[1]}.Entries {{\n\t_ = {args.[0]}(entry.Key)(entry.Value)\n}}\nreturn struct{{}}{{}}")
+            | "Map.remove", TFun(_, TFun(_, resultType)) ->
+                let entryType = $"entry_{suffix resultType}"
+                build (fun args _ -> iife resultType $"result := {goType resultType}{{Entries: make([]{entryType}, 0, len({args.[1]}.Entries))}}\nfor _, entry := range {args.[1]}.Entries {{\n\tif entry.Key != {args.[0]} {{\n\t\tresult.Entries = append(result.Entries, entry)\n\t}}\n}}\nreturn result")
             | _ -> invalidOp $"Unsupported typed intrinsic '{name}' at {Types.typeToString intrinsicType}."
         let rec emit environment (expression: Lir.Expression) =
             let emitChild = emit environment
@@ -436,7 +465,9 @@ module TypedGoEmitter =
                 match expression.Type with
                 | TNamed name -> $"&named_{identifier name}{{{values}}}"
                 | _ -> $"{goType expression.Type}{{{values}}}"
-            | Lir.FieldGet(target, name) -> $"({emitChild target}).{fieldName name}"
+            | Lir.FieldGet(target, name) ->
+                let field = if target.Type = TNamed "Environment" then identifier name else fieldName name
+                $"({emitChild target}).{field}"
             | Lir.SomeValue item -> $"{goType expression.Type}{{HasValue: true, Value: {emitChild item}}}"
             | Lir.NoneValue -> $"{goType expression.Type}{{}}"
             | Lir.Cons(head, tail) -> $"append({goType expression.Type}{{{emitChild head}}}, {emitChild tail}...)"
@@ -465,7 +496,9 @@ module TypedGoEmitter =
                             | Lir.ListHead, TList item -> $"({code})[0]", item
                             | Lir.ListTail, TList item -> $"({code})[1:]", TList item
                             | Lir.TupleItem index, TTuple items -> $"({code}).Item{index}", items.[index]
-                            | Lir.RecordField name, recordType -> $"({code}).{fieldName name}", (recordFields recordType).[name]
+                            | Lir.RecordField name, recordType ->
+                                let field = if recordType = TNamed "Environment" then identifier name else fieldName name
+                                $"({code}).{field}", (recordFields recordType).[name]
                             | Lir.OptionValue, TOption item -> $"({code}).Value", item
                             | Lir.UnionPayload, unionType ->
                                 let caseName =
@@ -589,7 +622,7 @@ module TypedGoEmitter =
                 | _ -> invalidOp "Index target is neither list nor map."
             | Lir.Interpolate parts -> parts |> List.map (function Lir.TextPart text -> Text.Json.JsonSerializer.Serialize(text) | Lir.ValuePart value -> $"{formatter value.Type}({emitChild value})") |> String.concat " + "
             | Lir.Intrinsic name -> intrinsic name expression.Type
-            | Lir.RuntimeContext -> "environment{ScriptName: optionString{HasValue: true, Value: filepath.Base(os.Args[0])}, Arguments: append([]string{}, os.Args[1:]...)}"
+            | Lir.RuntimeContext -> $"environment{{ScriptName: {goType (TOption TString)}{{HasValue: true, Value: filepath.Base(os.Args[0])}}, Arguments: append([]string{{}}, os.Args[1:]...)}}"
             | Lir.ForEach(id, _, _, source, body) ->
                 let variable = symbolName "item" id
                 let bodyCode = emit (Map.add id variable environment) body

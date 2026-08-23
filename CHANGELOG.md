@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Specialized reachable scalar, string, list, option, and ordered-map builtins with concrete equality and formatting helpers in generated Go.
+
 - Emitted typed Go records, tagged unions, recursive named values, ordered maps, structural conversions, updates, indexing, and pattern decision trees with map backtracking.
 
 - Emitted native typed Go functions and concrete list, option, tuple, environment, and result representations.

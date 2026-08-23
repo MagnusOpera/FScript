@@ -30,6 +30,8 @@ The Go backend specializes every reachable HM instantiation before selecting rep
 
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
+Reachable builtins are emitted at their specialized signatures. List, option, and ordered-map loops call native typed function values, while structural equality and display formatting are generated recursively for each reachable closed representation.
+
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
 HIR and LIR expose canonical debug printers with stable artifact-local IDs and normalized type rendering. The arithmetic vertical slice is checked in as paired snapshots so changes to symbol allocation, function lifting, captures, or operation selection are reviewed explicitly.
