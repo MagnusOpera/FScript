@@ -120,11 +120,11 @@ type LirInterpreterTests() =
 
     [<Test>]
     member _.``Retains host linkage but rejects only reachable external calls`` () =
-        let external : ExternalFunction =
+        let external : CompilerExtern =
             { Name = "Host.echo"
               Scheme = Forall([], TFun(TString, TString))
               Arity = 1
-              Impl = fun _ values -> values.Head }
+              Kind = UnsupportedHostExtern }
         let compile source = Compiler.compile { Program = Parser.parseProgram source; Externs = [ external ] }
         match compile "1" with
         | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

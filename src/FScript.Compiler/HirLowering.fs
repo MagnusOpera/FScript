@@ -317,7 +317,7 @@ module HirLowering =
                 | MESpread value -> lowerExpression state environment inferred value |> Result.map Hir.Spread)
             |> collectResults |> Result.map (Hir.Map >> make)
 
-    let lower (externs: ExternalFunction list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
+    let lower (externs: CompilerExtern list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =
             resolved.ExpressionTypes
             |> List.fold (fun state item -> state |> Map.add item.Expr item.Type) Map.empty
@@ -381,7 +381,10 @@ module HirLowering =
                 externs |> List.sortBy _.Name |> List.map (fun external ->
                     let (Forall(_, valueType)) = external.Scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    let node = if external.Name = "Env" then Hir.RuntimeContext else Hir.HostExternal(external.Name, external.Arity)
+                    let node =
+                        match external.Kind with
+                        | RuntimeContextIntrinsic -> Hir.RuntimeContext
+                        | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
                     ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)

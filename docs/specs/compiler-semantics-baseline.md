@@ -44,6 +44,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Cross-runtime tests compare the legacy evaluator with artifact-round-tripped LIR execution and generated Go for successful values and failure categories. Named records passed through typed function boundaries keep record field projection semantics; their nominal annotation must not select a union runtime representation.
 - HIR and LIR are accepted only when artifact-local references resolve, source spans are valid, declaration and expression types agree, calls and control-flow nodes have consistent signatures, aggregate representations match their semantic types, and referenced primitives/imports are available and complete.
 - Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert; fully applying `Task.spawn` or `Task.await` in LIR reports `FSI3021`, while a Go program whose reachable declaration graph requires a task reports `FSB4004`.
+- Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
 
 ## Builtins, externs, attributes, and tasks
 
