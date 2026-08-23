@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added deterministic Go representation and HM-instantiation analysis ahead of source emission.
+
 - Defined a zero-erasure Go representation policy based on whole-program HM specialization.
 
 - Fixed generated Go ordered comparisons inside polymorphic functions such as the quicksort sample.

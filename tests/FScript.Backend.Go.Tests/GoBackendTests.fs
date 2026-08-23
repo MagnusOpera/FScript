@@ -24,6 +24,22 @@ type GoBackendTests() =
             else Assert.Ignore($"Go is not installed: {ex.Message}")
 
     [<Test>]
+    member _.``Go specialization closes HM instantiations deterministically`` () =
+        let template = TFun(TVar 0, TFun(TList(TVar 0), TList(TVar 0)))
+        let concrete = TFun(TInt, TFun(TList TInt, TList TInt))
+        match GoSpecialization.unifyInstantiation template concrete with
+        | Error error -> Assert.Fail(error)
+        | Ok substitution ->
+            Assert.That(GoSpecialization.apply substitution template, Is.EqualTo(concrete))
+            Assert.That(GoSpecialization.specializationKey 7 concrete, Is.EqualTo(GoSpecialization.specializationKey 7 concrete))
+
+    [<Test>]
+    member _.``Go representations reject residual open types`` () =
+        match GoSpecialization.tryRepresentation [] (TList(TVar 0)) with
+        | Ok _ -> Assert.Fail("Expected an open-representation error")
+        | Error error -> Assert.That(error, Does.Contain("Open type variable"))
+
+    [<Test>]
     member _.``Go backend reports reachable tasks explicitly`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with
