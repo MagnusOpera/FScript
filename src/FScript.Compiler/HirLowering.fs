@@ -327,6 +327,7 @@ module HirLowering =
             |> collectResults |> Result.map (Hir.Map >> make)
 
     let lower (externs: CompilerExtern list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
+        let exportMetadata name span enabled = if enabled then Some({ Name = name; Span = span }: Hir.ExportMetadata) else None
         let expressionTypes =
             let rec addExpression state (item: TypeInfer.ResolvedExpression) =
                 item.Children |> List.fold addExpression (Map.add item.Source item.Type state)
@@ -393,7 +394,7 @@ module HirLowering =
                 BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst |> List.map (fun (name, scheme) ->
                     let (Forall(_, valueType)) = scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    ({ Id = builtins.[name]; Name = name; Scheme = scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
+                    ({ Id = builtins.[name]; Name = name; Scheme = scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
             let externalDeclarations =
                 externs |> List.sortBy _.Name |> List.map (fun external ->
                     let (Forall(_, valueType)) = external.Scheme
@@ -403,7 +404,7 @@ module HirLowering =
                         | RuntimeContextIntrinsic -> Hir.RuntimeContext
                         | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
-                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
+                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
                 let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef
@@ -414,7 +415,7 @@ module HirLowering =
                         let parameter = newSymbol state
                         let body = ({ Type = unionType; Span = definition.Span; Node = Hir.UnionCase(typeName, caseName, Some({ Type = itemType; Span = definition.Span; Node = Hir.Reference parameter })) }: Hir.Expression)
                         ({ Type = TFun(itemType, unionType); Span = definition.Span; Node = Hir.Lambda(parameter, "value", itemType, body) }: Hir.Expression)
-                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Span = definition.Span; Value = value }: Hir.Declaration)))
+                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Export = None; Span = definition.Span; Value = value }: Hir.Declaration)))
         let mutable entry: Hir.Expression option = None
         let mutable errors = []
         for statement in resolved.TypedProgram do
@@ -428,6 +429,7 @@ module HirLowering =
                             Scheme = Types.generalize Map.empty inferred;
                             IsRecursive = isRecursive;
                             IsExported = isExported;
+                            Export = (exportMetadata name span isExported);
                             Span = span;
                             Value = value }: Hir.Declaration) ]
                 | Error diagnostics -> errors <- errors @ diagnostics
@@ -442,6 +444,7 @@ module HirLowering =
                              Scheme = Types.generalize Map.empty expression.Type
                              IsRecursive = false
                              IsExported = false
+                             Export = None
                              Span = value.Span
                              Value = value }: Hir.Declaration) ]
                     entry <- Some { Type = expression.Type; Span = value.Span; Node = Hir.Reference id }
@@ -457,6 +460,7 @@ module HirLowering =
                              Scheme = Types.generalize Map.empty bindingType
                              IsRecursive = false
                              IsExported = false
+                             Export = None
                              Span = span
                              Value = value }: Hir.Declaration) ]
                     let target = ({ Type = bindingType; Span = span; Node = Hir.Reference temporaryId }: Hir.Expression)
@@ -464,7 +468,7 @@ module HirLowering =
                     let check = ({ Type = TUnit; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = unitBody; Span = span } ]) }: Hir.Expression)
                     let checkId = newSymbol state
                     declarations <- declarations @
-                        [ ({ Id = checkId; Name = $"$patternCheck{Hir.symbolNumber checkId}"; Scheme = Forall([], TUnit); IsRecursive = false; IsExported = false; Span = span; Value = check }: Hir.Declaration) ]
+                        [ ({ Id = checkId; Name = $"$patternCheck{Hir.symbolNumber checkId}"; Scheme = Forall([], TUnit); IsRecursive = false; IsExported = false; Export = None; Span = span; Value = check }: Hir.Declaration) ]
                     for name, inferred in bindings |> Map.toList do
                         match patternBindings |> Map.tryFind name with
                         | None -> errors <- errors @ [ Diagnostic.hir "FSH1006" $"Pattern binding '{name}' was not resolved." (Some span) ]
@@ -472,7 +476,7 @@ module HirLowering =
                             let body = ({ Type = inferred; Span = span; Node = Hir.Reference patternId }: Hir.Expression)
                             let projection = ({ Type = inferred; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = body; Span = span } ]) }: Hir.Expression)
                             declarations <- declarations @
-                                [ ({ Id = Map.find name topLevel; Name = name; Scheme = Types.generalize Map.empty inferred; IsRecursive = false; IsExported = isExported; Span = span; Value = projection }: Hir.Declaration) ]
+                                [ ({ Id = Map.find name topLevel; Name = name; Scheme = Types.generalize Map.empty inferred; IsRecursive = false; IsExported = isExported; Export = (exportMetadata name span isExported); Span = span; Value = projection }: Hir.Declaration) ]
                 | Error a, Error b -> errors <- errors @ a @ b
                 | Error diagnostics, _ | _, Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSLetRecGroup(bindings, isExported, groupSpan) ->
@@ -485,6 +489,7 @@ module HirLowering =
                                  Scheme = Types.generalize Map.empty inferred
                                  IsRecursive = true
                                  IsExported = isExported
+                                 Export = (exportMetadata name span isExported)
                                  Span = span
                                  Value = value }: Hir.Declaration) ]
                     | Error diagnostics -> errors <- errors @ diagnostics
@@ -495,6 +500,7 @@ module HirLowering =
                          Scheme = Forall([], importedType)
                          IsRecursive = false
                          IsExported = false
+                         Export = None
                          Span = span
                          Value = { Type = importedType; Span = span; Node = Hir.TargetImport(import.ModulePath, import.MemberName) } }: Hir.Declaration) ]
             | TypeInfer.TSType _ -> ()

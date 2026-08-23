@@ -26,7 +26,7 @@ type HirTests() =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 0; Name = "value"; Scheme = Forall([], TString)
-              IsRecursive = false; IsExported = false; Span = span; Value = value }
+              IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }
         match HirValidation.validate { ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected invalid HIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))

@@ -30,6 +30,8 @@ module HirValidation =
             Error [ Diagnostic.hir "FSH1105" "HIR imported record linkage must be complete and uniquely named." None ]
         elif not duplicateIds.IsEmpty then
             Error [ Diagnostic.hir "FSH1101" "HIR declaration IDs must be unique." None ]
+        elif program.Declarations |> List.exists (fun declaration -> declaration.IsExported <> declaration.Export.IsSome || (declaration.Export |> Option.exists (fun export -> export.Name <> declaration.Name || not (validSpan export.Span)))) then
+            Error [ Diagnostic.hir "FSH1106" "HIR export metadata is inconsistent." None ]
         elif program.Declarations |> List.exists (fun declaration -> not (validSpan declaration.Span && validSpan declaration.Value.Span)) then
             Error [ Diagnostic.hir "FSH1103" "HIR contains an invalid source span." None ]
         elif program.Declarations |> List.exists (fun declaration -> let (Forall(_, declaredType)) = declaration.Scheme in not (compatible declaredType declaration.Value.Type)) then

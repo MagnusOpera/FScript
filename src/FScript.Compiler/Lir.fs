@@ -96,8 +96,13 @@ module Lir =
           Type: Type
           IsRecursive: bool
           IsExported: bool
+          Export: ExportMetadata option
           Span: Span
           Value: Expression }
+
+    and ExportMetadata =
+        { Name: string
+          Span: Span }
 
     type Function =
         { Id: FunctionId
@@ -273,6 +278,7 @@ module LirLowering =
             |> List.map (fun value ->
                 ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
                    IsRecursive = value.IsRecursive; IsExported = value.IsExported
+                   Export = value.Export |> Option.map (fun export -> { Name = export.Name; Span = export.Span })
                    Span = value.Span; Value = expression state value.Value }: Lir.Declaration))
         let entry = program.Entry |> Option.map (expression state)
         { ImportedRecords =
@@ -325,6 +331,9 @@ module LirValidation =
                     || span.End.Line > span.Start.Line
                     || (span.End.Line = span.Start.Line && span.End.Column >= span.Start.Column))
             let checkSpan span = if not (validSpan span) then report "FSL2002" "LIR source span is invalid." span
+            program.Declarations |> List.iter (fun declaration ->
+                if declaration.IsExported <> declaration.Export.IsSome || (declaration.Export |> Option.exists (fun export -> export.Name <> declaration.Name || not (validSpan export.Span))) then
+                    report "FSL2015" "LIR export metadata is inconsistent." declaration.Span)
             let rec checkPattern expected (pattern: Lir.Pattern) =
                 checkSpan pattern.Span
                 if not (compatible expected pattern.Type) then report "FSL2003" "LIR pattern type does not match its scrutinee." pattern.Span

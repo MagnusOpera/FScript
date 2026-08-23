@@ -74,3 +74,12 @@ type ResolvedInferenceTests() =
             Assert.That(evidence.TargetName, Is.EqualTo(Some "Person"))
             match evidence.SourceType with TRecord fields -> Assert.That(fields.Count, Is.EqualTo(2)) | _ -> Assert.Fail("Expected structural record source")
         | None -> Assert.Fail("Expected structural-to-named record coercion evidence")
+
+    [<Test>]
+    member _.``Resolved statements preserve structured export metadata`` () =
+        let resolved = Helpers.parse "[<export>] let answer = 42" |> TypeInfer.inferResolvedProgram
+        match resolved.ResolvedStatements |> List.tryPick _.Export with
+        | Some export ->
+            Assert.That(export.Name, Is.EqualTo("answer"))
+            Assert.That(export.Span.Start.Line, Is.EqualTo(1))
+        | None -> Assert.Fail("Expected resolved export metadata")

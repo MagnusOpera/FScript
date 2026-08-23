@@ -107,8 +107,13 @@ module Hir =
           Scheme: Scheme
           IsRecursive: bool
           IsExported: bool
+          Export: ExportMetadata option
           Span: Span
           Value: Expression }
+
+    and ExportMetadata =
+        { Name: string
+          Span: Span }
 
     type ImportedRecord =
         { Name: string
@@ -208,7 +213,8 @@ module Hir =
             | TypeToken tokenType -> lines.Add(typed $"typeof {formatType tokenType}")
 
         for declaration in program.Declarations do
-            lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
+            let export = declaration.Export |> Option.map (fun metadata -> $" export={metadata.Name}") |> Option.defaultValue ""
+            lines.Add(sprintf "decl %%%d %s%s: %s" (symbolNumber declaration.Id) declaration.Name export (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
             expression 2 declaration.Value
         match program.Entry with
         | Some entry ->

@@ -277,7 +277,11 @@ module IrArtifact =
         for declaration in program.Declarations do
             writer.WriteStartObject(); writer.WriteNumber("id", Lir.symbolNumber declaration.Id); writer.WriteString("name", declaration.Name)
             writer.WritePropertyName("type"); writeType writer declaration.Type; writer.WriteBoolean("recursive", declaration.IsRecursive)
-            writer.WriteBoolean("exported", declaration.IsExported); writer.WritePropertyName("span"); writeSpan writer declaration.Span
+            writer.WriteBoolean("exported", declaration.IsExported)
+            match declaration.Export with
+            | Some export -> writer.WriteStartObject("export"); writer.WriteString("name", export.Name); writer.WritePropertyName("span"); writeSpan writer export.Span; writer.WriteEndObject()
+            | None -> writer.WriteNull("export")
+            writer.WritePropertyName("span"); writeSpan writer declaration.Span
             writer.WritePropertyName("value"); writeExpression writer declaration.Value; writer.WriteEndObject()
         writer.WriteEndArray()
         match program.Entry with Some entry -> writer.WritePropertyName("entry"); writeExpression writer entry | None -> writer.WriteNull("entry")
@@ -449,8 +453,12 @@ module IrArtifact =
                            Fields = (property "fields" item).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Seq.toList
                            Span = readSpan (property "span" item) }: Lir.ImportedRecord)) |> Seq.toList
                     let declarations = (property "declarations" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
+                        let exportElement = property "export" item
+                        let export =
+                            if exportElement.ValueKind = JsonValueKind.Null then None
+                            else Some({ Name = stringProperty "name" exportElement; Span = readSpan (property "span" exportElement) }: Lir.ExportMetadata)
                         ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item; Type = readType (property "type" item)
-                           IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean()
+                           IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean(); Export = export
                            Span = readSpan (property "span" item); Value = readExpression (property "value" item) }: Lir.Declaration)) |> Seq.toList
                     let functions = (property "functions" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
                         ({ Id = Lir.FunctionId((property "id" item).GetInt32())

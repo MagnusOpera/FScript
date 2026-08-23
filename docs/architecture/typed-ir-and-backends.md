@@ -20,7 +20,7 @@ Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` 
 
 ## IR boundaries
 
-HIR is language-oriented and contains resolved artifact-local symbol identities, complete semantic types and schemes, source locations, declaration attributes, and explicit nodes for named/structural record conversions. Conversion evidence is produced by inference, not rediscovered from backend representations. HIR contains no Go types.
+HIR is language-oriented and contains resolved artifact-local symbol identities, complete semantic types and schemes, source locations, structured export metadata, and explicit nodes for named/structural record conversions. Export metadata retains the exported source name and span through LIR and artifacts while the legacy Boolean remains available to compatibility consumers. Conversion evidence is produced by inference, not rediscovered from backend representations. HIR contains no Go types.
 
 LIR is executable but not a Go AST. Lambda bodies are lifted into a deterministic program-level function table. Closure creation references a function ID and carries its canonical ordered set of captured symbol IDs, alongside resolved primitive operations, aggregate construction/projection, and structured control flow. Validation recomputes each lifted function's free-symbol set and rejects unknown function IDs or forged, missing, duplicate, or unordered captures. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types remain alongside selected runtime representations for validation and diagnostics.
 

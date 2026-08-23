@@ -225,7 +225,12 @@ module TypeInfer =
 
     type ResolvedStatement =
         { Source: TypedStmt
+          Export: ResolvedExport option
           Expressions: ResolvedExpression list }
+
+    and ResolvedExport =
+        { Name: string
+          Span: Span }
 
     type ResolvedProgram =
         { TypedProgram: TypedProgram
@@ -1690,7 +1695,13 @@ module TypeInfer =
                     | TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (_, expression, _, _) -> expression)
                     | TSExpr expression -> [ expression.Expr ]
                     | TSBackendImport _ | TSType _ -> []
-                { Source = statement; Expressions = List.map resolveExpression roots })
+                let export =
+                    match statement with
+                    | TSLet(name, _, _, _, true, span) -> Some { Name = name; Span = span }
+                    | TSLetPattern(_, _, _, true, span) -> Some { Name = "<pattern>"; Span = span }
+                    | TSLetRecGroup(bindings, true, span) -> Some { Name = bindings |> List.map (fun (name, _, _, _) -> name) |> String.concat ","; Span = span }
+                    | _ -> None
+                { Source = statement; Export = export; Expressions = List.map resolveExpression roots })
         { TypedProgram = typed
           ResolvedStatements = resolvedStatements
           ExpressionTypes = expressions

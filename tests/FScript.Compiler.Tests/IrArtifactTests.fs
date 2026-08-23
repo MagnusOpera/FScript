@@ -132,3 +132,14 @@ type IrArtifactTests() =
         match IrArtifact.deserialize invalid with
         | Ok _ -> Assert.Fail("Expected invalid closure-capture diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2013"))
+
+    [<Test>]
+    member _.``IR artifact preserves structured export metadata`` () =
+        let lir = (compile "[<export>] let answer = 42").Lir
+        let exported = lir.Declarations |> List.find _.IsExported
+        Assert.That(exported.Export |> Option.map _.Name, Is.EqualTo(Some "answer"))
+        match lir |> IrArtifact.serialize |> IrArtifact.deserialize with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok loaded ->
+            let roundTripped = loaded.Declarations |> List.find _.IsExported
+            Assert.That(roundTripped.Export, Is.EqualTo(exported.Export))

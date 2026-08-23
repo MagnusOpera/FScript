@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Preserved structured export names and source spans through resolved programs, HIR, LIR, and artifacts.
+
 - Added reachability-sensitive Go diagnostics for unsupported host externs without blocking unused descriptors.
 
 - Documented the compiler CLI and made IR and Go output replacement deterministic with early target validation.
