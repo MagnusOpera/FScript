@@ -728,4 +728,15 @@ func Environment() map[string]any {
         | None, None, None -> generateCore options program
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
-        program |> LirValidation.validate |> Result.bind (generateValidated options)
+        match LirValidation.validate program with
+        | Error diagnostics -> Error diagnostics
+        | Ok validated ->
+            match GoMonomorphization.specialize validated with
+            | Ok specialized when TypedGoEmitter.canEmit specialized ->
+                try
+                    let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
+                    TypedGoEmitter.generate moduleName specialized
+                    |> List.map (fun (path, content) -> { RelativePath = path; Content = content })
+                    |> Ok
+                with ex -> Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
+            | _ -> generateValidated options validated

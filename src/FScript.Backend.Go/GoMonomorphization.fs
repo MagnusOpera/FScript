@@ -288,7 +288,7 @@ module GoMonomorphization =
             Ok
                 { program with
                     Functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList
-                    Declarations = state.OutputDeclarations |> Seq.sortBy (_.Id >> symbolNumber) |> Seq.toList
+                    Declarations = state.OutputDeclarations |> Seq.toList
                     Entry = entry }
         with
         | Failure value -> Error [ value ]

@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="GoSpecialization.fs" />
     <Compile Include="GoMonomorphization.fs" />
+    <Compile Include="TypedGoEmitter.fs" />
     <Compile Include="GoBackend.fs" />
   </ItemGroup>
   <ItemGroup>

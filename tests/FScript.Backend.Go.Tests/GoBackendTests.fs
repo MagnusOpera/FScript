@@ -54,6 +54,27 @@ type GoBackendTests() =
             Assert.That(specialized.Functions |> List.forall (fun item -> not (GoSpecialization.containsVariable item.ParameterType) && not (GoSpecialization.containsVariable item.ReturnType)), Is.True)
 
     [<Test>]
+    member _.``Typed Go vertical slice emits no dynamic carriers`` () =
+        let source = "let identity value = value\n(identity 42, identity \"ok\", [1; 2], Some 3)"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let specialized =
+            match GoMonomorphization.specialize compiled.Lir with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(TypedGoEmitter.canEmit specialized, Is.True, Lir.format specialized)
+        TypedGoEmitter.generate "fscript.generated/typed" specialized |> ignore
+        match GoBackend.generate { ModuleName = "fscript.generated/typed" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let generated = files |> List.map _.Content |> String.concat "\n"
+            Assert.That(Regex.IsMatch(generated, @"\bany\b|interface\s*\{\s*\}"), Is.False, generated)
+            Assert.That(generated, Does.Contain("[]int64"))
+            Assert.That(generated, Does.Contain("func("))
+
+    [<Test>]
     member _.``Go backend reports reachable tasks explicitly`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with
