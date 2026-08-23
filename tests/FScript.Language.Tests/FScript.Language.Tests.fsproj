@@ -13,6 +13,7 @@
     <Compile Include="IncludeResolverTests.fs" />
     <Compile Include="ParserTests.fs" />
     <Compile Include="TypeInferenceTests.fs" />
+    <Compile Include="ResolvedInferenceTests.fs" />
     <Compile Include="EvalTests.fs" />
     <Compile Include="InteractiveTests.fs" />
     <Compile Include="PrettyTests.fs" />

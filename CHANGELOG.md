@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a compatibility-preserving resolved inference result with expression-level type information for compiler frontends.
 - Documented the semantic baseline and architecture for typed IR, executable LIR, and compiled backends.
 - Rewrote the website around concrete FScript behavior and removed vague product slogans.
 - Fixed oversized homepage headings to wrap in balanced lines across desktop widths.
