@@ -603,6 +603,14 @@ func Environment() map[string]any {
             program.Declarations
             |> List.tryPick (fun declaration -> if Set.contains declaration.Id reachable && containsTask declaration.Type then Some declaration.Span else None)
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind (fun entry -> if containsTask entry.Type then Some entry.Span else None))
+        let reachableHostExternal =
+            program.Declarations
+            |> List.tryPick (fun declaration ->
+                if Set.contains declaration.Id reachable then
+                    match declaration.Value.Node with
+                    | Lir.HostExternal(name, _) when not (containsTask declaration.Type) -> Some(name, declaration.Span)
+                    | _ -> None
+                else None)
         let invalidImportedRecord =
             program.ImportedRecords
             |> List.tryFind (fun record ->
@@ -611,7 +619,8 @@ func Environment() map[string]any {
                 || (record.Fields |> List.exists (fun (name, fieldType) ->
                     let unsupportedType = match fieldType with TUnit | TInt | TFloat | TBool | TString -> false | _ -> true
                     System.String.IsNullOrEmpty(name) || not (System.Char.IsUpper(name.[0])) || containsTask fieldType || unsupportedType)))
-        match invalidImportedRecord, taskSpan with
-        | Some record, _ -> Error [ { Code = "FSB4005"; Stage = GoGeneration; Message = $"Imported Go record '{record.Name}' must have exported, exactly named primitive fields and cannot be a union."; Span = Some record.Span } ]
-        | None, Some span -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
-        | None, None -> generateCore options program
+        match invalidImportedRecord, taskSpan, reachableHostExternal with
+        | Some record, _, _ -> Error [ { Code = "FSB4005"; Stage = GoGeneration; Message = $"Imported Go record '{record.Name}' must have exported, exactly named primitive fields and cannot be a union."; Span = Some record.Span } ]
+        | None, Some span, _ -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
+        | None, None, Some(name, span) -> Error [ { Code = "FSB4006"; Stage = GoGeneration; Message = $"Host external '{name}' is not supported by the Go backend."; Span = Some span } ]
+        | None, None, None -> generateCore options program

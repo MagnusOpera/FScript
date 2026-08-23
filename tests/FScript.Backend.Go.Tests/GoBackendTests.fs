@@ -33,6 +33,22 @@ type GoBackendTests() =
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4004"))
 
     [<Test>]
+    member _.``Go backend rejects only reachable host externs`` () =
+        let external =
+            { Name = "Host.value"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1
+              Kind = UnsupportedHostExtern }
+        let compile source =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [ external ] } with
+            | Ok value -> value.Lir
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/externs" } (compile "Host.value 1") with
+        | Ok _ -> Assert.Fail("Expected unsupported host-extern diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4006"))
+        match GoBackend.generate { ModuleName = "fscript.generated/externs" } (compile "1") with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok _ -> ()
+
+    [<Test>]
     member _.``Go backend emits imported record boundary adapters`` () =
         let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string; Age: int }\n[<Import(\"example.com/model\", \"Birthday\")>] let birthday : Person -> Person\nbirthday { Name = \"Ada\"; Age = 42 }"
         let compiled =
