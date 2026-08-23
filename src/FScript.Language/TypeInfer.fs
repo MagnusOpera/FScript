@@ -225,6 +225,7 @@ module TypeInfer =
 
     type ResolvedStatement =
         { Source: TypedStmt
+          Attributes: Attribute list
           Export: ResolvedExport option
           Expressions: ResolvedExpression list }
 
@@ -1701,7 +1702,18 @@ module TypeInfer =
                     | TSLetPattern(_, _, _, true, span) -> Some { Name = "<pattern>"; Span = span }
                     | TSLetRecGroup(bindings, true, span) -> Some { Name = bindings |> List.map (fun (name, _, _, _) -> name) |> String.concat ","; Span = span }
                     | _ -> None
-                { Source = statement; Export = export; Expressions = List.map resolveExpression roots })
+                let attributes =
+                    match statement with
+                    | TSLet(_, _, _, _, true, span) | TSLetPattern(_, _, _, true, span) | TSLetRecGroup(_, true, span) ->
+                        [ { Name = "Export"; Arguments = []; Span = span } ]
+                    | TSBackendImport(_, _, import, _) ->
+                        [ { Name = "Import"; Arguments = [ import.ModulePath; import.MemberName ]; Span = import.Span } ]
+                    | TSType definition ->
+                        definition.Import
+                        |> Option.map (fun import -> [ { Name = "Import"; Arguments = [ import.ModulePath; import.MemberName ]; Span = import.Span } ])
+                        |> Option.defaultValue []
+                    | _ -> []
+                { Source = statement; Attributes = attributes; Export = export; Expressions = List.map resolveExpression roots })
         { TypedProgram = typed
           ResolvedStatements = resolvedStatements
           ExpressionTypes = expressions

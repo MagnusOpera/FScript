@@ -77,9 +77,19 @@ type ResolvedInferenceTests() =
 
     [<Test>]
     member _.``Resolved statements preserve structured export metadata`` () =
-        let resolved = Helpers.parse "[<export>] let answer = 42" |> TypeInfer.inferResolvedProgram
+        let resolved = Helpers.parse "[<Export>] let answer = 42" |> TypeInfer.inferResolvedProgram
         match resolved.ResolvedStatements |> List.tryPick _.Export with
         | Some export ->
             Assert.That(export.Name, Is.EqualTo("answer"))
             Assert.That(export.Span.Start.Line, Is.EqualTo(1))
         | None -> Assert.Fail("Expected resolved export metadata")
+        let attributes = resolved.ResolvedStatements |> List.collect _.Attributes
+        Assert.That(attributes |> List.map _.Name, Does.Contain("Export"))
+
+    [<Test>]
+    member _.``Resolved statements attach structured import attributes`` () =
+        let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\n[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string"
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let imports = resolved.ResolvedStatements |> List.collect _.Attributes |> List.filter (fun attribute -> attribute.Name = "Import")
+        Assert.That(imports.Length, Is.EqualTo(2))
+        Assert.That(imports |> List.map _.Arguments, Does.Contain([ "strings"; "ToUpper" ]))

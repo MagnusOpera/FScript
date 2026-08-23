@@ -801,9 +801,10 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects wrong attribute casing`` () =
-        let act () = Helpers.parse "[<Export>] let y = 1" |> ignore
-        act |> should throw typeof<ParseException>
+    member _.``Parses canonical Export attribute casing`` () =
+        match Helpers.parse "[<Export>] let y = 1" with
+        | [ SLet("y", _, _, _, _, true, _) ] -> ()
+        | _ -> Assert.Fail("Expected exported let binding")
 
     [<Test>]
     member _.``Rejects export attribute in nested expression block`` () =

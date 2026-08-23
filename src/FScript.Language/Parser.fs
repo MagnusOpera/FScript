@@ -1617,7 +1617,7 @@ module Parser =
                     hasAttributes <- true
                     let attribute = parseAttribute()
                     match attribute.Name with
-                    | "export" ->
+                    | "export" | "Export" ->
                         if isExported then
                             raise (ParseException { Message = "Duplicate attribute 'export'"; Span = attribute.Span })
                         if not attribute.Arguments.IsEmpty then

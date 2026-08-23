@@ -34,10 +34,18 @@ module HirValidation =
                    | TUnion(name, _) -> name <> declaration.Name
                    | _ -> true
                 || declaration.Import |> Option.exists (fun imported -> imported.Name <> declaration.Name))
+        let invalidAttributes =
+            [ yield! program.Types |> List.collect _.Attributes
+              yield! program.Declarations |> List.collect _.Attributes ]
+            |> List.exists (fun attribute -> System.String.IsNullOrWhiteSpace attribute.Name || not (validSpan attribute.Span))
+            || program.Declarations |> List.exists (fun declaration ->
+                declaration.IsExported <> (declaration.Attributes |> List.exists (fun attribute -> attribute.Name = "Export")))
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
-        if invalidTypes then
+        if invalidAttributes then
+            Error [ Diagnostic.hir "FSH1108" "HIR structured attribute metadata is invalid or inconsistent." None ]
+        elif invalidTypes then
             Error [ Diagnostic.hir "FSH1107" "HIR type declarations must be unique, well-formed, and consistently linked." None ]
         elif invalidImports then
             Error [ Diagnostic.hir "FSH1105" "HIR imported record linkage must be complete and uniquely named." None ]

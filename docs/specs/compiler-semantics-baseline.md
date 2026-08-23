@@ -63,6 +63,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Compiled `Env` is a runtime-context intrinsic. The LIR interpreter uses its explicit script name and arguments; generated Go uses the executable base name and `os.Args[1:]`.
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
+- Both `[<export>]` and `[<Export>]` normalize to a structured `Export` attribute in resolved statements and HIR. `Import` attributes retain their two arguments and attribute span on ordinary HIR function/type declarations in addition to dedicated backend linkage.
 
 ## Diagnostics
 

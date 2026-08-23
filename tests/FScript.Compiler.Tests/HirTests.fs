@@ -98,11 +98,19 @@ type HirTests() =
         Assert.That(identity.Scheme, Is.EqualTo(Forall([ 0 ], TFun(TVar 0, TVar 0))))
 
     [<Test>]
+    member _.``HIR attaches structured export and import attributes`` () =
+        let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\n[<Export>] let answer = 42"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That((compiled.Hir.Types.Head.Attributes |> List.map _.Name) = [ "Import" ], Is.True)
+        let answer = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "answer")
+        Assert.That((answer.Attributes |> List.map _.Name) = [ "Export" ], Is.True)
+
+    [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 0; Name = "value"; Scheme = Forall([], TString)
-              IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }
+              Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }
         match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected invalid HIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))
