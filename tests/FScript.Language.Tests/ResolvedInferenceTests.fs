@@ -5,6 +5,8 @@ open NUnit.Framework
 
 [<TestFixture>]
 type ResolvedInferenceTests() =
+    let rec flatten (expression: TypeInfer.ResolvedExpression) = expression :: List.collect flatten expression.Children
+
     [<Test>]
     member _.``Resolved inference captures every expression without changing legacy output`` () =
         let program = Helpers.parse "let add x y = x + y\nadd 1 2"
@@ -51,3 +53,24 @@ type ResolvedInferenceTests() =
             |> List.find (fun symbol -> symbol.Name = "identity" && symbol.Kind = TypeInfer.DeclarationSymbol)
             |> _.Scheme
         Assert.That(scheme, Is.EqualTo(Some(Forall([ 0 ], TFun(TVar 0, TVar 0)))))
+
+    [<Test>]
+    member _.``Resolved frontend exposes a recursively typed operation tree`` () =
+        let resolved = Helpers.parse "let add x y = x + y\nadd 1 2" |> TypeInfer.inferResolvedProgram
+        let expressions = resolved.ResolvedStatements |> List.collect _.Expressions |> List.collect flatten
+        Assert.That(expressions, Is.Not.Empty)
+        Assert.That(expressions |> List.forall (fun expression -> expression.Type <> TVar -1), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> expression.Primitive = Some TypeInfer.IntegerAddition), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> expression.Reference |> Option.exists (fun reference -> reference.Name = "add")), Is.True)
+
+    [<Test>]
+    member _.``Resolved applications retain record coercion evidence`` () =
+        let source = "type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}"
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let expressions = resolved.ResolvedStatements |> List.collect _.Expressions |> List.collect flatten
+        let coercion = expressions |> List.choose _.RecordCoercion |> List.tryHead
+        match coercion with
+        | Some evidence ->
+            Assert.That(evidence.TargetName, Is.EqualTo(Some "Person"))
+            match evidence.SourceType with TRecord fields -> Assert.That(fields.Count, Is.EqualTo(2)) | _ -> Assert.Fail("Expected structural record source")
+        | None -> Assert.Fail("Expected structural-to-named record coercion evidence")

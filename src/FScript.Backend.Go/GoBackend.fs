@@ -356,6 +356,7 @@ module GoBackend =
                 let joined = String.concat ", " values
                 Ok $"fsruntime.UpdateRecord({targetCode}, map[string]any{{{joined}}})"
             | Error error, _ | _, Error error -> Error error
+        | Lir.RecordConvert(target, _) -> emitExpression environment target
         | Lir.IndexGet(target, index) ->
             match emitExpression environment target, emitExpression environment index with
             | Ok targetCode, Ok indexCode -> Ok $"fsruntime.Index({targetCode}, {indexCode})"
@@ -576,6 +577,7 @@ func Environment() map[string]any {
             | Lir.LetRecursiveGroup(bindings, body) -> references body :: (bindings |> List.map (fun (_, _, _, value) -> references value)) |> Set.unionMany
             | Lir.DecisionTree(target, cases) -> references target :: (cases |> List.collect (fun case -> [ yield! case.Guard |> Option.map references |> Option.toList; references case.Body ])) |> Set.unionMany
             | Lir.RecordUpdate(target, fields) -> references target :: (fields |> List.map (snd >> references)) |> Set.unionMany
+            | Lir.RecordConvert(target, _) -> references target
             | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(references value)) |> Set.unionMany
             | Lir.UnionCase(_, _, payload) -> payload |> Option.map references |> Option.defaultValue Set.empty
             | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, value) -> Set.union (references key) (references value) | Lir.Spread value -> references value) |> Set.unionMany

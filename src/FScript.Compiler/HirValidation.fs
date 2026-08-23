@@ -82,6 +82,7 @@ module HirValidation =
                     Set.union (references target) (cases |> List.map caseReferences |> Set.unionMany)
                 | Hir.Range(startValue, endValue) | Hir.IndexGet(startValue, endValue) -> Set.union (references startValue) (references endValue)
                 | Hir.RecordUpdate(target, fields) -> Set.union (references target) (fields |> List.map (snd >> references) |> Set.unionMany)
+                | Hir.RecordConvert(target, _) -> references target
                 | Hir.Interpolate parts -> parts |> List.choose (function Hir.TextPart _ -> None | Hir.ValuePart item -> Some(references item)) |> Set.unionMany
                 | Hir.UnionCase(_, _, payload) -> payload |> Option.map references |> Option.defaultValue Set.empty
                 | Hir.Map entries ->

@@ -6,6 +6,7 @@ module HirLowering =
     type private State =
         { mutable NextSymbol: int
           ExpressionTypes: Map<Expr, Type>
+          Coercions: Map<Expr, TypeInfer.RecordCoercionEvidence>
           mutable UnionCases: Map<string, string * Type option>
           mutable TypeDefinitions: Map<string, Type>
           mutable Diagnostics: CompilerDiagnostic list }
@@ -158,7 +159,15 @@ module HirLowering =
                 | TFun(value, _) -> value
                 | _ -> Types.freshVar()
             match lowerExpression state environment fnType fn, lowerExpression state environment argumentType argument with
-            | Ok loweredFn, Ok loweredArgument -> Ok(make (Hir.Apply(loweredFn, loweredArgument)))
+            | Ok loweredFn, Ok loweredArgument ->
+                let argumentWithEvidence =
+                    state.Coercions
+                    |> Map.tryFind expression
+                    |> Option.map (fun evidence ->
+                        let targetType = representationType state evidence.TargetType
+                        ({ loweredArgument with Type = targetType; Node = Hir.RecordConvert(loweredArgument, targetType) }: Hir.Expression))
+                    |> Option.defaultValue loweredArgument
+                Ok(make (Hir.Apply(loweredFn, argumentWithEvidence)))
             | Error left, Error right -> Error(left @ right)
             | Error errors, _
             | _, Error errors -> Error errors
@@ -319,9 +328,17 @@ module HirLowering =
 
     let lower (externs: CompilerExtern list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =
-            resolved.ExpressionTypes
-            |> List.fold (fun state item -> state |> Map.add item.Expr item.Type) Map.empty
-        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; UnionCases = Map.empty; TypeDefinitions = Map.empty; Diagnostics = [] }
+            let rec addExpression state (item: TypeInfer.ResolvedExpression) =
+                item.Children |> List.fold addExpression (Map.add item.Source item.Type state)
+            resolved.ResolvedStatements
+            |> List.collect _.Expressions
+            |> List.fold addExpression Map.empty
+        let coercions =
+            let rec collect state (item: TypeInfer.ResolvedExpression) =
+                let state = item.RecordCoercion |> Option.map (fun evidence -> Map.add item.Source evidence state) |> Option.defaultValue state
+                item.Children |> List.fold collect state
+            resolved.ResolvedStatements |> List.collect _.Expressions |> List.fold collect Map.empty
+        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; Coercions = coercions; UnionCases = Map.empty; TypeDefinitions = Map.empty; Diagnostics = [] }
         let builtins =
             BuiltinSignatures.builtinSchemes
             |> Map.toList

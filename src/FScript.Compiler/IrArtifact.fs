@@ -207,6 +207,9 @@ module IrArtifact =
             for name, field in fields do
                 writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("value"); writeExpression writer field; writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.RecordConvert(target, targetType) ->
+            writer.WriteString("kind", "record-convert"); writer.WritePropertyName("target"); writeExpression writer target
+            writer.WritePropertyName("targetType"); writeType writer targetType
         | Lir.IndexGet(target, index) ->
             writer.WriteString("kind", "index-get"); writer.WritePropertyName("target"); writeExpression writer target
             writer.WritePropertyName("index"); writeExpression writer index
@@ -381,6 +384,7 @@ module IrArtifact =
             | "record-update" ->
                 let fields = (property "fields" element).EnumerateArray() |> Seq.map (fun item -> stringProperty "name" item, readExpression (property "value" item)) |> Seq.toList
                 Lir.RecordUpdate(readExpression (property "target" element), fields)
+            | "record-convert" -> Lir.RecordConvert(readExpression (property "target" element), readType (property "targetType" element))
             | "index-get" -> Lir.IndexGet(readExpression (property "target" element), readExpression (property "index" element))
             | "interpolate" ->
                 Lir.Interpolate((property "parts" element).EnumerateArray() |> Seq.map (fun item ->

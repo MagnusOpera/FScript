@@ -10,7 +10,7 @@ source -> parser/includes -> inference + resolved typed tree -> HIR -> LIR
                                                                       +-> Go source backend
 ```
 
-`FScript.Language` remains the parser, type-system, legacy evaluator, and Fable-compatible package. It emits a resolved typed tree in the same inference pass as its compatibility `TypedProgram`.
+`FScript.Language` remains the parser, type-system, legacy evaluator, and Fable-compatible package. It emits a recursive resolved typed tree in the same inference pass as its compatibility `TypedProgram`. Every resolved expression carries its final instantiated type and span plus optional lexical-reference, primitive-operation, and structural/named-record conversion evidence; compatibility inference and evaluation APIs continue to project their existing results.
 
 Resolved inference assigns deterministic program-local IDs to builtins, externs, types, union cases, declarations, parameters, pattern bindings, and locals in normalized source traversal. Declaration schemes and instantiated reference types normalize type variables from zero, so results do not depend on the process-global fresh-variable counter. The legacy `TypedProgram` remains a projection with unchanged public entry points.
 
@@ -20,7 +20,7 @@ Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` 
 
 ## IR boundaries
 
-HIR is language-oriented and contains resolved artifact-local symbol identities, complete semantic types and schemes, source locations, declaration attributes, and explicit evidence for named/structural record conversions. It contains no Go types.
+HIR is language-oriented and contains resolved artifact-local symbol identities, complete semantic types and schemes, source locations, declaration attributes, and explicit nodes for named/structural record conversions. Conversion evidence is produced by inference, not rediscovered from backend representations. HIR contains no Go types.
 
 LIR is executable but not a Go AST. It uses lifted functions, explicit captures and closure creation, resolved primitive operations, aggregate construction/projection, and structured control flow. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types may remain alongside selected runtime representations for validation and diagnostics.
 

@@ -187,6 +187,29 @@ module TypeInfer =
           Span: Span
           Scheme: Scheme option }
 
+    type ResolvedPrimitiveOperation =
+        | IntegerAddition | FloatingAddition
+        | IntegerSubtraction | FloatingSubtraction
+        | IntegerMultiplication | FloatingMultiplication
+        | IntegerDivision | FloatingDivision
+        | IntegerRemainder | StructuralEquality
+        | NumericComparison of string
+        | BooleanOperation of string
+
+    type RecordCoercionEvidence =
+        { SourceType: Type
+          TargetType: Type
+          TargetName: string option }
+
+    type ResolvedExpression =
+        { Source: Expr
+          Type: Type
+          Span: Span
+          Reference: ResolvedSymbolReference option
+          Primitive: ResolvedPrimitiveOperation option
+          RecordCoercion: RecordCoercionEvidence option
+          Children: ResolvedExpression list }
+
     type private LocalVariableTypeCapture =
         { Name: string
           Span: Span
@@ -200,8 +223,13 @@ module TypeInfer =
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
+    type ResolvedStatement =
+        { Source: TypedStmt
+          Expressions: ResolvedExpression list }
+
     type ResolvedProgram =
         { TypedProgram: TypedProgram
+          ResolvedStatements: ResolvedStatement list
           ExpressionTypes: ResolvedExpressionType list
           Symbols: ResolvedSymbol list
           SymbolReferences: ResolvedSymbolReference list }
@@ -1602,10 +1630,72 @@ module TypeInfer =
             | TSExpr expression -> visit globalEnvironment expression.Expr
             | TSBackendImport _ -> ()
             | TSType _ -> ()
+        let resolvedReferences = references |> Seq.toList
+        let finalType expression = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables
+        let rec resolveExpression expression =
+            let expressionType = finalType expression
+            let children =
+                match expression with
+                | ELambda(_, body, _) | ESome(body, _) | EParen(body, _) | ERaise(body, _) -> [ body ]
+                | EApply(left, right, _) | EBinOp(_, left, right, _) | EAppend(left, right, _) | ECons(left, right, _)
+                | EIndexGet(left, right, _) | ERange(left, right, _) -> [ left; right ]
+                | EIf(condition, whenTrue, whenFalse, _) -> [ condition; whenTrue; whenFalse ]
+                | ELet(_, binding, body, _, _, _) | ELetPattern(_, binding, body, _) -> [ binding; body ]
+                | ELetRecGroup(bindings, body, _) ->
+                    (bindings
+                     |> List.map (fun (_, parameters, _, value, span) ->
+                         Seq.foldBack (fun parameter inner -> ELambda(parameter, inner, span)) parameters value))
+                    @ [ body ]
+                | EFor(_, source, body, _) -> [ source; body ]
+                | EMatch(target, cases, _) -> target :: (cases |> List.collect (fun (_, guard, body, _) -> (Option.toList guard) @ [ body ]))
+                | EList(items, _) | ETuple(items, _) -> items
+                | ERecord(fields, _) | EStructuralRecord(fields, _) -> List.map snd fields
+                | EMap(entries, _) -> entries |> List.collect (function MEKeyValue(key, value) -> [ key; value ] | MESpread value -> [ value ])
+                | ERecordUpdate(target, fields, _) | EStructuralRecordUpdate(target, fields, _) -> target :: List.map snd fields
+                | EFieldGet(target, _, _) -> [ target ]
+                | EInterpolatedString(parts, _) -> parts |> List.choose (function IPText _ -> None | IPExpr item -> Some item)
+                | EUnit _ | ELiteral _ | EVar _ | ENone _ | ETypeOf _ | ENameOf _ -> []
+                |> List.map resolveExpression
+            let reference =
+                let span = Ast.spanOfExpr expression
+                resolvedReferences |> List.tryFind (fun item -> item.Span = span)
+            let primitive =
+                match expression with
+                | EBinOp(op, left, _, _) ->
+                    match op, expressionType with
+                    | "+", TInt -> Some IntegerAddition | "+", TFloat -> Some FloatingAddition
+                    | "-", TInt -> Some IntegerSubtraction | "-", TFloat -> Some FloatingSubtraction
+                    | "*", TInt -> Some IntegerMultiplication | "*", TFloat -> Some FloatingMultiplication
+                    | "/", TInt -> Some IntegerDivision | "/", TFloat -> Some FloatingDivision
+                    | "%", TInt -> Some IntegerRemainder | "=", _ -> Some StructuralEquality
+                    | ("<" | ">" | "<=" | ">="), _ -> Some(NumericComparison op)
+                    | ("&&" | "||"), _ -> Some(BooleanOperation op)
+                    | _ -> None
+                | _ -> None
+            let coercion =
+                match expression with
+                | EApply(fn, argument, _) ->
+                    match finalType fn, finalType argument with
+                    | TFun((TNamed target as targetType), _), (TRecord _ as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some target }
+                    | TFun((TRecord _ as targetType), _), (TNamed source as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some source }
+                    | _ -> None
+                | _ -> None
+            { Source = expression; Type = expressionType; Span = Ast.spanOfExpr expression; Reference = reference
+              Primitive = primitive; RecordCoercion = coercion; Children = children }
+        let resolvedStatements =
+            typed |> List.map (fun statement ->
+                let roots =
+                    match statement with
+                    | TSLet(_, expression, _, _, _, _) | TSLetPattern(_, expression, _, _, _) -> [ expression ]
+                    | TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (_, expression, _, _) -> expression)
+                    | TSExpr expression -> [ expression.Expr ]
+                    | TSBackendImport _ | TSType _ -> []
+                { Source = statement; Expressions = List.map resolveExpression roots })
         { TypedProgram = typed
+          ResolvedStatements = resolvedStatements
           ExpressionTypes = expressions
           Symbols = symbols |> Seq.toList
-          SymbolReferences = references |> Seq.toList }
+          SymbolReferences = resolvedReferences }
 
     let inferResolvedProgram (program: Program) : ResolvedProgram =
         inferResolvedProgramWithExterns [] program

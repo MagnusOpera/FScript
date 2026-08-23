@@ -44,6 +44,7 @@ module Lir =
         | DecisionTree of Expression * DecisionCase list
         | Range of Expression * Expression
         | RecordUpdate of Expression * (string * Expression) list
+        | RecordConvert of Expression * Type
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
         | UnionCase of string * string * Expression option
@@ -176,6 +177,7 @@ module LirLowering =
                        Span = case.Span }: Lir.DecisionCase)))
             | Hir.Range(startValue, endValue) -> Lir.Range(expression startValue, expression endValue)
             | Hir.RecordUpdate(target, fields) -> Lir.RecordUpdate(expression target, fields |> List.map (fun (name, item) -> name, expression item))
+            | Hir.RecordConvert(target, targetType) -> Lir.RecordConvert(expression target, targetType)
             | Hir.IndexGet(target, index) -> Lir.IndexGet(expression target, expression index)
             | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
             | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
@@ -331,6 +333,7 @@ module LirValidation =
                 | Lir.DecisionTree(target, cases) -> check target; cases |> List.iter (fun case -> let caseLocals = Set.union locals (patternBindings case.Pattern) in checkPattern target.Type case.Pattern; case.Guard |> Option.iter (fun guard -> checkExpression caseLocals guard; if not (compatible guard.Type TBool) then report "FSL2007" "LIR decision guard must be Boolean." guard.Span); checkExpression caseLocals case.Body; if not (compatible expression.Type case.Body.Type) then report "FSL2007" "LIR decision body type is inconsistent." case.Body.Span)
                 | Lir.Range(first, last) -> check first; check last; if not (compatible first.Type TInt && compatible last.Type TInt && compatible expression.Type (TList TInt)) then report "FSL2004" "LIR range representation is inconsistent." expression.Span
                 | Lir.RecordUpdate(target, fields) -> check target; fields |> List.iter (snd >> check); if not (compatible expression.Type target.Type) then report "FSL2004" "LIR record update representation is inconsistent." expression.Span
+                | Lir.RecordConvert(target, targetType) -> check target; match target.Type, targetType with TRecord _, (TNamed _ | TRecord _) when compatible expression.Type targetType -> () | TNamed _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span
                 | Lir.IndexGet(target, index) -> check target; check index; match target.Type, expression.Type with TList item, TOption result when compatible index.Type TInt && compatible item result -> () | TMap(key, value), TOption result when compatible key index.Type && compatible value result -> () | _ -> report "FSL2004" "LIR index representation is inconsistent." expression.Span
                 | Lir.Interpolate parts -> parts |> List.iter (function Lir.TextPart _ -> () | Lir.ValuePart value -> check value); if not (compatible expression.Type TString) then report "FSL2004" "LIR interpolation must produce string." expression.Span
                 | Lir.UnionCase(typeName, caseName, payload) -> payload |> Option.iter check; match expression.Type with TUnion(actual, cases) when actual = typeName && Map.containsKey caseName cases -> () | _ -> report "FSL2004" "LIR union representation is inconsistent." expression.Span

@@ -56,6 +56,7 @@ module Hir =
         | Match of Expression * MatchCase list
         | Range of Expression * Expression
         | RecordUpdate of Expression * (string * Expression) list
+        | RecordConvert of Expression * Type
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
         | UnionCase of string * string * Expression option
@@ -187,6 +188,7 @@ module Hir =
             | RecordUpdate(target, fields) ->
                 lines.Add(typed "record-update"); expression (indent + 2) target
                 fields |> List.iter (fun (_, item) -> expression (indent + 2) item)
+            | RecordConvert(target, targetType) -> lines.Add(typed $"record-convert {formatType targetType}"); expression (indent + 2) target
             | IndexGet(target, index) -> lines.Add(typed "index-get"); expression (indent + 2) target; expression (indent + 2) index
             | Interpolate parts ->
                 lines.Add(typed "interpolate")

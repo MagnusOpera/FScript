@@ -99,3 +99,13 @@ type IrArtifactTests() =
             match IrArtifact.deserialize bytes with
             | Ok _ -> ()
             | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``IR artifact preserves explicit structural record conversions`` () =
+        let source = "type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}"
+        let lir = (compile source).Lir
+        let bytes = IrArtifact.serialize lir
+        Assert.That(Encoding.UTF8.GetString(bytes), Does.Contain("\"kind\": \"record-convert\""))
+        match IrArtifact.deserialize bytes with
+        | Ok loaded -> Assert.That(loaded, Is.EqualTo(lir))
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))

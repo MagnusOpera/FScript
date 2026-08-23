@@ -373,6 +373,11 @@ module LirInterpreter =
                 |> collect |> Result.map (fun updates -> VRecord(List.fold (fun state (name, value) -> Map.add name value state) existing updates))
             | Ok _ -> fail "FSI3015" expression.Span "Record update requires a record."
             | Error errors -> Error errors
+        | Lir.RecordConvert(target, _) ->
+            match evaluate environment target with
+            | Ok(VRecord _ as record) -> Ok record
+            | Ok _ -> fail "FSI3015" expression.Span "Record conversion requires a record."
+            | Error errors -> Error errors
         | Lir.IndexGet(target, index) ->
             match evaluate environment target, evaluate environment index with
             | Ok(VList values), Ok(VInt position) ->
