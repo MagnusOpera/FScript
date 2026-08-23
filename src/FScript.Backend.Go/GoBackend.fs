@@ -11,9 +11,23 @@ type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
     let private currentImportedRecords = AsyncLocal<Map<string, Lir.ImportedRecord> option>()
+    let private currentTypes = AsyncLocal<Map<string, Lir.TypeDeclaration> option>()
     let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
+    let private currentSymbolTypes = AsyncLocal<Map<Lir.SymbolId, Type>>()
     let private tryImportedRecord name =
         currentImportedRecords.Value |> Option.bind (Map.tryFind name)
+    let private tryDeclaredType name =
+        currentTypes.Value |> Option.bind (Map.tryFind name)
+    let private declaredTypeName (declaration: Lir.TypeDeclaration) = $"record{Lir.symbolNumber declaration.Id}"
+    let private tryRecordDeclaration name =
+        tryDeclaredType name
+        |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TRecord fields -> Some(declaration, fields) | _ -> None)
+    let private recordFieldName fields name =
+        fields |> Map.toList |> List.findIndex (fst >> (=) name) |> sprintf "Field%d"
+    let private effectiveType (expression: Lir.Expression) =
+        match expression.Node with
+        | Lir.Load id -> currentSymbolTypes.Value |> Map.tryFind id |> Option.defaultValue expression.Type
+        | _ -> expression.Type
     let private indent (value: string) = value.Replace("\n", "\n\t")
 
     let private runtimeTemplate fileName =
@@ -46,6 +60,7 @@ module GoBackend =
         | TRecord _ -> "map[string]any"
         | TNamed "Environment" -> "map[string]any"
         | TNamed name when tryImportedRecord name |> Option.isSome -> "map[string]any"
+        | TNamed name when tryRecordDeclaration name |> Option.isSome -> tryRecordDeclaration name |> Option.get |> fst |> declaredTypeName
         | TUnion _ | TNamed _ -> "fsruntime.Union"
         | TMap _ -> "fsruntime.OrderedMap"
         | value -> invalidArg "value" $"Unsupported Go representation for {Types.typeToString value}."
@@ -87,6 +102,7 @@ module GoBackend =
         | TOption _ -> $"fsruntime.AsOption({code})"
         | TNamed "Environment" -> $"fsruntime.Record({code})"
         | TNamed name when tryImportedRecord name |> Option.isSome -> $"fsruntime.Record({code})"
+        | TNamed name when tryRecordDeclaration name |> Option.isSome -> $"{code}.({goType valueType})"
         | TUnion _ | TNamed _ -> $"fsruntime.AsUnion({code})"
         | TMap _ -> $"fsruntime.AsMap({code})"
         | TFun _ -> $"fsruntime.AsClosure({code})"
@@ -291,12 +307,24 @@ module GoBackend =
                 let joined = String.concat ", " values
                 $"[]any{{{joined}}}")
         | Lir.Record fields ->
-            fields |> List.map (fun (name, value) -> emitExpression environment value |> Result.map (fun code -> $"{System.Text.Json.JsonSerializer.Serialize(name)}: {code}"))
+            let declaration = match expression.Type with TNamed name -> tryRecordDeclaration name | _ -> None
+            fields |> List.map (fun (name, value) -> emitExpression environment value |> Result.map (fun code -> name, code))
             |> collect |> Result.map (fun values ->
-                let joined = String.concat ", " values
-                $"map[string]any{{{joined}}}")
+                match declaration with
+                | Some(typeDeclaration, fieldTypes) ->
+                    let joined = values |> List.map (fun (name, code) -> $"{recordFieldName fieldTypes name}: {code}") |> String.concat ", "
+                    $"{declaredTypeName typeDeclaration}{{{joined}}}"
+                | None ->
+                    let joined = values |> List.map (fun (name, code) -> $"{System.Text.Json.JsonSerializer.Serialize(name)}: {code}") |> String.concat ", "
+                    $"map[string]any{{{joined}}}")
         | Lir.FieldGet(target, name) ->
-            emitExpression environment target |> Result.map (fun code -> $"({code})[{System.Text.Json.JsonSerializer.Serialize(name)}]")
+            emitExpression environment target |> Result.map (fun code ->
+                match effectiveType target with
+                | TNamed typeName ->
+                    match tryRecordDeclaration typeName with
+                    | Some(_, fields) -> $"({code}).{recordFieldName fields name}"
+                    | None -> $"({code})[{System.Text.Json.JsonSerializer.Serialize(name)}]"
+                | _ -> $"({code})[{System.Text.Json.JsonSerializer.Serialize(name)}]")
         | Lir.SomeValue item -> emitExpression environment item |> Result.map (fun code -> $"fsruntime.Some({code})")
         | Lir.NoneValue -> Ok "fsruntime.None()"
         | Lir.Cons(head, tail) ->
@@ -355,12 +383,35 @@ module GoBackend =
             | Error error, _ | _, Error error -> Error error
         | Lir.RecordUpdate(target, fields) ->
             match emitExpression environment target,
-                  (fields |> List.map (fun (name, item) -> emitExpression environment item |> Result.map (fun code -> System.Text.Json.JsonSerializer.Serialize(name) + ": " + code)) |> collect) with
+                  (fields |> List.map (fun (name, item) -> emitExpression environment item |> Result.map (fun code -> name, code)) |> collect) with
             | Ok targetCode, Ok values ->
-                let joined = String.concat ", " values
-                Ok $"fsruntime.UpdateRecord({targetCode}, map[string]any{{{joined}}})"
+                match expression.Type with
+                | TNamed name ->
+                    match tryRecordDeclaration name with
+                    | Some(declaration, fieldTypes) ->
+                        let assignments = values |> List.map (fun (fieldName, code) -> $"updated.{recordFieldName fieldTypes fieldName} = {code}") |> String.concat "\n\t"
+                        Ok $"func() {declaredTypeName declaration} {{\n\tupdated := {indent targetCode}\n\t{assignments}\n\treturn updated\n}}()"
+                    | None ->
+                        let joined = values |> List.map (fun (fieldName, code) -> System.Text.Json.JsonSerializer.Serialize(fieldName) + ": " + code) |> String.concat ", "
+                        Ok $"fsruntime.UpdateRecord({targetCode}, map[string]any{{{joined}}})"
+                | _ ->
+                    let joined = values |> List.map (fun (fieldName, code) -> System.Text.Json.JsonSerializer.Serialize(fieldName) + ": " + code) |> String.concat ", "
+                    Ok $"fsruntime.UpdateRecord({targetCode}, map[string]any{{{joined}}})"
             | Error error, _ | _, Error error -> Error error
-        | Lir.RecordConvert(target, _) -> emitExpression environment target
+        | Lir.RecordConvert(target, targetType) ->
+            emitExpression environment target |> Result.map (fun targetCode ->
+                match targetType with
+                | TNamed name ->
+                    match tryRecordDeclaration name with
+                    | Some(declaration, fields) ->
+                        let assignments =
+                            fields |> Map.toList |> List.map (fun (fieldName, fieldType) ->
+                                let raw = $"recordFields[{System.Text.Json.JsonSerializer.Serialize(fieldName)}]"
+                                $"{recordFieldName fields fieldName}: {cast fieldType raw}") |> String.concat ", "
+                        $"func() {declaredTypeName declaration} {{\n\trecordValue := {indent targetCode}\n\trecordFields := fsruntime.Record(recordValue)\n\treturn {declaredTypeName declaration}{{{assignments}}}\n}}()"
+                    | None -> $"fsruntime.Record({targetCode})"
+                | TRecord _ -> $"fsruntime.Record({targetCode})"
+                | _ -> targetCode)
         | Lir.IndexGet(target, index) ->
             match emitExpression environment target, emitExpression environment index with
             | Ok targetCode, Ok indexCode -> Ok $"fsruntime.Index({targetCode}, {indexCode})"
@@ -499,7 +550,9 @@ func Environment() map[string]any {
     let private generateCore options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
             currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
+            currentTypes.Value <- Some(program.Types |> List.map (fun declaration -> declaration.Name, declaration) |> Map.ofList)
             currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
+            currentSymbolTypes.Value <- program.Declarations |> List.map (fun declaration -> declaration.Id, declaration.Type) |> Map.ofList
             let targetImports =
                 program.Declarations
                 |> List.choose (fun declaration -> match declaration.Value.Node with Lir.TargetImport(modulePath, memberName) -> Some(modulePath, memberName, declaration.Type, declaration.Span) | _ -> None)
@@ -516,6 +569,17 @@ func Environment() map[string]any {
                 program.Declarations
                 |> List.fold (fun env declaration -> env |> Map.add declaration.Id (identifier "value" declaration.Id)) Map.empty
             let declarations = StringBuilder()
+            let typeDeclarations = StringBuilder()
+            for declaration in program.Types do
+                match declaration.Import, declaration.Definition with
+                | None, TRecord fields ->
+                    typeDeclarations.AppendLine($"type {declaredTypeName declaration} struct {{") |> ignore
+                    let fieldTypes = fields |> Map.toList |> List.map (snd >> goType)
+                    let typeWidth = fieldTypes |> List.map _.Length |> List.max
+                    for fieldIndex, (fieldName, fieldType) in fields |> Map.toList |> List.indexed do
+                        typeDeclarations.AppendLine($"\tField{fieldIndex} {(goType fieldType).PadRight(typeWidth)} `fscript:{System.Text.Json.JsonSerializer.Serialize(fieldName)}`") |> ignore
+                    typeDeclarations.AppendLine("}") |> ignore
+                | _ -> ()
             let initializers = StringBuilder()
             let mutable error = None
             for declaration in program.Declarations do
@@ -543,7 +607,8 @@ func Environment() map[string]any {
                     ([ yield! targetImports |> List.map (fun (modulePath, _, _, _) -> modulePath)
                        yield! program.ImportedRecords |> List.map _.ModulePath ] |> List.distinct |> List.sort |> List.map (fun path -> $"\t{importAlias path} {System.Text.Json.JsonSerializer.Serialize(path)}"))
                     |> String.concat "\n"
-                let programSource = $"package fscriptprogram\n\nimport (\n{importLines}\n)\n\n{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
+                let typeSource = if typeDeclarations.Length = 0 then "" else typeDeclarations.ToString() + "\n"
+                let programSource = $"package fscriptprogram\n\nimport (\n{importLines}\n)\n\n{typeSource}{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
                 let printExpression =
                     match program.Entry with
                     | Some { Type = TUnit } -> "_ = fsruntime.Format(fscriptprogram.Run()); fmt.Println(\"()\")"
@@ -561,7 +626,9 @@ func Environment() map[string]any {
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
+        currentTypes.Value <- Some(program.Types |> List.map (fun declaration -> declaration.Name, declaration) |> Map.ofList)
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
+        currentSymbolTypes.Value <- program.Declarations |> List.map (fun declaration -> declaration.Id, declaration.Type) |> Map.ofList
         let rec containsTask = function
             | TTask _ -> true
             | TFun(argument, result) | TMap(argument, result) -> containsTask argument || containsTask result

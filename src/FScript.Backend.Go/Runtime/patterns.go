@@ -90,7 +90,7 @@ func matchRuntimePattern(value any, pattern Pattern) (map[int]any, bool) {
 		}
 		return bindings, true
 	case "record":
-		values, ok := value.(map[string]any)
+		values, ok := TryRecord(value)
 		if !ok {
 			return nil, false
 		}
@@ -210,12 +210,12 @@ func TypeMatches(value any, typeName string) bool {
 		return ok
 	}
 	if strings.HasPrefix(typeName, "{") {
-		_, ok := value.(map[string]any)
+		_, ok := TryRecord(value)
 		return ok
 	}
 	if item, ok := value.(Union); ok {
 		return item.TypeName == typeName
 	}
-	_, record := value.(map[string]any)
+	_, record := TryRecord(value)
 	return record
 }

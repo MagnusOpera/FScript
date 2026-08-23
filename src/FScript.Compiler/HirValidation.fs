@@ -22,11 +22,24 @@ module HirValidation =
 
     let validate (program: Hir.Program) =
         let declarationIds = program.Declarations |> List.map (fun value -> value.Id)
-        let duplicateIds = declarationIds |> List.countBy id |> List.filter (fun (_, count) -> count > 1)
+        let typeIds = program.Types |> List.map _.Id
+        let allIds = typeIds @ declarationIds
+        let duplicateIds = allIds |> List.countBy id |> List.filter (fun (_, count) -> count > 1)
+        let invalidTypes =
+            (program.Types |> List.map _.Name |> List.distinct |> List.length) <> program.Types.Length
+            || program.Types |> List.exists (fun declaration ->
+                not (validSpan declaration.Span)
+                || match declaration.Definition with
+                   | TRecord _ -> false
+                   | TUnion(name, _) -> name <> declaration.Name
+                   | _ -> true
+                || declaration.Import |> Option.exists (fun imported -> imported.Name <> declaration.Name))
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
-        if invalidImports then
+        if invalidTypes then
+            Error [ Diagnostic.hir "FSH1107" "HIR type declarations must be unique, well-formed, and consistently linked." None ]
+        elif invalidImports then
             Error [ Diagnostic.hir "FSH1105" "HIR imported record linkage must be complete and uniquely named." None ]
         elif not duplicateIds.IsEmpty then
             Error [ Diagnostic.hir "FSH1101" "HIR declaration IDs must be unique." None ]

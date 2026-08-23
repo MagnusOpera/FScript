@@ -24,8 +24,17 @@ module HirLowering =
         | TMap(key, value) -> TMap(representationType state key, representationType state value)
         | TTask item -> TTask(representationType state item)
         | TRecord fields -> TRecord(fields |> Map.map (fun _ -> representationType state))
-        | TNamed name -> state.TypeDefinitions |> Map.tryFind name |> Option.defaultValue (TNamed name)
+        | TNamed name -> TNamed name
         | value -> value
+
+    let private resolvedDefinition state = function
+        | TNamed name as named -> state.TypeDefinitions |> Map.tryFind name |> Option.defaultValue named
+        | value -> value
+
+    let private recordFields state value =
+        match resolvedDefinition state value with
+        | TRecord fields -> fields
+        | _ -> Map.empty
 
     let private expressionType state expression fallback =
         state.ExpressionTypes
@@ -94,7 +103,7 @@ module HirLowering =
                 let bindings = bindingMaps |> List.fold (Map.fold (fun env key value -> Map.add key value env)) Map.empty
                 make (Hir.TuplePattern patterns), bindings)
         | PRecord(fields, _) ->
-            let types = match expected with TRecord values -> values | _ -> Map.empty
+            let types = recordFields state expected
             fields |> List.map (fun (name, item) -> lowerPattern state (types |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun (value, bindings) -> (name, value), bindings))
             |> collectResults |> Result.map (fun values ->
                 let fields, bindingMaps = List.unzip values
@@ -216,7 +225,7 @@ module HirLowering =
             let itemType = match inferred with TList value -> value | _ -> Types.freshVar()
             items |> List.map (lowerExpression state environment itemType) |> collectResults |> Result.map (Hir.List >> make)
         | ERecord(fields, _) | EStructuralRecord(fields, _) ->
-            let fieldTypes = match inferred with TRecord values -> values | _ -> Map.empty
+            let fieldTypes = recordFields state inferred
             fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
             |> collectResults |> Result.map (Hir.Record >> make)
         | EFieldGet(target, name, _) ->
@@ -293,11 +302,19 @@ module HirLowering =
             match lowerExpression state environment TInt startValue, lowerExpression state environment TInt endValue with
             | Ok startItem, Ok endItem -> Ok(make (Hir.Range(startItem, endItem)))
             | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
-        | ERecordUpdate(target, fields, _) | EStructuralRecordUpdate(target, fields, _) ->
+        | ERecordUpdate(target, fields, _) ->
+            let targetType = expressionType state target inferred
+            match lowerExpression state environment targetType target with
+            | Error errors -> Error errors
+            | Ok loweredTarget ->
+                let fieldTypes = recordFields state targetType
+                fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
+                |> collectResults |> Result.map (fun loweredFields -> ({ Type = targetType; Span = span; Node = Hir.RecordUpdate(loweredTarget, loweredFields) }: Hir.Expression))
+        | EStructuralRecordUpdate(target, fields, _) ->
             match lowerExpression state environment inferred target with
             | Error errors -> Error errors
             | Ok loweredTarget ->
-                let fieldTypes = match inferred with TRecord values -> values | _ -> Map.empty
+                let fieldTypes = recordFields state inferred
                 fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
                 |> collectResults |> Result.map (fun loweredFields -> make (Hir.RecordUpdate(loweredTarget, loweredFields)))
         | EIndexGet(target, index, _) ->
@@ -374,6 +391,10 @@ module HirLowering =
             unionDefinitions |> List.collect (fun (definition, _) ->
                 let cases = definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList
                 definition.Cases |> List.map (fun (caseName, _) -> caseName, (definition.Name, cases.[caseName]))) |> Map.ofList
+        let typeSymbols =
+            typeDefinitions
+            |> List.map (fun definition -> definition.Name, newSymbol state)
+            |> Map.ofList
         let constructorSymbols =
             unionDefinitions |> List.collect (fun (definition, _) -> definition.Cases |> List.map (fun (caseName, _) -> definition.Name, caseName, newSymbol state))
         let topLevel =
@@ -406,7 +427,8 @@ module HirLowering =
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
                     ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
-                let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
+                let definition, _ = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
+                let unionType = TNamed typeName
                 let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef
                 let value =
                     match payloadType with
@@ -512,5 +534,14 @@ module HirLowering =
                     ({ Name = definition.Name; ModulePath = import.ModulePath; MemberName = import.MemberName; IsUnion = not definition.Cases.IsEmpty
                        Fields = definition.Fields |> List.map (fun (name, fieldType) -> name, typeFromRef fieldType)
                        Span = definition.Span }: Hir.ImportedRecord)))
-        if errors.IsEmpty then Ok { ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
+        let hirTypes =
+            typeDefinitions
+            |> List.map (fun definition ->
+                ({ Id = typeSymbols.[definition.Name]
+                   Name = definition.Name
+                   IsRecursive = definition.IsRecursive
+                   Definition = state.TypeDefinitions.[definition.Name]
+                   Import = importedRecords |> List.tryFind (fun imported -> imported.Name = definition.Name)
+                   Span = definition.Span }: Hir.TypeDeclaration))
+        if errors.IsEmpty then Ok { Types = hirTypes; ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
         else Error errors

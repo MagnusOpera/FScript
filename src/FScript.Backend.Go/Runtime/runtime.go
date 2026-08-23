@@ -31,21 +31,50 @@ type MapPart struct {
 	Map      OrderedMap
 }
 
-func Unit(value any) struct{}         { return struct{}{} }
-func Int(value any) int64             { return value.(int64) }
-func Float(value any) float64         { return value.(float64) }
-func Bool(value any) bool             { return value.(bool) }
-func String(value any) string         { return value.(string) }
-func List(value any) []any            { return value.([]any) }
-func AsTuple(value any) Tuple         { return value.(Tuple) }
-func Record(value any) map[string]any { return value.(map[string]any) }
-func AsOption(value any) Option       { return value.(Option) }
-func AsUnion(value any) Union         { return value.(Union) }
-func AsMap(value any) OrderedMap      { return value.(OrderedMap) }
-func Some(value any) Option           { return Option{HasValue: true, Value: value} }
-func None() Option                    { return Option{} }
-func IsSome(value any) bool           { return AsOption(value).HasValue }
-func OptionValue(value any) any       { return AsOption(value).Value }
+func Unit(value any) struct{} { return struct{}{} }
+func Int(value any) int64     { return value.(int64) }
+func Float(value any) float64 { return value.(float64) }
+func Bool(value any) bool     { return value.(bool) }
+func String(value any) string { return value.(string) }
+func List(value any) []any    { return value.([]any) }
+func AsTuple(value any) Tuple { return value.(Tuple) }
+func TryRecord(value any) (map[string]any, bool) {
+	if record, ok := value.(map[string]any); ok {
+		return record, true
+	}
+	reflected := reflect.ValueOf(value)
+	if reflected.Kind() == reflect.Pointer {
+		reflected = reflected.Elem()
+	}
+	if reflected.Kind() != reflect.Struct {
+		return nil, false
+	}
+	result := map[string]any{}
+	for index := 0; index < reflected.NumField(); index++ {
+		field := reflected.Type().Field(index)
+		if name := field.Tag.Get("fscript"); name != "" {
+			result[name] = reflected.Field(index).Interface()
+		}
+	}
+	if len(result) == 0 {
+		return nil, false
+	}
+	return result, true
+}
+func Record(value any) map[string]any {
+	record, ok := TryRecord(value)
+	if !ok {
+		panic("Record access requires a record")
+	}
+	return record
+}
+func AsOption(value any) Option  { return value.(Option) }
+func AsUnion(value any) Union    { return value.(Union) }
+func AsMap(value any) OrderedMap { return value.(OrderedMap) }
+func Some(value any) Option      { return Option{HasValue: true, Value: value} }
+func None() Option               { return Option{} }
+func IsSome(value any) bool      { return AsOption(value).HasValue }
+func OptionValue(value any) any  { return AsOption(value).Value }
 func MakeUnion(typeName string, caseName string) Union {
 	return Union{TypeName: typeName, CaseName: caseName}
 }
@@ -56,10 +85,69 @@ func IsUnion(value any, typeName string, caseName string) bool {
 	item := AsUnion(value)
 	return item.TypeName == typeName && item.CaseName == caseName
 }
-func UnionHasValue(value any) bool         { return AsUnion(value).HasValue }
-func UnionValue(value any) any             { return AsUnion(value).Value }
-func HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }
-func Equal(left any, right any) bool       { return reflect.DeepEqual(left, right) }
+func UnionHasValue(value any) bool { return AsUnion(value).HasValue }
+func UnionValue(value any) any     { return AsUnion(value).Value }
+func HasField(value any, name string) bool {
+	record, ok := TryRecord(value)
+	if !ok {
+		return false
+	}
+	_, found := record[name]
+	return found
+}
+func normalizeStructural(value any) any {
+	reflected := reflect.ValueOf(value)
+	if reflected.IsValid() && (reflected.Kind() == reflect.Struct || (reflected.Kind() == reflect.Pointer && !reflected.IsNil() && reflected.Elem().Kind() == reflect.Struct)) {
+		if record, ok := TryRecord(value); ok {
+			result := map[string]any{}
+			for name, field := range record {
+				result[name] = normalizeStructural(field)
+			}
+			return result
+		}
+	}
+	switch item := value.(type) {
+	case []any:
+		result := make([]any, len(item))
+		for index, element := range item {
+			result[index] = normalizeStructural(element)
+		}
+		return result
+	case Tuple:
+		result := make(Tuple, len(item))
+		for index, element := range item {
+			result[index] = normalizeStructural(element)
+		}
+		return result
+	case map[string]any:
+		result := map[string]any{}
+		for name, field := range item {
+			result[name] = normalizeStructural(field)
+		}
+		return result
+	case Option:
+		if item.HasValue {
+			item.Value = normalizeStructural(item.Value)
+		}
+		return item
+	case Union:
+		if item.HasValue {
+			item.Value = normalizeStructural(item.Value)
+		}
+		return item
+	case OrderedMap:
+		entries := make([]MapEntry, len(item.Entries))
+		for index, entry := range item.Entries {
+			entries[index] = MapEntry{Key: normalizeStructural(entry.Key), Value: normalizeStructural(entry.Value)}
+		}
+		return OrderedMap{Entries: entries}
+	default:
+		return value
+	}
+}
+func Equal(left any, right any) bool {
+	return reflect.DeepEqual(normalizeStructural(left), normalizeStructural(right))
+}
 func Cons(head any, tail []any) []any      { return append([]any{head}, tail...) }
 func Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }
 func Tail(value any) []any                 { return append([]any{}, List(value)[1:]...) }
@@ -279,7 +367,23 @@ func Format(value any) string {
 			parts[index] = Format(value)
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
+	case map[string]any:
+		names := make([]string, 0, len(item))
+		for name := range item {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, len(names))
+		for index, name := range names {
+			parts[index] = name + " = " + Format(item[name])
+		}
+		return "{ " + strings.Join(parts, "; ") + " }"
 	default:
+		if reflected := reflect.ValueOf(value); reflected.IsValid() && (reflected.Kind() == reflect.Struct || (reflected.Kind() == reflect.Pointer && !reflected.IsNil() && reflected.Elem().Kind() == reflect.Struct)) {
+			if record, ok := TryRecord(value); ok {
+				return Format(record)
+			}
+		}
 		return fmt.Sprint(value)
 	}
 }

@@ -123,8 +123,17 @@ module Hir =
           Fields: (string * Type) list
           Span: Span }
 
+    type TypeDeclaration =
+        { Id: SymbolId
+          Name: string
+          IsRecursive: bool
+          Definition: Type
+          Import: ImportedRecord option
+          Span: Span }
+
     type Program =
-        { ImportedRecords: ImportedRecord list
+        { Types: TypeDeclaration list
+          ImportedRecords: ImportedRecord list
           Declarations: Declaration list
           Entry: Expression option }
 
@@ -212,6 +221,8 @@ module Hir =
                 lines.Add(typed (sprintf "for %%%d %s" (symbolNumber id) name)); expression (indent + 2) source; expression (indent + 2) body
             | TypeToken tokenType -> lines.Add(typed $"typeof {formatType tokenType}")
 
+        for typeDeclaration in program.Types do
+            lines.Add(sprintf "type %%%d %s%s = %s" (symbolNumber typeDeclaration.Id) typeDeclaration.Name (if typeDeclaration.IsRecursive then " rec" else "") (formatType typeDeclaration.Definition))
         for declaration in program.Declarations do
             let export = declaration.Export |> Option.map (fun metadata -> $" export={metadata.Name}") |> Option.defaultValue ""
             lines.Add(sprintf "decl %%%d %s%s: %s" (symbolNumber declaration.Id) declaration.Name export (formatType (let (Forall(_, value)) = declaration.Scheme in value)))

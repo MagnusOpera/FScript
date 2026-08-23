@@ -111,6 +111,15 @@ type IrArtifactTests() =
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
+    member _.``IR artifact preserves named type declarations`` () =
+        let lir = (compile "type Person = { Name: string; Age: int }\n{ Name = \"Ada\"; Age = 42 }").Lir
+        let bytes = IrArtifact.serialize lir
+        Assert.That(Encoding.UTF8.GetString(bytes), Does.Contain("\"types\""))
+        match IrArtifact.deserialize bytes with
+        | Ok loaded -> Assert.That(loaded.Types = lir.Types, Is.True)
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
     member _.``LIR closures serialize deterministic explicit captures`` () =
         let source = "let outer x = (let inner y = x + y\n    inner\n)\nouter 40 2"
         let lir = (compile source).Lir

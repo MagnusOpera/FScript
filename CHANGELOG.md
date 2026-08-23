@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Preserved named type declarations through HIR, LIR, and artifacts and generated concrete Go structs for ordinary records.
+
 - Added a canonical LIR debug printer and checked-in deterministic HIR/LIR arithmetic snapshots.
 
 - Preserved structured export names and source spans through resolved programs, HIR, LIR, and artifacts.

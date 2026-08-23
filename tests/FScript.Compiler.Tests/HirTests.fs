@@ -40,12 +40,26 @@ type HirTests() =
         Assert.That(Lir.format { compiled.Lir with Declarations = declarations }, Is.EqualTo(snapshot "add.lir"))
 
     [<Test>]
+    member _.``HIR and LIR preserve named type declarations`` () =
+        let source = "type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        let hirType = compiled.Hir.Types |> List.exactlyOne
+        let lirType = compiled.Lir.Types |> List.exactlyOne
+        Assert.That(hirType.Name, Is.EqualTo("Person"))
+        Assert.That((match hirType.Definition with TRecord _ -> true | _ -> false), Is.True)
+        Assert.That(lirType.Name, Is.EqualTo("Person"))
+        Assert.That(compiled.Hir.Declarations |> List.exists (fun declaration -> declaration.Value.Type = TNamed "Person"), Is.True)
+
+    [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 0; Name = "value"; Scheme = Forall([], TString)
               IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }
-        match HirValidation.validate { ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
+        match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected invalid HIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))
 
@@ -55,19 +69,19 @@ type HirTests() =
         let branch: Lir.Expression =
             { Type = TInt; Span = span
               Node = Lir.Branch(constant TInt (Lir.Int 1L), constant TInt (Lir.Int 2L), constant TString (Lir.String "no")) }
-        match LirValidation.validate { ImportedRecords = []; Functions = []; Declarations = []; Entry = Some branch } with
+        match LirValidation.validate { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some branch } with
         | Ok _ -> Assert.Fail("Expected invalid LIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2007"))
 
     [<Test>]
     member _.``LIR validation rejects unknown primitives`` () =
         let intrinsic = ({ Type = TInt; Span = span; Node = Lir.Intrinsic "Unknown.value" }: Lir.Expression)
-        match LirValidation.validate { ImportedRecords = []; Functions = []; Declarations = []; Entry = Some intrinsic } with
+        match LirValidation.validate { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some intrinsic } with
         | Ok _ -> Assert.Fail("Expected unavailable primitive diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2009"))
 
     [<Test>]
     member _.``Initial LIR optimization pass is identity`` () =
         let expression = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
-        let program: Lir.Program = { ImportedRecords = []; Functions = []; Declarations = []; Entry = Some expression }
+        let program: Lir.Program = { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some expression }
         Assert.That(LirOptimization.optimize program = program, Is.True)

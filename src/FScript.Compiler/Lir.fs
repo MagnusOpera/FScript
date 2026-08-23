@@ -122,8 +122,17 @@ module Lir =
           Fields: (string * Type) list
           Span: Span }
 
+    type TypeDeclaration =
+        { Id: SymbolId
+          Name: string
+          IsRecursive: bool
+          Definition: Type
+          Import: ImportedRecord option
+          Span: Span }
+
     type Program =
-        { ImportedRecords: ImportedRecord list
+        { Types: TypeDeclaration list
+          ImportedRecords: ImportedRecord list
           Functions: Function list
           Declarations: Declaration list
           Entry: Expression option }
@@ -173,6 +182,8 @@ module Lir =
             | TargetImport(modulePath, memberName) -> add $"target-import {modulePath}.{memberName}"
             | ForEach(id, name, _, source, body) -> children $"for-each %%{symbolNumber id} {name}" [ source; body ]
             | TypeToken tokenType -> add $"type-token {typeName tokenType}"
+        for typeDeclaration in program.Types do
+            lines.Add($"type %%{symbolNumber typeDeclaration.Id} {typeDeclaration.Name}: {typeName typeDeclaration.Definition}")
         for fn in program.Functions do
             lines.Add($"function @{functionNumber fn.Id} %%{symbolNumber fn.Parameter} {fn.Name} captures={symbols fn.Captures}: {typeName fn.ParameterType} -> {typeName fn.ReturnType}")
             expression 2 fn.Body
@@ -338,6 +349,14 @@ module LirLowering =
             |> List.map (fun value ->
                 ({ Name = value.Name; ModulePath = value.ModulePath; MemberName = value.MemberName; IsUnion = value.IsUnion
                    Fields = value.Fields; Span = value.Span }: Lir.ImportedRecord))
+          Types =
+            program.Types
+            |> List.map (fun value ->
+                ({ Id = symbol value.Id; Name = value.Name; IsRecursive = value.IsRecursive; Definition = value.Definition
+                   Import = value.Import |> Option.map (fun imported ->
+                       { Name = imported.Name; ModulePath = imported.ModulePath; MemberName = imported.MemberName
+                         IsUnion = imported.IsUnion; Fields = imported.Fields; Span = imported.Span })
+                   Span = value.Span }: Lir.TypeDeclaration))
           Functions = state.Functions |> Seq.sortBy (_.Id >> Lir.functionNumber) |> Seq.toList
           Declarations = declarations
           Entry = entry }
@@ -362,12 +381,28 @@ module LirValidation =
 
     let validate (program: Lir.Program) =
         let ids = program.Declarations |> List.map _.Id
+        let typeIds = program.Types |> List.map _.Id
+        let typeDefinitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
+        let resolve = function
+            | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
+            | value -> value
+        let compatible left right = compatible (resolve left) (resolve right)
         let functionIds = program.Functions |> List.map _.Id
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
-        if invalidImports then
+        let invalidTypes =
+            (program.Types |> List.map _.Name |> List.distinct |> List.length) <> program.Types.Length
+            || (typeIds @ ids |> List.distinct |> List.length) <> typeIds.Length + ids.Length
+            || program.Types |> List.exists (fun declaration ->
+                match declaration.Definition with
+                | TRecord _ -> false
+                | TUnion(name, _) -> name <> declaration.Name
+                | _ -> true)
+        if invalidTypes then
+            Error [ { Code = "FSL2016"; Stage = Lowering; Message = "LIR type declarations must have unique IDs and names with valid definitions."; Span = None } ]
+        elif invalidImports then
             Error [ { Code = "FSL2012"; Stage = Lowering; Message = "LIR imported record linkage must be complete and uniquely named."; Span = None } ]
         elif ids.Length <> (ids |> Set.ofList |> Set.count) then
             Error [ { Code = "FSL2001"; Stage = Lowering; Message = "LIR declaration IDs must be unique."; Span = None } ]
@@ -400,7 +435,7 @@ module LirValidation =
                     | TTuple types when types.Length = items.Length -> List.iter2 checkPattern types items
                     | _ -> report "FSL2003" "LIR tuple pattern shape is inconsistent." pattern.Span
                 | Lir.RecordPattern fields ->
-                    match pattern.Type with
+                    match resolve pattern.Type with
                     | TRecord types -> fields |> List.iter (fun (name, item) -> match Map.tryFind name types with Some itemType -> checkPattern itemType item | None -> report "FSL2003" $"Unknown LIR record-pattern field '{name}'." item.Span)
                     | _ -> report "FSL2003" "LIR record pattern requires a record." pattern.Span
                 | Lir.SomePattern item -> match pattern.Type with TOption itemType -> checkPattern itemType item | _ -> report "FSL2003" "LIR some pattern requires an option." pattern.Span
@@ -411,7 +446,7 @@ module LirValidation =
                     | TMap(keyType, valueType) -> clauses |> List.iter (fun (key, value) -> checkPattern keyType key; checkPattern valueType value); tail |> Option.iter (checkPattern pattern.Type)
                     | _ -> report "FSL2003" "LIR map pattern requires a map." pattern.Span
                 | Lir.UnionPattern(typeName, caseName, payload) ->
-                    match pattern.Type with
+                    match resolve pattern.Type with
                     | TUnion(actual, cases) when actual = typeName ->
                         match Map.tryFind caseName cases, payload with
                         | Some(Some payloadType), Some value -> checkPattern payloadType value
@@ -467,10 +502,10 @@ module LirValidation =
                     match expected with Some(operand, result) when not (arguments |> List.forall (fun item -> compatible operand item.Type) && compatible result expression.Type) -> report "FSL2008" "LIR primitive operand or result type is inconsistent." expression.Span | _ -> ()
                 | Lir.Tuple items -> items |> List.iter check; match expression.Type with TTuple types when types.Length = items.Length && List.forall2 (fun expected (item: Lir.Expression) -> compatible expected item.Type) types items -> () | _ -> report "FSL2004" "LIR tuple representation is inconsistent." expression.Span
                 | Lir.List items -> items |> List.iter check; match expression.Type with TList itemType when items |> List.forall (fun item -> compatible itemType item.Type) -> () | _ -> report "FSL2004" "LIR list representation is inconsistent." expression.Span
-                | Lir.Record fields -> fields |> List.iter (snd >> check); match expression.Type with TRecord types when fields.Length = types.Count && fields |> List.forall (fun (name, item) -> Map.tryFind name types |> Option.exists (fun expected -> compatible expected item.Type)) -> () | _ -> report "FSL2004" "LIR record representation is inconsistent." expression.Span
+                | Lir.Record fields -> fields |> List.iter (snd >> check); match resolve expression.Type with TRecord types when fields.Length = types.Count && fields |> List.forall (fun (name, item) -> Map.tryFind name types |> Option.exists (fun expected -> compatible expected item.Type)) -> () | _ -> report "FSL2004" "LIR record representation is inconsistent." expression.Span
                 | Lir.FieldGet(target, name) ->
                     check target
-                    match target.Type, name with
+                    match resolve target.Type, name with
                     | TRecord fields, _ when Map.tryFind name fields |> Option.exists (compatible expression.Type) -> ()
                     | TNamed "Environment", "ScriptName" when compatible expression.Type (TOption TString) -> ()
                     | TNamed "Environment", "Arguments" when compatible expression.Type (TList TString) -> ()
@@ -485,10 +520,10 @@ module LirValidation =
                 | Lir.DecisionTree(target, cases) -> check target; cases |> List.iter (fun case -> let caseLocals = Set.union locals (patternBindings case.Pattern) in checkPattern target.Type case.Pattern; case.Guard |> Option.iter (fun guard -> checkExpression caseLocals guard; if not (compatible guard.Type TBool) then report "FSL2007" "LIR decision guard must be Boolean." guard.Span); checkExpression caseLocals case.Body; if not (compatible expression.Type case.Body.Type) then report "FSL2007" "LIR decision body type is inconsistent." case.Body.Span)
                 | Lir.Range(first, last) -> check first; check last; if not (compatible first.Type TInt && compatible last.Type TInt && compatible expression.Type (TList TInt)) then report "FSL2004" "LIR range representation is inconsistent." expression.Span
                 | Lir.RecordUpdate(target, fields) -> check target; fields |> List.iter (snd >> check); if not (compatible expression.Type target.Type) then report "FSL2004" "LIR record update representation is inconsistent." expression.Span
-                | Lir.RecordConvert(target, targetType) -> check target; match target.Type, targetType with TRecord _, (TNamed _ | TRecord _) when compatible expression.Type targetType -> () | TNamed _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span
+                | Lir.RecordConvert(target, targetType) -> check target; match resolve target.Type, resolve targetType with TRecord _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span
                 | Lir.IndexGet(target, index) -> check target; check index; match target.Type, expression.Type with TList item, TOption result when compatible index.Type TInt && compatible item result -> () | TMap(key, value), TOption result when compatible key index.Type && compatible value result -> () | _ -> report "FSL2004" "LIR index representation is inconsistent." expression.Span
                 | Lir.Interpolate parts -> parts |> List.iter (function Lir.TextPart _ -> () | Lir.ValuePart value -> check value); if not (compatible expression.Type TString) then report "FSL2004" "LIR interpolation must produce string." expression.Span
-                | Lir.UnionCase(typeName, caseName, payload) -> payload |> Option.iter check; match expression.Type with TUnion(actual, cases) when actual = typeName && Map.containsKey caseName cases -> () | _ -> report "FSL2004" "LIR union representation is inconsistent." expression.Span
+                | Lir.UnionCase(typeName, caseName, payload) -> payload |> Option.iter check; match resolve expression.Type with TUnion(actual, cases) when actual = typeName && Map.containsKey caseName cases -> () | _ -> report "FSL2004" "LIR union representation is inconsistent." expression.Span
                 | Lir.Map entries -> entries |> List.iter (function Lir.KeyValue(key, value) -> check key; check value | Lir.Spread value -> check value); match expression.Type with TMap _ -> () | _ -> report "FSL2004" "LIR map node requires a map type." expression.Span
                 | Lir.Intrinsic name when not (Map.containsKey name BuiltinSignatures.builtinSchemes || Map.containsKey name RuntimeIntrinsics.schemes) -> report "FSL2009" $"Unknown LIR intrinsic '{name}'." expression.Span
                 | Lir.HostExternal(_, arity) when arity < 0 -> report "FSL2010" "LIR host external arity cannot be negative." expression.Span

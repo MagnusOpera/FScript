@@ -76,6 +76,17 @@ type GoBackendTests() =
         | Ok _ -> Assert.Fail("Expected imported-record diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4005"))
 
+    [<Test>]
+    member _.``Go backend emits concrete ordinary record types`` () =
+        let source = "type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/records" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Match("type record[0-9]+ struct"))
+            Assert.That(program, Does.Contain("`fscript:\"Name\"`"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
@@ -122,6 +133,9 @@ type GoBackendTests() =
     [<TestCase("Option.isSome Env.ScriptName", "true")>]
     [<TestCase("[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"", "HELLO")>]
     [<TestCase("Console.writeLine \"hello\"", "hello\n()")>]
+    [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name", "Ada")>]
+    [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nlet older = { person with Age = 43 }\nolder.Age", "43")>]
+    [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         requireGo ()
         let input = { Program = Parser.parseProgram source; Externs = [] }
