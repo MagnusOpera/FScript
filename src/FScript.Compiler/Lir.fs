@@ -4,6 +4,7 @@ open FScript.Language
 
 module Lir =
     type SymbolId = SymbolId of int
+    type FunctionId = FunctionId of int
 
     type Constant =
         | Unit
@@ -26,7 +27,7 @@ module Lir =
     and ExpressionNode =
         | Constant of Constant
         | Load of SymbolId
-        | MakeClosure of SymbolId * string * Type * SymbolId list * Expression
+        | MakeClosure of FunctionId * SymbolId list
         | CallClosure of Expression * Expression
         | Branch of Expression * Expression * Expression
         | Operation of Operation * Expression list
@@ -98,6 +99,16 @@ module Lir =
           Span: Span
           Value: Expression }
 
+    type Function =
+        { Id: FunctionId
+          Parameter: SymbolId
+          Name: string
+          ParameterType: Type
+          Captures: SymbolId list
+          ReturnType: Type
+          Span: Span
+          Body: Expression }
+
     type ImportedRecord =
         { Name: string
           ModulePath: string
@@ -108,12 +119,23 @@ module Lir =
 
     type Program =
         { ImportedRecords: ImportedRecord list
+          Functions: Function list
           Declarations: Declaration list
           Entry: Expression option }
 
     let symbolNumber (SymbolId value) = value
+    let functionNumber (FunctionId value) = value
 
 module LirLowering =
+    type private State =
+        { mutable NextFunction: int
+          Functions: ResizeArray<Lir.Function> }
+
+    let private newFunction state =
+        let id = Lir.FunctionId state.NextFunction
+        state.NextFunction <- state.NextFunction + 1
+        id
+
     let private symbol (Hir.SymbolId value) = Lir.SymbolId value
 
     let private operation = function
@@ -166,7 +188,7 @@ module LirLowering =
         let free = capturedReferences bound
         match value.Node with
         | Lir.Load id -> if Set.contains id bound then Set.empty else Set.singleton id
-        | Lir.MakeClosure(_, _, _, captures, _) -> Set.difference (Set.ofList captures) bound
+        | Lir.MakeClosure(_, captures) -> Set.difference (Set.ofList captures) bound
         | Lir.CallClosure(fn, argument) | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
         | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (free fn) (free argument)
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ free condition; free whenTrue; free whenFalse ] |> Set.unionMany
@@ -194,65 +216,73 @@ module LirLowering =
         | Lir.Constant _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _ | Lir.RuntimeContext
         | Lir.TargetImport _ | Lir.TypeToken _ -> Set.empty
 
-    let rec private expression (value: Hir.Expression) : Lir.Expression =
+    let rec private expression state (value: Hir.Expression) : Lir.Expression =
         let node =
             match value.Node with
             | Hir.Constant value -> Lir.Constant(constant value)
             | Hir.Reference id -> Lir.Load(symbol id)
             | Hir.Lambda(id, name, parameterType, body) ->
                 let parameter = symbol id
-                let loweredBody = expression body
+                let functionId = newFunction state
+                let loweredBody = expression state body
                 let captures = capturedReferences (Set.singleton parameter) loweredBody |> Set.toList |> List.sortBy Lir.symbolNumber
-                Lir.MakeClosure(parameter, name, parameterType, captures, loweredBody)
-            | Hir.Apply(fn, argument) -> Lir.CallClosure(expression fn, expression argument)
-            | Hir.If(condition, whenTrue, whenFalse) -> Lir.Branch(expression condition, expression whenTrue, expression whenFalse)
-            | Hir.Primitive(op, arguments) -> Lir.Operation(operation op, arguments |> List.map expression)
-            | Hir.Tuple items -> Lir.Tuple(items |> List.map expression)
-            | Hir.List items -> Lir.List(items |> List.map expression)
-            | Hir.Record fields -> Lir.Record(fields |> List.map (fun (name, item) -> name, expression item))
-            | Hir.FieldGet(target, name) -> Lir.FieldGet(expression target, name)
-            | Hir.SomeValue item -> Lir.SomeValue(expression item)
+                state.Functions.Add
+                    { Id = functionId; Parameter = parameter; Name = name; ParameterType = parameterType
+                      Captures = captures; ReturnType = loweredBody.Type; Span = value.Span; Body = loweredBody }
+                Lir.MakeClosure(functionId, captures)
+            | Hir.Apply(fn, argument) -> Lir.CallClosure(expression state fn, expression state argument)
+            | Hir.If(condition, whenTrue, whenFalse) -> Lir.Branch(expression state condition, expression state whenTrue, expression state whenFalse)
+            | Hir.Primitive(op, arguments) -> Lir.Operation(operation op, arguments |> List.map (expression state))
+            | Hir.Tuple items -> Lir.Tuple(items |> List.map (expression state))
+            | Hir.List items -> Lir.List(items |> List.map (expression state))
+            | Hir.Record fields -> Lir.Record(fields |> List.map (fun (name, item) -> name, expression state item))
+            | Hir.FieldGet(target, name) -> Lir.FieldGet(expression state target, name)
+            | Hir.SomeValue item -> Lir.SomeValue(expression state item)
             | Hir.NoneValue -> Lir.NoneValue
-            | Hir.Cons(head, tail) -> Lir.Cons(expression head, expression tail)
-            | Hir.Append(left, right) -> Lir.Append(expression left, expression right)
-            | Hir.Let(id, name, recursive, binding, body) -> Lir.Let(symbol id, name, recursive, expression binding, expression body)
+            | Hir.Cons(head, tail) -> Lir.Cons(expression state head, expression state tail)
+            | Hir.Append(left, right) -> Lir.Append(expression state left, expression state right)
+            | Hir.Let(id, name, recursive, binding, body) -> Lir.Let(symbol id, name, recursive, expression state binding, expression state body)
             | Hir.LetRecursiveGroup(bindings, body) ->
-                Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, bindingType, value) -> symbol id, name, bindingType, expression value), expression body)
-            | Hir.Fail value -> Lir.Fail(expression value)
+                Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, bindingType, value) -> symbol id, name, bindingType, expression state value), expression state body)
+            | Hir.Fail value -> Lir.Fail(expression state value)
             | Hir.Match(target, cases) ->
-                Lir.DecisionTree(expression target, cases |> List.map (fun case ->
+                Lir.DecisionTree(expression state target, cases |> List.map (fun case ->
                     ({ Pattern = pattern case.Pattern
-                       Guard = Option.map expression case.Guard
-                       Body = expression case.Body
+                       Guard = Option.map (expression state) case.Guard
+                       Body = expression state case.Body
                        Span = case.Span }: Lir.DecisionCase)))
-            | Hir.Range(startValue, endValue) -> Lir.Range(expression startValue, expression endValue)
-            | Hir.RecordUpdate(target, fields) -> Lir.RecordUpdate(expression target, fields |> List.map (fun (name, item) -> name, expression item))
-            | Hir.RecordConvert(target, targetType) -> Lir.RecordConvert(expression target, targetType)
-            | Hir.IndexGet(target, index) -> Lir.IndexGet(expression target, expression index)
-            | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
-            | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
-            | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression key, expression item) | Hir.Spread item -> Lir.Spread(expression item)))
+            | Hir.Range(startValue, endValue) -> Lir.Range(expression state startValue, expression state endValue)
+            | Hir.RecordUpdate(target, fields) -> Lir.RecordUpdate(expression state target, fields |> List.map (fun (name, item) -> name, expression state item))
+            | Hir.RecordConvert(target, targetType) -> Lir.RecordConvert(expression state target, targetType)
+            | Hir.IndexGet(target, index) -> Lir.IndexGet(expression state target, expression state index)
+            | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression state item)))
+            | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map (expression state) payload)
+            | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression state key, expression state item) | Hir.Spread item -> Lir.Spread(expression state item)))
             | Hir.Intrinsic name -> Lir.Intrinsic name
             | Hir.HostExternal(name, arity) -> Lir.HostExternal(name, arity)
             | Hir.RuntimeContext -> Lir.RuntimeContext
             | Hir.TargetImport(modulePath, memberName) -> Lir.TargetImport(modulePath, memberName)
-            | Hir.ForEach(id, name, itemType, source, body) -> Lir.ForEach(symbol id, name, itemType, expression source, expression body)
+            | Hir.ForEach(id, name, itemType, source, body) -> Lir.ForEach(symbol id, name, itemType, expression state source, expression state body)
             | Hir.TypeToken tokenType -> Lir.TypeToken tokenType
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =
+        let state = { NextFunction = 0; Functions = ResizeArray() }
+        let declarations =
+            program.Declarations
+            |> List.map (fun value ->
+                ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
+                   IsRecursive = value.IsRecursive; IsExported = value.IsExported
+                   Span = value.Span; Value = expression state value.Value }: Lir.Declaration))
+        let entry = program.Entry |> Option.map (expression state)
         { ImportedRecords =
             program.ImportedRecords
             |> List.map (fun value ->
                 ({ Name = value.Name; ModulePath = value.ModulePath; MemberName = value.MemberName; IsUnion = value.IsUnion
                    Fields = value.Fields; Span = value.Span }: Lir.ImportedRecord))
-          Declarations =
-            program.Declarations
-            |> List.map (fun value ->
-                ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
-                   IsRecursive = value.IsRecursive; IsExported = value.IsExported
-                   Span = value.Span; Value = expression value.Value }: Lir.Declaration))
-          Entry = program.Entry |> Option.map expression }
+          Functions = state.Functions |> Seq.sortBy (_.Id >> Lir.functionNumber) |> Seq.toList
+          Declarations = declarations
+          Entry = entry }
 
 module LirValidation =
     let rec private compatible left right =
@@ -274,6 +304,8 @@ module LirValidation =
 
     let validate (program: Lir.Program) =
         let ids = program.Declarations |> List.map _.Id
+        let functionIds = program.Functions |> List.map _.Id
+        let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
@@ -281,6 +313,8 @@ module LirValidation =
             Error [ { Code = "FSL2012"; Stage = Lowering; Message = "LIR imported record linkage must be complete and uniquely named."; Span = None } ]
         elif ids.Length <> (ids |> Set.ofList |> Set.count) then
             Error [ { Code = "FSL2001"; Stage = Lowering; Message = "LIR declaration IDs must be unique."; Span = None } ]
+        elif functionIds <> ([ 0 .. functionIds.Length - 1 ] |> List.map Lir.FunctionId) then
+            Error [ { Code = "FSL2014"; Stage = Lowering; Message = "LIR function IDs must be unique, contiguous, and ordered."; Span = None } ]
         else
             let diagnostics = ResizeArray<CompilerDiagnostic>()
             let report code message span =
@@ -343,14 +377,16 @@ module LirValidation =
                 match expression.Node with
                 | Lir.Constant value when not (compatible expression.Type (literalType value)) -> report "FSL2004" "LIR constant has an inconsistent type." expression.Span
                 | Lir.Load id when not (Set.contains id locals || Set.contains id declared) -> report "FSL2005" (sprintf "LIR reference %%%d is unresolved." (Lir.symbolNumber id)) expression.Span
-                | Lir.MakeClosure(parameter, _, parameterType, captures, body) ->
-                    let expectedCaptures = LirLowering.capturedReferences (Set.singleton parameter) body |> Set.toList |> List.sortBy Lir.symbolNumber
-                    if captures <> expectedCaptures then
-                        report "FSL2013" "LIR closure captures do not match its ordered free-symbol set." expression.Span
+                | Lir.MakeClosure(functionId, captures) ->
                     if captures |> List.exists (fun id -> not (Set.contains id locals || Set.contains id declared)) then
                         report "FSL2005" "LIR closure contains an unresolved capture." expression.Span
-                    checkExpression (Set.add parameter locals) body
-                    match expression.Type with TFun(argument, result) when compatible argument parameterType && compatible result body.Type -> () | _ -> report "FSL2006" "LIR closure signature is inconsistent with its body." expression.Span
+                    match Map.tryFind functionId functions with
+                    | None -> report "FSL2014" "LIR closure references an unknown lifted function." expression.Span
+                    | Some fn ->
+                        if captures <> fn.Captures then report "FSL2013" "LIR closure captures do not match its lifted function." expression.Span
+                        match expression.Type with
+                        | TFun(argument, result) when compatible argument fn.ParameterType && compatible result fn.ReturnType -> ()
+                        | _ -> report "FSL2006" "LIR closure signature is inconsistent with its lifted function." expression.Span
                 | Lir.CallClosure(fn, argument) ->
                     check fn; check argument
                     match fn.Type with TFun(parameter, result) when compatible parameter argument.Type && compatible result expression.Type -> () | _ -> report "FSL2006" "LIR closure call signature is inconsistent." expression.Span
@@ -399,6 +435,12 @@ module LirValidation =
                 | Lir.ForEach(id, _, itemType, source, body) -> check source; checkExpression (Set.add id locals) body; match source.Type with TList actual when compatible actual itemType && compatible expression.Type TUnit -> () | _ -> report "FSL2004" "LIR for-loop representation is inconsistent." expression.Span
                 | Lir.TypeToken _ when not (compatible expression.Type TTypeToken) -> report "FSL2004" "LIR type token has an inconsistent type." expression.Span
                 | _ -> ()
+            program.Functions |> List.iter (fun fn ->
+                checkSpan fn.Span
+                let expected = LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber
+                if fn.Captures <> expected then report "FSL2013" "Lifted LIR function captures do not match its ordered free-symbol set." fn.Span
+                checkExpression (Set.add fn.Parameter (Set.ofList fn.Captures)) fn.Body
+                if not (compatible fn.ReturnType fn.Body.Type) then report "FSL2006" "Lifted LIR function return type is inconsistent." fn.Span)
             program.Declarations |> List.iter (fun declaration -> checkSpan declaration.Span; checkExpression Set.empty declaration.Value; if not (compatible declaration.Type declaration.Value.Type) then report "FSL2004" $"LIR declaration '{declaration.Name}' type is inconsistent." declaration.Span)
             program.Entry |> Option.iter (checkExpression Set.empty)
             if diagnostics.Count = 0 then Ok program else Error(List.ofSeq diagnostics)

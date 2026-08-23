@@ -11,6 +11,7 @@ type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
     let private currentImportedRecords = AsyncLocal<Map<string, Lir.ImportedRecord> option>()
+    let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
     let private tryImportedRecord name =
         currentImportedRecords.Value |> Option.bind (Map.tryFind name)
     let private indent (value: string) = value.Replace("\n", "\n\t")
@@ -245,13 +246,16 @@ module GoBackend =
             environment |> Map.tryFind id
             |> Option.map Ok
             |> Option.defaultValue (Error(sprintf "Unknown symbol %%%d" (Lir.symbolNumber id)))
-        | Lir.MakeClosure(parameter, _, parameterType, _, body) ->
-            let name = identifier "arg" parameter
-            let parameterValue = cast parameterType "rawValue"
-            emitExpression (environment |> Map.add parameter name) body
-            |> Result.map (fun bodyCode ->
-                let indentedBody = bodyCode.Replace("\n", "\n\t")
-                $"fsruntime.Closure{{Call: func(rawValue any) any {{\n\t{name} := {parameterValue}\n\t_ = {name}\n\treturn {indentedBody}\n}}}}")
+        | Lir.MakeClosure(functionId, _) ->
+            match currentFunctions.Value |> Map.tryFind functionId with
+            | None -> Error $"Unknown lifted function {Lir.functionNumber functionId}"
+            | Some fn ->
+                let name = identifier "arg" fn.Parameter
+                let parameterValue = cast fn.ParameterType "rawValue"
+                emitExpression (environment |> Map.add fn.Parameter name) fn.Body
+                |> Result.map (fun bodyCode ->
+                    let indentedBody = bodyCode.Replace("\n", "\n\t")
+                    $"fsruntime.Closure{{Call: func(rawValue any) any {{\n\t{name} := {parameterValue}\n\t_ = {name}\n\treturn {indentedBody}\n}}}}")
         | Lir.CallClosure(fn, argument) ->
             match emitExpression environment fn, emitExpression environment argument with
             | Ok fnCode, Ok argumentCode -> Ok(cast expression.Type $"fsruntime.Call({fnCode}, {argumentCode})")
@@ -495,6 +499,7 @@ func Environment() map[string]any {
     let private generateCore options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
             currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
+            currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
             let targetImports =
                 program.Declarations
                 |> List.choose (fun declaration -> match declaration.Value.Node with Lir.TargetImport(modulePath, memberName) -> Some(modulePath, memberName, declaration.Type, declaration.Span) | _ -> None)
@@ -556,6 +561,7 @@ func Environment() map[string]any {
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
+        currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let rec containsTask = function
             | TTask _ -> true
             | TFun(argument, result) | TMap(argument, result) -> containsTask argument || containsTask result
@@ -568,7 +574,8 @@ func Environment() map[string]any {
             let many values = values |> List.map references |> Set.unionMany
             match expression.Node with
             | Lir.Load id -> Set.singleton id
-            | Lir.MakeClosure(_, _, _, _, body) | Lir.Fail body | Lir.FieldGet(body, _) | Lir.SomeValue body -> references body
+            | Lir.MakeClosure(_, captures) -> Set.ofList captures
+            | Lir.Fail body | Lir.FieldGet(body, _) | Lir.SomeValue body -> references body
             | Lir.CallClosure(left, right) | Lir.Append(left, right) | Lir.Cons(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> Set.union (references left) (references right)
             | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values

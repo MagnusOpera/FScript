@@ -113,7 +113,10 @@ type IrArtifactTests() =
     [<Test>]
     member _.``LIR closures serialize deterministic explicit captures`` () =
         let source = "let outer x = (let inner y = x + y\n    inner\n)\nouter 40 2"
-        let bytes = (compile source).Lir |> IrArtifact.serialize
+        let lir = (compile source).Lir
+        Assert.That((lir.Functions |> List.map (fun fn -> Lir.functionNumber fn.Id)) = [ 0; 1 ], Is.True)
+        Assert.That(lir.Functions |> List.exists (fun fn -> not fn.Captures.IsEmpty), Is.True)
+        let bytes = lir |> IrArtifact.serialize
         let json = Encoding.UTF8.GetString(bytes)
         Assert.That(json, Does.Match("\\\"captures\\\": \\[\\s+[0-9]+"))
         match IrArtifact.deserialize bytes with

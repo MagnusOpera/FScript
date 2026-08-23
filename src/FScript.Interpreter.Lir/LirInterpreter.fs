@@ -32,6 +32,7 @@ type ExecutionResult =
 
 module LirInterpreter =
     let private currentOutput = AsyncLocal<ResizeArray<string>>()
+    let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
     let private constantValue = function
         | Lir.Unit -> VUnit | Lir.Int value -> VInt value | Lir.Float value -> VFloat value
         | Lir.Bool value -> VBool value | Lir.String value -> VString value
@@ -260,9 +261,12 @@ module LirInterpreter =
         | Lir.Load id ->
             environment |> Map.tryFind id |> Option.map Ok
             |> Option.defaultWith (fun () -> fail "FSI3001" expression.Span (sprintf "Unknown LIR symbol %%%d." (Lir.symbolNumber id)))
-        | Lir.MakeClosure(id, name, _, captures, body) ->
+        | Lir.MakeClosure(functionId, captures) ->
             let captured = captures |> List.choose (fun symbol -> Map.tryFind symbol environment |> Option.map (fun value -> symbol, value)) |> Map.ofList
-            Ok(VClosure(id, name, body, ref captured))
+            currentFunctions.Value
+            |> Map.tryFind functionId
+            |> Option.map (fun fn -> Ok(VClosure(fn.Parameter, fn.Name, fn.Body, ref captured)))
+            |> Option.defaultWith (fun () -> fail "FSI3024" expression.Span $"Unknown lifted LIR function {Lir.functionNumber functionId}.")
         | Lir.CallClosure(fn, argument) ->
             match evaluate environment fn, evaluate environment argument with
             | Ok fnValue, Ok value -> applyValue expression.Span fnValue value
@@ -457,6 +461,7 @@ module LirInterpreter =
     let execute (context: InterpreterContext) (program: Lir.Program) =
         let output = ResizeArray<string>()
         currentOutput.Value <- output
+        currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let runtimeContext =
             VRecord(Map.ofList
                 [ "ScriptName", VOption(Option.map VString context.ScriptName)

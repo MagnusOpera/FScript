@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Lifted LIR lambda bodies into a deterministic validated function table consumed by artifacts, interpretation, and Go generation.
+
 - Added deterministic explicit closure captures to LIR serialization, validation, and interpretation.
 
 - Exposed recursively typed resolved expressions and preserved explicit structural record conversions through HIR, LIR, and IR artifacts.
