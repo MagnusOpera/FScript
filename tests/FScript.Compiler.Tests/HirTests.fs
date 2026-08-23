@@ -100,3 +100,13 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 3L))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Executes ordered map construction spread and indexing`` () =
+        let source = "let tail = { [\"a\"] = 2; [\"b\"] = 3 }\nlet values = { [\"a\"] = 1; ..tail }\nvalues[\"b\"]"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VOption(Some(LirValue.VInt 3L))))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

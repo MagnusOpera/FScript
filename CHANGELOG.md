@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added deterministic ordered-map construction, left-precedence spreading, indexing, equality, serialization, and Go runtime support.
 - Added declared-union constructors, payloads, structural equality, pattern matching, artifact serialization, and Go runtime representation.
 - Added compiled ranges, safe list indexing, immutable record updates, interpolation, and FScript-style generated-program result formatting.
 - Added deterministic LIR pattern decision trees with single scrutinee evaluation, ordered guards, bindings, and match-failure diagnostics.

@@ -235,6 +235,15 @@ module HirLowering =
                 | IPText text -> Ok(Hir.TextPart text)
                 | IPExpr item -> lowerExpression state environment (expressionType state item (Types.freshVar())) item |> Result.map Hir.ValuePart)
             |> collectResults |> Result.map (Hir.Interpolate >> make)
+        | EMap(entries, _) ->
+            let keyType, valueType = match inferred with TMap(key, value) -> key, value | _ -> Types.freshVar(), Types.freshVar()
+            entries |> List.map (function
+                | MEKeyValue(key, value) ->
+                    match lowerExpression state environment keyType key, lowerExpression state environment valueType value with
+                    | Ok loweredKey, Ok loweredValue -> Ok(Hir.KeyValue(loweredKey, loweredValue))
+                    | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+                | MESpread value -> lowerExpression state environment inferred value |> Result.map Hir.Spread)
+            |> collectResults |> Result.map (Hir.Map >> make)
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
 
     let lower (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =

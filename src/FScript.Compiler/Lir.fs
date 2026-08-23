@@ -46,6 +46,11 @@ module Lir =
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
         | UnionCase of string * string * Expression option
+        | Map of MapEntry list
+
+    and MapEntry =
+        | KeyValue of Expression * Expression
+        | Spread of Expression
 
     and InterpolationPart =
         | TextPart of string
@@ -152,6 +157,7 @@ module LirLowering =
             | Hir.IndexGet(target, index) -> Lir.IndexGet(expression target, expression index)
             | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
             | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
+            | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression key, expression item) | Hir.Spread item -> Lir.Spread(expression item)))
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

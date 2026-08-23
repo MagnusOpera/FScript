@@ -17,6 +17,7 @@ type LirValue =
     | VRecord of Map<string, LirValue>
     | VOption of LirValue option
     | VUnion of string * string * LirValue option
+    | VMap of (LirValue * LirValue) list
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -38,6 +39,7 @@ module LirInterpreter =
         | VOption None, VOption None -> true
         | VOption(Some a), VOption(Some b) -> equal a b
         | VUnion(aType, aCase, aValue), VUnion(bType, bCase, bValue) -> aType = bType && aCase = bCase && equal (VOption aValue) (VOption bValue)
+        | VMap a, VMap b -> a.Length = b.Length && List.forall2 (fun (ak, av) (bk, bv) -> equal ak bk && equal av bv) a b
         | _ -> false
 
     let rec private formatValue = function
@@ -50,6 +52,8 @@ module LirInterpreter =
             "{ " + rendered + " }"
         | VOption None -> "None" | VOption(Some value) -> $"Some {formatValue value}"
         | VUnion(_, caseName, None) -> caseName | VUnion(_, caseName, Some value) -> $"{caseName} {formatValue value}"
+        | VMap entries ->
+            entries |> List.map (fun (key, value) -> $"[{formatValue key}] = {formatValue value}") |> String.concat "; " |> fun value -> "{ " + value + " }"
         | VClosure _ -> "<function>"
 
     let private fail code span message =
@@ -202,6 +206,7 @@ module LirInterpreter =
             | Ok(VList values), Ok(VInt position) ->
                 if position < 0L || position >= int64 values.Length then Ok(VOption None)
                 else Ok(VOption(Some values.[int position]))
+            | Ok(VMap entries), Ok key -> Ok(VOption(entries |> List.tryPick (fun (itemKey, value) -> if equal itemKey key then Some value else None)))
             | Ok _, Ok _ -> fail "FSI3016" expression.Span "Index access requires a list and integer index."
             | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
         | Lir.Interpolate parts ->
@@ -210,6 +215,25 @@ module LirInterpreter =
         | Lir.UnionCase(typeName, caseName, payload) ->
             payload |> Option.map (fun value -> evaluate environment value |> Result.map Some) |> Option.defaultValue (Ok None)
             |> Result.map (fun value -> VUnion(typeName, caseName, value))
+        | Lir.Map entries ->
+            let add key value values =
+                let without = values |> List.filter (fun (existing, _) -> not (equal existing key))
+                (key, value) :: without |> List.sortBy (fst >> formatValue)
+            let rec build values remaining =
+                match remaining with
+                | [] -> Ok(VMap values)
+                | Lir.KeyValue(key, item) :: rest ->
+                    match evaluate environment key, evaluate environment item with
+                    | Ok keyValue, Ok itemValue -> build (add keyValue itemValue values) rest
+                    | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+                | Lir.Spread item :: rest ->
+                    match evaluate environment item with
+                    | Ok(VMap spread) ->
+                        let merged = spread |> List.fold (fun state (key, value) -> if state |> List.exists (fst >> equal key) then state else add key value state) values
+                        build merged rest
+                    | Ok _ -> fail "FSI3017" expression.Span "Map spread requires a map."
+                    | Error errors -> Error errors
+            build [] entries
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

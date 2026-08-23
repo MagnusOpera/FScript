@@ -46,6 +46,8 @@ module HirValidation =
                 | Hir.RecordUpdate(target, fields) -> Set.union (references target) (fields |> List.map (snd >> references) |> Set.unionMany)
                 | Hir.Interpolate parts -> parts |> List.choose (function Hir.TextPart _ -> None | Hir.ValuePart item -> Some(references item)) |> Set.unionMany
                 | Hir.UnionCase(_, _, payload) -> payload |> Option.map references |> Option.defaultValue Set.empty
+                | Hir.Map entries ->
+                    entries |> List.map (function Hir.KeyValue(key, value) -> Set.union (references key) (references value) | Hir.Spread value -> references value) |> Set.unionMany
             let declared = declarationIds |> Set.ofList
             let unresolved =
                 [ yield! program.Declarations |> List.collect (fun value -> references value.Value |> Set.toList)

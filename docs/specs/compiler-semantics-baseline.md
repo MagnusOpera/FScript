@@ -16,6 +16,8 @@ The first aggregate compiler slice preserves tuple field order, record field nam
 Ranges preserve inclusive ascending or descending order. List indexing returns an option and never throws for an out-of-range integer. Record updates allocate a new value, interpolation evaluates embedded expressions from left to right, and generated program output uses FScript value formatting rather than Go's default aggregate formatting.
 
 Declared unions retain their type and case identity plus an optional erased payload. Constructors are deterministic compiler declarations, qualified and unqualified case references share one identity, pattern tests check both type and case tags, and equality recursively compares payloads.
+
+Compiled maps use an ordered entry representation for string and integer keys. Explicit key/value entries replace an earlier value; spread entries retain values already present on their left. Indexing returns an option, and deterministic ordering participates in artifacts, equality, formatting, and generated Go behavior.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and closures capture their lexical environment. Single and mutual recursive function groups are supported.
 
 ## Types and values

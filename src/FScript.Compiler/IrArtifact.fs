@@ -175,6 +175,15 @@ module IrArtifact =
         | Lir.UnionCase(typeName, caseName, payload) ->
             writer.WriteString("kind", "union-case"); writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName)
             match payload with Some item -> writer.WritePropertyName("payload"); writeExpression writer item | None -> writer.WriteNull("payload")
+        | Lir.Map entries ->
+            writer.WriteString("kind", "map"); writer.WriteStartArray("entries")
+            for entry in entries do
+                writer.WriteStartObject()
+                match entry with
+                | Lir.KeyValue(key, value) -> writer.WriteString("kind", "key-value"); writer.WritePropertyName("key"); writeExpression writer key; writer.WritePropertyName("value"); writeExpression writer value
+                | Lir.Spread value -> writer.WriteString("kind", "spread"); writer.WritePropertyName("value"); writeExpression writer value
+                writer.WriteEndObject()
+            writer.WriteEndArray()
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -300,6 +309,12 @@ module IrArtifact =
             | "union-case" ->
                 let payload = property "payload" element
                 Lir.UnionCase(stringProperty "typeName" element, stringProperty "caseName" element, if payload.ValueKind = JsonValueKind.Null then None else Some(readExpression payload))
+            | "map" ->
+                Lir.Map((property "entries" element).EnumerateArray() |> Seq.map (fun item ->
+                    match stringProperty "kind" item with
+                    | "key-value" -> Lir.KeyValue(readExpression (property "key" item), readExpression (property "value" item))
+                    | "spread" -> Lir.Spread(readExpression (property "value" item))
+                    | kind -> invalidOp $"Unknown map entry '{kind}'.") |> Seq.toList)
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

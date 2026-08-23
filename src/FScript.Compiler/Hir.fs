@@ -58,6 +58,11 @@ module Hir =
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
         | UnionCase of string * string * Expression option
+        | Map of MapEntry list
+
+    and MapEntry =
+        | KeyValue of Expression * Expression
+        | Spread of Expression
 
     and InterpolationPart =
         | TextPart of string
@@ -167,6 +172,9 @@ module Hir =
             | UnionCase(typeName, caseName, payload) ->
                 lines.Add(typed $"union {typeName}.{caseName}")
                 payload |> Option.iter (expression (indent + 2))
+            | Map entries ->
+                lines.Add(typed "map")
+                entries |> List.iter (function KeyValue(key, value) -> expression (indent + 2) key; expression (indent + 2) value | Spread value -> expression (indent + 2) value)
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
