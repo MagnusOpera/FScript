@@ -109,11 +109,20 @@ type IrArtifactTests() =
               "match { [\"a\"] = 1 } with\n    | { [key] = value; ..tail } -> value\n    | {} -> 0"
               "match {| Name = \"Ada\" |} with\n    | {| Name: string |} -> true\n    | _ -> false"
               "List.length Env.Arguments"
+              "[\"a\"; \"b\"] |> String.concat \",\""
               "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"" ] do
             let bytes = compile source |> _.Lir |> IrArtifact.serialize
             match IrArtifact.deserialize bytes with
             | Ok _ -> ()
             | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``IR artifact serializes lowered pattern plans rather than source patterns`` () =
+        let bytes = compile "match Some (1, 2) with | Some (left, right) -> left + right | None -> 0" |> _.Lir |> IrArtifact.serialize
+        let json = Encoding.UTF8.GetString(bytes)
+        Assert.That(json, Does.Contain("\"plan\""))
+        Assert.That(json, Does.Contain("\"projection\""))
+        Assert.That(json, Does.Not.Contain("\"pattern\""))
 
     [<Test>]
     member _.``IR artifact preserves explicit structural record conversions`` () =

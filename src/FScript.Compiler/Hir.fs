@@ -40,6 +40,7 @@ module Hir =
         | Reference of SymbolId
         | Lambda of SymbolId * string * Type * Expression
         | Apply of Expression * Expression
+        | Pipe of Expression * Expression
         | If of Expression * Expression * Expression
         | Primitive of PrimitiveOperation * Expression list
         | Tuple of Expression list
@@ -173,6 +174,10 @@ module Hir =
                 lines.Add(typed "apply")
                 expression (indent + 2) fn
                 expression (indent + 2) argument
+            | Pipe(value, fn) ->
+                lines.Add(typed "pipe")
+                expression (indent + 2) value
+                expression (indent + 2) fn
             | If(condition, whenTrue, whenFalse) ->
                 lines.Add(typed "if")
                 expression (indent + 2) condition

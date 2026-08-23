@@ -183,3 +183,22 @@ type HirTests() =
         let expression = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
         let program: Lir.Program = { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some expression }
         Assert.That(LirOptimization.optimize program = program, Is.True)
+
+    [<Test>]
+    member _.``LIR lowers patterns into projection and check plans`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "match Some (1, 2) with | Some (left, right) -> left + right | None -> 0"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        let decision =
+            compiled.Lir.Declarations
+            |> List.choose (fun declaration -> match declaration.Value.Node with Lir.DecisionTree(_, cases) -> Some cases | _ -> None)
+            |> List.exactlyOne
+        let first = decision.Head.Plan
+        Assert.That(first.Checks |> List.exists (function Lir.SomeCheck [] -> true | _ -> false), Is.True)
+        Assert.That(first.Checks |> List.exists (function Lir.TupleArityCheck([ Lir.OptionValue ], 2) -> true | _ -> false), Is.True)
+        let projections = first.Bindings |> List.map _.Projection
+        let expected =
+            [ [ Lir.OptionValue; Lir.TupleItem 0 ]
+              [ Lir.OptionValue; Lir.TupleItem 1 ] ]
+        Assert.That((projections = expected), Is.True)

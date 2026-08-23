@@ -115,59 +115,62 @@ module GoBackend =
         | TFun _ -> $"fsruntime.AsClosure({code})"
         | _ -> code
 
-    let rec private patternBindings (pattern: Lir.Pattern) =
-        match pattern.Node with
-        | Lir.Binding(id, _) -> [ id ]
-        | Lir.ConsPattern(head, tail) -> patternBindings head @ patternBindings tail
-        | Lir.TuplePattern items -> List.collect patternBindings items
-        | Lir.RecordPattern fields -> fields |> List.collect (snd >> patternBindings)
-        | Lir.MapPattern(clauses, tail) ->
-            clauses |> List.collect (fun (key, value) -> patternBindings key @ patternBindings value)
-            |> (@) (tail |> Option.map patternBindings |> Option.defaultValue [])
-        | Lir.SomePattern item -> patternBindings item
-        | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindings |> Option.defaultValue []
-        | _ -> []
+    let rec private patternBindingDetails (plan: Lir.PatternPlan) =
+        let direct = List.map (fun (binding: Lir.PatternBinding) -> binding.Id, binding.Type) plan.Bindings
+        let nested =
+            plan.Maps
+            |> List.collect (fun (mapPlan: Lir.MapPlan) ->
+                [ yield! mapPlan.Clauses |> List.collect (fun (clause: Lir.MapClausePlan) -> patternBindingDetails clause.Key @ patternBindingDetails clause.Value)
+                  yield! mapPlan.Tail |> Option.map patternBindingDetails |> Option.defaultValue [] ])
+        direct @ nested
 
-    let rec private patternBindingDetails (pattern: Lir.Pattern) =
-        match pattern.Node with
-        | Lir.Binding(id, _) -> [ id, pattern.Type ]
-        | Lir.ConsPattern(head, tail) -> patternBindingDetails head @ patternBindingDetails tail
-        | Lir.TuplePattern items -> List.collect patternBindingDetails items
-        | Lir.RecordPattern fields -> fields |> List.collect (snd >> patternBindingDetails)
-        | Lir.MapPattern(clauses, tail) ->
-            clauses |> List.collect (fun (key, value) -> patternBindingDetails key @ patternBindingDetails value)
-            |> (@) (tail |> Option.map patternBindingDetails |> Option.defaultValue [])
-        | Lir.SomePattern item -> patternBindingDetails item
-        | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindingDetails |> Option.defaultValue []
-        | _ -> []
+    let private patternBindings (plan: Lir.PatternPlan) = patternBindingDetails plan |> List.map fst |> List.distinct
 
-    let rec private emitPatternDescriptor (pattern: Lir.Pattern) =
+    let private emitProjection (projection: Lir.ProjectionStep list) =
         let quoted value = System.Text.Json.JsonSerializer.Serialize(value)
-        match pattern.Node with
-        | Lir.Wildcard -> "fsruntime.Pattern{Kind: \"wildcard\"}"
-        | Lir.Binding(id, _) -> $"fsruntime.Pattern{{Kind: \"binding\", Symbol: {Lir.symbolNumber id}}}"
-        | Lir.LiteralPattern value -> $"fsruntime.Pattern{{Kind: \"literal\", Literal: {constant value}}}"
-        | Lir.EmptyList -> "fsruntime.Pattern{Kind: \"empty-list\"}"
-        | Lir.NonePattern -> "fsruntime.Pattern{Kind: \"none\"}"
-        | Lir.SomePattern item -> $"fsruntime.Pattern{{Kind: \"some\", Items: []fsruntime.Pattern{{{emitPatternDescriptor item}}}}}"
-        | Lir.ConsPattern(head, tail) -> $"fsruntime.Pattern{{Kind: \"cons\", Items: []fsruntime.Pattern{{{emitPatternDescriptor head}, {emitPatternDescriptor tail}}}}}"
-        | Lir.TuplePattern items ->
-            let values = items |> List.map emitPatternDescriptor |> String.concat ", "
-            $"fsruntime.Pattern{{Kind: \"tuple\", Items: []fsruntime.Pattern{{{values}}}}}"
-        | Lir.RecordPattern fields ->
-            let values = fields |> List.map (fun (name, item) -> $"fsruntime.FieldPattern{{Name: {quoted name}, Pattern: {emitPatternDescriptor item}}}") |> String.concat ", "
-            $"fsruntime.Pattern{{Kind: \"record\", Fields: []fsruntime.FieldPattern{{{values}}}}}"
-        | Lir.MapPattern(clauses, tail) ->
-            let values = clauses |> List.map (fun (key, value) -> $"fsruntime.MapPatternClause{{Key: {emitPatternDescriptor key}, Value: {emitPatternDescriptor value}}}") |> String.concat ", "
-            let tailValue = tail |> Option.map (fun item -> $"fsruntime.PatternPtr({emitPatternDescriptor item})") |> Option.defaultValue "nil"
-            $"fsruntime.Pattern{{Kind: \"map\", Clauses: []fsruntime.MapPatternClause{{{values}}}, Tail: {tailValue}}}"
-        | Lir.UnionPattern(typeName, caseName, payload) ->
-            let payloadValue = payload |> Option.map (fun item -> $"[]fsruntime.Pattern{{{emitPatternDescriptor item}}}") |> Option.defaultValue "nil"
-            $"fsruntime.Pattern{{Kind: \"union\", TypeName: {quoted typeName}, CaseName: {quoted caseName}, Items: {payloadValue}}}"
-        | Lir.TypePattern patternType -> $"fsruntime.Pattern{{Kind: \"type\", TypeName: {quoted (Types.typeToString patternType)}}}"
+        let steps =
+            projection
+            |> List.map (function
+                | Lir.ListHead -> "fsruntime.ProjectionStep{Kind: \"list-head\"}"
+                | Lir.ListTail -> "fsruntime.ProjectionStep{Kind: \"list-tail\"}"
+                | Lir.TupleItem index -> $"fsruntime.ProjectionStep{{Kind: \"tuple-item\", Index: {index}}}"
+                | Lir.RecordField name -> $"fsruntime.ProjectionStep{{Kind: \"record-field\", Name: {quoted name}}}"
+                | Lir.OptionValue -> "fsruntime.ProjectionStep{Kind: \"option-value\"}"
+                | Lir.UnionPayload -> "fsruntime.ProjectionStep{Kind: \"union-payload\"}")
+            |> String.concat ", "
+        $"[]fsruntime.ProjectionStep{{{steps}}}"
 
-    let private emitPatternBindings bindingsName (pattern: Lir.Pattern) =
-        patternBindingDetails pattern
+    let private emitPatternCheck check =
+        let quoted value = System.Text.Json.JsonSerializer.Serialize(value)
+        match check with
+        | Lir.LiteralCheck(projection, value) -> $"fsruntime.PatternCheck{{Kind: \"literal\", Projection: {emitProjection projection}, Literal: {constant value}}}"
+        | Lir.EmptyListCheck projection -> $"fsruntime.PatternCheck{{Kind: \"empty-list\", Projection: {emitProjection projection}}}"
+        | Lir.NonEmptyListCheck projection -> $"fsruntime.PatternCheck{{Kind: \"non-empty-list\", Projection: {emitProjection projection}}}"
+        | Lir.TupleArityCheck(projection, arity) -> $"fsruntime.PatternCheck{{Kind: \"tuple-arity\", Projection: {emitProjection projection}, Arity: {arity}}}"
+        | Lir.RecordFieldCheck(projection, name) -> $"fsruntime.PatternCheck{{Kind: \"record-field\", Projection: {emitProjection projection}, Name: {quoted name}}}"
+        | Lir.SomeCheck projection -> $"fsruntime.PatternCheck{{Kind: \"some\", Projection: {emitProjection projection}}}"
+        | Lir.NoneCheck projection -> $"fsruntime.PatternCheck{{Kind: \"none\", Projection: {emitProjection projection}}}"
+        | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) ->
+            $"fsruntime.PatternCheck{{Kind: \"union-case\", Projection: {emitProjection projection}, TypeName: {quoted typeName}, CaseName: {quoted caseName}, HasPayload: {hasPayload.ToString().ToLowerInvariant()}}}"
+        | Lir.TypeCheck(projection, patternType) -> $"fsruntime.PatternCheck{{Kind: \"type\", Projection: {emitProjection projection}, TypeName: {quoted (Types.typeToString patternType)}}}"
+
+    let rec private emitPatternPlan (plan: Lir.PatternPlan) =
+        let checks = plan.Checks |> List.map emitPatternCheck |> String.concat ", "
+        let bindings =
+            plan.Bindings
+            |> List.map (fun binding -> $"fsruntime.PatternBindingPlan{{Symbol: {Lir.symbolNumber binding.Id}, Projection: {emitProjection binding.Projection}}}")
+            |> String.concat ", "
+        let maps =
+            plan.Maps
+            |> List.map (fun mapPlan ->
+                let clauses = mapPlan.Clauses |> List.map (fun clause -> $"fsruntime.MapPatternClausePlan{{Key: {emitPatternPlan clause.Key}, Value: {emitPatternPlan clause.Value}}}") |> String.concat ", "
+                let tail = mapPlan.Tail |> Option.map (fun item -> $"fsruntime.PatternPlanPtr({emitPatternPlan item})") |> Option.defaultValue "nil"
+                $"fsruntime.MapPatternPlan{{Projection: {emitProjection mapPlan.Projection}, Clauses: []fsruntime.MapPatternClausePlan{{{clauses}}}, Tail: {tail}, RequireEmptyRemainder: {mapPlan.RequireEmptyRemainder.ToString().ToLowerInvariant()}}}")
+            |> String.concat ", "
+        $"fsruntime.PatternPlan{{Checks: []fsruntime.PatternCheck{{{checks}}}, Bindings: []fsruntime.PatternBindingPlan{{{bindings}}}, Maps: []fsruntime.MapPatternPlan{{{maps}}}}}"
+
+    let private emitPatternBindings bindingsName (plan: Lir.PatternPlan) =
+        patternBindingDetails plan
         |> List.distinctBy fst
         |> List.map (fun (id, bindingType) ->
             let name = identifier "match" id
@@ -242,6 +245,12 @@ module GoBackend =
         | Lir.CallClosure(fn, argument) ->
             match emitExpression environment fn, emitExpression environment argument with
             | Ok fnCode, Ok argumentCode -> Ok(cast expression.Type $"fsruntime.Call({fnCode}, {argumentCode})")
+            | Error error, _ | _, Error error -> Error error
+        | Lir.PipeClosure(argument, fn) ->
+            match emitExpression environment argument, emitExpression environment fn with
+            | Ok argumentCode, Ok fnCode ->
+                let callCode = cast expression.Type "fsruntime.Call(pipelineFunction, pipelineArgument)"
+                Ok $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent argumentCode}\n\tpipelineFunction := {indent fnCode}\n\treturn {callCode}\n}}()"
             | Error error, _ | _, Error error -> Error error
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match emitExpression environment condition, emitExpression environment whenTrue, emitExpression environment whenFalse with
@@ -332,15 +341,15 @@ module GoBackend =
                 let mutable failure = None
                 let clauses = StringBuilder()
                 for caseIndex, case in cases |> List.indexed do
-                    let bindings = patternBindings case.Pattern
+                    let bindings = patternBindings case.Plan
                     let caseEnvironment = bindings |> List.fold (fun env id -> Map.add id (identifier "match" id) env) environment
                     match case.Guard |> Option.map (emitExpression caseEnvironment) |> Option.defaultValue (Ok "true"), emitExpression caseEnvironment case.Body with
                     | Ok guardCode, Ok bodyCode ->
-                        let descriptor = emitPatternDescriptor case.Pattern
+                        let descriptor = emitPatternPlan case.Plan
                         let bindingsName = $"patternBindings{caseIndex}"
                         let matchedName = $"patternMatched{caseIndex}"
-                        let assignments = emitPatternBindings bindingsName case.Pattern
-                        clauses.Append($"\t{bindingsName}, {matchedName} := fsruntime.MatchPattern(matchValue, {descriptor})\n\t_ = {bindingsName}\n\tif {matchedName} {{\n") |> ignore
+                        let assignments = emitPatternBindings bindingsName case.Plan
+                        clauses.Append($"\t{bindingsName}, {matchedName} := fsruntime.MatchPatternPlan(matchValue, {descriptor})\n\t_ = {bindingsName}\n\tif {matchedName} {{\n") |> ignore
                         assignments |> List.iter (fun assignment -> clauses.Append("\t\t").Append(assignment.Replace("; ", "\n\t\t")).Append("\n") |> ignore)
                         clauses.Append($"\t\tif {guardCode} {{\n\t\t\treturn {indent (indent (indent bodyCode))}\n\t\t}}\n\t}}\n") |> ignore
                     | Error error, _ | _, Error error -> failure <- Some error
@@ -662,7 +671,7 @@ func Environment() map[string]any {
             | Lir.Load id -> Set.singleton id
             | Lir.MakeClosure(_, captures) -> Set.ofList captures
             | Lir.Fail body | Lir.FieldGet(body, _) | Lir.SomeValue body -> references body
-            | Lir.CallClosure(left, right) | Lir.Append(left, right) | Lir.Cons(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> Set.union (references left) (references right)
+            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Append(left, right) | Lir.Cons(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> Set.union (references left) (references right)
             | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values
             | Lir.Record fields -> fields |> List.map (snd >> references) |> Set.unionMany

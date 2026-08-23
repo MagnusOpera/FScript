@@ -13,6 +13,7 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 - HIR reuses those resolved IDs unchanged for source symbols even when type and value declarations are interleaved; compiler-synthesized temporaries and constructor payload parameters occupy IDs above the resolved frontend range.
 - Top-level statements execute in source order. Every non-final expression must have type `unit`; the final expression is the program result.
 - LIR expression children execute strictly from left to right and stop at the first failure; later arguments, aggregate fields, interpolation parts, map entries, and operands are not evaluated after that failure.
+- Pipeline application retains its distinct value-then-function evaluation order through resolved inference, HIR, LIR, interpretation, serialization, and Go generation; it is not rewritten into ordinary function-first application.
 - Compiled top-level expressions execute exactly once in source order even when interleaved with declarations. Top-level pattern bindings evaluate their scrutinee once, fail before later statements when unmatched, and expose all bound names to subsequent statements.
 
 The first aggregate compiler slice preserves tuple field order, record field names, option presence, list element order, list cons/append behavior, and recursively structural equality through HIR, serialized LIR, interpretation, and Go generation.
@@ -42,7 +43,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 
 - Conditionals and match guards require Boolean values and evaluate only the selected branch.
 - Match clauses are tried in source order. A guard runs only after its pattern binds successfully. Failure to find a clause is a runtime error.
-- Generated Go evaluates each serialized LIR pattern plan through one runtime matcher; the source emitter does not independently expand FScript pattern rules.
+- HIR patterns lower into LIR projection/check/binding/map-consumption plans. LIR consumers execute that plan vocabulary and never receive source-shaped pattern nodes; generated Go evaluates each serialized plan through one runtime matcher.
 - Patterns cover literals, variables, wildcards, lists, tuples, records, ordered maps, options, union cases, and type-reference tests. Let-pattern failure is a runtime error.
 - Compiled map patterns consume entries deterministically in map order, merge repeated bindings only when structurally equal, and bind an optional tail to the remaining ordered map. Compiled type-reference patterns use resolved types rather than source text lookup.
 - Record updates evaluate the base once and then updates in source order. Ranges, loops, interpolation, indexing, raise, append, and cons preserve the evaluator's existing evaluation order and failures.

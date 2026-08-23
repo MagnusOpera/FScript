@@ -121,6 +121,7 @@ type ConformanceTests() =
     [<TestCase("(Option.defaultValue 7 None, Option.defaultWith (fun _ -> 8) None, Option.isNone None, Option.isSome (Some 1), Option.map (fun value -> value + 1) (Some 1))")>]
     [<TestCase("(Map.count Map.empty, Map.tryGet \"a\" (Map.ofList [(\"a\", 1)]), Map.containsKey \"a\" (Map.ofList [(\"a\", 1)]), Map.add \"b\" 2 (Map.ofList [(\"a\", 1)]), Map.fold (fun state key value -> state + value) 0 (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.filter (fun key value -> value > 1) (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.choose (fun key value -> if value > 1 then Some value else None) (Map.ofList [(\"a\", 1); (\"b\", 2)]), Map.map (fun value -> value + 1) (Map.ofList [(\"a\", 1)]), Map.iter (fun key value -> ignore value) (Map.ofList [(\"a\", 1)]), Map.remove \"a\" (Map.ofList [(\"a\", 1); (\"b\", 2)]))")>]
     [<TestCase("Map.ofList [(\"b\", 2); (\"a\", 1)]")>]
+    [<TestCase("[\"a\"; \"b\"] |> String.concat \",\"")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with

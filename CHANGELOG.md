@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Lowered source patterns into backend-neutral executable LIR projection and decision plans.
+
+- Preserved value-first pipeline evaluation through resolved inference and compiled backends.
+
 - Unified legacy and resolved inference through one semantic inference result.
 
 - Preserved canonical ordered-map key order across `Map.ofList` and `Map.add` in LIR and Go.

@@ -126,6 +126,15 @@ module HirLowering =
                     ({ Type = targetType; Span = loweredArgument.Span; Node = Hir.RecordConvert(loweredArgument, targetType) }: Hir.Expression))
                 |> Option.defaultValue loweredArgument
             make (Hir.Apply(lower fn, argumentWithEvidence))
+        | TypeInfer.ResolvedPipe(argument, fn) ->
+            let loweredArgument = lower argument
+            let argumentWithEvidence =
+                expression.RecordCoercion
+                |> Option.map (fun evidence ->
+                    let targetType = representationType state evidence.TargetType
+                    ({ Type = targetType; Span = loweredArgument.Span; Node = Hir.RecordConvert(loweredArgument, targetType) }: Hir.Expression))
+                |> Option.defaultValue loweredArgument
+            make (Hir.Pipe(argumentWithEvidence, lower fn))
         | TypeInfer.ResolvedIf(condition, whenTrue, whenFalse) -> make (Hir.If(lower condition, lower whenTrue, lower whenFalse))
         | TypeInfer.ResolvedPrimitive(operation, arguments) -> make (Hir.Primitive(resolvedOperation operation, List.map lower arguments))
         | TypeInfer.ResolvedTuple items -> make (Hir.Tuple(List.map lower items))

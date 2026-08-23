@@ -63,7 +63,7 @@ module HirValidation =
                 | Hir.Constant _ -> Set.empty
                 | Hir.Reference id -> Set.singleton id
                 | Hir.Lambda(parameter, _, _, body) -> references body |> Set.remove parameter
-                | Hir.Apply(fn, argument) -> Set.union (references fn) (references argument)
+                | Hir.Apply(fn, argument) | Hir.Pipe(argument, fn) -> Set.union (references fn) (references argument)
                 | Hir.If(condition, whenTrue, whenFalse) ->
                     Set.unionMany [ references condition; references whenTrue; references whenFalse ]
                 | Hir.Primitive(_, arguments) -> arguments |> List.map references |> Set.unionMany

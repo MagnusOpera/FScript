@@ -105,38 +105,57 @@ module IrArtifact =
         | Lir.Unit -> () | Lir.Int value -> writer.WriteNumber("intValue", value) | Lir.Float value -> writer.WriteNumber("floatValue", value)
         | Lir.Bool value -> writer.WriteBoolean("boolValue", value) | Lir.String value -> writer.WriteString("stringValue", value)
 
-    let rec private writePattern (writer: Utf8JsonWriter) (value: Lir.Pattern) =
-        writer.WriteStartObject(); writer.WritePropertyName("type"); writeType writer value.Type
-        writer.WritePropertyName("span"); writeSpan writer value.Span
-        match value.Node with
-        | Lir.Wildcard -> writer.WriteString("kind", "wildcard")
-        | Lir.Binding(id, name) -> writer.WriteString("kind", "binding"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
-        | Lir.LiteralPattern constant -> writer.WriteString("kind", "literal"); writeConstantValue writer constant
-        | Lir.EmptyList -> writer.WriteString("kind", "empty-list")
-        | Lir.NonePattern -> writer.WriteString("kind", "none")
-        | Lir.SomePattern item -> writer.WriteString("kind", "some"); writer.WritePropertyName("item"); writePattern writer item
-        | Lir.ConsPattern(head, tail) ->
-            writer.WriteString("kind", "cons"); writer.WritePropertyName("head"); writePattern writer head
-            writer.WritePropertyName("tail"); writePattern writer tail
-        | Lir.TuplePattern items ->
-            writer.WriteString("kind", "tuple"); writer.WriteStartArray("items"); items |> List.iter (writePattern writer); writer.WriteEndArray()
-        | Lir.RecordPattern fields ->
-            writer.WriteString("kind", "record"); writer.WriteStartArray("fields")
-            for name, item in fields do
-                writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("pattern"); writePattern writer item; writer.WriteEndObject()
-            writer.WriteEndArray()
-        | Lir.MapPattern(clauses, tail) ->
-            writer.WriteString("kind", "map"); writer.WriteStartArray("clauses")
-            for key, item in clauses do
-                writer.WriteStartObject(); writer.WritePropertyName("key"); writePattern writer key
-                writer.WritePropertyName("value"); writePattern writer item; writer.WriteEndObject()
-            writer.WriteEndArray()
-            match tail with Some item -> writer.WritePropertyName("tail"); writePattern writer item | None -> writer.WriteNull("tail")
-        | Lir.UnionPattern(typeName, caseName, payload) ->
-            writer.WriteString("kind", "union"); writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName)
-            match payload with Some item -> writer.WritePropertyName("payload"); writePattern writer item | None -> writer.WriteNull("payload")
-        | Lir.TypePattern patternType -> writer.WriteString("kind", "type"); writer.WritePropertyName("patternType"); writeType writer patternType
+    let private writeProjection (writer: Utf8JsonWriter) (name: string) (steps: Lir.ProjectionStep list) =
+        writer.WriteStartArray(name)
+        for step in steps do
+            writer.WriteStartObject()
+            match step with
+            | Lir.ListHead -> writer.WriteString("kind", "list-head")
+            | Lir.ListTail -> writer.WriteString("kind", "list-tail")
+            | Lir.TupleItem index -> writer.WriteString("kind", "tuple-item"); writer.WriteNumber("index", index)
+            | Lir.RecordField name -> writer.WriteString("kind", "record-field"); writer.WriteString("name", name)
+            | Lir.OptionValue -> writer.WriteString("kind", "option-value")
+            | Lir.UnionPayload -> writer.WriteString("kind", "union-payload")
+            writer.WriteEndObject()
+        writer.WriteEndArray()
+
+    let private writeCheck (writer: Utf8JsonWriter) check =
+        writer.WriteStartObject()
+        match check with
+        | Lir.LiteralCheck(projection, value) -> writer.WriteString("kind", "literal"); writeProjection writer "projection" projection; writeConstantValue writer value
+        | Lir.EmptyListCheck projection -> writer.WriteString("kind", "empty-list"); writeProjection writer "projection" projection
+        | Lir.NonEmptyListCheck projection -> writer.WriteString("kind", "non-empty-list"); writeProjection writer "projection" projection
+        | Lir.TupleArityCheck(projection, arity) -> writer.WriteString("kind", "tuple-arity"); writeProjection writer "projection" projection; writer.WriteNumber("arity", arity)
+        | Lir.RecordFieldCheck(projection, name) -> writer.WriteString("kind", "record-field"); writeProjection writer "projection" projection; writer.WriteString("name", name)
+        | Lir.SomeCheck projection -> writer.WriteString("kind", "some"); writeProjection writer "projection" projection
+        | Lir.NoneCheck projection -> writer.WriteString("kind", "none"); writeProjection writer "projection" projection
+        | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) ->
+            writer.WriteString("kind", "union-case"); writeProjection writer "projection" projection
+            writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName); writer.WriteBoolean("hasPayload", hasPayload)
+        | Lir.TypeCheck(projection, patternType) ->
+            writer.WriteString("kind", "type"); writeProjection writer "projection" projection
+            writer.WritePropertyName("patternType"); writeType writer patternType
         writer.WriteEndObject()
+
+    let rec private writePlan (writer: Utf8JsonWriter) (plan: Lir.PatternPlan) =
+        writer.WriteStartObject(); writer.WritePropertyName("span"); writeSpan writer plan.Span
+        writer.WriteStartArray("checks"); plan.Checks |> List.iter (writeCheck writer); writer.WriteEndArray()
+        writer.WriteStartArray("bindings")
+        for binding in plan.Bindings do
+            writer.WriteStartObject(); writer.WriteNumber("symbol", Lir.symbolNumber binding.Id); writer.WriteString("name", binding.Name)
+            writer.WritePropertyName("type"); writeType writer binding.Type; writeProjection writer "projection" binding.Projection
+            writer.WriteEndObject()
+        writer.WriteEndArray(); writer.WriteStartArray("maps")
+        for mapPlan in plan.Maps do
+            writer.WriteStartObject(); writeProjection writer "projection" mapPlan.Projection
+            writer.WriteBoolean("requireEmptyRemainder", mapPlan.RequireEmptyRemainder); writer.WriteStartArray("clauses")
+            for clause in mapPlan.Clauses do
+                writer.WriteStartObject(); writer.WritePropertyName("key"); writePlan writer clause.Key
+                writer.WritePropertyName("value"); writePlan writer clause.Value; writer.WriteEndObject()
+            writer.WriteEndArray()
+            match mapPlan.Tail with Some tail -> writer.WritePropertyName("tail"); writePlan writer tail | None -> writer.WriteNull("tail")
+            writer.WriteEndObject()
+        writer.WriteEndArray(); writer.WriteEndObject()
 
     let rec private writeExpression (writer: Utf8JsonWriter) (value: Lir.Expression) =
         writer.WriteStartObject(); writer.WritePropertyName("type"); writeType writer value.Type
@@ -151,6 +170,9 @@ module IrArtifact =
         | Lir.CallClosure(fn, argument) ->
             writer.WriteString("kind", "call"); writer.WritePropertyName("function"); writeExpression writer fn
             writer.WritePropertyName("argument"); writeExpression writer argument
+        | Lir.PipeClosure(argument, fn) ->
+            writer.WriteString("kind", "pipe-call"); writer.WritePropertyName("argument"); writeExpression writer argument
+            writer.WritePropertyName("function"); writeExpression writer fn
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             writer.WriteString("kind", "branch"); writer.WritePropertyName("condition"); writeExpression writer condition
             writer.WritePropertyName("whenTrue"); writeExpression writer whenTrue; writer.WritePropertyName("whenFalse"); writeExpression writer whenFalse
@@ -194,7 +216,7 @@ module IrArtifact =
             writer.WriteString("kind", "decision-tree"); writer.WritePropertyName("target"); writeExpression writer target
             writer.WriteStartArray("cases")
             for case in cases do
-                writer.WriteStartObject(); writer.WritePropertyName("pattern"); writePattern writer case.Pattern
+                writer.WriteStartObject(); writer.WritePropertyName("plan"); writePlan writer case.Plan
                 match case.Guard with Some guard -> writer.WritePropertyName("guard"); writeExpression writer guard | None -> writer.WriteNull("guard")
                 writer.WritePropertyName("body"); writeExpression writer case.Body; writer.WritePropertyName("span"); writeSpan writer case.Span
                 writer.WriteEndObject()
@@ -347,28 +369,58 @@ module IrArtifact =
         | "string" -> Lir.String(stringProperty "stringValue" element)
         | value -> invalidOp $"Unknown constant '{value}'."
 
-    let rec private readPattern (element: JsonElement) : Lir.Pattern =
-        let node =
-            match stringProperty "kind" element with
-            | "wildcard" -> Lir.Wildcard
-            | "binding" -> Lir.Binding(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element)
-            | "literal" -> Lir.LiteralPattern(readConstant element)
-            | "empty-list" -> Lir.EmptyList
-            | "none" -> Lir.NonePattern
-            | "some" -> Lir.SomePattern(readPattern (property "item" element))
-            | "cons" -> Lir.ConsPattern(readPattern (property "head" element), readPattern (property "tail" element))
-            | "tuple" -> Lir.TuplePattern((property "items" element).EnumerateArray() |> Seq.map readPattern |> Seq.toList)
-            | "record" -> Lir.RecordPattern((property "fields" element).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readPattern (property "pattern" field)) |> Seq.toList)
-            | "map" ->
-                let clauses = (property "clauses" element).EnumerateArray() |> Seq.map (fun clause -> readPattern (property "key" clause), readPattern (property "value" clause)) |> Seq.toList
-                let tail = property "tail" element
-                Lir.MapPattern(clauses, if tail.ValueKind = JsonValueKind.Null then None else Some(readPattern tail))
-            | "union" ->
-                let payload = property "payload" element
-                Lir.UnionPattern(stringProperty "typeName" element, stringProperty "caseName" element, if payload.ValueKind = JsonValueKind.Null then None else Some(readPattern payload))
-            | "type" -> Lir.TypePattern(readType (property "patternType" element))
-            | kind -> invalidOp $"Unknown LIR pattern kind '{kind}'."
-        { Type = readType (property "type" element); Span = readSpan (property "span" element); Node = node }
+    let private readProjection (element: JsonElement) name =
+        (property name element).EnumerateArray()
+        |> Seq.map (fun step ->
+            match stringProperty "kind" step with
+            | "list-head" -> Lir.ListHead
+            | "list-tail" -> Lir.ListTail
+            | "tuple-item" -> Lir.TupleItem((property "index" step).GetInt32())
+            | "record-field" -> Lir.RecordField(stringProperty "name" step)
+            | "option-value" -> Lir.OptionValue
+            | "union-payload" -> Lir.UnionPayload
+            | kind -> invalidOp $"Unknown LIR projection step '{kind}'.")
+        |> Seq.toList
+
+    let private readCheck (element: JsonElement) =
+        let projection = readProjection element "projection"
+        match stringProperty "kind" element with
+        | "literal" -> Lir.LiteralCheck(projection, readConstant element)
+        | "empty-list" -> Lir.EmptyListCheck projection
+        | "non-empty-list" -> Lir.NonEmptyListCheck projection
+        | "tuple-arity" -> Lir.TupleArityCheck(projection, (property "arity" element).GetInt32())
+        | "record-field" -> Lir.RecordFieldCheck(projection, stringProperty "name" element)
+        | "some" -> Lir.SomeCheck projection
+        | "none" -> Lir.NoneCheck projection
+        | "union-case" -> Lir.UnionCaseCheck(projection, stringProperty "typeName" element, stringProperty "caseName" element, (property "hasPayload" element).GetBoolean())
+        | "type" -> Lir.TypeCheck(projection, readType (property "patternType" element))
+        | kind -> invalidOp $"Unknown LIR pattern-plan check '{kind}'."
+
+    let rec private readPlan (element: JsonElement) : Lir.PatternPlan =
+        let bindings =
+            (property "bindings" element).EnumerateArray()
+            |> Seq.map (fun binding ->
+                ({ Id = Lir.SymbolId((property "symbol" binding).GetInt32())
+                   Name = stringProperty "name" binding
+                   Type = readType (property "type" binding)
+                   Projection = readProjection binding "projection" }: Lir.PatternBinding))
+            |> Seq.toList
+        let maps =
+            (property "maps" element).EnumerateArray()
+            |> Seq.map (fun mapPlan ->
+                let tail = property "tail" mapPlan
+                ({ Projection = readProjection mapPlan "projection"
+                   Clauses =
+                    (property "clauses" mapPlan).EnumerateArray()
+                    |> Seq.map (fun clause -> ({ Key = readPlan (property "key" clause); Value = readPlan (property "value" clause) }: Lir.MapClausePlan))
+                    |> Seq.toList
+                   Tail = if tail.ValueKind = JsonValueKind.Null then None else Some(readPlan tail)
+                   RequireEmptyRemainder = (property "requireEmptyRemainder" mapPlan).GetBoolean() }: Lir.MapPlan))
+            |> Seq.toList
+        { Span = readSpan (property "span" element)
+          Checks = (property "checks" element).EnumerateArray() |> Seq.map readCheck |> Seq.toList
+          Bindings = bindings
+          Maps = maps }
 
     let rec private readExpression (element: JsonElement) : Lir.Expression =
         let expressionType = readType (property "type" element)
@@ -382,6 +434,7 @@ module IrArtifact =
                     Lir.FunctionId((property "function" element).GetInt32()),
                     (property "captures" element).EnumerateArray() |> Seq.map (fun item -> Lir.SymbolId(item.GetInt32())) |> Seq.toList)
             | "call" -> Lir.CallClosure(readExpression (property "function" element), readExpression (property "argument" element))
+            | "pipe-call" -> Lir.PipeClosure(readExpression (property "argument" element), readExpression (property "function" element))
             | "branch" -> Lir.Branch(readExpression (property "condition" element), readExpression (property "whenTrue" element), readExpression (property "whenFalse" element))
             | "operation" -> Lir.Operation(readOperation (stringProperty "operation" element), (property "arguments" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
             | "tuple" -> Lir.Tuple((property "items" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
@@ -404,7 +457,7 @@ module IrArtifact =
             | "decision-tree" ->
                 let cases = (property "cases" element).EnumerateArray() |> Seq.map (fun item ->
                     let guard = property "guard" item
-                    ({ Pattern = readPattern (property "pattern" item)
+                    ({ Plan = readPlan (property "plan" item)
                        Guard = if guard.ValueKind = JsonValueKind.Null then None else Some(readExpression guard)
                        Body = readExpression (property "body" item)
                        Span = readSpan (property "span" item) }: Lir.DecisionCase)) |> Seq.toList

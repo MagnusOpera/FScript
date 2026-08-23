@@ -29,6 +29,7 @@ module Lir =
         | Load of SymbolId
         | MakeClosure of FunctionId * SymbolId list
         | CallClosure of Expression * Expression
+        | PipeClosure of Expression * Expression
         | Branch of Expression * Expression * Expression
         | Operation of Operation * Expression list
         | Tuple of Expression list
@@ -65,27 +66,49 @@ module Lir =
         | TextPart of string
         | ValuePart of Expression
 
-    and Pattern =
-        { Type: Type
-          Span: Span
-          Node: PatternNode }
+    and ProjectionStep =
+        | ListHead
+        | ListTail
+        | TupleItem of int
+        | RecordField of string
+        | OptionValue
+        | UnionPayload
 
-    and PatternNode =
-        | Wildcard
-        | Binding of SymbolId * string
-        | LiteralPattern of Constant
-        | EmptyList
-        | ConsPattern of Pattern * Pattern
-        | TuplePattern of Pattern list
-        | RecordPattern of (string * Pattern) list
-        | MapPattern of (Pattern * Pattern) list * Pattern option
-        | SomePattern of Pattern
-        | NonePattern
-        | UnionPattern of string * string * Pattern option
-        | TypePattern of Type
+    and PatternCheck =
+        | LiteralCheck of ProjectionStep list * Constant
+        | EmptyListCheck of ProjectionStep list
+        | NonEmptyListCheck of ProjectionStep list
+        | TupleArityCheck of ProjectionStep list * int
+        | RecordFieldCheck of ProjectionStep list * string
+        | SomeCheck of ProjectionStep list
+        | NoneCheck of ProjectionStep list
+        | UnionCaseCheck of ProjectionStep list * string * string * bool
+        | TypeCheck of ProjectionStep list * Type
+
+    and PatternBinding =
+        { Id: SymbolId
+          Name: string
+          Type: Type
+          Projection: ProjectionStep list }
+
+    and PatternPlan =
+        { Span: Span
+          Checks: PatternCheck list
+          Bindings: PatternBinding list
+          Maps: MapPlan list }
+
+    and MapPlan =
+        { Projection: ProjectionStep list
+          Clauses: MapClausePlan list
+          Tail: PatternPlan option
+          RequireEmptyRemainder: bool }
+
+    and MapClausePlan =
+        { Key: PatternPlan
+          Value: PatternPlan }
 
     and DecisionCase =
-        { Pattern: Pattern
+        { Plan: PatternPlan
           Guard: Expression option
           Body: Expression
           Span: Span }
@@ -153,6 +176,7 @@ module Lir =
             | Load id -> add $"load %%{symbolNumber id}"
             | MakeClosure(id, captures) -> add $"make-closure @{functionNumber id} captures={symbols captures}"
             | CallClosure(fn, argument) -> children "call-closure" [ fn; argument ]
+            | PipeClosure(value, fn) -> children "pipe-closure" [ value; fn ]
             | Branch(condition, whenTrue, whenFalse) -> children "branch" [ condition; whenTrue; whenFalse ]
             | Operation(operation, arguments) -> children $"operation {operation}" arguments
             | Tuple items -> children "tuple" items
@@ -221,43 +245,74 @@ module LirLowering =
         | Hir.Unit -> Lir.Unit | Hir.Int value -> Lir.Int value | Hir.Float value -> Lir.Float value
         | Hir.Bool value -> Lir.Bool value | Hir.String value -> Lir.String value
 
-    let rec private pattern (value: Hir.Pattern) : Lir.Pattern =
-        let node =
-            match value.Node with
-            | Hir.Wildcard -> Lir.Wildcard
-            | Hir.Binding(id, name) -> Lir.Binding(symbol id, name)
-            | Hir.LiteralPattern value -> Lir.LiteralPattern(constant value)
-            | Hir.EmptyList -> Lir.EmptyList
-            | Hir.ConsPattern(head, tail) -> Lir.ConsPattern(pattern head, pattern tail)
-            | Hir.TuplePattern items -> Lir.TuplePattern(List.map pattern items)
-            | Hir.RecordPattern fields -> Lir.RecordPattern(fields |> List.map (fun (name, item) -> name, pattern item))
-            | Hir.MapPattern(clauses, tail) -> Lir.MapPattern(clauses |> List.map (fun (key, value) -> pattern key, pattern value), Option.map pattern tail)
-            | Hir.SomePattern item -> Lir.SomePattern(pattern item)
-            | Hir.NonePattern -> Lir.NonePattern
-            | Hir.UnionPattern(typeName, caseName, payload) -> Lir.UnionPattern(typeName, caseName, Option.map pattern payload)
-            | Hir.TypePattern patternType -> Lir.TypePattern patternType
-        { Type = value.Type; Span = value.Span; Node = node }
+    let private appendPlan (left: Lir.PatternPlan) (right: Lir.PatternPlan) : Lir.PatternPlan =
+        { Span = left.Span
+          Checks = left.Checks @ right.Checks
+          Bindings = left.Bindings @ right.Bindings
+          Maps = left.Maps @ right.Maps }
 
-    let rec private patternBindings (value: Lir.Pattern) =
+    let rec private patternPlan projection (value: Hir.Pattern) : Lir.PatternPlan =
+        let empty () : Lir.PatternPlan = { Span = value.Span; Checks = []; Bindings = []; Maps = [] }
+        let combine plans = plans |> List.fold appendPlan (empty ())
         match value.Node with
-        | Lir.Binding(id, _) -> Set.singleton id
-        | Lir.ConsPattern(head, tail) -> Set.union (patternBindings head) (patternBindings tail)
-        | Lir.TuplePattern items -> items |> List.map patternBindings |> Set.unionMany
-        | Lir.RecordPattern fields -> fields |> List.map (snd >> patternBindings) |> Set.unionMany
-        | Lir.MapPattern(clauses, tail) ->
-            [ yield! clauses |> List.collect (fun (key, value) -> [ patternBindings key; patternBindings value ])
-              tail |> Option.map patternBindings |> Option.defaultValue Set.empty ]
-            |> Set.unionMany
-        | Lir.SomePattern item -> patternBindings item
-        | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindings |> Option.defaultValue Set.empty
-        | _ -> Set.empty
+        | Hir.Wildcard -> empty ()
+        | Hir.Binding(id, name) ->
+            { empty () with
+                Bindings = [ { Id = symbol id; Name = name; Type = value.Type; Projection = projection } ] }
+        | Hir.LiteralPattern item -> { empty () with Checks = [ Lir.LiteralCheck(projection, constant item) ] }
+        | Hir.EmptyList -> { empty () with Checks = [ Lir.EmptyListCheck projection ] }
+        | Hir.ConsPattern(head, tail) ->
+            combine
+                [ { empty () with Checks = [ Lir.NonEmptyListCheck projection ] }
+                  patternPlan (projection @ [ Lir.ListHead ]) head
+                  patternPlan (projection @ [ Lir.ListTail ]) tail ]
+        | Hir.TuplePattern items ->
+            { empty () with Checks = [ Lir.TupleArityCheck(projection, items.Length) ] }
+            :: (items |> List.mapi (fun index item -> patternPlan (projection @ [ Lir.TupleItem index ]) item))
+            |> combine
+        | Hir.RecordPattern fields ->
+            fields
+            |> List.collect (fun (name, item) ->
+                [ { empty () with Checks = [ Lir.RecordFieldCheck(projection, name) ] }
+                  patternPlan (projection @ [ Lir.RecordField name ]) item ])
+            |> combine
+        | Hir.MapPattern(clauses, tail) ->
+            let mapPlan : Lir.MapPlan =
+                { Projection = projection
+                  Clauses =
+                    clauses
+                    |> List.map (fun (key, item) ->
+                        { Key = patternPlan [] key
+                          Value = patternPlan [] item })
+                  Tail = Option.map (patternPlan []) tail
+                  RequireEmptyRemainder = clauses.IsEmpty && tail.IsNone }
+            { empty () with Maps = [ mapPlan ] }
+        | Hir.SomePattern item ->
+            combine
+                [ { empty () with Checks = [ Lir.SomeCheck projection ] }
+                  patternPlan (projection @ [ Lir.OptionValue ]) item ]
+        | Hir.NonePattern -> { empty () with Checks = [ Lir.NoneCheck projection ] }
+        | Hir.UnionPattern(typeName, caseName, payload) ->
+            combine
+                [ { empty () with Checks = [ Lir.UnionCaseCheck(projection, typeName, caseName, payload.IsSome) ] }
+                  yield! payload |> Option.map (patternPlan (projection @ [ Lir.UnionPayload ])) |> Option.toList ]
+        | Hir.TypePattern patternType -> { empty () with Checks = [ Lir.TypeCheck(projection, patternType) ] }
+
+    let rec private patternBindings (plan: Lir.PatternPlan) =
+        [ plan.Bindings |> List.map _.Id |> Set.ofList
+          yield!
+            plan.Maps
+            |> List.collect (fun mapPlan ->
+                [ yield! mapPlan.Clauses |> List.collect (fun clause -> [ patternBindings clause.Key; patternBindings clause.Value ])
+                  yield! mapPlan.Tail |> Option.map patternBindings |> Option.toList ]) ]
+        |> Set.unionMany
 
     let rec capturedReferences bound (value: Lir.Expression) =
         let free = capturedReferences bound
         match value.Node with
         | Lir.Load id -> if Set.contains id bound then Set.empty else Set.singleton id
         | Lir.MakeClosure(_, captures) -> Set.difference (Set.ofList captures) bound
-        | Lir.CallClosure(fn, argument) | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
+        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
         | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (free fn) (free argument)
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ free condition; free whenTrue; free whenFalse ] |> Set.unionMany
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map free |> Set.unionMany
@@ -272,7 +327,7 @@ module LirLowering =
         | Lir.DecisionTree(target, cases) ->
             free target
             :: (cases |> List.collect (fun case ->
-                let scope = Set.union bound (patternBindings case.Pattern)
+                let scope = Set.union bound (patternBindings case.Plan)
                 [ yield! case.Guard |> Option.map (capturedReferences scope) |> Option.toList
                   capturedReferences scope case.Body ]))
             |> Set.unionMany
@@ -299,6 +354,7 @@ module LirLowering =
                       Captures = captures; ReturnType = loweredBody.Type; Span = value.Span; Body = loweredBody }
                 Lir.MakeClosure(functionId, captures)
             | Hir.Apply(fn, argument) -> Lir.CallClosure(expression state fn, expression state argument)
+            | Hir.Pipe(argument, fn) -> Lir.PipeClosure(expression state argument, expression state fn)
             | Hir.If(condition, whenTrue, whenFalse) -> Lir.Branch(expression state condition, expression state whenTrue, expression state whenFalse)
             | Hir.Primitive(op, arguments) -> Lir.Operation(operation op, arguments |> List.map (expression state))
             | Hir.Tuple items -> Lir.Tuple(items |> List.map (expression state))
@@ -315,7 +371,7 @@ module LirLowering =
             | Hir.Fail value -> Lir.Fail(expression state value)
             | Hir.Match(target, cases) ->
                 Lir.DecisionTree(expression state target, cases |> List.map (fun case ->
-                    ({ Pattern = pattern case.Pattern
+                    ({ Plan = patternPlan [] case.Pattern
                        Guard = Option.map (expression state) case.Guard
                        Body = expression state case.Body
                        Span = case.Span }: Lir.DecisionCase)))
@@ -421,51 +477,52 @@ module LirValidation =
             program.Declarations |> List.iter (fun declaration ->
                 if declaration.IsExported <> declaration.Export.IsSome || (declaration.Export |> Option.exists (fun export -> export.Name <> declaration.Name || not (validSpan export.Span))) then
                     report "FSL2015" "LIR export metadata is inconsistent." declaration.Span)
-            let rec checkPattern expected (pattern: Lir.Pattern) =
-                checkSpan pattern.Span
-                if not (compatible expected pattern.Type) then report "FSL2003" "LIR pattern type does not match its scrutinee." pattern.Span
-                match pattern.Node with
-                | Lir.LiteralPattern value when not (compatible pattern.Type (literalType value)) -> report "FSL2003" "LIR literal pattern has an inconsistent type." pattern.Span
-                | Lir.ConsPattern(head, tail) ->
-                    match pattern.Type with
-                    | TList item -> checkPattern item head; checkPattern pattern.Type tail
-                    | _ -> report "FSL2003" "LIR cons pattern requires a list." pattern.Span
-                | Lir.TuplePattern items ->
-                    match pattern.Type with
-                    | TTuple types when types.Length = items.Length -> List.iter2 checkPattern types items
-                    | _ -> report "FSL2003" "LIR tuple pattern shape is inconsistent." pattern.Span
-                | Lir.RecordPattern fields ->
-                    match resolve pattern.Type with
-                    | TRecord types -> fields |> List.iter (fun (name, item) -> match Map.tryFind name types with Some itemType -> checkPattern itemType item | None -> report "FSL2003" $"Unknown LIR record-pattern field '{name}'." item.Span)
-                    | _ -> report "FSL2003" "LIR record pattern requires a record." pattern.Span
-                | Lir.SomePattern item -> match pattern.Type with TOption itemType -> checkPattern itemType item | _ -> report "FSL2003" "LIR some pattern requires an option." pattern.Span
-                | Lir.EmptyList -> match pattern.Type with TList _ -> () | _ -> report "FSL2003" "LIR empty-list pattern requires a list." pattern.Span
-                | Lir.NonePattern -> match pattern.Type with TOption _ -> () | _ -> report "FSL2003" "LIR none pattern requires an option." pattern.Span
-                | Lir.MapPattern(clauses, tail) ->
-                    match pattern.Type with
-                    | TMap(keyType, valueType) -> clauses |> List.iter (fun (key, value) -> checkPattern keyType key; checkPattern valueType value); tail |> Option.iter (checkPattern pattern.Type)
-                    | _ -> report "FSL2003" "LIR map pattern requires a map." pattern.Span
-                | Lir.UnionPattern(typeName, caseName, payload) ->
-                    match resolve pattern.Type with
-                    | TUnion(actual, cases) when actual = typeName ->
-                        match Map.tryFind caseName cases, payload with
-                        | Some(Some payloadType), Some value -> checkPattern payloadType value
-                        | Some None, None -> ()
-                        | _ -> report "FSL2003" "LIR union-pattern payload is inconsistent." pattern.Span
-                    | _ -> report "FSL2003" "LIR union pattern has an inconsistent declared type." pattern.Span
-                | _ -> ()
-            let rec patternBindings (pattern: Lir.Pattern) =
-                match pattern.Node with
-                | Lir.Binding(id, _) -> Set.singleton id
-                | Lir.ConsPattern(head, tail) -> Set.union (patternBindings head) (patternBindings tail)
-                | Lir.TuplePattern items -> items |> List.map patternBindings |> Set.unionMany
-                | Lir.RecordPattern fields -> fields |> List.map (snd >> patternBindings) |> Set.unionMany
-                | Lir.MapPattern(clauses, tail) ->
-                    [ yield! clauses |> List.collect (fun (key, value) -> [ patternBindings key; patternBindings value ])
-                      match tail with Some value -> patternBindings value | None -> Set.empty ] |> Set.unionMany
-                | Lir.SomePattern value -> patternBindings value
-                | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindings |> Option.defaultValue Set.empty
-                | _ -> Set.empty
+            let rec projectionType current = function
+                | [] -> Some current
+                | step :: rest ->
+                    let next =
+                        match step, resolve current with
+                        | Lir.ListHead, TList item -> Some item
+                        | Lir.ListTail, TList _ -> Some current
+                        | Lir.TupleItem index, TTuple items when index >= 0 && index < items.Length -> Some items.[index]
+                        | Lir.RecordField name, TRecord fields -> Map.tryFind name fields
+                        | Lir.OptionValue, TOption item -> Some item
+                        // The preceding union-case check selects the concrete
+                        // payload. Binding/check types validate that selection.
+                        | Lir.UnionPayload, TUnion _ -> Some(TVar -1)
+                        | _ -> None
+                    next |> Option.bind (fun item -> projectionType item rest)
+            let rec checkPlan expected (plan: Lir.PatternPlan) =
+                checkSpan plan.Span
+                let at projection = projectionType expected projection
+                let require projection predicate message =
+                    match at projection with Some value when predicate (resolve value) -> () | _ -> report "FSL2003" message plan.Span
+                for check in plan.Checks do
+                    match check with
+                    | Lir.LiteralCheck(projection, value) -> require projection (compatible (literalType value)) "LIR literal plan has an inconsistent projection type."
+                    | Lir.EmptyListCheck projection | Lir.NonEmptyListCheck projection -> require projection (function TList _ -> true | _ -> false) "LIR list plan requires a list projection."
+                    | Lir.TupleArityCheck(projection, arity) -> require projection (function TTuple items -> items.Length = arity | _ -> false) "LIR tuple plan has an inconsistent arity."
+                    | Lir.RecordFieldCheck(projection, name) -> require projection (function TRecord fields -> Map.containsKey name fields | _ -> false) $"LIR record plan references unknown field '{name}'."
+                    | Lir.SomeCheck projection | Lir.NoneCheck projection -> require projection (function TOption _ -> true | _ -> false) "LIR option plan requires an option projection."
+                    | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) ->
+                        require projection (function TUnion(actual, cases) when actual = typeName -> Map.tryFind caseName cases |> Option.exists (fun payload -> payload.IsSome = hasPayload) | _ -> false) "LIR union plan has inconsistent case metadata."
+                    | Lir.TypeCheck(projection, _) -> require projection (fun _ -> true) "LIR type-test plan has an invalid projection."
+                for binding in plan.Bindings do
+                    require binding.Projection (compatible binding.Type) "LIR pattern binding has an inconsistent projection type."
+                for mapPlan in plan.Maps do
+                    match at mapPlan.Projection |> Option.map resolve with
+                    | Some(TMap(keyType, valueType) as mapType) ->
+                        mapPlan.Clauses |> List.iter (fun clause -> checkPlan keyType clause.Key; checkPlan valueType clause.Value)
+                        mapPlan.Tail |> Option.iter (checkPlan mapType)
+                    | _ -> report "FSL2003" "LIR map plan requires a map projection." plan.Span
+            let rec patternBindings (plan: Lir.PatternPlan) =
+                [ plan.Bindings |> List.map _.Id |> Set.ofList
+                  yield!
+                    plan.Maps
+                    |> List.collect (fun mapPlan ->
+                        [ yield! mapPlan.Clauses |> List.collect (fun clause -> [ patternBindings clause.Key; patternBindings clause.Value ])
+                          yield! mapPlan.Tail |> Option.map patternBindings |> Option.toList ]) ]
+                |> Set.unionMany
             let declared = ids |> Set.ofList
             let rec checkExpression locals (expression: Lir.Expression) =
                 checkSpan expression.Span
@@ -486,6 +543,9 @@ module LirValidation =
                 | Lir.CallClosure(fn, argument) ->
                     check fn; check argument
                     match fn.Type with TFun(parameter, result) when compatible parameter argument.Type && compatible result expression.Type -> () | _ -> report "FSL2006" "LIR closure call signature is inconsistent." expression.Span
+                | Lir.PipeClosure(argument, fn) ->
+                    check argument; check fn
+                    match fn.Type with TFun(parameter, result) when compatible parameter argument.Type && compatible result expression.Type -> () | _ -> report "FSL2006" "LIR pipeline call signature is inconsistent." expression.Span
                 | Lir.Branch(condition, whenTrue, whenFalse) ->
                     check condition; check whenTrue; check whenFalse
                     if not (compatible condition.Type TBool && compatible expression.Type whenTrue.Type && compatible expression.Type whenFalse.Type) then report "FSL2007" "LIR branch types are inconsistent." expression.Span
@@ -517,7 +577,7 @@ module LirValidation =
                 | Lir.Let(id, _, recursive, binding, body) -> let scope = Set.add id locals in checkExpression (if recursive then scope else locals) binding; checkExpression scope body; if not (compatible expression.Type body.Type) then report "FSL2004" "LIR let result type is inconsistent." expression.Span
                 | Lir.LetRecursiveGroup(bindings, body) -> let scope = bindings |> List.fold (fun value (id, _, _, _) -> Set.add id value) locals in bindings |> List.iter (fun (_, _, bindingType, value) -> checkExpression scope value; if not (compatible bindingType value.Type) then report "FSL2006" "LIR recursive binding signature is inconsistent." value.Span); checkExpression scope body; if not (compatible expression.Type body.Type) then report "FSL2004" "LIR recursive group result is inconsistent." expression.Span
                 | Lir.Fail value -> check value
-                | Lir.DecisionTree(target, cases) -> check target; cases |> List.iter (fun case -> let caseLocals = Set.union locals (patternBindings case.Pattern) in checkPattern target.Type case.Pattern; case.Guard |> Option.iter (fun guard -> checkExpression caseLocals guard; if not (compatible guard.Type TBool) then report "FSL2007" "LIR decision guard must be Boolean." guard.Span); checkExpression caseLocals case.Body; if not (compatible expression.Type case.Body.Type) then report "FSL2007" "LIR decision body type is inconsistent." case.Body.Span)
+                | Lir.DecisionTree(target, cases) -> check target; cases |> List.iter (fun case -> let caseLocals = Set.union locals (patternBindings case.Plan) in checkPlan target.Type case.Plan; case.Guard |> Option.iter (fun guard -> checkExpression caseLocals guard; if not (compatible guard.Type TBool) then report "FSL2007" "LIR decision guard must be Boolean." guard.Span); checkExpression caseLocals case.Body; if not (compatible expression.Type case.Body.Type) then report "FSL2007" "LIR decision body type is inconsistent." case.Body.Span)
                 | Lir.Range(first, last) -> check first; check last; if not (compatible first.Type TInt && compatible last.Type TInt && compatible expression.Type (TList TInt)) then report "FSL2004" "LIR range representation is inconsistent." expression.Span
                 | Lir.RecordUpdate(target, fields) -> check target; fields |> List.iter (snd >> check); if not (compatible expression.Type target.Type) then report "FSL2004" "LIR record update representation is inconsistent." expression.Span
                 | Lir.RecordConvert(target, targetType) -> check target; match resolve target.Type, resolve targetType with TRecord _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span

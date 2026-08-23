@@ -196,16 +196,7 @@ module LirInterpreter =
         | "Map.remove", [ key; VMap entries ] -> Ok(VMap(entries |> List.filter (fst >> equal key >> not)))
         | _ -> unsupported ()
 
-    let rec private matchPattern (pattern: Lir.Pattern) value =
-        let combine left right =
-            match left, right with
-            | Some a, Some b ->
-                b |> Map.fold (fun state key item ->
-                    state |> Option.bind (fun env ->
-                        match env |> Map.tryFind key with
-                        | Some existing when not (equal existing item) -> None
-                        | _ -> Some(Map.add key item env))) (Some a)
-            | _ -> None
+    let rec private matchPlan (plan: Lir.PatternPlan) value =
         let rec matchesType expected item =
             match expected, item with
             | TUnit, VUnit | TInt, VInt _ | TFloat, VFloat _ | TBool, VBool _ | TString, VString _ | TTypeToken, VTypeToken _ -> true
@@ -220,39 +211,66 @@ module LirInterpreter =
             | TFun _, (VClosure _ | VIntrinsic _ | VExternal _) -> true
             | TVar _, _ -> true
             | _ -> false
-        match pattern.Node, value with
-        | Lir.Wildcard, _ -> Some Map.empty
-        | Lir.Binding(id, _), item -> Some(Map.ofList [ id, item ])
-        | Lir.LiteralPattern literal, item when equal (constantValue literal) item -> Some Map.empty
-        | Lir.EmptyList, VList [] -> Some Map.empty
-        | Lir.ConsPattern(head, tail), VList(headValue :: tailValues) ->
-            combine (matchPattern head headValue) (matchPattern tail (VList tailValues))
-        | Lir.TuplePattern patterns, VTuple values when patterns.Length = values.Length ->
-            List.zip patterns values |> List.fold (fun state (itemPattern, itemValue) -> combine state (matchPattern itemPattern itemValue)) (Some Map.empty)
-        | Lir.RecordPattern patterns, VRecord values ->
-            patterns |> List.fold (fun state (name, itemPattern) ->
-                combine state (values |> Map.tryFind name |> Option.bind (matchPattern itemPattern))) (Some Map.empty)
-        | Lir.MapPattern(clauses, tailPattern), VMap entries ->
-            let rec matchClauses bindings remaining = function
-                | [] ->
-                    match tailPattern with
-                    | Some tail -> combine (Some bindings) (matchPattern tail (VMap remaining))
-                    | None when not clauses.IsEmpty || remaining.IsEmpty -> Some bindings
-                    | None -> None
-                | (keyPattern, valuePattern) :: rest ->
-                    remaining |> List.indexed |> List.tryPick (fun (index, (key, item)) ->
-                        combine (Some bindings) (matchPattern keyPattern key)
-                        |> Option.bind (fun withKey -> combine (Some withKey) (matchPattern valuePattern item))
-                        |> Option.bind (fun withValue ->
-                            let next = remaining |> List.indexed |> List.choose (fun (position, entry) -> if position = index then None else Some entry)
-                            matchClauses withValue next rest))
-            matchClauses Map.empty entries clauses
-        | Lir.SomePattern itemPattern, VOption(Some item) -> matchPattern itemPattern item
-        | Lir.NonePattern, VOption None -> Some Map.empty
-        | Lir.UnionPattern(typeName, caseName, payloadPattern), VUnion(valueType, valueCase, payload) when typeName = valueType && caseName = valueCase ->
-            match payloadPattern, payload with None, None -> Some Map.empty | Some pattern, Some value -> matchPattern pattern value | _ -> None
-        | Lir.TypePattern expected, item when matchesType expected item -> Some Map.empty
-        | _ -> None
+        let rec project (item: LirValue) (projection: Lir.ProjectionStep list) =
+            match projection with
+            | [] -> Some item
+            | step :: rest ->
+                let next =
+                    match step, item with
+                    | Lir.ListHead, VList(head :: _) -> Some head
+                    | Lir.ListTail, VList(_ :: tail) -> Some(VList tail)
+                    | Lir.TupleItem index, VTuple items when index >= 0 && index < items.Length -> Some items.[index]
+                    | Lir.RecordField name, VRecord fields -> Map.tryFind name fields
+                    | Lir.OptionValue, VOption(Some inner) -> Some inner
+                    | Lir.UnionPayload, VUnion(_, _, Some inner) -> Some inner
+                    | _ -> None
+                next |> Option.bind (fun inner -> project inner rest)
+        let addBinding (bindings: Map<Lir.SymbolId, LirValue>) id item =
+            match Map.tryFind id bindings with
+            | Some existing when not (equal existing item) -> None
+            | _ -> Some(Map.add id item bindings)
+        let rec run (currentPlan: Lir.PatternPlan) (root: LirValue) (bindings: Map<Lir.SymbolId, LirValue>) =
+            if not (currentPlan.Checks |> List.forall (fun item ->
+                // Checks are evaluated against the plan's current root.
+                match item with
+                | Lir.LiteralCheck(projection, literal) -> project root projection |> Option.exists (equal (constantValue literal))
+                | Lir.EmptyListCheck projection -> project root projection |> Option.exists (function VList [] -> true | _ -> false)
+                | Lir.NonEmptyListCheck projection -> project root projection |> Option.exists (function VList(_ :: _) -> true | _ -> false)
+                | Lir.TupleArityCheck(projection, arity) -> project root projection |> Option.exists (function VTuple items -> items.Length = arity | _ -> false)
+                | Lir.RecordFieldCheck(projection, name) -> project root projection |> Option.exists (function VRecord fields -> Map.containsKey name fields | _ -> false)
+                | Lir.SomeCheck projection -> project root projection |> Option.exists (function VOption(Some _) -> true | _ -> false)
+                | Lir.NoneCheck projection -> project root projection |> Option.exists (function VOption None -> true | _ -> false)
+                | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) -> project root projection |> Option.exists (function VUnion(actualType, actualCase, payload) -> actualType = typeName && actualCase = caseName && payload.IsSome = hasPayload | _ -> false)
+                | Lir.TypeCheck(projection, expected) -> project root projection |> Option.exists (matchesType expected))) then None
+            else
+                let withBindings =
+                    currentPlan.Bindings
+                    |> List.fold (fun state binding ->
+                        state |> Option.bind (fun env -> project root binding.Projection |> Option.bind (addBinding env binding.Id))) (Some bindings)
+                let runMap env (mapPlan: Lir.MapPlan) =
+                    project root mapPlan.Projection
+                    |> Option.bind (function
+                        | VMap entries ->
+                            let rec clauses current remaining (pending: Lir.MapClausePlan list) =
+                                match pending with
+                                | [] ->
+                                    match mapPlan.Tail with
+                                    | Some tail -> run tail (VMap remaining) current
+                                    | None when not mapPlan.RequireEmptyRemainder || remaining.IsEmpty -> Some current
+                                    | None -> None
+                                | clause :: rest ->
+                                    remaining
+                                    |> List.indexed
+                                    |> List.tryPick (fun (index, (key, item)) ->
+                                        run clause.Key key current
+                                        |> Option.bind (fun withKey -> run clause.Value item withKey)
+                                        |> Option.bind (fun withValue ->
+                                            let next = remaining |> List.indexed |> List.choose (fun (position, entry) -> if position = index then None else Some entry)
+                                            clauses withValue next rest))
+                            clauses env entries mapPlan.Clauses
+                        | _ -> None)
+                currentPlan.Maps |> List.fold (fun state mapPlan -> state |> Option.bind (fun env -> runMap env mapPlan)) withBindings
+        run plan value Map.empty
 
     let rec private evaluate environment (expression: Lir.Expression) =
         let binary work =
@@ -276,6 +294,9 @@ module LirInterpreter =
         | Lir.CallClosure(fn, argument) ->
             evaluate environment fn
             |> Result.bind (fun fnValue -> evaluate environment argument |> Result.bind (applyValue expression.Span fnValue))
+        | Lir.PipeClosure(argument, fn) ->
+            evaluate environment argument
+            |> Result.bind (fun argumentValue -> evaluate environment fn |> Result.bind (fun fnValue -> applyValue expression.Span fnValue argumentValue))
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match evaluate environment condition with
             | Ok(VBool true) -> evaluate environment whenTrue
@@ -360,7 +381,7 @@ module LirInterpreter =
                     match remaining with
                     | [] -> fail "FSI3012" expression.Span "Match failure."
                     | case :: rest ->
-                        match matchPattern case.Pattern targetValue with
+                        match matchPlan case.Plan targetValue with
                         | None -> run rest
                         | Some bindings ->
                             let caseEnvironment = Map.fold (fun env id value -> Map.add id value env) environment bindings

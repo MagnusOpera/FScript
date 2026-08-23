@@ -229,6 +229,7 @@ module TypeInfer =
         | ResolvedReference of ResolvedSymbolReference
         | ResolvedLambda of ResolvedBinding * ResolvedExpression
         | ResolvedApply of ResolvedExpression * ResolvedExpression
+        | ResolvedPipe of ResolvedExpression * ResolvedExpression
         | ResolvedIf of ResolvedExpression * ResolvedExpression * ResolvedExpression
         | ResolvedPrimitive of ResolvedPrimitiveOperation * ResolvedExpression list
         | ResolvedTuple of ResolvedExpression list
@@ -1895,6 +1896,8 @@ module TypeInfer =
                     ResolvedLambda(bindingAt ParameterSymbol parameter.Name parameter.Span parameterType, resolveExpression body)
                 | EApply(fn, argument, _) -> ResolvedApply(resolveExpression fn, resolveExpression argument)
                 | EIf(condition, whenTrue, whenFalse, _) -> ResolvedIf(resolveExpression condition, resolveExpression whenTrue, resolveExpression whenFalse)
+                | EBinOp("|>", left, right, _) -> ResolvedPipe(resolveExpression left, resolveExpression right)
+                | EBinOp("::", head, tail, _) -> ResolvedCons(resolveExpression head, resolveExpression tail)
                 | EBinOp("@", left, right, _) | EAppend(left, right, _) -> ResolvedAppend(resolveExpression left, resolveExpression right)
                 | EBinOp(_, left, right, _) -> ResolvedPrimitive(Option.get primitive, [ resolveExpression left; resolveExpression right ])
                 | ECons(head, tail, _) -> ResolvedCons(resolveExpression head, resolveExpression tail)
@@ -1951,7 +1954,7 @@ module TypeInfer =
             let children =
                 match node with
                 | ResolvedLambda(_, body) | ResolvedSome body | ResolvedFail body -> [ body ]
-                | ResolvedApply(left, right) | ResolvedCons(left, right) | ResolvedAppend(left, right)
+                | ResolvedApply(left, right) | ResolvedPipe(left, right) | ResolvedCons(left, right) | ResolvedAppend(left, right)
                 | ResolvedRange(left, right) | ResolvedIndexGet(left, right) -> [ left; right ]
                 | ResolvedIf(condition, whenTrue, whenFalse) -> [ condition; whenTrue; whenFalse ]
                 | ResolvedPrimitive(_, values) | ResolvedTuple values | ResolvedList values -> values
@@ -1968,6 +1971,11 @@ module TypeInfer =
             let coercion =
                 match expression with
                 | EApply(fn, argument, _) ->
+                    match finalType fn, finalType argument with
+                    | TFun((TNamed target as targetType), _), (TRecord _ as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some target }
+                    | TFun((TRecord _ as targetType), _), (TNamed source as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some source }
+                    | _ -> None
+                | EBinOp("|>", argument, fn, _) ->
                     match finalType fn, finalType argument with
                     | TFun((TNamed target as targetType), _), (TRecord _ as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some target }
                     | TFun((TRecord _ as targetType), _), (TNamed source as sourceType) -> Some { SourceType = sourceType; TargetType = targetType; TargetName = Some source }
