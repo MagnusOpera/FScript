@@ -141,6 +141,13 @@ module IrArtifact =
             writer.WriteString("kind", "let"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
             writer.WriteBoolean("recursive", recursive); writer.WritePropertyName("binding"); writeExpression writer binding
             writer.WritePropertyName("body"); writeExpression writer body
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            writer.WriteString("kind", "let-rec-group"); writer.WriteStartArray("bindings")
+            for id, name, bindingType, value in bindings do
+                writer.WriteStartObject(); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
+                writer.WritePropertyName("bindingType"); writeType writer bindingType
+                writer.WritePropertyName("value"); writeExpression writer value; writer.WriteEndObject()
+            writer.WriteEndArray(); writer.WritePropertyName("body"); writeExpression writer body
         | Lir.Fail value -> writer.WriteString("kind", "fail"); writer.WritePropertyName("value"); writeExpression writer value
         | Lir.DecisionTree(target, cases) ->
             writer.WriteString("kind", "decision-tree"); writer.WritePropertyName("target"); writeExpression writer target
@@ -293,6 +300,11 @@ module IrArtifact =
             | "append" -> Lir.Append(readExpression (property "left" element), readExpression (property "right" element))
             | "let" -> Lir.Let(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
                                 (property "recursive" element).GetBoolean(), readExpression (property "binding" element), readExpression (property "body" element))
+            | "let-rec-group" ->
+                let bindings = (property "bindings" element).EnumerateArray() |> Seq.map (fun item ->
+                    Lir.SymbolId((property "symbol" item).GetInt32()), stringProperty "name" item,
+                    readType (property "bindingType" item), readExpression (property "value" item)) |> Seq.toList
+                Lir.LetRecursiveGroup(bindings, readExpression (property "body" element))
             | "fail" -> Lir.Fail(readExpression (property "value" element))
             | "decision-tree" ->
                 let cases = (property "cases" element).EnumerateArray() |> Seq.map (fun item ->

@@ -203,6 +203,18 @@ module GoBackend =
                     else $"{name} := {bindingCode}"
                 Ok $"func() {goType expression.Type} {{ {declaration}; return {bodyCode} }}()"
             | Error error, _ | _, Error error -> Error error
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            let scoped = bindings |> List.fold (fun env (id, _, _, _) -> Map.add id (identifier "localRec" id) env) environment
+            let loweredBindings =
+                bindings |> List.map (fun (id, _, bindingType, value) ->
+                    emitExpression scoped value |> Result.map (fun code -> identifier "localRec" id, bindingType, code))
+                |> collect
+            match loweredBindings, emitExpression scoped body with
+            | Ok values, Ok bodyCode ->
+                let declarations = values |> List.map (fun (name, bindingType, _) -> $"var {name} {goType bindingType}") |> String.concat "; "
+                let assignments = values |> List.map (fun (name, _, code) -> $"{name} = {code}") |> String.concat "; "
+                Ok $"func() {goType expression.Type} {{ {declarations}; {assignments}; return {bodyCode} }}()"
+            | Error error, _ | _, Error error -> Error error
         | Lir.Fail value ->
             emitExpression environment value
             |> Result.map (fun code -> $"func() {goType expression.Type} {{ fsruntime.Fail({code}); var zero {goType expression.Type}; return zero }}()")

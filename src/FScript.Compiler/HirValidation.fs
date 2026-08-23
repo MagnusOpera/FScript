@@ -26,6 +26,12 @@ module HirValidation =
                         let value = references binding
                         if recursive then Set.remove id value else value
                     Set.union bindingReferences (references body |> Set.remove id)
+                | Hir.LetRecursiveGroup(bindings, body) ->
+                    let ids = bindings |> List.map (fun (id, _, _, _) -> id) |> Set.ofList
+                    let allReferences =
+                        references body :: (bindings |> List.map (fun (_, _, _, value) -> references value))
+                        |> Set.unionMany
+                    Set.difference allReferences ids
                 | Hir.Fail value -> references value
                 | Hir.Match(target, cases) ->
                     let rec bindings (pattern: Hir.Pattern) =

@@ -39,6 +39,7 @@ module Lir =
         | Cons of Expression * Expression
         | Append of Expression * Expression
         | Let of SymbolId * string * bool * Expression * Expression
+        | LetRecursiveGroup of (SymbolId * string * Type * Expression) list * Expression
         | Fail of Expression
         | DecisionTree of Expression * DecisionCase list
         | Range of Expression * Expression
@@ -149,6 +150,8 @@ module LirLowering =
             | Hir.Cons(head, tail) -> Lir.Cons(expression head, expression tail)
             | Hir.Append(left, right) -> Lir.Append(expression left, expression right)
             | Hir.Let(id, name, recursive, binding, body) -> Lir.Let(symbol id, name, recursive, expression binding, expression body)
+            | Hir.LetRecursiveGroup(bindings, body) ->
+                Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, bindingType, value) -> symbol id, name, bindingType, expression value), expression body)
             | Hir.Fail value -> Lir.Fail(expression value)
             | Hir.Match(target, cases) ->
                 Lir.DecisionTree(expression target, cases |> List.map (fun case ->

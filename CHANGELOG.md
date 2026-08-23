@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added serializable local mutual-recursive closure groups to HIR, LIR execution, and generated Go projects.
 - Preserved source-order execution for every top-level expression and added compiled top-level pattern bindings.
 - Added a universal erased Go closure convention and generated-runtime support for all pure list, option, and ordered-map intrinsics.
 - Added dedicated LIR-interpreter and Go-backend test assemblies, and completed higher-order collection intrinsics in LIR execution.

@@ -51,6 +51,7 @@ module Hir =
         | Cons of Expression * Expression
         | Append of Expression * Expression
         | Let of SymbolId * string * bool * Expression * Expression
+        | LetRecursiveGroup of (SymbolId * string * Type * Expression) list * Expression
         | Fail of Expression
         | Match of Expression * MatchCase list
         | Range of Expression * Expression
@@ -159,6 +160,10 @@ module Hir =
             | Let(id, name, recursive, binding, body) ->
                 lines.Add(typed (sprintf "let%s %%%d %s" (if recursive then " rec" else "") (symbolNumber id) name))
                 expression (indent + 2) binding
+                expression (indent + 2) body
+            | LetRecursiveGroup(bindings, body) ->
+                lines.Add(typed "let-rec-group")
+                bindings |> List.iter (fun (id, name, _, binding) -> lines.Add(sprintf "%s  binding %%%d %s" prefix (symbolNumber id) name); expression (indent + 4) binding)
                 expression (indent + 2) body
             | Fail value -> lines.Add(typed "fail"); expression (indent + 2) value
             | Match(target, cases) ->

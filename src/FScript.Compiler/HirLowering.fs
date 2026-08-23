@@ -205,6 +205,21 @@ module HirLowering =
             | Ok value, Ok loweredBody -> Ok(make (Hir.Let(id, name, isRecursive, value, loweredBody)))
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
+        | ELetRecGroup(bindings, body, _) ->
+            let ids = bindings |> List.map (fun (name, _, _, _, _) -> name, newSymbol state) |> Map.ofList
+            let recursiveEnvironment = Map.fold (fun env name id -> Map.add name id env) environment ids
+            let loweredBindings =
+                bindings
+                |> List.map (fun (name, parameters, _, valueExpression, bindingSpan) ->
+                    let folded = Seq.foldBack (fun parameter inner -> ELambda(parameter, inner, bindingSpan)) parameters valueExpression
+                    let bindingType = expressionType state folded (Types.freshVar())
+                    lowerExpression state recursiveEnvironment bindingType folded
+                    |> Result.map (fun value -> ids.[name], name, bindingType, value))
+                |> collectResults
+            match loweredBindings, lowerExpression state recursiveEnvironment inferred body with
+            | Ok values, Ok loweredBody -> Ok(make (Hir.LetRecursiveGroup(values, loweredBody)))
+            | Error a, Error b -> Error(a @ b)
+            | Error errors, _ | _, Error errors -> Error errors
         | ERaise(value, _) -> lowerExpression state environment TString value |> Result.map (Hir.Fail >> make)
         | ELetPattern(pattern, binding, body, _) ->
             let bindingType = expressionType state binding (Types.freshVar())
@@ -269,7 +284,6 @@ module HirLowering =
                     | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
                 | MESpread value -> lowerExpression state environment inferred value |> Result.map Hir.Spread)
             |> collectResults |> Result.map (Hir.Map >> make)
-        | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
 
     let lower (externs: ExternalFunction list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =

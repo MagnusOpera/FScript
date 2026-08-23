@@ -47,6 +47,7 @@ type GoBackendTests() =
     [<TestCase("Map.choose (fun key value -> if value > 1 then Some (value + 1) else None) { [\"a\"] = 1; [\"b\"] = 2 }", "{ [b] = 3 }")>]
     [<TestCase("Map.remove \"a\" { [\"a\"] = 1; [\"b\"] = 2 }", "{ [b] = 2 }")>]
     [<TestCase("let (left, right) = (1, 2)\nleft + right", "3")>]
+    [<TestCase("(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10\n)", "true")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =

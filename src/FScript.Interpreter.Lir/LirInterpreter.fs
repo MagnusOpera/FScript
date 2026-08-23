@@ -274,6 +274,16 @@ module LirInterpreter =
                 | Error errors -> Error errors
             else
                 evaluate environment binding |> Result.bind (fun value -> evaluate (environment |> Map.add id value) body)
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            let evaluated = bindings |> List.map (fun (id, _, _, binding) -> id, evaluate environment binding)
+            let errors = evaluated |> List.collect (fun (_, result) -> match result with Error values -> values | Ok _ -> [])
+            if not errors.IsEmpty then Error errors
+            elif evaluated |> List.exists (fun (_, result) -> match result with Ok(VClosure _) -> false | _ -> true) then
+                fail "FSI3010" expression.Span "Recursive local groups must contain only functions."
+            else
+                let recursiveEnvironment = evaluated |> List.fold (fun env (id, result) -> match result with Ok value -> Map.add id value env | Error _ -> env) environment
+                evaluated |> List.iter (fun (_, result) -> match result with Ok(VClosure(_, _, _, captured)) -> captured.Value <- recursiveEnvironment | _ -> ())
+                evaluate recursiveEnvironment body
         | Lir.Fail value ->
             match evaluate environment value with
             | Ok(VString message) -> fail "FSI3011" expression.Span message

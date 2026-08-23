@@ -20,6 +20,7 @@ Declared unions retain their type and case identity plus an optional erased payl
 
 Compiled maps use an ordered entry representation for string and integer keys. Explicit key/value entries replace an earlier value; spread entries retain values already present on their left. Indexing returns an option, and deterministic ordering participates in artifacts, equality, formatting, and generated Go behavior.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and closures capture their lexical environment. Single and mutual recursive function groups are supported.
+- Local mutual-recursive function groups initialize atomically: every peer is visible from every closure before the group body executes.
 
 ## Types and values
 
