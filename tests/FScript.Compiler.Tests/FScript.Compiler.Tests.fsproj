@@ -17,5 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FScript.Compiler\FScript.Compiler.fsproj" />
+    <ProjectReference Include="..\..\src\FScript.Interpreter.Lir\FScript.Interpreter.Lir.fsproj" />
+    <ProjectReference Include="..\..\src\FScript.Backend.Go\FScript.Backend.Go.fsproj" />
   </ItemGroup>
 </Project>

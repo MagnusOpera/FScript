@@ -40,6 +40,8 @@
   <ItemGroup>
     <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\FScript.Compiler\FScript.Compiler.fsproj" />
+    <ProjectReference Include="..\FScript.Interpreter.Lir\FScript.Interpreter.Lir.fsproj" />
+    <ProjectReference Include="..\FScript.Backend.Go\FScript.Backend.Go.fsproj" />
     <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
   </ItemGroup>
 

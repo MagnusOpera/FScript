@@ -12,7 +12,9 @@ source -> parser/includes -> inference + resolved typed tree -> HIR -> LIR
 
 `FScript.Language` remains the parser, type-system, legacy evaluator, and Fable-compatible package. It emits a resolved typed tree in the same inference pass as its compatibility `TypedProgram`.
 
-`FScript.Compiler` is a reusable, initially non-packaged .NET assembly. It owns HIR, HIR validation, lowering, LIR, LIR validation, artifact serialization, LIR interpretation, and target backends. It depends on `FScript.Language`; the language assembly never depends on the compiler.
+`FScript.Compiler` is a reusable, initially non-packaged .NET assembly. It owns HIR, HIR validation, lowering, LIR, LIR validation, and artifact serialization. It depends on `FScript.Language`; the language assembly never depends on the compiler.
+
+Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` owns execution and runtime LIR values. `FScript.Backend.Go` owns representation selection, Go emission, and embedded runtime templates. Both reference `FScript.Compiler`, while the compiler references neither consumer. Public modules retain the `FScript.Compiler` namespace so the API surface remains source-compatible while assembly ownership is explicit.
 
 ## IR boundaries
 

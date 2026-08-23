@@ -40,15 +40,36 @@ Use this when:
 
 ### `FScript.Compiler`
 Role:
-- Reusable .NET compiler pipeline for typed HIR, executable LIR, IR artifacts, interpretation, and source backends.
+- Reusable .NET compiler pipeline for typed HIR, executable LIR, and IR artifacts.
 
 Responsibilities:
 - Consume the resolved typed result produced by `FScript.Language`.
 - Validate and lower HIR to backend-independent LIR.
 - Serialize and validate whole-program `.fsir` artifacts.
-- Execute supported LIR and generate deterministic Go source projects.
 
 `FScript.Compiler` depends on `FScript.Language` and is intentionally excluded from the Fable JavaScript package.
+
+### `FScript.Interpreter.Lir`
+Role:
+- Backend-independent execution engine for validated LIR.
+
+Responsibilities:
+- Execute LIR values, closures, decision trees, aggregates, intrinsics, and failures.
+- Supply script identity and arguments through `InterpreterContext`.
+- Reject reachable unsupported target or host linkage with interpreter diagnostics.
+
+`FScript.Interpreter.Lir` depends on `FScript.Compiler`; the core compiler has no dependency on the interpreter.
+
+### `FScript.Backend.Go`
+Role:
+- Go 1.25 source backend for validated LIR.
+
+Responsibilities:
+- Select Go representations for LIR values.
+- Generate deterministic Go project files and the embedded FScript Go runtime.
+- Report target-specific `FSB4xxx` diagnostics without adding Go concepts to HIR or LIR.
+
+`FScript.Backend.Go` depends on `FScript.Compiler`; the core compiler has no dependency on the Go backend or a Go installation.
 
 NuGet:
 - `MagnusOpera.FScript.Language`
@@ -165,11 +186,13 @@ Use this when:
 
 ## Dependency direction
 - `FScript.Language` has no dependency on `FScript.Runtime`.
+- `FScript.Compiler` depends only on `FScript.Language`.
+- `FScript.Interpreter.Lir` and `FScript.Backend.Go` each depend on `FScript.Compiler`.
 - `FScript.JavaScript` depends on `FScript.Language` and Fable packages.
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
 - `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
 - `FScript.TypeProvider` depends on `FScript.Language` and `FScript.Runtime`.
-- `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
+- `FScript` depends on `FScript.Language`, `FScript.Runtime`, `FScript.Compiler`, `FScript.Interpreter.Lir`, and `FScript.Backend.Go`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable. The JavaScript facade is intentionally separate from `.NET` runtime externs: v1 exposes core language hosting, virtual imports, tagged values, and JS-provided externs, while filesystem, console, task, and other runtime modules stay in the .NET runtime layer.

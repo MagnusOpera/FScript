@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Split LIR execution and Go generation into independent `FScript.Interpreter.Lir` and `FScript.Backend.Go` assemblies.
 - Added serializable host-extern linkage that remains inert when unused and reports a dedicated LIR diagnostic when reached.
 - Added explicit portable intrinsic declarations and LIR/Go execution for scalar parsing and formatting plus core string, list, option, and map queries.
 - Added atomic top-level mutual-recursive closure initialization in the LIR interpreter and generated Go projects.
