@@ -19,6 +19,9 @@ type Union struct {
 	HasValue bool
 	Value    any
 }
+type UnionCarrier interface {
+	FScriptUnion() Union
+}
 type MapEntry struct {
 	Key   any
 	Value any
@@ -68,8 +71,23 @@ func Record(value any) map[string]any {
 	}
 	return record
 }
-func AsOption(value any) Option  { return value.(Option) }
-func AsUnion(value any) Union    { return value.(Union) }
+func AsOption(value any) Option { return value.(Option) }
+func TryUnion(value any) (Union, bool) {
+	if item, ok := value.(Union); ok {
+		return item, true
+	}
+	if item, ok := value.(UnionCarrier); ok {
+		return item.FScriptUnion(), true
+	}
+	return Union{}, false
+}
+func AsUnion(value any) Union {
+	item, ok := TryUnion(value)
+	if !ok {
+		panic("Union access requires a union")
+	}
+	return item
+}
 func AsMap(value any) OrderedMap { return value.(OrderedMap) }
 func Some(value any) Option      { return Option{HasValue: true, Value: value} }
 func None() Option               { return Option{} }
@@ -96,6 +114,12 @@ func HasField(value any, name string) bool {
 	return found
 }
 func normalizeStructural(value any) any {
+	if item, ok := TryUnion(value); ok {
+		if item.HasValue {
+			item.Value = normalizeStructural(item.Value)
+		}
+		return item
+	}
 	reflected := reflect.ValueOf(value)
 	if reflected.IsValid() && (reflected.Kind() == reflect.Struct || (reflected.Kind() == reflect.Pointer && !reflected.IsNil() && reflected.Elem().Kind() == reflect.Struct)) {
 		if record, ok := TryRecord(value); ok {
@@ -126,11 +150,6 @@ func normalizeStructural(value any) any {
 		}
 		return result
 	case Option:
-		if item.HasValue {
-			item.Value = normalizeStructural(item.Value)
-		}
-		return item
-	case Union:
 		if item.HasValue {
 			item.Value = normalizeStructural(item.Value)
 		}
@@ -333,6 +352,12 @@ func Intrinsic(name string, args []any) any {
 	}
 }
 func Format(value any) string {
+	if item, ok := TryUnion(value); ok {
+		if !item.HasValue {
+			return item.CaseName
+		}
+		return item.CaseName + " " + Format(item.Value)
+	}
 	switch item := value.(type) {
 	case bool:
 		if item {
@@ -344,11 +369,6 @@ func Format(value any) string {
 			return "None"
 		}
 		return "Some " + Format(item.Value)
-	case Union:
-		if !item.HasValue {
-			return item.CaseName
-		}
-		return item.CaseName + " " + Format(item.Value)
 	case OrderedMap:
 		parts := make([]string, len(item.Entries))
 		for index, entry := range item.Entries {

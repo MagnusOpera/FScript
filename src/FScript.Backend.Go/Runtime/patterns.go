@@ -111,7 +111,7 @@ func matchRuntimePattern(value any, pattern Pattern) (map[int]any, bool) {
 		}
 		return bindings, true
 	case "union":
-		item, ok := value.(Union)
+		item, ok := TryUnion(value)
 		if !ok || item.TypeName != pattern.TypeName || item.CaseName != pattern.CaseName || (len(pattern.Items) == 0) != !item.HasValue {
 			return nil, false
 		}
@@ -213,7 +213,7 @@ func TypeMatches(value any, typeName string) bool {
 		_, ok := TryRecord(value)
 		return ok
 	}
-	if item, ok := value.(Union); ok {
+	if item, ok := TryUnion(value); ok {
 		return item.TypeName == typeName
 	}
 	_, record := TryRecord(value)

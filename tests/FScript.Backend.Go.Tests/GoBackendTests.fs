@@ -87,6 +87,19 @@ type GoBackendTests() =
             Assert.That(program, Does.Match("type record[0-9]+ struct"))
             Assert.That(program, Does.Contain("`fscript:\"Name\"`"))
 
+    [<Test>]
+    member _.``Go backend emits tagged ordinary union types`` () =
+        let source = "type Shape = | Point | Circle of int\nCircle 3"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/unions" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Match("type union[0-9]+ struct"))
+            Assert.That(program, Does.Contain("Tag"))
+            Assert.That(program, Does.Contain("Case0 int64"))
+            Assert.That(program, Does.Contain("FScriptUnion() fsruntime.Union"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
@@ -136,6 +149,8 @@ type GoBackendTests() =
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name", "Ada")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nlet older = { person with Age = 43 }\nolder.Age", "43")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]
+    [<TestCase("type Shape = | Point | Circle of int\nCircle 2 = Circle 2", "true")>]
+    [<TestCase("type Person = { Name: string }\ntype Result = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }", "true")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         requireGo ()
         let input = { Program = Parser.parseProgram source; Externs = [] }

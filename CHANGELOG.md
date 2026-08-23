@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Generated distinct tagged Go structs with case-specific payload fields for ordinary declared unions.
+
 - Reused resolved frontend symbol IDs unchanged throughout HIR lowering, including interleaved types and local bindings.
 
 - Preserved named type declarations through HIR, LIR, and artifacts and generated concrete Go structs for ordinary records.

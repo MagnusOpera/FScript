@@ -22,6 +22,9 @@ module GoBackend =
     let private tryRecordDeclaration name =
         tryDeclaredType name
         |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TRecord fields -> Some(declaration, fields) | _ -> None)
+    let private tryUnionDeclaration name =
+        tryDeclaredType name
+        |> Option.bind (fun declaration -> match declaration.Import, declaration.Definition with None, TUnion(_, cases) -> Some(declaration, cases) | _ -> None)
     let private recordFieldName fields name =
         fields |> Map.toList |> List.findIndex (fst >> (=) name) |> sprintf "Field%d"
     let private effectiveType (expression: Lir.Expression) =
@@ -61,6 +64,7 @@ module GoBackend =
         | TNamed "Environment" -> "map[string]any"
         | TNamed name when tryImportedRecord name |> Option.isSome -> "map[string]any"
         | TNamed name when tryRecordDeclaration name |> Option.isSome -> tryRecordDeclaration name |> Option.get |> fst |> declaredTypeName
+        | TNamed name when tryUnionDeclaration name |> Option.isSome -> tryUnionDeclaration name |> Option.get |> fst |> fun declaration -> $"union{Lir.symbolNumber declaration.Id}"
         | TUnion _ | TNamed _ -> "fsruntime.Union"
         | TMap _ -> "fsruntime.OrderedMap"
         | value -> invalidArg "value" $"Unsupported Go representation for {Types.typeToString value}."
@@ -102,7 +106,10 @@ module GoBackend =
         | TOption _ -> $"fsruntime.AsOption({code})"
         | TNamed "Environment" -> $"fsruntime.Record({code})"
         | TNamed name when tryImportedRecord name |> Option.isSome -> $"fsruntime.Record({code})"
-        | TNamed name when tryRecordDeclaration name |> Option.isSome -> $"{code}.({goType valueType})"
+        | TNamed name when tryRecordDeclaration name |> Option.isSome ->
+            let declaration, _ = tryRecordDeclaration name |> Option.get
+            $"asRecord{Lir.symbolNumber declaration.Id}({code})"
+        | TNamed name when tryUnionDeclaration name |> Option.isSome -> $"{code}.({goType valueType})"
         | TUnion _ | TNamed _ -> $"fsruntime.AsUnion({code})"
         | TMap _ -> $"fsruntime.AsMap({code})"
         | TFun _ -> $"fsruntime.AsClosure({code})"
@@ -426,9 +433,23 @@ module GoBackend =
         | Lir.UnionCase(typeName, caseName, payload) ->
             let quotedType = System.Text.Json.JsonSerializer.Serialize(typeName)
             let quotedCase = System.Text.Json.JsonSerializer.Serialize(caseName)
-            match payload with
-            | None -> Ok $"fsruntime.MakeUnion({quotedType}, {quotedCase})"
-            | Some item -> emitExpression environment item |> Result.map (fun code -> $"fsruntime.MakeUnionValue({quotedType}, {quotedCase}, {code})")
+            match expression.Type with
+            | TNamed name ->
+                match tryUnionDeclaration name with
+                | Some(declaration, cases) ->
+                    let caseIndex = cases |> Map.toList |> List.findIndex (fst >> (=) caseName)
+                    let unionName = $"union{Lir.symbolNumber declaration.Id}"
+                    match payload with
+                    | None -> Ok $"{unionName}{{Tag: {caseIndex}}}"
+                    | Some item -> emitExpression environment item |> Result.map (fun code -> $"{unionName}{{Tag: {caseIndex}, Case{caseIndex}: {code}}}")
+                | None ->
+                    match payload with
+                    | None -> Ok $"fsruntime.MakeUnion({quotedType}, {quotedCase})"
+                    | Some item -> emitExpression environment item |> Result.map (fun code -> $"fsruntime.MakeUnionValue({quotedType}, {quotedCase}, {code})")
+            | _ ->
+                match payload with
+                | None -> Ok $"fsruntime.MakeUnion({quotedType}, {quotedCase})"
+                | Some item -> emitExpression environment item |> Result.map (fun code -> $"fsruntime.MakeUnionValue({quotedType}, {quotedCase}, {code})")
         | Lir.Map entries ->
             entries |> List.map (function
                 | Lir.KeyValue(key, value) ->
@@ -579,6 +600,41 @@ func Environment() map[string]any {
                     for fieldIndex, (fieldName, fieldType) in fields |> Map.toList |> List.indexed do
                         typeDeclarations.AppendLine($"\tField{fieldIndex} {(goType fieldType).PadRight(typeWidth)} `fscript:{System.Text.Json.JsonSerializer.Serialize(fieldName)}`") |> ignore
                     typeDeclarations.AppendLine("}") |> ignore
+                    typeDeclarations.AppendLine() |> ignore
+                    typeDeclarations.AppendLine($"func asRecord{Lir.symbolNumber declaration.Id}(value any) {declaredTypeName declaration} {{") |> ignore
+                    typeDeclarations.AppendLine("\tfields := fsruntime.Record(value)") |> ignore
+                    let convertedFields =
+                        fields |> Map.toList |> List.mapi (fun index (fieldName, fieldType) ->
+                            let rawField = $"fields[{System.Text.Json.JsonSerializer.Serialize(fieldName)}]"
+                            let converted = cast fieldType rawField
+                            $"Field{index}: {converted}") |> String.concat ", "
+                    typeDeclarations.AppendLine($"\treturn {declaredTypeName declaration}{{{convertedFields}}}") |> ignore
+                    typeDeclarations.AppendLine("}") |> ignore
+                    typeDeclarations.AppendLine() |> ignore
+                | None, TUnion(typeName, cases) ->
+                    let unionName = $"union{Lir.symbolNumber declaration.Id}"
+                    let caseValues = cases |> Map.toList
+                    let payloads = caseValues |> List.indexed |> List.choose (fun (index, (_, payload)) -> payload |> Option.map (fun payloadType -> index, payloadType))
+                    let fieldWidth = ("Tag" :: (payloads |> List.map (fun (index, _) -> $"Case{index}"))) |> List.map _.Length |> List.max
+                    typeDeclarations.AppendLine($"type {unionName} struct {{") |> ignore
+                    let tagField = "Tag".PadRight(fieldWidth)
+                    typeDeclarations.AppendLine($"\t{tagField} int") |> ignore
+                    for index, payloadType in payloads do
+                        let payloadField = $"Case{index}".PadRight(fieldWidth)
+                        typeDeclarations.AppendLine($"\t{payloadField} {goType payloadType}") |> ignore
+                    typeDeclarations.AppendLine("}") |> ignore
+                    typeDeclarations.AppendLine() |> ignore
+                    typeDeclarations.AppendLine($"func (value {unionName}) FScriptUnion() fsruntime.Union {{") |> ignore
+                    typeDeclarations.AppendLine("\tswitch value.Tag {") |> ignore
+                    for index, (caseName, payload) in caseValues |> List.indexed do
+                        typeDeclarations.AppendLine($"\tcase {index}:") |> ignore
+                        match payload with
+                        | None -> typeDeclarations.AppendLine($"\t\treturn fsruntime.MakeUnion({System.Text.Json.JsonSerializer.Serialize(typeName)}, {System.Text.Json.JsonSerializer.Serialize(caseName)})") |> ignore
+                        | Some _ -> typeDeclarations.AppendLine($"\t\treturn fsruntime.MakeUnionValue({System.Text.Json.JsonSerializer.Serialize(typeName)}, {System.Text.Json.JsonSerializer.Serialize(caseName)}, value.Case{index})") |> ignore
+                    typeDeclarations.AppendLine("\t}") |> ignore
+                    typeDeclarations.AppendLine("\tpanic(\"Invalid FScript union tag\")") |> ignore
+                    typeDeclarations.AppendLine("}") |> ignore
+                    typeDeclarations.AppendLine() |> ignore
                 | _ -> ()
             let initializers = StringBuilder()
             let mutable error = None
@@ -607,7 +663,7 @@ func Environment() map[string]any {
                     ([ yield! targetImports |> List.map (fun (modulePath, _, _, _) -> modulePath)
                        yield! program.ImportedRecords |> List.map _.ModulePath ] |> List.distinct |> List.sort |> List.map (fun path -> $"\t{importAlias path} {System.Text.Json.JsonSerializer.Serialize(path)}"))
                     |> String.concat "\n"
-                let typeSource = if typeDeclarations.Length = 0 then "" else typeDeclarations.ToString() + "\n"
+                let typeSource = typeDeclarations.ToString()
                 let programSource = $"package fscriptprogram\n\nimport (\n{importLines}\n)\n\n{typeSource}{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
                 let printExpression =
                     match program.Entry with
