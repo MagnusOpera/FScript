@@ -2,6 +2,8 @@ namespace FScript.Compiler.Tests
 
 open System
 open System.Text
+open System.Text.Json
+open System.Text.Json.Nodes
 open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
@@ -12,6 +14,11 @@ type IrArtifactTests() =
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
         | Ok value -> value
         | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+
+    let parseObject (bytes: byte array) : JsonObject =
+        match JsonNode.Parse(Encoding.UTF8.GetString(bytes)) with
+        | null -> failwith "Expected JSON object"
+        | node -> node.AsObject()
 
     [<Test>]
     member _.``IR artifact is deterministic and equivalent after round trip`` () =
@@ -36,6 +43,39 @@ type IrArtifactTests() =
         match IrArtifact.deserialize (Encoding.UTF8.GetBytes("{")) with
         | Ok _ -> Assert.Fail("Expected corrupt-artifact diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5003"))
+
+    [<Test>]
+    member _.``IR artifact rejects missing and non-canonical metadata`` () =
+        let bytes = compile "1" |> _.Lir |> IrArtifact.serialize
+        let missing = parseObject bytes
+        missing.Remove("compilerVersion") |> ignore
+        match IrArtifact.deserialize (Encoding.UTF8.GetBytes(missing.ToJsonString())) with
+        | Ok _ -> Assert.Fail("Expected missing-metadata diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5004"))
+
+        let invalid = parseObject bytes
+        let dependencies = JsonArray()
+        dependencies.Add("z")
+        dependencies.Add("a")
+        invalid["dependencies"] <- dependencies
+        match IrArtifact.deserialize (Encoding.UTF8.GetBytes(invalid.ToJsonString())) with
+        | Ok _ -> Assert.Fail("Expected non-canonical-metadata diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5005"))
+
+    [<Test>]
+    member _.``IR artifact records normalized source paths and SHA256 hashes`` () =
+        let path = IO.Path.Combine(IO.Path.GetTempPath(), $"fscript-source-{Guid.NewGuid():N}.fss")
+        try
+            IO.File.WriteAllText(path, "1")
+            let input = { Program = Parser.parseProgramWithSourceName (Some path) "1"; Externs = [] }
+            let compiled = match Compiler.compile input with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+            use document = JsonDocument.Parse(IrArtifact.serialize compiled.Lir)
+            let source = document.RootElement.GetProperty("sources")[0]
+            Assert.That(source.GetProperty("path").GetString(), Is.EqualTo(path.Replace('\\', '/')))
+            let expected = Security.Cryptography.SHA256.HashData(IO.File.ReadAllBytes(path)) |> Convert.ToHexString |> _.ToLowerInvariant()
+            Assert.That(source.GetProperty("sha256").GetString(), Is.EqualTo(expected))
+        finally
+            if IO.File.Exists path then IO.File.Delete path
 
     [<Test>]
     member _.``IR artifact round trips lexical let and fail nodes`` () =

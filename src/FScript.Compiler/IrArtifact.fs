@@ -12,6 +12,33 @@ module IrArtifact =
     [<Literal>]
     let Version = 1
 
+    let private assemblyVersion (assembly: Reflection.Assembly) =
+        match assembly.GetName().Version with null -> "0.0.0" | value -> value.ToString()
+
+    let private normalizePath (path: string) = path.Replace('\\', '/')
+
+    let private sourceMetadata (program: Lir.Program) =
+        let paths =
+            [ yield! program.Declarations |> List.choose (fun declaration -> declaration.Span.Start.File)
+              match program.Entry with Some entry -> yield! entry.Span.Start.File |> Option.toList | None -> () ]
+            |> List.distinct
+            |> List.sort
+        paths |> List.choose (fun path ->
+            if File.Exists path then
+                let hash =
+                    File.ReadAllBytes path
+                    |> Security.Cryptography.SHA256.HashData
+                    |> Convert.ToHexString
+                    |> _.ToLowerInvariant()
+                Some(normalizePath path, hash)
+            else None)
+
+    let private dependencies (program: Lir.Program) =
+        program.Declarations
+        |> List.choose (fun declaration -> match declaration.Value.Node with Lir.HostExternal(name, _) -> Some name | _ -> None)
+        |> List.distinct
+        |> List.sort
+
     let private writeOptionString (writer: Utf8JsonWriter) (name: string) (value: string option) =
         match value with
         | Some text -> writer.WriteString(name, text)
@@ -212,8 +239,14 @@ module IrArtifact =
         use stream = new MemoryStream()
         use writer = new Utf8JsonWriter(stream, JsonWriterOptions(Indented = true))
         writer.WriteStartObject(); writer.WriteString("format", Format); writer.WriteNumber("irVersion", Version)
-        writer.WriteString("compilerVersion", "0.0.0"); writer.WriteString("languageVersion", "0.0.0")
-        writer.WriteStartArray("sources"); writer.WriteEndArray(); writer.WriteStartArray("dependencies"); writer.WriteEndArray()
+        writer.WriteString("compilerVersion", assemblyVersion typeof<Lir.Program>.Assembly)
+        writer.WriteString("languageVersion", assemblyVersion typeof<Type>.Assembly)
+        writer.WriteStartArray("sources")
+        for path, hash in sourceMetadata program do
+            writer.WriteStartObject(); writer.WriteString("path", path); writer.WriteString("sha256", hash); writer.WriteEndObject()
+        writer.WriteEndArray(); writer.WriteStartArray("dependencies")
+        dependencies program |> List.iter writer.WriteStringValue
+        writer.WriteEndArray()
         writer.WriteStartObject("program"); writer.WriteStartArray("declarations")
         for declaration in program.Declarations do
             writer.WriteStartObject(); writer.WriteNumber("id", Lir.symbolNumber declaration.Id); writer.WriteString("name", declaration.Name)
@@ -225,6 +258,9 @@ module IrArtifact =
         writer.WriteEndObject(); writer.WriteEndObject(); writer.Flush(); stream.ToArray()
 
     let private property (name: string) (element: JsonElement) = element.GetProperty(name)
+    let private hasProperty (name: string) (element: JsonElement) =
+        let mutable value = Unchecked.defaultof<JsonElement>
+        element.TryGetProperty(name, &value)
     let private stringProperty (name: string) (element: JsonElement) =
         match (property name element).GetString() with null -> "" | value -> value
     let private readPosition (element: JsonElement) =
@@ -361,15 +397,29 @@ module IrArtifact =
             let root = document.RootElement
             if stringProperty "format" root <> Format then Error [ { Code = "FSA5001"; Stage = Artifact; Message = "Unsupported IR artifact format."; Span = None } ]
             elif (property "irVersion" root).GetInt32() <> Version then Error [ { Code = "FSA5002"; Stage = Artifact; Message = "Incompatible IR artifact version."; Span = None } ]
+            elif [ "compilerVersion"; "languageVersion"; "sources"; "dependencies"; "program" ] |> List.exists (fun name -> not (hasProperty name root)) then
+                Error [ { Code = "FSA5004"; Stage = Artifact; Message = "IR artifact is missing required metadata."; Span = None } ]
             else
-                let programElement = property "program" root
-                let declarations = (property "declarations" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
-                    ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item; Type = readType (property "type" item)
-                       IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean()
-                       Span = readSpan (property "span" item); Value = readExpression (property "value" item) }: Lir.Declaration)) |> Seq.toList
-                let entryElement = property "entry" programElement
-                let program : Lir.Program =
-                    { Declarations = declarations
-                      Entry = if entryElement.ValueKind = JsonValueKind.Null then None else Some(readExpression entryElement) }
-                LirValidation.validate program
+                let sourcesValid =
+                    (property "sources" root).ValueKind = JsonValueKind.Array
+                    && ((property "sources" root).EnumerateArray() |> Seq.forall (fun source ->
+                        hasProperty "path" source && hasProperty "sha256" source
+                        && (stringProperty "sha256" source).Length = 64))
+                let dependencyValues =
+                    if (property "dependencies" root).ValueKind = JsonValueKind.Array then
+                        (property "dependencies" root).EnumerateArray() |> Seq.map _.GetString() |> Seq.choose Option.ofObj |> Seq.toList
+                    else []
+                if not sourcesValid || dependencyValues <> (dependencyValues |> List.distinct |> List.sort) then
+                    Error [ { Code = "FSA5005"; Stage = Artifact; Message = "IR artifact metadata is invalid or non-canonical."; Span = None } ]
+                else
+                    let programElement = property "program" root
+                    let declarations = (property "declarations" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
+                        ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item; Type = readType (property "type" item)
+                           IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean()
+                           Span = readSpan (property "span" item); Value = readExpression (property "value" item) }: Lir.Declaration)) |> Seq.toList
+                    let entryElement = property "entry" programElement
+                    let program : Lir.Program =
+                        { Declarations = declarations
+                          Entry = if entryElement.ValueKind = JsonValueKind.Null then None else Some(readExpression entryElement) }
+                    LirValidation.validate program
         with ex -> Error [ { Code = "FSA5003"; Stage = Artifact; Message = ex.Message; Span = None } ]

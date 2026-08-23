@@ -48,6 +48,8 @@ Every top-level source expression becomes a synthetic declaration at its exact p
 
 Serialized `.fsir` files contain one closed resolved program plus explicit foreign linkage declarations. JSON format versions are internal and may be rejected rather than upgraded.
 
+Artifact metadata records the actual compiler and language assembly versions, normalized paths and SHA-256 hashes for available file-backed sources, and a sorted unique list of foreign dependencies. Deserialization rejects missing metadata, malformed hashes, non-canonical dependency order, unknown formats or versions, and any LIR that fails post-load validation.
+
 ## Representation policy
 
 - Primitive values, declared records, tuple shapes, and declared unions receive concrete representations where possible.

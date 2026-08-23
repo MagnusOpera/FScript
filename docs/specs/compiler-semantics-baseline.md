@@ -53,3 +53,5 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 ## Diagnostics
 
 Parse, type, and evaluation failures currently use source spans and exceptions. Compiler entry points translate expected failures into structured stage diagnostics while leaving existing embedding APIs behavior-compatible.
+
+Version-1 `.fsir` artifacts require compiler and language versions, source metadata, ordered dependencies, and a complete program. Unknown formats and versions are rejected before LIR construction; malformed metadata and invalid reconstructed LIR receive `FSA5xxx` diagnostics.

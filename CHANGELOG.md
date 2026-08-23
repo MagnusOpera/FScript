@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added versioned `.fsir` compiler/language metadata, normalized source SHA-256 records, ordered dependencies, and strict metadata validation.
 - Exposed deterministic resolved frontend symbols, normalized declaration schemes, and instantiated lexical reference types without changing legacy inference APIs.
 - Added deterministic ordered-map and runtime type-reference patterns to HIR, artifacts, LIR execution, and generated Go.
 - Added serializable local mutual-recursive closure groups to HIR, LIR execution, and generated Go projects.
