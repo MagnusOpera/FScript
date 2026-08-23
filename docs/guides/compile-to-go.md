@@ -85,6 +85,7 @@ The initial backend preserves:
 - concrete tagged structures for declared unions;
 - structural/named record conversions;
 - whole-program specialization of polymorphic lists, options, maps, and closures;
+- typed record, union, option, list, tuple, and ordered-map pattern checks, including deterministic map-clause backtracking;
 - ordered maps and recursive structural equality;
 - pattern decision plans and guards;
 - scalar, string, list, option, map, and portable console intrinsics;

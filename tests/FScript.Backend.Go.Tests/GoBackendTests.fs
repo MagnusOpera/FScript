@@ -160,8 +160,9 @@ type GoBackendTests() =
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok files ->
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
-            Assert.That(program, Does.Match("type record[0-9]+ struct"))
-            Assert.That(program, Does.Contain("`fscript:\"Name\"`"))
+            Assert.That(program, Does.Contain("type named_Person struct"))
+            Assert.That(program, Does.Contain("Field_Name string"))
+            Assert.That(program, Does.Not.Contain("any"))
 
     [<Test>]
     member _.``Go backend emits tagged ordinary union types`` () =
@@ -171,10 +172,10 @@ type GoBackendTests() =
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok files ->
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
-            Assert.That(program, Does.Match("type union[0-9]+ struct"))
+            Assert.That(program, Does.Contain("type named_Shape struct"))
             Assert.That(program, Does.Contain("Tag"))
-            Assert.That(program, Does.Contain("Case0 int64"))
-            Assert.That(program, Does.Contain("FScriptUnion() fsruntime.Union"))
+            Assert.That(program, Does.Contain("Case_Circle int64"))
+            Assert.That(program, Does.Not.Contain("interface{}"))
 
     [<Test>]
     member _.``Go generation is deterministic targets Go 1.25 and emits no generic declarations`` () =
@@ -195,17 +196,18 @@ type GoBackendTests() =
             Assert.That(Regex.IsMatch(file.Content, @"func\s+(?:\([^)]*\)\s*)?[A-Za-z_][A-Za-z0-9_]*\s*\["), Is.False, file.RelativePath)
 
     [<Test>]
-    member _.``Go emitter delegates LIR pattern plans to the runtime`` () =
+    member _.``Go emitter lowers LIR pattern plans to typed checks`` () =
         let source = "match Some (1, 2) with | Some (left, right) -> left + right | None -> 0"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match GoBackend.generate { ModuleName = "fscript.generated/patterns" } compiled.Lir with
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok files ->
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
-            Assert.That(program, Does.Contain("fsruntime.MatchPatternPlan(matchValue"))
-            Assert.That(program, Does.Contain("fsruntime.ProjectionStep{Kind: \"option-value\"}"))
-            Assert.That(program, Does.Not.Contain("fsruntime.OptionValue(matchValue"))
-            Assert.That(program, Does.Not.Contain("fsruntime.AsTuple(matchValue"))
+            Assert.That(program, Does.Contain("matchValue := option_"))
+            Assert.That(program, Does.Contain("(matchValue).HasValue"))
+            Assert.That(program, Does.Contain("((matchValue).Value).Item0"))
+            Assert.That(program, Does.Not.Contain("MatchPatternPlan"))
+            Assert.That(program, Does.Not.Contain("any"))
 
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]

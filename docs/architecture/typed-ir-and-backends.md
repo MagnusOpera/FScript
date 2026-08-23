@@ -28,6 +28,8 @@ LIR is executable but not a Go AST. Lambda bodies are lifted into a deterministi
 
 The Go backend specializes every reachable HM instantiation before selecting representations. Named and structural records, declared unions, tuples, options, lists, maps, and functions therefore receive closed concrete Go types. Explicit LIR conversion nodes copy record fields while evaluating their source once. Imported record adapters remain isolated at target-call boundaries.
 
+Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
+
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
 HIR and LIR expose canonical debug printers with stable artifact-local IDs and normalized type rendering. The arithmetic vertical slice is checked in as paired snapshots so changes to symbol allocation, function lifting, captures, or operation selection are reviewed explicitly.
