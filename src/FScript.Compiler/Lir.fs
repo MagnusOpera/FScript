@@ -97,8 +97,17 @@ module Lir =
           Span: Span
           Value: Expression }
 
+    type ImportedRecord =
+        { Name: string
+          ModulePath: string
+          MemberName: string
+          IsUnion: bool
+          Fields: (string * Type) list
+          Span: Span }
+
     type Program =
-        { Declarations: Declaration list
+        { ImportedRecords: ImportedRecord list
+          Declarations: Declaration list
           Entry: Expression option }
 
     let symbolNumber (SymbolId value) = value
@@ -180,7 +189,12 @@ module LirLowering =
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =
-        { Declarations =
+        { ImportedRecords =
+            program.ImportedRecords
+            |> List.map (fun value ->
+                ({ Name = value.Name; ModulePath = value.ModulePath; MemberName = value.MemberName; IsUnion = value.IsUnion
+                   Fields = value.Fields; Span = value.Span }: Lir.ImportedRecord))
+          Declarations =
             program.Declarations
             |> List.map (fun value ->
                 ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
@@ -208,7 +222,12 @@ module LirValidation =
 
     let validate (program: Lir.Program) =
         let ids = program.Declarations |> List.map _.Id
-        if ids.Length <> (ids |> Set.ofList |> Set.count) then
+        let invalidImports =
+            program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
+            || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
+        if invalidImports then
+            Error [ { Code = "FSL2012"; Stage = Lowering; Message = "LIR imported record linkage must be complete and uniquely named."; Span = None } ]
+        elif ids.Length <> (ids |> Set.ofList |> Set.count) then
             Error [ { Code = "FSL2001"; Stage = Lowering; Message = "LIR declaration IDs must be unique."; Span = None } ]
         else
             let diagnostics = ResizeArray<CompilerDiagnostic>()

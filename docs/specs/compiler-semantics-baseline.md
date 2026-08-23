@@ -48,6 +48,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
 - Generated Go source is deterministic and already canonical according to `gofmt`; generation itself has no installed-Go dependency. Local integration tests skip only when Go is unavailable, while CI installs Go 1.25 and treats its absence as a failure.
 - Tuples and lists remain observably distinct in generated Go: tuples format with parentheses, lists with brackets, tuple patterns require tuple values, and map pair inputs consume tuple values.
+- Backend-imported records retain exact field names and declaration linkage. The initial Go adapter accepts exported primitive fields only, performs record/struct conversion solely at target-call boundaries, and rejects imported unions, empty schemas, lowercase fields, tasks, and aggregate/function fields with `FSB4005`.
 
 ## Builtins, externs, attributes, and tasks
 

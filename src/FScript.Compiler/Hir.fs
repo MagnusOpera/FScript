@@ -109,8 +109,17 @@ module Hir =
           Span: Span
           Value: Expression }
 
+    type ImportedRecord =
+        { Name: string
+          ModulePath: string
+          MemberName: string
+          IsUnion: bool
+          Fields: (string * Type) list
+          Span: Span }
+
     type Program =
-        { Declarations: Declaration list
+        { ImportedRecords: ImportedRecord list
+          Declarations: Declaration list
           Entry: Expression option }
 
     let symbolNumber (SymbolId value) = value

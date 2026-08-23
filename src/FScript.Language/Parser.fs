@@ -346,7 +346,7 @@ module Parser =
                     argsDone <- true
             args
 
-        and parseTypeDecl () : Stmt =
+        and parseTypeDecl (backendImport: Attribute option) : Stmt =
             let typeTok = stream.Expect(Type, "Expected 'type'")
             let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'type'")
@@ -458,7 +458,14 @@ module Parser =
                 if not (stream.Match(Dedent)) then
                     raise (ParseException { Message = "Expected dedent after type declaration"; Span = stream.Peek().Span })
                 while stream.Match(Dedent) do ()
-            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Span = mkSpanFrom typeTok.Span endSpan }
+            let import =
+                backendImport
+                |> Option.map (fun attribute ->
+                    match attribute.Arguments with
+                    | [ modulePath; memberName ] when not (System.String.IsNullOrWhiteSpace modulePath) && not (System.String.IsNullOrWhiteSpace memberName) ->
+                        { ModulePath = modulePath; MemberName = memberName; Span = attribute.Span }
+                    | _ -> raise (ParseException { Message = "Import requires module path and member name: [<Import(\"module/path\", \"Member\")>]"; Span = attribute.Span }))
+            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Import = import; Span = mkSpanFrom typeTok.Span endSpan }
 
         and parsePattern () : Pattern =
             stream.SkipNewlines()
@@ -1661,7 +1668,7 @@ module Parser =
             | Type ->
                 if isExported then
                     raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
-                parseTypeDecl()
+                parseTypeDecl backendImport
             | Let ->
                 match backendImport with
                 | Some attribute when isExported -> raise (ParseException { Message = "Import and Export cannot be combined initially"; Span = attribute.Span })

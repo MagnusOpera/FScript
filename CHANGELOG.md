@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added imported record declarations with serialized HIR/LIR metadata, primitive Go boundary adapters, and explicit unsupported-shape diagnostics.
 - Added a distinct generated-Go tuple representation with tuple formatting, pattern matching, map-pair handling, and cross-runtime coverage.
 - Added an explicit identity LIR optimization pass between lowering and validation for future semantic transformations.
 - Embedded preformatted Go runtime templates and made every generated project pass a zero-diff `gofmt` gate without production toolchain dependence.

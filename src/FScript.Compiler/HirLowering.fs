@@ -481,5 +481,13 @@ module HirLowering =
                          Span = span
                          Value = { Type = importedType; Span = span; Node = Hir.TargetImport(import.ModulePath, import.MemberName) } }: Hir.Declaration) ]
             | TypeInfer.TSType _ -> ()
-        if errors.IsEmpty then Ok { Declarations = declarations; Entry = entry }
+        let importedRecords =
+            typeDefinitions
+            |> List.choose (fun definition ->
+                definition.Import
+                |> Option.map (fun import ->
+                    ({ Name = definition.Name; ModulePath = import.ModulePath; MemberName = import.MemberName; IsUnion = not definition.Cases.IsEmpty
+                       Fields = definition.Fields |> List.map (fun (name, fieldType) -> name, typeFromRef fieldType)
+                       Span = definition.Span }: Hir.ImportedRecord)))
+        if errors.IsEmpty then Ok { ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
         else Error errors

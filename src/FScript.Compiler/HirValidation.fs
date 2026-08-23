@@ -23,7 +23,12 @@ module HirValidation =
     let validate (program: Hir.Program) =
         let declarationIds = program.Declarations |> List.map (fun value -> value.Id)
         let duplicateIds = declarationIds |> List.countBy id |> List.filter (fun (_, count) -> count > 1)
-        if not duplicateIds.IsEmpty then
+        let invalidImports =
+            program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
+            || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
+        if invalidImports then
+            Error [ Diagnostic.hir "FSH1105" "HIR imported record linkage must be complete and uniquely named." None ]
+        elif not duplicateIds.IsEmpty then
             Error [ Diagnostic.hir "FSH1101" "HIR declaration IDs must be unique." None ]
         elif program.Declarations |> List.exists (fun declaration -> not (validSpan declaration.Span && validSpan declaration.Value.Span)) then
             Error [ Diagnostic.hir "FSH1103" "HIR contains an invalid source span." None ]

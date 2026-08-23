@@ -27,7 +27,7 @@ type HirTests() =
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 0; Name = "value"; Scheme = Forall([], TString)
               IsRecursive = false; IsExported = false; Span = span; Value = value }
-        match HirValidation.validate { Declarations = [ declaration ]; Entry = None } with
+        match HirValidation.validate { ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected invalid HIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))
 
@@ -37,19 +37,19 @@ type HirTests() =
         let branch: Lir.Expression =
             { Type = TInt; Span = span
               Node = Lir.Branch(constant TInt (Lir.Int 1L), constant TInt (Lir.Int 2L), constant TString (Lir.String "no")) }
-        match LirValidation.validate { Declarations = []; Entry = Some branch } with
+        match LirValidation.validate { ImportedRecords = []; Declarations = []; Entry = Some branch } with
         | Ok _ -> Assert.Fail("Expected invalid LIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2007"))
 
     [<Test>]
     member _.``LIR validation rejects unknown primitives`` () =
         let intrinsic = ({ Type = TInt; Span = span; Node = Lir.Intrinsic "Unknown.value" }: Lir.Expression)
-        match LirValidation.validate { Declarations = []; Entry = Some intrinsic } with
+        match LirValidation.validate { ImportedRecords = []; Declarations = []; Entry = Some intrinsic } with
         | Ok _ -> Assert.Fail("Expected unavailable primitive diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2009"))
 
     [<Test>]
     member _.``Initial LIR optimization pass is identity`` () =
         let expression = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
-        let program: Lir.Program = { Declarations = []; Entry = Some expression }
+        let program: Lir.Program = { ImportedRecords = []; Declarations = []; Entry = Some expression }
         Assert.That(LirOptimization.optimize program = program, Is.True)

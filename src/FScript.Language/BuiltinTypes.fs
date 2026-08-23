@@ -10,6 +10,7 @@ module BuiltinTypes =
               [ "ScriptName", TRPostfix(TRName "string", "option")
                 "Arguments", TRPostfix(TRName "string", "list") ]
           Cases = []
+          Import = None
           Span = unknownSpan }
 
     let fsKindType : TypeDef =
@@ -20,6 +21,7 @@ module BuiltinTypes =
               [ "File", Some (TRName "string")
                 "Directory", Some (TRName "string")
                 "Missing", None ]
+          Import = None
           Span = unknownSpan }
 
     let typeDefs : TypeDef list =

@@ -245,3 +245,10 @@ let ops =
   - imports are effectively deduplicated.
 - `import` must appear before executable/type code in a file.
 - Parse/type/eval errors include file-aware spans (`file`, `line`, `column`) so failures in imported files point to the offending source.
+
+## Backend import attributes
+
+- A bodyless target function import uses `[<Import("module/path", "Member")>] let name : complete -> signature`.
+- An imported record schema uses `[<Import("module/path", "TypeName")>] type Name = { Field: type; ... }`.
+- `Import` takes exactly two non-empty arguments and is valid only on a top-level type declaration or bodyless typed `let`.
+- Imported record field spelling is preserved exactly for backend adapters; the initial Go backend requires exported, uppercase primitive fields.

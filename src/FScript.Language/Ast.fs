@@ -1,10 +1,16 @@
 namespace FScript.Language
 
+type BackendImport =
+    { ModulePath: string
+      MemberName: string
+      Span: Span }
+
 type TypeDef =
     { Name: string
       IsRecursive: bool
       Fields: (string * TypeRef) list
       Cases: (string * TypeRef option) list
+      Import: BackendImport option
       Span: Span }
 
 and TypeRef =
@@ -23,11 +29,6 @@ type Param =
 type Attribute =
     { Name: string
       Arguments: string list
-      Span: Span }
-
-type BackendImport =
-    { ModulePath: string
-      MemberName: string
       Span: Span }
 
 type Literal =

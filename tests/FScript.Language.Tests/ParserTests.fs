@@ -819,6 +819,15 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected backend import")
 
     [<Test>]
+    member _.``Parses backend import attributes on record types`` () =
+        match Helpers.parse "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string; Age: int }" with
+        | [ SType { Name = "Person"; Import = Some import; Fields = fields } ] ->
+            import.ModulePath |> should equal "example.com/model"
+            import.MemberName |> should equal "Person"
+            fields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected imported record type")
+
+    [<Test>]
     member _.``Rejects backend imports with bodies`` () =
         let act () = Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string = fun value -> value" |> ignore
         act |> should throw typeof<ParseException>

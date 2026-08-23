@@ -32,6 +32,34 @@ type GoBackendTests() =
         | Ok _ -> Assert.Fail("Expected unsupported task diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4004"))
 
+    [<Test>]
+    member _.``Go backend emits imported record boundary adapters`` () =
+        let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string; Age: int }\n[<Import(\"example.com/model\", \"Birthday\")>] let birthday : Person -> Person\nbirthday { Name = \"Ada\"; Age = 42 }"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let roundTripped =
+            match compiled.Lir |> IrArtifact.serialize |> IrArtifact.deserialize with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(roundTripped.ImportedRecords.Length, Is.EqualTo(1))
+        match GoBackend.generate { ModuleName = "fscript.generated/importrecords" } roundTripped with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("goimport"))
+            Assert.That(program, Does.Contain(".Person{Name:"))
+            Assert.That(program, Does.Contain("importedResult.Name"))
+
+    [<Test>]
+    member _.``Go backend rejects unsupported imported record shapes`` () =
+        let source = "[<Import(\"example.com/model\", \"person\")>] type Person = { name: string }\n1"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/importrecords" } compiled.Lir with
+        | Ok _ -> Assert.Fail("Expected imported-record diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4005"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]

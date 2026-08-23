@@ -3,12 +3,16 @@ namespace FScript.Compiler
 open System
 open System.IO
 open System.Text
+open System.Threading
 open FScript.Language
 
 type GoOptions = { ModuleName: string }
 type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
+    let private currentImportedRecords = AsyncLocal<Map<string, Lir.ImportedRecord> option>()
+    let private tryImportedRecord name =
+        currentImportedRecords.Value |> Option.bind (Map.tryFind name)
     let private indent (value: string) = value.Replace("\n", "\n\t")
 
     let private runtimeTemplate fileName =
@@ -40,6 +44,7 @@ module GoBackend =
         | TOption _ -> "fsruntime.Option"
         | TRecord _ -> "map[string]any"
         | TNamed "Environment" -> "map[string]any"
+        | TNamed name when tryImportedRecord name |> Option.isSome -> "map[string]any"
         | TUnion _ | TNamed _ -> "fsruntime.Union"
         | TMap _ -> "fsruntime.OrderedMap"
         | value -> invalidArg "value" $"Unsupported Go representation for {Types.typeToString value}."
@@ -80,6 +85,7 @@ module GoBackend =
         | TRecord _ -> $"fsruntime.Record({code})"
         | TOption _ -> $"fsruntime.AsOption({code})"
         | TNamed "Environment" -> $"fsruntime.Record({code})"
+        | TNamed name when tryImportedRecord name |> Option.isSome -> $"fsruntime.Record({code})"
         | TUnion _ | TNamed _ -> $"fsruntime.AsUnion({code})"
         | TMap _ -> $"fsruntime.AsMap({code})"
         | TFun _ -> $"fsruntime.AsClosure({code})"
@@ -198,17 +204,38 @@ module GoBackend =
 
     let private emitTargetImport modulePath memberName importType =
         let alias = importAlias modulePath
+        let importedArgument raw _ (record: Lir.ImportedRecord) =
+            let fields =
+                record.Fields
+                |> List.map (fun (fieldName, fieldType) ->
+                    let fieldAccess = $"fsruntime.Record({raw})[{System.Text.Json.JsonSerializer.Serialize(fieldName)}]"
+                    let fieldValue = cast fieldType fieldAccess
+                    $"{fieldName}: {fieldValue}")
+                |> String.concat ", "
+            $"{importAlias record.ModulePath}.{record.MemberName}{{{fields}}}"
+        let importedResult code (record: Lir.ImportedRecord) =
+            let fields =
+                record.Fields
+                |> List.map (fun (fieldName, _) -> $"{System.Text.Json.JsonSerializer.Serialize(fieldName)}: importedResult.{fieldName}")
+                |> String.concat ", "
+            $"func() map[string]any {{\n\timportedResult := {code}\n\treturn map[string]any{{{fields}}}\n}}()"
         let rec build index arguments = function
             | TFun(argumentType, resultType) ->
                 let raw = $"targetArg{index}"
                 let argument = $"targetValue{index}"
                 let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"fsruntime.Closure{{Call: func({raw} any) any {{\n\t{argument} := {cast argumentType raw}\n\treturn {indent body}\n}}}}"
+                let argumentValue =
+                    match argumentType with
+                    | TNamed name -> tryImportedRecord name |> Option.map (importedArgument raw name) |> Option.defaultValue (cast argumentType raw)
+                    | _ -> cast argumentType raw
+                $"fsruntime.Closure{{Call: func({raw} any) any {{\n\t{argument} := {argumentValue}\n\treturn {indent body}\n}}}}"
             | resultType ->
                 let joined = String.concat ", " arguments
+                let call = $"{alias}.{memberName}({joined})"
                 match resultType with
                 | TUnit -> $"func() any {{ {alias}.{memberName}({joined}); return struct{{}}{{}} }}()"
-                | _ -> $"{alias}.{memberName}({joined})"
+                | TNamed name -> tryImportedRecord name |> Option.map (importedResult call) |> Option.defaultValue call
+                | _ -> call
         build 0 [] importType
 
     let rec private emitExpression environment (expression: Lir.Expression) =
@@ -466,6 +493,7 @@ func Environment() map[string]any {
 
     let private generateCore options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
+            currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
             let targetImports =
                 program.Declarations
                 |> List.choose (fun declaration -> match declaration.Value.Node with Lir.TargetImport(modulePath, memberName) -> Some(modulePath, memberName, declaration.Type, declaration.Span) | _ -> None)
@@ -473,6 +501,9 @@ func Environment() map[string]any {
             let rec directlyRepresentable = function
                 | TUnit | TInt | TFloat | TBool | TString -> true
                 | TFun(argument, result) -> directlyRepresentable argument && directlyRepresentable result
+                | TNamed name ->
+                    tryImportedRecord name
+                    |> Option.exists (fun record -> not record.IsUnion && record.Fields |> List.forall (snd >> directlyRepresentable))
                 | _ -> false
             let unsupportedImport = targetImports |> List.tryFind (fun (_, _, importType, _) -> not (directlyRepresentable importType))
             let names =
@@ -503,7 +534,8 @@ func Environment() map[string]any {
                 let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
                 let importLines =
                     ($"\t\"{moduleName}/internal/fsruntime\"") ::
-                    (targetImports |> List.map (fun (modulePath, _, _, _) -> modulePath) |> List.distinct |> List.map (fun path -> $"\t{importAlias path} {System.Text.Json.JsonSerializer.Serialize(path)}"))
+                    ([ yield! targetImports |> List.map (fun (modulePath, _, _, _) -> modulePath)
+                       yield! program.ImportedRecords |> List.map _.ModulePath ] |> List.distinct |> List.sort |> List.map (fun path -> $"\t{importAlias path} {System.Text.Json.JsonSerializer.Serialize(path)}"))
                     |> String.concat "\n"
                 let programSource = $"package fscriptprogram\n\nimport (\n{importLines}\n)\n\n{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
                 let printExpression =
@@ -522,6 +554,7 @@ func Environment() map[string]any {
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
+        currentImportedRecords.Value <- Some(program.ImportedRecords |> List.map (fun record -> record.Name, record) |> Map.ofList)
         let rec containsTask = function
             | TTask _ -> true
             | TFun(argument, result) | TMap(argument, result) -> containsTask argument || containsTask result
@@ -561,6 +594,15 @@ func Environment() map[string]any {
             program.Declarations
             |> List.tryPick (fun declaration -> if Set.contains declaration.Id reachable && containsTask declaration.Type then Some declaration.Span else None)
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind (fun entry -> if containsTask entry.Type then Some entry.Span else None))
-        match taskSpan with
-        | Some span -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
-        | None -> generateCore options program
+        let invalidImportedRecord =
+            program.ImportedRecords
+            |> List.tryFind (fun record ->
+                record.IsUnion
+                || record.Fields.IsEmpty
+                || (record.Fields |> List.exists (fun (name, fieldType) ->
+                    let unsupportedType = match fieldType with TUnit | TInt | TFloat | TBool | TString -> false | _ -> true
+                    System.String.IsNullOrEmpty(name) || not (System.Char.IsUpper(name.[0])) || containsTask fieldType || unsupportedType)))
+        match invalidImportedRecord, taskSpan with
+        | Some record, _ -> Error [ { Code = "FSB4005"; Stage = GoGeneration; Message = $"Imported Go record '{record.Name}' must have exported, exactly named primitive fields and cannot be a union."; Span = Some record.Span } ]
+        | None, Some span -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
+        | None, None -> generateCore options program

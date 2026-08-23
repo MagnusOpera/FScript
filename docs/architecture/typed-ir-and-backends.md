@@ -82,6 +82,8 @@ The LIR interpreter rejects reachable target imports it cannot supply. The Go ba
 
 Initial Go imports use `[<Import("module/path", "Member")>] let name : complete -> signature` with no body. The frontend requires a function type and records linkage separately from its FScript signature. Go emission uses deterministic package aliases and currently accepts only primitive/unit arguments and results; other representations receive `FSB4003`. The LIR interpreter keeps unused imports inert and reports `FSI3023` only when one is fully applied.
 
+Imported Go record types use `[<Import("module/path", "TypeName")>] type Name = { Field: primitive; ... }`. Their module/type linkage and ordered field schema survive HIR, LIR, and `.fsir` serialization. At imported function boundaries, generated Go converts FScript record maps to the declared Go struct and converts returned structs back to record maps. Fields must begin with an uppercase letter and currently use only unit, integer, floating-point, Boolean, or string representations; imported unions and other field shapes receive `FSB4005`.
+
 ## Cross-runtime conformance
 
 The conformance suite evaluates one source program through the legacy evaluator, a serialized-and-deserialized LIR program, and a generated Go executable. It compares successful results and failure categories across nested structural equality, named/structural record conversion, unions, higher-order and polymorphic functions, mutual recursion, and ordered maps. Named semantic types are resolved to their record or union representation while HIR is built, so a named record crossing a function boundary cannot accidentally receive the union representation in a downstream consumer.

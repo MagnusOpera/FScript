@@ -19,7 +19,8 @@ module IrArtifact =
 
     let private sourceMetadata (program: Lir.Program) =
         let paths =
-            [ yield! program.Declarations |> List.choose (fun declaration -> declaration.Span.Start.File)
+            [ yield! program.ImportedRecords |> List.choose (fun declaration -> declaration.Span.Start.File)
+              yield! program.Declarations |> List.choose (fun declaration -> declaration.Span.Start.File)
               match program.Entry with Some entry -> yield! entry.Span.Start.File |> Option.toList | None -> () ]
             |> List.distinct
             |> List.sort
@@ -34,12 +35,12 @@ module IrArtifact =
             else None)
 
     let private dependencies (program: Lir.Program) =
-        program.Declarations
-        |> List.choose (fun declaration ->
-            match declaration.Value.Node with
-            | Lir.HostExternal(name, _) -> Some $"host:{name}"
-            | Lir.TargetImport(modulePath, memberName) -> Some $"target:{modulePath}:{memberName}"
-            | _ -> None)
+        [ yield! program.ImportedRecords |> List.map (fun record -> $"target:{record.ModulePath}:{record.MemberName}")
+          yield! program.Declarations |> List.choose (fun declaration ->
+              match declaration.Value.Node with
+              | Lir.HostExternal(name, _) -> Some $"host:{name}"
+              | Lir.TargetImport(modulePath, memberName) -> Some $"target:{modulePath}:{memberName}"
+              | _ -> None) ]
         |> List.distinct
         |> List.sort
 
@@ -253,7 +254,14 @@ module IrArtifact =
         writer.WriteEndArray(); writer.WriteStartArray("dependencies")
         dependencies program |> List.iter writer.WriteStringValue
         writer.WriteEndArray()
-        writer.WriteStartObject("program"); writer.WriteStartArray("declarations")
+        writer.WriteStartObject("program"); writer.WriteStartArray("importedRecords")
+        for record in program.ImportedRecords do
+            writer.WriteStartObject(); writer.WriteString("name", record.Name); writer.WriteString("modulePath", record.ModulePath); writer.WriteString("memberName", record.MemberName); writer.WriteBoolean("union", record.IsUnion)
+            writer.WriteStartArray("fields")
+            for name, fieldType in record.Fields do
+                writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("type"); writeType writer fieldType; writer.WriteEndObject()
+            writer.WriteEndArray(); writer.WritePropertyName("span"); writeSpan writer record.Span; writer.WriteEndObject()
+        writer.WriteEndArray(); writer.WriteStartArray("declarations")
         for declaration in program.Declarations do
             writer.WriteStartObject(); writer.WriteNumber("id", Lir.symbolNumber declaration.Id); writer.WriteString("name", declaration.Name)
             writer.WritePropertyName("type"); writeType writer declaration.Type; writer.WriteBoolean("recursive", declaration.IsRecursive)
@@ -421,13 +429,18 @@ module IrArtifact =
                     Error [ { Code = "FSA5005"; Stage = Artifact; Message = "IR artifact metadata is invalid or non-canonical."; Span = None } ]
                 else
                     let programElement = property "program" root
+                    let importedRecords = (property "importedRecords" programElement).EnumerateArray() |> Seq.map (fun item ->
+                        ({ Name = stringProperty "name" item; ModulePath = stringProperty "modulePath" item; MemberName = stringProperty "memberName" item; IsUnion = (property "union" item).GetBoolean()
+                           Fields = (property "fields" item).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Seq.toList
+                           Span = readSpan (property "span" item) }: Lir.ImportedRecord)) |> Seq.toList
                     let declarations = (property "declarations" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
                         ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item; Type = readType (property "type" item)
                            IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean()
                            Span = readSpan (property "span" item); Value = readExpression (property "value" item) }: Lir.Declaration)) |> Seq.toList
                     let entryElement = property "entry" programElement
                     let program : Lir.Program =
-                        { Declarations = declarations
+                        { ImportedRecords = importedRecords
+                          Declarations = declarations
                           Entry = if entryElement.ValueKind = JsonValueKind.Null then None else Some(readExpression entryElement) }
                     LirValidation.validate program
         with ex -> Error [ { Code = "FSA5003"; Stage = Artifact; Message = ex.Message; Span = None } ]
