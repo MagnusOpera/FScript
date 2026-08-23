@@ -9,9 +9,11 @@ open NUnit.Framework
 
 [<TestFixture>]
 type GoBackendTests() =
-    [<Test>]
-    member _.``Generated add project runs with Go`` () =
-        let input = { Program = Parser.parseProgram "let add x y = x + y\nadd 1 2"; Externs = [] }
+    [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
+    [<TestCase("[1] @ [2; 3]", "[1 2 3]")>]
+    [<TestCase("[1; 2] = [1; 2]", "true")>]
+    member _.``Generated projects run with Go`` (source: string, expected: string) =
+        let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =
             match Compiler.compile input with
             | Ok value -> value
@@ -42,6 +44,6 @@ type GoBackendTests() =
             let error = proc.StandardError.ReadToEnd()
             proc.WaitForExit()
             Assert.That(proc.ExitCode, Is.EqualTo(0), error)
-            Assert.That(output.Trim(), Is.EqualTo("3"))
+            Assert.That(output.Trim(), Is.EqualTo(expected))
         finally
             if Directory.Exists directory then Directory.Delete(directory, true)

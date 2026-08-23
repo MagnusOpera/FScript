@@ -16,6 +16,10 @@ module GoBackend =
         | TString -> "string"
         | TVar _ -> "any"
         | TFun(argument, result) -> $"func({goType argument}) {goType result}"
+        | TTuple _ -> "[]any"
+        | TList _ -> "[]any"
+        | TOption _ -> "fsruntime.Option"
+        | TRecord _ -> "map[string]any"
         | value -> invalidArg "value" $"Unsupported Go representation for {Types.typeToString value}."
 
     let private identifier prefix id = $"{prefix}{Lir.symbolNumber id}"
@@ -34,7 +38,7 @@ module GoBackend =
         | Lir.IntMultiply | Lir.FloatMultiply -> Some "*"
         | Lir.IntDivide | Lir.FloatDivide -> Some "/"
         | Lir.IntRemainder -> Some "%"
-        | Lir.StructuralEqual -> Some "=="
+        | Lir.StructuralEqual -> None
         | Lir.NumericLessThan -> Some "<"
         | Lir.NumericGreaterThan -> Some ">"
         | Lir.NumericLessThanOrEqual -> Some "<="
@@ -62,17 +66,46 @@ module GoBackend =
             | Ok c, Ok t, Ok f -> Ok $"func() {goType expression.Type} {{ if {c} {{ return {t} }}; return {f} }}()"
             | Error error, _, _ | _, Error error, _ | _, _, Error error -> Error error
         | Lir.Operation(op, [ left; right ]) ->
-            match operation op, emitExpression environment left, emitExpression environment right with
-            | Some token, Ok l, Ok r ->
-                let l, r =
-                    match op with
-                    | Lir.IntAdd | Lir.IntSubtract | Lir.IntMultiply | Lir.IntDivide | Lir.IntRemainder ->
-                        $"fsruntime.Int({l})", $"fsruntime.Int({r})"
-                    | _ -> l, r
-                Ok $"({l} {token} {r})"
-            | None, _, _ -> Error $"Unsupported Go operation {op}"
-            | _, Error error, _ | _, _, Error error -> Error error
+            match emitExpression environment left, emitExpression environment right with
+            | Ok l, Ok r when op = Lir.StructuralEqual -> Ok $"fsruntime.Equal({l}, {r})"
+            | Ok l, Ok r ->
+                match operation op with
+                | Some token ->
+                    let l, r =
+                        match op with
+                        | Lir.IntAdd | Lir.IntSubtract | Lir.IntMultiply | Lir.IntDivide | Lir.IntRemainder ->
+                            $"fsruntime.Int({l})", $"fsruntime.Int({r})"
+                        | _ -> l, r
+                    Ok $"({l} {token} {r})"
+                | None -> Error $"Unsupported Go operation {op}"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.Tuple items | Lir.List items ->
+            items |> List.map (emitExpression environment) |> collect
+            |> Result.map (fun values ->
+                let joined = String.concat ", " values
+                $"[]any{{{joined}}}")
+        | Lir.Record fields ->
+            fields |> List.map (fun (name, value) -> emitExpression environment value |> Result.map (fun code -> $"{System.Text.Json.JsonSerializer.Serialize(name)}: {code}"))
+            |> collect |> Result.map (fun values ->
+                let joined = String.concat ", " values
+                $"map[string]any{{{joined}}}")
+        | Lir.FieldGet(target, name) ->
+            emitExpression environment target |> Result.map (fun code -> $"({code})[{System.Text.Json.JsonSerializer.Serialize(name)}]")
+        | Lir.SomeValue item -> emitExpression environment item |> Result.map (fun code -> $"fsruntime.Some({code})")
+        | Lir.NoneValue -> Ok "fsruntime.None()"
+        | Lir.Cons(head, tail) ->
+            match emitExpression environment head, emitExpression environment tail with
+            | Ok h, Ok t -> Ok $"fsruntime.Cons({h}, {t})"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.Append(left, right) ->
+            match emitExpression environment left, emitExpression environment right with
+            | Ok l, Ok r -> Ok $"fsruntime.Append({l}, {r})"
+            | Error error, _ | _, Error error -> Error error
         | Lir.Operation _ -> Error "Invalid operation arity"
+
+    and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =
+        results |> List.fold (fun state result ->
+            match state, result with Ok values, Ok value -> Ok(values @ [ value ]) | Error error, _ | _, Error error -> Error error) (Ok [])
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
@@ -101,6 +134,6 @@ module GoBackend =
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n)\n\nfunc main() {{ fmt.Println(fscriptprogram.Run()) }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
-                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nfunc Int(value any) int64 { return value.(int64) }\n" } ]
+                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport \"reflect\"\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

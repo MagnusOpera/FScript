@@ -97,15 +97,53 @@ module HirLowering =
                 match capturedOperandType, inferred with
                 | TVar _, (TInt | TFloat as concrete) -> concrete
                 | value, _ -> value
-            match operation op operandType with
-            | None -> Error [ Diagnostic.hir "FSH1003" $"Unresolved primitive operation '{op}'." (Some span) ]
-            | Some primitive ->
-                match lowerExpression state environment operandType left, lowerExpression state environment operandType right with
-                | Ok l, Ok r -> Ok(make (Hir.Primitive(primitive, [ l; r ])))
-                | Error l, Error r -> Error(l @ r)
-                | Error errors, _
-                | _, Error errors -> Error errors
+            if op = "@" then
+                match lowerExpression state environment inferred left, lowerExpression state environment inferred right with
+                | Ok l, Ok r -> Ok(make (Hir.Append(l, r)))
+                | Error a, Error b -> Error(a @ b)
+                | Error errors, _ | _, Error errors -> Error errors
+            else
+                match operation op operandType with
+                | None -> Error [ Diagnostic.hir "FSH1003" $"Unresolved primitive operation '{op}'." (Some span) ]
+                | Some primitive ->
+                    match lowerExpression state environment operandType left, lowerExpression state environment operandType right with
+                    | Ok l, Ok r -> Ok(make (Hir.Primitive(primitive, [ l; r ])))
+                    | Error l, Error r -> Error(l @ r)
+                    | Error errors, _
+                    | _, Error errors -> Error errors
+        | ETuple(items, _) ->
+            let itemTypes = match inferred with TTuple values -> values | _ -> List.replicate items.Length (Types.freshVar())
+            List.zip items itemTypes |> List.map (fun (item, itemType) -> lowerExpression state environment itemType item)
+            |> collectResults |> Result.map (Hir.Tuple >> make)
+        | EList(items, _) ->
+            let itemType = match inferred with TList value -> value | _ -> Types.freshVar()
+            items |> List.map (lowerExpression state environment itemType) |> collectResults |> Result.map (Hir.List >> make)
+        | ERecord(fields, _) | EStructuralRecord(fields, _) ->
+            let fieldTypes = match inferred with TRecord values -> values | _ -> Map.empty
+            fields |> List.map (fun (name, item) -> lowerExpression state environment (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun value -> name, value))
+            |> collectResults |> Result.map (Hir.Record >> make)
+        | EFieldGet(target, name, _) ->
+            lowerExpression state environment (expressionType state target (TRecord Map.empty)) target |> Result.map (fun value -> make (Hir.FieldGet(value, name)))
+        | ESome(item, _) ->
+            let itemType = match inferred with TOption value -> value | _ -> Types.freshVar()
+            lowerExpression state environment itemType item |> Result.map (Hir.SomeValue >> make)
+        | ENone _ -> Ok(make Hir.NoneValue)
+        | ECons(head, tail, _) ->
+            let itemType = match inferred with TList value -> value | _ -> Types.freshVar()
+            match lowerExpression state environment itemType head, lowerExpression state environment inferred tail with
+            | Ok h, Ok t -> Ok(make (Hir.Cons(h, t))) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | EAppend(left, right, _) ->
+            match lowerExpression state environment inferred left, lowerExpression state environment inferred right with
+            | Ok l, Ok r -> Ok(make (Hir.Append(l, r))) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
+
+    and private collectResults<'a> (results: Result<'a, CompilerDiagnostic list> list) : Result<'a list, CompilerDiagnostic list> =
+        let folder state result =
+            match state, result with
+            | Ok values, Ok value -> Ok(values @ [ value ])
+            | Error a, Error b -> Error(a @ b)
+            | Error errors, _ | _, Error errors -> Error errors
+        results |> List.fold folder (Ok [])
 
     let lower (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =

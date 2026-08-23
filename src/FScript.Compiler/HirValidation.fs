@@ -16,6 +16,11 @@ module HirValidation =
                 | Hir.If(condition, whenTrue, whenFalse) ->
                     Set.unionMany [ references condition; references whenTrue; references whenFalse ]
                 | Hir.Primitive(_, arguments) -> arguments |> List.map references |> Set.unionMany
+                | Hir.Tuple items | Hir.List items -> items |> List.map references |> Set.unionMany
+                | Hir.Record fields -> fields |> List.map (snd >> references) |> Set.unionMany
+                | Hir.FieldGet(target, _) | Hir.SomeValue target -> references target
+                | Hir.NoneValue -> Set.empty
+                | Hir.Cons(head, tail) | Hir.Append(head, tail) -> Set.union (references head) (references tail)
             let declared = declarationIds |> Set.ofList
             let unresolved =
                 [ yield! program.Declarations |> List.collect (fun value -> references value.Value |> Set.toList)

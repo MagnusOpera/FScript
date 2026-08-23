@@ -15,7 +15,7 @@ type IrArtifactTests() =
 
     [<Test>]
     member _.``IR artifact is deterministic and executable after round trip`` () =
-        let compiled = compile "let add x y = x + y\nadd 1 2"
+        let compiled = compile "let add x y = x + y\n(Some (add 1 2), [1] @ [2])"
         let first = IrArtifact.serialize compiled.Lir
         let second = IrArtifact.serialize compiled.Lir
         Assert.That((first = second), Is.True)
@@ -23,7 +23,7 @@ type IrArtifactTests() =
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok loaded ->
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } loaded with
-            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 3L))
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VTuple [ LirValue.VOption(Some(LirValue.VInt 3L)); LirValue.VList [ LirValue.VInt 1L; LirValue.VInt 2L ] ]))
             | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]

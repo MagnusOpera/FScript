@@ -30,6 +30,14 @@ module Lir =
         | CallClosure of Expression * Expression
         | Branch of Expression * Expression * Expression
         | Operation of Operation * Expression list
+        | Tuple of Expression list
+        | List of Expression list
+        | Record of (string * Expression) list
+        | FieldGet of Expression * string
+        | SomeValue of Expression
+        | NoneValue
+        | Cons of Expression * Expression
+        | Append of Expression * Expression
 
     type Declaration =
         { Id: SymbolId
@@ -73,6 +81,14 @@ module LirLowering =
             | Hir.Apply(fn, argument) -> Lir.CallClosure(expression fn, expression argument)
             | Hir.If(condition, whenTrue, whenFalse) -> Lir.Branch(expression condition, expression whenTrue, expression whenFalse)
             | Hir.Primitive(op, arguments) -> Lir.Operation(operation op, arguments |> List.map expression)
+            | Hir.Tuple items -> Lir.Tuple(items |> List.map expression)
+            | Hir.List items -> Lir.List(items |> List.map expression)
+            | Hir.Record fields -> Lir.Record(fields |> List.map (fun (name, item) -> name, expression item))
+            | Hir.FieldGet(target, name) -> Lir.FieldGet(expression target, name)
+            | Hir.SomeValue item -> Lir.SomeValue(expression item)
+            | Hir.NoneValue -> Lir.NoneValue
+            | Hir.Cons(head, tail) -> Lir.Cons(expression head, expression tail)
+            | Hir.Append(left, right) -> Lir.Append(expression left, expression right)
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

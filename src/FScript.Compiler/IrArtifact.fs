@@ -88,6 +88,27 @@ module IrArtifact =
         | Lir.Operation(operation, arguments) ->
             writer.WriteString("kind", "operation"); writer.WriteString("operation", sprintf "%A" operation)
             writer.WriteStartArray("arguments"); arguments |> List.iter (writeExpression writer); writer.WriteEndArray()
+        | Lir.Tuple items | Lir.List items ->
+            writer.WriteString("kind", match value.Node with Lir.Tuple _ -> "tuple" | _ -> "list")
+            writer.WriteStartArray("items"); items |> List.iter (writeExpression writer); writer.WriteEndArray()
+        | Lir.Record fields ->
+            writer.WriteString("kind", "record"); writer.WriteStartArray("fields")
+            for name, field in fields do
+                writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("value")
+                writeExpression writer field; writer.WriteEndObject()
+            writer.WriteEndArray()
+        | Lir.FieldGet(target, name) ->
+            writer.WriteString("kind", "field-get"); writer.WriteString("name", name)
+            writer.WritePropertyName("target"); writeExpression writer target
+        | Lir.SomeValue item ->
+            writer.WriteString("kind", "some"); writer.WritePropertyName("value"); writeExpression writer item
+        | Lir.NoneValue -> writer.WriteString("kind", "none")
+        | Lir.Cons(head, tail) ->
+            writer.WriteString("kind", "cons"); writer.WritePropertyName("head"); writeExpression writer head
+            writer.WritePropertyName("tail"); writeExpression writer tail
+        | Lir.Append(left, right) ->
+            writer.WriteString("kind", "append"); writer.WritePropertyName("left"); writeExpression writer left
+            writer.WritePropertyName("right"); writeExpression writer right
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -158,6 +179,15 @@ module IrArtifact =
             | "call" -> Lir.CallClosure(readExpression (property "function" element), readExpression (property "argument" element))
             | "branch" -> Lir.Branch(readExpression (property "condition" element), readExpression (property "whenTrue" element), readExpression (property "whenFalse" element))
             | "operation" -> Lir.Operation(readOperation (stringProperty "operation" element), (property "arguments" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
+            | "tuple" -> Lir.Tuple((property "items" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
+            | "list" -> Lir.List((property "items" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
+            | "record" ->
+                Lir.Record((property "fields" element).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readExpression (property "value" field)) |> Seq.toList)
+            | "field-get" -> Lir.FieldGet(readExpression (property "target" element), stringProperty "name" element)
+            | "some" -> Lir.SomeValue(readExpression (property "value" element))
+            | "none" -> Lir.NoneValue
+            | "cons" -> Lir.Cons(readExpression (property "head" element), readExpression (property "tail" element))
+            | "append" -> Lir.Append(readExpression (property "left" element), readExpression (property "right" element))
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

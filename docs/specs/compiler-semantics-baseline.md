@@ -10,6 +10,8 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 - Hindley-Milner inference generalizes top-level and local let bindings after applying substitutions. Recursive bindings are inferred monomorphically inside their recursive group and generalized afterward.
 - The active typed program stores top-level types but retains parser expressions in bodies. Compiler lowering therefore requires a new resolved, recursively typed result emitted by the inference pass; types cannot safely be reconstructed afterward.
 - Top-level statements execute in source order. Every non-final expression must have type `unit`; the final expression is the program result.
+
+The first aggregate compiler slice preserves tuple field order, record field names, option presence, list element order, list cons/append behavior, and recursively structural equality through HIR, serialized LIR, interpretation, and Go generation.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and closures capture their lexical environment. Single and mutual recursive function groups are supported.
 
 ## Types and values
