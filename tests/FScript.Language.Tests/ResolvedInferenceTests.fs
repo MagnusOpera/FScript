@@ -62,6 +62,28 @@ type ResolvedInferenceTests() =
         Assert.That(expressions |> List.forall (fun expression -> expression.Type <> TVar -1), Is.True)
         Assert.That(expressions |> List.exists (fun expression -> expression.Primitive = Some TypeInfer.IntegerAddition), Is.True)
         Assert.That(expressions |> List.exists (fun expression -> expression.Reference |> Option.exists (fun reference -> reference.Name = "add")), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> match expression.Node with TypeInfer.ResolvedPrimitive(TypeInfer.IntegerAddition, _) -> true | _ -> false), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> match expression.Node with TypeInfer.ResolvedReference reference when reference.Name = "add" && reference.Kind = TypeInfer.DeclarationSymbol -> true | _ -> false), Is.True)
+
+    [<Test>]
+    member _.``Resolved patterns reuse one symbol for repeated bindings`` () =
+        let source = "match { [\"a\"] = \"a\" } with\n    | { [same] = same } -> true\n    | _ -> false"
+        let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
+        let rec bindingIds (pattern: TypeInfer.ResolvedPattern) =
+            match pattern.Node with
+            | TypeInfer.ResolvedPatternBinding binding -> [ binding.SymbolId ]
+            | TypeInfer.ResolvedMapPattern(clauses, tail) ->
+                (clauses |> List.collect (fun (key, value) -> bindingIds key @ bindingIds value))
+                @ (tail |> Option.map bindingIds |> Option.defaultValue [])
+            | _ -> []
+        let ids =
+            resolved.ResolvedStatements
+            |> List.collect (fun statement ->
+                match statement.Node with
+                | TypeInfer.ResolvedExpressionStatement { Node = TypeInfer.ResolvedMatch(_, cases) } -> cases |> List.collect (_.Pattern >> bindingIds)
+                | _ -> [])
+        Assert.That(ids.Length, Is.EqualTo(2))
+        Assert.That(ids |> List.distinct |> List.length, Is.EqualTo(1))
 
     [<Test>]
     member _.``Resolved applications retain record coercion evidence`` () =

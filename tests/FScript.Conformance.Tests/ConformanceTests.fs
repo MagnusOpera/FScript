@@ -112,6 +112,7 @@ type ConformanceTests() =
     [<TestCase("let applyTwice fn value = fn (fn value)\nlet add amount = fun value -> value + amount\napplyTwice (add 2) 3")>]
     [<TestCase("let identity value = value\n(identity [1; 2], identity (Some \"ok\"))")>]
     [<TestCase("match [1; 2] with | head::tail when List.length tail = 1 -> head | _ -> 0")>]
+    [<TestCase("match { [\"a\"] = \"a\" } with | { [same] = same } -> true | _ -> false")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with

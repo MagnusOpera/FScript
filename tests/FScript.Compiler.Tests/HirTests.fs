@@ -117,6 +117,24 @@ type HirTests() =
         Assert.That(identity.Scheme, Is.EqualTo(Forall([ 0 ], TFun(TVar 0, TVar 0))))
 
     [<Test>]
+    member _.``HIR lowering consumes only the semantic resolved program`` () =
+        let program = Parser.parseProgram "let add x y = x + y\nadd 1 2"
+        let inferenceExterns =
+            CompilerExternCatalog.defaults
+            |> List.map (fun descriptor ->
+                ({ Name = descriptor.Name
+                   Scheme = descriptor.Scheme
+                   Arity = descriptor.Arity
+                   Impl = fun _ _ -> VUnit }: ExternalFunction))
+        let resolved = TypeInfer.inferResolvedProgramWithExterns inferenceExterns program
+        let detached = { resolved with TypedProgram = []; ExpressionTypes = [] }
+        match HirLowering.lower CompilerExternCatalog.defaults detached with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok hir ->
+            Assert.That(hir.Declarations |> List.exists (fun declaration -> declaration.Name = "add"), Is.True)
+            Assert.That(Hir.format hir, Does.Contain("primitive IntAdd"))
+
+    [<Test>]
     member _.``HIR attaches structured export and import attributes`` () =
         let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\n[<Export>] let answer = 42"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
