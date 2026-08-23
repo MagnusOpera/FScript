@@ -26,10 +26,12 @@ type ResolvedInferenceTests() =
         Assert.That(finalApplications, Does.Contain(TInt))
 
     [<Test>]
-    member _.``Ordinary inference does not allocate resolved telemetry`` () =
-        let program = Helpers.parse "let identity value = value\nidentity 42"
+    member _.``Legacy inference preserves the resolved typed program shape`` () =
+        let program = Helpers.parse "let add x y = x + y\nadd 40 2"
         let resolved = TypeInfer.inferResolvedProgram program
+        let legacy = TypeInfer.inferProgram program
 
+        Assert.That(legacy.Length, Is.EqualTo(resolved.TypedProgram.Length))
         Assert.That(resolved.ExpressionTypes |> List.exists (fun item -> item.Type = TInt), Is.True)
 
     [<Test>]

@@ -1603,7 +1603,7 @@ module TypeInfer =
         let typed, _, _ = inferProgramWithExternsRawAndLocals false externs program
         typed
 
-    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+    let private validateProgramBindings (externs: ExternalFunction list) (program: Program) =
         let reserved = BuiltinSignatures.builtinReservedNames
 
         externs
@@ -1615,26 +1615,14 @@ module TypeInfer =
         |> List.tryFind (fun name -> Set.contains name reserved)
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
-
-        inferProgramWithExternsRaw externs program
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
-        let reserved = BuiltinSignatures.builtinReservedNames
-
-        externs
-        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
-        |> Option.iter (fun ext ->
-            raise (TypeException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
-
-        topLevelBindingNames program
-        |> List.tryFind (fun name -> Set.contains name reserved)
-        |> Option.iter (fun name ->
-            raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
-
+        validateProgramBindings externs program
         let typed, locals, _ = inferProgramWithExternsRawAndLocals true externs program
         typed, locals
 
     let inferResolvedProgramWithExterns (externs: ExternalFunction list) (program: Program) : ResolvedProgram =
+        validateProgramBindings externs program
         let statementAttributes, semanticProgram = unwrapProgramAttributes program
         let typed, _, expressions = inferProgramWithExternsRawAndLocals true externs semanticProgram
         let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
@@ -2090,6 +2078,12 @@ module TypeInfer =
 
     let inferResolvedProgram (program: Program) : ResolvedProgram =
         inferResolvedProgramWithExterns [] program
+
+    /// The legacy typed-program API is a projection of the semantic resolved
+    /// result, so both compiler consumers and existing evaluators observe the
+    /// same inference pass and substitutions.
+    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+        (inferResolvedProgramWithExterns externs program).TypedProgram
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program

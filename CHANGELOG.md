@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Unified legacy and resolved inference through one semantic inference result.
+
 - Preserved canonical ordered-map key order across `Map.ofList` and `Map.add` in LIR and Go.
 
 - Hardened canonical IR metadata validation and required generated projects to pass `go test ./...`.
