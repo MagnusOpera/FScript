@@ -26,6 +26,8 @@ Lexical `let` is retained as a structured LIR node. Its symbol is visible only i
 
 Matches lower to a structured decision tree whose target is evaluated once. Cases remain ordered; each pattern test creates artifact-local bindings, then its guard is evaluated, and only then is its body selected. A failed guard continues at the next case. Exhaustion is the explicit FScript match-failure path. Literal, list, tuple, record, and option patterns use the same tree in serialized artifacts, the LIR interpreter, and generated Go.
 
+Ordered-map patterns retain ordered clause matching, repeated-binding consistency, remainder binding, and the existing rule that explicit clauses may leave unmatched entries. Type-reference patterns carry their resolved semantic type; consumers test primitive and aggregate representation shape and retain declared union identity.
+
 Top-level mutual-recursive declarations are initialized as an atomic closure group. The interpreter creates every closure against the preceding environment, extends that environment with the complete group, and updates all captures together. Generated Go declares typed slots for all declarations and assigns them in source order from `init`, allowing closures in one recursive group to refer to every peer.
 
 Local `let rec ... and ...` uses the same atomic rule inside a structured expression node. All local names are allocated before any member is lowered, every binding must evaluate to a closure, captures are updated with the complete group, and the body runs only after group initialization.

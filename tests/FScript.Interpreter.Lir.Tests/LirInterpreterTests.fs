@@ -198,3 +198,13 @@ type LirInterpreterTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VBool true))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<TestCase("match { [\"b\"] = 2; [\"a\"] = 1 } with\n    | { [key] = value; ..tail } -> (key, value, Map.count tail)\n    | {} -> (\"\", 0, 0)")>]
+    [<TestCase("match {| Name = \"Ada\"; Age = 42 |} with\n    | {| Name: string |} -> (\"Name\", 1, 0)\n    | _ -> (\"\", 0, 0)")>]
+    member _.``Executes map and type-reference patterns`` (source: string) =
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Pass()
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

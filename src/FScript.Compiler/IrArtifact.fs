@@ -91,9 +91,17 @@ module IrArtifact =
             for name, item in fields do
                 writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("pattern"); writePattern writer item; writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.MapPattern(clauses, tail) ->
+            writer.WriteString("kind", "map"); writer.WriteStartArray("clauses")
+            for key, item in clauses do
+                writer.WriteStartObject(); writer.WritePropertyName("key"); writePattern writer key
+                writer.WritePropertyName("value"); writePattern writer item; writer.WriteEndObject()
+            writer.WriteEndArray()
+            match tail with Some item -> writer.WritePropertyName("tail"); writePattern writer item | None -> writer.WriteNull("tail")
         | Lir.UnionPattern(typeName, caseName, payload) ->
             writer.WriteString("kind", "union"); writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName)
             match payload with Some item -> writer.WritePropertyName("payload"); writePattern writer item | None -> writer.WriteNull("payload")
+        | Lir.TypePattern patternType -> writer.WriteString("kind", "type"); writer.WritePropertyName("patternType"); writeType writer patternType
         writer.WriteEndObject()
 
     let rec private writeExpression (writer: Utf8JsonWriter) (value: Lir.Expression) =
@@ -271,9 +279,14 @@ module IrArtifact =
             | "cons" -> Lir.ConsPattern(readPattern (property "head" element), readPattern (property "tail" element))
             | "tuple" -> Lir.TuplePattern((property "items" element).EnumerateArray() |> Seq.map readPattern |> Seq.toList)
             | "record" -> Lir.RecordPattern((property "fields" element).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readPattern (property "pattern" field)) |> Seq.toList)
+            | "map" ->
+                let clauses = (property "clauses" element).EnumerateArray() |> Seq.map (fun clause -> readPattern (property "key" clause), readPattern (property "value" clause)) |> Seq.toList
+                let tail = property "tail" element
+                Lir.MapPattern(clauses, if tail.ValueKind = JsonValueKind.Null then None else Some(readPattern tail))
             | "union" ->
                 let payload = property "payload" element
                 Lir.UnionPattern(stringProperty "typeName" element, stringProperty "caseName" element, if payload.ValueKind = JsonValueKind.Null then None else Some(readPattern payload))
+            | "type" -> Lir.TypePattern(readType (property "patternType" element))
             | kind -> invalidOp $"Unknown LIR pattern kind '{kind}'."
         { Type = readType (property "type" element); Span = readSpan (property "span" element); Node = node }
 

@@ -86,9 +86,11 @@ module Hir =
         | ConsPattern of Pattern * Pattern
         | TuplePattern of Pattern list
         | RecordPattern of (string * Pattern) list
+        | MapPattern of (Pattern * Pattern) list * Pattern option
         | SomePattern of Pattern
         | NonePattern
         | UnionPattern of string * string * Pattern option
+        | TypePattern of Type
 
     and MatchCase =
         { Pattern: Pattern

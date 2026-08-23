@@ -85,6 +85,24 @@ module HirLowering =
                 let fields, bindingMaps = List.unzip values
                 let bindings = bindingMaps |> List.fold (Map.fold (fun env key value -> Map.add key value env)) Map.empty
                 make (Hir.RecordPattern fields), bindings)
+        | PMap(clauses, tail, _) ->
+            let keyType, valueType = match expected with TMap(key, value) -> key, value | _ -> Types.freshVar(), Types.freshVar()
+            let loweredClauses =
+                clauses |> List.map (fun (keyPattern, valuePattern) ->
+                    match lowerPattern state keyType keyPattern, lowerPattern state valueType valuePattern with
+                    | Ok(key, keyBindings), Ok(value, valueBindings) ->
+                        Ok((key, value), Map.fold (fun env name id -> Map.add name id env) keyBindings valueBindings)
+                    | Error a, Error b -> Error(a @ b) | Error errors, _ | _, Error errors -> Error errors)
+                |> collectResults
+            let loweredTail =
+                tail |> Option.map (lowerPattern state expected >> Result.map Some) |> Option.defaultValue (Ok None)
+            match loweredClauses, loweredTail with
+            | Ok clausesWithBindings, Ok tailValue ->
+                let clauses, bindingMaps = List.unzip clausesWithBindings
+                let tailPattern, tailBindings = tailValue |> Option.map (fun (pattern, bindings) -> Some pattern, bindings) |> Option.defaultValue (None, Map.empty)
+                let bindings = tailBindings :: bindingMaps |> List.fold (Map.fold (fun env name id -> Map.add name id env)) Map.empty
+                Ok(make (Hir.MapPattern(clauses, tailPattern)), bindings)
+            | Error a, Error b -> Error(a @ b) | Error errors, _ | _, Error errors -> Error errors
         | PUnionCase(typeName, caseName, payload, _) ->
             let resolvedTypeName, payloadType =
                 match expected with
@@ -96,7 +114,7 @@ module HirLowering =
             | None, _ -> Ok(make (Hir.UnionPattern(resolvedTypeName, caseName, None)), Map.empty)
             | Some item, Some itemType -> lowerPattern state itemType item |> Result.map (fun (value, bindings) -> make (Hir.UnionPattern(resolvedTypeName, caseName, Some value)), bindings)
             | Some item, None -> lowerPattern state (Types.freshVar()) item |> Result.map (fun (value, bindings) -> make (Hir.UnionPattern(resolvedTypeName, caseName, Some value)), bindings)
-        | _ -> Error [ Diagnostic.hir "FSH1004" "Pattern form is not yet supported by HIR lowering." (Some span) ]
+        | PTypeRef _ -> Ok(make (Hir.TypePattern expected), Map.empty)
 
     let rec private lowerExpression state environment fallback expression =
         let span = Ast.spanOfExpr expression

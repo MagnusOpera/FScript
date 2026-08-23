@@ -37,6 +37,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Conditionals and match guards require Boolean values and evaluate only the selected branch.
 - Match clauses are tried in source order. A guard runs only after its pattern binds successfully. Failure to find a clause is a runtime error.
 - Patterns cover literals, variables, wildcards, lists, tuples, records, ordered maps, options, union cases, and type-reference tests. Let-pattern failure is a runtime error.
+- Compiled map patterns consume entries deterministically in map order, merge repeated bindings only when structurally equal, and bind an optional tail to the remaining ordered map. Compiled type-reference patterns use resolved types rather than source text lookup.
 - Record updates evaluate the base once and then updates in source order. Ranges, loops, interpolation, indexing, raise, append, and cons preserve the evaluator's existing evaluation order and failures.
 - Equality is structural for primitives, tuples, records, maps, options, lists, unions, and type tokens, recursively. Functions, tasks, constructors, and extern handles are not structurally equal. Backend host-language comparability must not leak into this behavior.
 

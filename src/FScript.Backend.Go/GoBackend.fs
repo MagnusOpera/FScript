@@ -70,9 +70,50 @@ module GoBackend =
         | Lir.ConsPattern(head, tail) -> patternBindings head @ patternBindings tail
         | Lir.TuplePattern items -> List.collect patternBindings items
         | Lir.RecordPattern fields -> fields |> List.collect (snd >> patternBindings)
+        | Lir.MapPattern(clauses, tail) ->
+            clauses |> List.collect (fun (key, value) -> patternBindings key @ patternBindings value)
+            |> (@) (tail |> Option.map patternBindings |> Option.defaultValue [])
         | Lir.SomePattern item -> patternBindings item
         | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindings |> Option.defaultValue []
         | _ -> []
+
+    let rec private patternBindingDetails (pattern: Lir.Pattern) =
+        match pattern.Node with
+        | Lir.Binding(id, _) -> [ id, pattern.Type ]
+        | Lir.ConsPattern(head, tail) -> patternBindingDetails head @ patternBindingDetails tail
+        | Lir.TuplePattern items -> List.collect patternBindingDetails items
+        | Lir.RecordPattern fields -> fields |> List.collect (snd >> patternBindingDetails)
+        | Lir.MapPattern(clauses, tail) ->
+            clauses |> List.collect (fun (key, value) -> patternBindingDetails key @ patternBindingDetails value)
+            |> (@) (tail |> Option.map patternBindingDetails |> Option.defaultValue [])
+        | Lir.SomePattern item -> patternBindingDetails item
+        | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindingDetails |> Option.defaultValue []
+        | _ -> []
+
+    let rec private emitPatternDescriptor (pattern: Lir.Pattern) =
+        let quoted value = System.Text.Json.JsonSerializer.Serialize(value)
+        match pattern.Node with
+        | Lir.Wildcard -> "fsruntime.Pattern{Kind: \"wildcard\"}"
+        | Lir.Binding(id, _) -> $"fsruntime.Pattern{{Kind: \"binding\", Symbol: {Lir.symbolNumber id}}}"
+        | Lir.LiteralPattern value -> $"fsruntime.Pattern{{Kind: \"literal\", Literal: {constant value}}}"
+        | Lir.EmptyList -> "fsruntime.Pattern{Kind: \"empty-list\"}"
+        | Lir.NonePattern -> "fsruntime.Pattern{Kind: \"none\"}"
+        | Lir.SomePattern item -> $"fsruntime.Pattern{{Kind: \"some\", Items: []fsruntime.Pattern{{{emitPatternDescriptor item}}}}}"
+        | Lir.ConsPattern(head, tail) -> $"fsruntime.Pattern{{Kind: \"cons\", Items: []fsruntime.Pattern{{{emitPatternDescriptor head}, {emitPatternDescriptor tail}}}}}"
+        | Lir.TuplePattern items ->
+            let values = items |> List.map emitPatternDescriptor |> String.concat ", "
+            $"fsruntime.Pattern{{Kind: \"tuple\", Items: []fsruntime.Pattern{{{values}}}}}"
+        | Lir.RecordPattern fields ->
+            let values = fields |> List.map (fun (name, item) -> $"fsruntime.FieldPattern{{Name: {quoted name}, Pattern: {emitPatternDescriptor item}}}") |> String.concat ", "
+            $"fsruntime.Pattern{{Kind: \"record\", Fields: []fsruntime.FieldPattern{{{values}}}}}"
+        | Lir.MapPattern(clauses, tail) ->
+            let values = clauses |> List.map (fun (key, value) -> $"fsruntime.MapPatternClause{{Key: {emitPatternDescriptor key}, Value: {emitPatternDescriptor value}}}") |> String.concat ", "
+            let tailValue = tail |> Option.map (fun item -> $"fsruntime.PatternPtr({emitPatternDescriptor item})") |> Option.defaultValue "nil"
+            $"fsruntime.Pattern{{Kind: \"map\", Clauses: []fsruntime.MapPatternClause{{{values}}}, Tail: {tailValue}}}"
+        | Lir.UnionPattern(typeName, caseName, payload) ->
+            let payloadValue = payload |> Option.map (fun item -> $"[]fsruntime.Pattern{{{emitPatternDescriptor item}}}") |> Option.defaultValue "nil"
+            $"fsruntime.Pattern{{Kind: \"union\", TypeName: {quoted typeName}, CaseName: {quoted caseName}, Items: {payloadValue}}}"
+        | Lir.TypePattern patternType -> $"fsruntime.Pattern{{Kind: \"type\", TypeName: {quoted (Types.typeToString patternType)}}}"
 
     let rec private emitPattern valueCode (pattern: Lir.Pattern) =
         let combine parts =
@@ -104,6 +145,14 @@ module GoBackend =
                 let test, assignments = emitPattern $"fsruntime.Record({valueCode})[{quoted}]" item
                 $"fsruntime.HasField({valueCode}, {quoted}) && ({test})", assignments)
             |> combine
+        | Lir.MapPattern _ ->
+            let descriptor = emitPatternDescriptor pattern
+            let assignments =
+                patternBindingDetails pattern |> List.distinctBy fst |> List.map (fun (id, bindingType) ->
+                    let name = identifier "match" id
+                    let bindingValue = $"fsruntime.PatternBinding({valueCode}, {descriptor}, {Lir.symbolNumber id})"
+                    $"{name} := {cast bindingType bindingValue}; _ = {name}")
+            $"fsruntime.PatternMatches({valueCode}, {descriptor})", assignments
         | Lir.UnionPattern(typeName, caseName, payload) ->
             let quotedType = System.Text.Json.JsonSerializer.Serialize(typeName)
             let quotedCase = System.Text.Json.JsonSerializer.Serialize(caseName)
@@ -112,6 +161,7 @@ module GoBackend =
             | Some item ->
                 let test, assignments = emitPattern $"fsruntime.UnionValue({valueCode})" item
                 $"fsruntime.IsUnion({valueCode}, {quotedType}, {quotedCase}) && fsruntime.UnionHasValue({valueCode}) && ({test})", assignments
+        | Lir.TypePattern patternType -> $"fsruntime.TypeMatches({valueCode}, {System.Text.Json.JsonSerializer.Serialize(Types.typeToString patternType)})", []
 
     let private emitIntrinsic name intrinsicType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
@@ -325,6 +375,46 @@ func DispatchIntrinsic(name string, args []any) any {
 }
 """
 
+    let private patternRuntime = """package fsruntime
+
+import "strings"
+
+type Pattern struct { Kind string; Symbol int; Literal any; Items []Pattern; Fields []FieldPattern; Clauses []MapPatternClause; Tail *Pattern; TypeName string; CaseName string }
+type FieldPattern struct { Name string; Pattern Pattern }
+type MapPatternClause struct { Key Pattern; Value Pattern }
+
+func PatternPtr(value Pattern) *Pattern { return &value }
+
+func mergePatternBindings(left map[int]any, right map[int]any) (map[int]any, bool) {
+	result := map[int]any{}; for key, value := range left { result[key] = value }; for key, value := range right { if existing, found := result[key]; found && !Equal(existing, value) { return nil, false }; result[key] = value }; return result, true
+}
+
+func matchRuntimePattern(value any, pattern Pattern) (map[int]any, bool) {
+	switch pattern.Kind {
+	case "wildcard": return map[int]any{}, true
+	case "binding": return map[int]any{pattern.Symbol: value}, true
+	case "literal": return map[int]any{}, Equal(value, pattern.Literal)
+	case "empty-list": values, ok := value.([]any); return map[int]any{}, ok && len(values) == 0
+	case "none": option, ok := value.(Option); return map[int]any{}, ok && !option.HasValue
+	case "some": option, ok := value.(Option); if !ok || !option.HasValue { return nil, false }; return matchRuntimePattern(option.Value, pattern.Items[0])
+	case "cons": values, ok := value.([]any); if !ok || len(values) == 0 { return nil, false }; left, matched := matchRuntimePattern(values[0], pattern.Items[0]); if !matched { return nil, false }; right, matched := matchRuntimePattern(values[1:], pattern.Items[1]); if !matched { return nil, false }; return mergePatternBindings(left, right)
+	case "tuple": values, ok := value.([]any); if !ok || len(values) != len(pattern.Items) { return nil, false }; bindings := map[int]any{}; for index, item := range pattern.Items { next, matched := matchRuntimePattern(values[index], item); if !matched { return nil, false }; bindings, matched = mergePatternBindings(bindings, next); if !matched { return nil, false } }; return bindings, true
+	case "record": values, ok := value.(map[string]any); if !ok { return nil, false }; bindings := map[int]any{}; for _, field := range pattern.Fields { item, found := values[field.Name]; if !found { return nil, false }; next, matched := matchRuntimePattern(item, field.Pattern); if !matched { return nil, false }; bindings, matched = mergePatternBindings(bindings, next); if !matched { return nil, false } }; return bindings, true
+	case "union": item, ok := value.(Union); if !ok || item.TypeName != pattern.TypeName || item.CaseName != pattern.CaseName || (len(pattern.Items) == 0) != !item.HasValue { return nil, false }; if len(pattern.Items) == 0 { return map[int]any{}, true }; return matchRuntimePattern(item.Value, pattern.Items[0])
+	case "type": return map[int]any{}, TypeMatches(value, pattern.TypeName)
+	case "map":
+		item, ok := value.(OrderedMap); if !ok { return nil, false }; remaining := append([]MapEntry{}, item.Entries...); bindings := map[int]any{}
+		for _, clause := range pattern.Clauses { found := false; for index, entry := range remaining { keyBindings, keyMatched := matchRuntimePattern(entry.Key, clause.Key); if !keyMatched { continue }; withKey, merged := mergePatternBindings(bindings, keyBindings); if !merged { continue }; valueBindings, valueMatched := matchRuntimePattern(entry.Value, clause.Value); if !valueMatched { continue }; withValue, merged := mergePatternBindings(withKey, valueBindings); if !merged { continue }; bindings = withValue; remaining = append(remaining[:index], remaining[index+1:]...); found = true; break }; if !found { return nil, false } }
+		if pattern.Tail != nil { tailBindings, matched := matchRuntimePattern(OrderedMap{Entries: remaining}, *pattern.Tail); if !matched { return nil, false }; return mergePatternBindings(bindings, tailBindings) }; if len(pattern.Clauses) > 0 || len(remaining) == 0 { return bindings, true }; return nil, false
+	default: return nil, false
+	}
+}
+
+func PatternMatches(value any, pattern Pattern) bool { _, matched := matchRuntimePattern(value, pattern); return matched }
+func PatternBinding(value any, pattern Pattern, symbol int) any { bindings, matched := matchRuntimePattern(value, pattern); if !matched { panic("Pattern did not match") }; return bindings[symbol] }
+func TypeMatches(value any, typeName string) bool { switch typeName { case "unit": _, ok := value.(struct{}); return ok; case "int": _, ok := value.(int64); return ok; case "float": _, ok := value.(float64); return ok; case "bool": _, ok := value.(bool); return ok; case "string": _, ok := value.(string); return ok }; if strings.HasSuffix(typeName, " list") { _, ok := value.([]any); return ok }; if strings.HasSuffix(typeName, " option") { _, ok := value.(Option); return ok }; if strings.HasPrefix(typeName, "{") { _, ok := value.(map[string]any); return ok }; if item, ok := value.(Union); ok { return item.TypeName == typeName }; _, record := value.(map[string]any); return record }
+"""
+
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
             let names =
@@ -359,6 +449,7 @@ func DispatchIntrinsic(name string, args []any) any {
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"{moduleName}/internal/fsruntime\"\n)\n\nfunc main() {{ {printExpression} }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
                       { RelativePath = "internal/fsruntime/closures.go"; Content = closureRuntime }
+                      { RelativePath = "internal/fsruntime/patterns.go"; Content = patternRuntime }
                       { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n)\n\ntype Option struct { HasValue bool; Value any }\ntype Union struct { TypeName string; CaseName string; HasValue bool; Value any }\ntype MapEntry struct { Key any; Value any }\ntype OrderedMap struct { Entries []MapEntry }\ntype MapPart struct { IsSpread bool; Key any; Value any; Map OrderedMap }\n\nfunc Unit(value any) struct{} { return struct{}{} }\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc AsUnion(value any) Union { return value.(Union) }\nfunc AsMap(value any) OrderedMap { return value.(OrderedMap) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc MakeUnion(typeName string, caseName string) Union { return Union{TypeName: typeName, CaseName: caseName} }\nfunc MakeUnionValue(typeName string, caseName string, value any) Union { return Union{TypeName: typeName, CaseName: caseName, HasValue: true, Value: value} }\nfunc IsUnion(value any, typeName string, caseName string) bool { item := AsUnion(value); return item.TypeName == typeName && item.CaseName == caseName }\nfunc UnionHasValue(value any) bool { return AsUnion(value).HasValue }\nfunc UnionValue(value any) any { return AsUnion(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Range(first int64, last int64) []any { step := int64(1); if first > last { step = -1 }; values := []any{}; for current := first; ; current += step { values = append(values, current); if current == last { break } }; return values }\nfunc UpdateRecord(value any, updates map[string]any) map[string]any { result := map[string]any{}; for key, item := range Record(value) { result[key] = item }; for key, item := range updates { result[key] = item }; return result }\nfunc Pair(key any, value any) MapPart { return MapPart{Key: key, Value: value} }\nfunc SpreadMap(value any) MapPart { return MapPart{IsSpread: true, Map: AsMap(value)} }\nfunc mapSet(entries []MapEntry, key any, value any, replace bool) []MapEntry { for index, entry := range entries { if Equal(entry.Key, key) { if replace { entries[index].Value = value }; return entries } }; return append(entries, MapEntry{Key: key, Value: value}) }\nfunc BuildMap(parts []MapPart) OrderedMap { entries := []MapEntry{}; for _, part := range parts { if part.IsSpread { for _, entry := range part.Map.Entries { entries = mapSet(entries, entry.Key, entry.Value, false) } } else { entries = mapSet(entries, part.Key, part.Value, true) } }; sort.SliceStable(entries, func(left int, right int) bool { return Format(entries[left].Key) < Format(entries[right].Key) }); return OrderedMap{Entries: entries} }\nfunc Index(value any, index any) Option { switch target := value.(type) { case []any: position := Int(index); if position < 0 || position >= int64(len(target)) { return None() }; return Some(target[position]); case OrderedMap: for _, entry := range target.Entries { if Equal(entry.Key, index) { return Some(entry.Value) } }; return None(); default: panic(\"Index access requires a list or map\") } }\nfunc Intrinsic(name string, args []any) any { switch name { case \"ignore\": return struct{}{}; case \"List.empty\": return []any{}; case \"Map.empty\": return OrderedMap{}; case \"Int.tryParse\": value, error := strconv.ParseInt(String(args[0]), 10, 64); if error != nil { return None() }; return Some(value); case \"Float.tryParse\": value, error := strconv.ParseFloat(String(args[0]), 64); if error != nil { return None() }; return Some(value); case \"Bool.tryParse\": value, error := strconv.ParseBool(String(args[0])); if error != nil { return None() }; return Some(value); case \"Int.toString\", \"Float.toString\", \"Bool.toString\": return Format(args[0]); case \"String.replace\": return strings.ReplaceAll(String(args[2]), String(args[0]), String(args[1])); case \"String.indexOf\": index := strings.Index(String(args[1]), String(args[0])); if index < 0 { return None() }; return Some(int64(index)); case \"String.toLower\": return strings.ToLower(String(args[0])); case \"String.toUpper\": return strings.ToUpper(String(args[0])); case \"String.substring\": start, length, value := Int(args[0]), Int(args[1]), String(args[2]); if start < 0 || length < 0 || start + length > int64(len(value)) { return None() }; return Some(value[start:start+length]); case \"String.concat\": values := List(args[1]); parts := make([]string, len(values)); for index, value := range values { parts[index] = String(value) }; return strings.Join(parts, String(args[0])); case \"String.split\": values := strings.Split(String(args[1]), String(args[0])); result := make([]any, len(values)); for index, value := range values { result[index] = value }; return result; case \"String.endsWith\": return strings.HasSuffix(String(args[1]), String(args[0])); case \"List.length\": return int64(len(List(args[0]))); case \"List.rev\": values := List(args[0]); result := make([]any, len(values)); for index, value := range values { result[len(values)-index-1] = value }; return result; case \"List.tryHead\": values := List(args[0]); if len(values) == 0 { return None() }; return Some(values[0]); case \"List.tail\": return Tail(args[0]); case \"List.append\": return Append(List(args[0]), List(args[1])); case \"List.contains\": for _, value := range List(args[1]) { if Equal(args[0], value) { return true } }; return false; case \"Option.isNone\": return !IsSome(args[0]); case \"Option.isSome\": return IsSome(args[0]); case \"Option.defaultValue\": option := AsOption(args[1]); if option.HasValue { return option.Value }; return args[0]; case \"Map.count\": return int64(len(AsMap(args[0]).Entries)); case \"Map.containsKey\": return IsSome(Index(args[1], args[0])); case \"Map.tryGet\": return Index(args[1], args[0]); default: panic(\"Unsupported FScript intrinsic: \" + name) } }\nfunc Format(value any) string { switch item := value.(type) { case bool: if item { return \"true\" }; return \"false\"; case Option: if !item.HasValue { return \"None\" }; return \"Some \" + Format(item.Value); case Union: if !item.HasValue { return item.CaseName }; return item.CaseName + \" \" + Format(item.Value); case OrderedMap: parts := make([]string, len(item.Entries)); for index, entry := range item.Entries { parts[index] = \"[\" + Format(entry.Key) + \"] = \" + Format(entry.Value) }; return \"{ \" + strings.Join(parts, \"; \") + \" }\"; case []any: parts := make([]string, len(item)); for index, value := range item { parts[index] = Format(value) }; return \"[\" + strings.Join(parts, \";\") + \"]\"; default: return fmt.Sprint(value) } }\nfunc Interpolate(values []any) string { var result strings.Builder; for _, value := range values { result.WriteString(Format(value)) }; return result.String() }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added deterministic ordered-map and runtime type-reference patterns to HIR, artifacts, LIR execution, and generated Go.
 - Added serializable local mutual-recursive closure groups to HIR, LIR execution, and generated Go projects.
 - Preserved source-order execution for every top-level expression and added compiled top-level pattern bindings.
 - Added a universal erased Go closure convention and generated-runtime support for all pure list, option, and ordered-map intrinsics.

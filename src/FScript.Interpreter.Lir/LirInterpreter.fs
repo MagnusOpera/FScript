@@ -174,8 +174,27 @@ module LirInterpreter =
     let rec private matchPattern (pattern: Lir.Pattern) value =
         let combine left right =
             match left, right with
-            | Some a, Some b -> Some(Map.fold (fun env key item -> Map.add key item env) a b)
+            | Some a, Some b ->
+                b |> Map.fold (fun state key item ->
+                    state |> Option.bind (fun env ->
+                        match env |> Map.tryFind key with
+                        | Some existing when not (equal existing item) -> None
+                        | _ -> Some(Map.add key item env))) (Some a)
             | _ -> None
+        let rec matchesType expected item =
+            match expected, item with
+            | TUnit, VUnit | TInt, VInt _ | TFloat, VFloat _ | TBool, VBool _ | TString, VString _ | TTypeToken, VTypeToken _ -> true
+            | TTuple types, VTuple values -> types.Length = values.Length && List.forall2 matchesType types values
+            | TList itemType, VList values -> values |> List.forall (matchesType itemType)
+            | TOption _, VOption None -> true
+            | TOption itemType, VOption(Some value) -> matchesType itemType value
+            | TRecord fields, VRecord values -> fields |> Map.forall (fun name fieldType -> values |> Map.tryFind name |> Option.exists (matchesType fieldType))
+            | TMap(keyType, valueType), VMap entries -> entries |> List.forall (fun (key, value) -> matchesType keyType key && matchesType valueType value)
+            | TUnion(typeName, _), VUnion(valueType, _, _) | TNamed typeName, VUnion(valueType, _, _) -> typeName = valueType
+            | TNamed _, VRecord _ -> true
+            | TFun _, (VClosure _ | VIntrinsic _ | VExternal _) -> true
+            | TVar _, _ -> true
+            | _ -> false
         match pattern.Node, value with
         | Lir.Wildcard, _ -> Some Map.empty
         | Lir.Binding(id, _), item -> Some(Map.ofList [ id, item ])
@@ -188,10 +207,26 @@ module LirInterpreter =
         | Lir.RecordPattern patterns, VRecord values ->
             patterns |> List.fold (fun state (name, itemPattern) ->
                 combine state (values |> Map.tryFind name |> Option.bind (matchPattern itemPattern))) (Some Map.empty)
+        | Lir.MapPattern(clauses, tailPattern), VMap entries ->
+            let rec matchClauses bindings remaining = function
+                | [] ->
+                    match tailPattern with
+                    | Some tail -> combine (Some bindings) (matchPattern tail (VMap remaining))
+                    | None when not clauses.IsEmpty || remaining.IsEmpty -> Some bindings
+                    | None -> None
+                | (keyPattern, valuePattern) :: rest ->
+                    remaining |> List.indexed |> List.tryPick (fun (index, (key, item)) ->
+                        combine (Some bindings) (matchPattern keyPattern key)
+                        |> Option.bind (fun withKey -> combine (Some withKey) (matchPattern valuePattern item))
+                        |> Option.bind (fun withValue ->
+                            let next = remaining |> List.indexed |> List.choose (fun (position, entry) -> if position = index then None else Some entry)
+                            matchClauses withValue next rest))
+            matchClauses Map.empty entries clauses
         | Lir.SomePattern itemPattern, VOption(Some item) -> matchPattern itemPattern item
         | Lir.NonePattern, VOption None -> Some Map.empty
         | Lir.UnionPattern(typeName, caseName, payloadPattern), VUnion(valueType, valueCase, payload) when typeName = valueType && caseName = valueCase ->
             match payloadPattern, payload with None, None -> Some Map.empty | Some pattern, Some value -> matchPattern pattern value | _ -> None
+        | Lir.TypePattern expected, item when matchesType expected item -> Some Map.empty
         | _ -> None
 
     let rec private evaluate environment (expression: Lir.Expression) =

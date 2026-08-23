@@ -40,8 +40,12 @@ module HirValidation =
                         | Hir.ConsPattern(head, tail) -> Set.union (bindings head) (bindings tail)
                         | Hir.TuplePattern items -> items |> List.map bindings |> Set.unionMany
                         | Hir.RecordPattern fields -> fields |> List.map (snd >> bindings) |> Set.unionMany
+                        | Hir.MapPattern(clauses, tail) ->
+                            let clauseBindings = clauses |> List.collect (fun (key, value) -> [ bindings key; bindings value ])
+                            tail |> Option.map bindings |> Option.toList |> (@) clauseBindings |> Set.unionMany
                         | Hir.SomePattern item -> bindings item
                         | Hir.UnionPattern(_, _, payload) -> payload |> Option.map bindings |> Option.defaultValue Set.empty
+                        | Hir.TypePattern _ -> Set.empty
                         | _ -> Set.empty
                     let caseReferences (case: Hir.MatchCase) =
                         let bound = bindings case.Pattern

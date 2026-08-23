@@ -74,9 +74,11 @@ module Lir =
         | ConsPattern of Pattern * Pattern
         | TuplePattern of Pattern list
         | RecordPattern of (string * Pattern) list
+        | MapPattern of (Pattern * Pattern) list * Pattern option
         | SomePattern of Pattern
         | NonePattern
         | UnionPattern of string * string * Pattern option
+        | TypePattern of Type
 
     and DecisionCase =
         { Pattern: Pattern
@@ -127,9 +129,11 @@ module LirLowering =
             | Hir.ConsPattern(head, tail) -> Lir.ConsPattern(pattern head, pattern tail)
             | Hir.TuplePattern items -> Lir.TuplePattern(List.map pattern items)
             | Hir.RecordPattern fields -> Lir.RecordPattern(fields |> List.map (fun (name, item) -> name, pattern item))
+            | Hir.MapPattern(clauses, tail) -> Lir.MapPattern(clauses |> List.map (fun (key, value) -> pattern key, pattern value), Option.map pattern tail)
             | Hir.SomePattern item -> Lir.SomePattern(pattern item)
             | Hir.NonePattern -> Lir.NonePattern
             | Hir.UnionPattern(typeName, caseName, payload) -> Lir.UnionPattern(typeName, caseName, Option.map pattern payload)
+            | Hir.TypePattern patternType -> Lir.TypePattern patternType
         { Type = value.Type; Span = value.Span; Node = node }
 
     let rec private expression (value: Hir.Expression) : Lir.Expression =

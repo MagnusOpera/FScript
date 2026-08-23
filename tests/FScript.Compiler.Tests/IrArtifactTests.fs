@@ -50,7 +50,9 @@ type IrArtifactTests() =
               "let sum pair = (let (left, right) = pair\n    left + right\n)\nsum (1, 2)"
               "for value in [1; 2; 3] do ignore value"
               "type Package = { Name: string }\ntypeof Package"
-              "(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10\n)" ] do
+              "(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10\n)"
+              "match { [\"a\"] = 1 } with\n    | { [key] = value; ..tail } -> value\n    | {} -> 0"
+              "match {| Name = \"Ada\" |} with\n    | {| Name: string |} -> true\n    | _ -> false" ] do
             let bytes = compile source |> _.Lir |> IrArtifact.serialize
             match IrArtifact.deserialize bytes with
             | Ok _ -> ()
