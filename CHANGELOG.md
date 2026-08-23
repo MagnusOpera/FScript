@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Defined a zero-erasure Go representation policy based on whole-program HM specialization.
+
 - Fixed generated Go ordered comparisons inside polymorphic functions such as the quicksort sample.
 
 - Added portable console input and read-only text-file loading to LIR execution and generated Go programs.

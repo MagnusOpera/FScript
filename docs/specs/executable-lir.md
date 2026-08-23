@@ -28,7 +28,7 @@ The version-1 optimization pass is intentionally identity-only. LIR and the JSON
 
 `SymbolId` identifies values and bindings. `FunctionId` independently identifies lifted function bodies. Both are deterministic artifact-local integers.
 
-Every expression carries its semantic FScript type and source span. Rich types remain available for validation and backend representation selection even where runtime values are erased.
+Every expression carries its semantic FScript type and source span. Rich types remain available for validation, interpretation, and backend-specific specialization and representation selection.
 
 ## Functions and closures
 
@@ -72,7 +72,7 @@ LIR directly constructs and projects:
 
 Named records and unions retain declarations in the program type table. `RecordConvert` carries frontend-proven structural conversion evidence between distinct representations.
 
-Polymorphic lists, options, maps, and closures may use erased runtime payloads. LIR does not require or assume Go generics.
+LIR prescribes semantic values rather than a backend storage strategy. The .NET interpreter may use tagged runtime values; the Go backend must specialize reachable polymorphic uses into closed concrete representations and does not emit Go generics.
 
 Maps are ordered string-key maps according to current FScript semantics. Consumers must not substitute host-language hash-map iteration order.
 

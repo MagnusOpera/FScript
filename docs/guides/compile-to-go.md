@@ -84,7 +84,7 @@ The initial backend preserves:
 - tuples and concrete structs for declared records;
 - concrete tagged structures for declared unions;
 - structural/named record conversions;
-- erased polymorphic lists, options, maps, and closures;
+- whole-program specialization of polymorphic lists, options, maps, and closures;
 - ordered maps and recursive structural equality;
 - pattern decision plans and guards;
 - scalar, string, list, option, map, and portable console intrinsics;
@@ -93,7 +93,7 @@ The initial backend preserves:
 - short-circuit Boolean operations and left-to-right evaluation;
 - FScript-compatible result formatting, including IEEE floating results.
 
-The backend deliberately does not use Go generics.
+The backend deliberately does not use Go generics or dynamic value carriers. Reachable HM instantiations become concrete Go types and native typed functions.
 
 ## Console input and text files
 

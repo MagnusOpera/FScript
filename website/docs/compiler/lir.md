@@ -26,7 +26,7 @@ Lambdas become unary lifted functions with explicit ordered captures. `MakeClosu
 
 LIR directly represents primitive operations, branches, bindings, failures, tuples, lists, options, records, record conversions, tagged unions, ordered maps, ranges, loops, indexing, interpolation, type tokens, and linkage handles.
 
-Polymorphic containers and closures may use erased runtime payloads, while declared records and unions retain enough information for concrete Go representations.
+LIR retains semantic polymorphism. The Go backend specializes each reachable instantiation into concrete containers and native typed closures, while the LIR interpreter continues to use its own tagged execution values.
 
 Structural equality recursively covers data values and type tokens. Functions, Tasks, constructors, and extern handles are not structurally equal.
 

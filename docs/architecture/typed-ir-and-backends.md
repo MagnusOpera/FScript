@@ -26,7 +26,7 @@ HIR is language-oriented and contains resolved artifact-local symbol identities,
 
 LIR is executable but not a Go AST. Lambda bodies are lifted into a deterministic program-level function table. Closure creation references a function ID and carries its canonical ordered set of captured symbol IDs, alongside resolved primitive operations, aggregate construction/projection, and structured control flow. Validation recomputes each lifted function's free-symbol set and rejects unknown function IDs or forged, missing, duplicate, or unordered captures. Pattern matching becomes an ordered decision tree whose cases contain lowered projection steps, representation checks, symbol-binding plans, and deterministic map-consumption plans; no HIR/source pattern node survives in LIR. Semantic types remain alongside selected runtime representations for validation and diagnostics.
 
-The Go backend selects concrete generated structs for ordinary named records, with deterministic synthetic field identifiers and FScript-name tags. Declared unions use generated tagged structs with a field for each payload-bearing case and implement a small runtime conversion interface for generic matching and formatting. Structural records remain runtime maps, and explicit LIR conversion nodes copy fields between the representations while evaluating their source once. Runtime record projection, patterns, formatting, and equality reflect only tagged generated fields, so nominal representation does not alter FScript structural behavior. Imported record adapters remain isolated at target-call boundaries.
+The Go backend specializes every reachable HM instantiation before selecting representations. Named and structural records, declared unions, tuples, options, lists, maps, and functions therefore receive closed concrete Go types. Explicit LIR conversion nodes copy record fields while evaluating their source once. Imported record adapters remain isolated at target-call boundaries.
 
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
@@ -54,7 +54,7 @@ Language builtins are explicit `Intrinsic` declarations rather than magic unreso
 
 The LIR interpreter implements the pure builtin catalog, including callbacks for list mapping, selection, collection, folding, filtering and search; lazy option fallback and mapping; and ordered-map construction, folds, transforms, iteration, and removal. Callback application goes through the same curried closure path as ordinary source calls, preserving failure propagation and evaluation order.
 
-Generated Go represents every FScript function as an erased `fsruntime.Closure` with a single `any -> any` call slot. Typed values are checked at closure entry and result use. This uniform convention permits ordinary source closures, partial application, recursion, and higher-order runtime intrinsics to interoperate without Go generics or reflection-based invocation.
+Generated Go represents every reachable FScript function instantiation as a native typed unary function. Currying becomes nested function types; partial application, recursion, captures, and higher-order calls retain concrete signatures without Go generics or universal closure values.
 
 The Go runtime is stored as formatted `.go` resources embedded in `FScript.Backend.Go`. Program emission uses multiline structured constructs for closures, local control flow, decision trees, recursive groups, loops, and imports. Generation never invokes Go tooling; the backend tests run `gofmt -d`, `go test ./...`, and `go run` over generated projects.
 
@@ -72,15 +72,14 @@ Artifact metadata records the actual compiler and language assembly versions, no
 
 ## Representation policy
 
-- Primitive values, declared records, tuple shapes, and declared unions receive concrete representations where possible.
-- Polymorphic lists, options, maps, and the universal curried closure calling convention may carry erased payloads.
-- Erasure is introduced during HIR-to-LIR lowering, never during frontend inference.
-- Structural equality and record conversions are explicit LIR operations/helpers; Go `==` and Go nominal assignability never define FScript semantics.
+- Validated LIR remains semantically typed and backend-neutral. A private Go representation pass specializes reachable declarations, local bindings, functions, captures, intrinsics, and imports by normalized concrete instantiation.
+- Generated program and runtime source never use `any`, `interface{}` value carriers, reflection, a universal closure ABI, or Go generics.
+- Lists use `[]T`; options, tuples, ordered maps, structural records, named records, and unions use deterministic concrete generated types. Recursive named types use pointer indirection.
+- Functions use native typed unary function values. Structural equality, formatting, pattern projection, record conversion, and builtins are generated for their concrete representations.
+- A reachable residual open representation produces `FSB4007`. An effectful generalized initializer that cannot be cloned without repeating observable evaluation produces `FSB4008`.
 - LIR remains structured and non-SSA until a concrete optimization requirement justifies a control-flow IR.
 
-Generated Go uses `fsruntime.Tuple` for tuple shapes and `[]any` only for erased lists. This preserves tuple/list formatting and prevents tuple patterns or `(key, value)` map inputs from depending on a shared slice representation.
-
-Ordered numeric LIR operations dispatch through runtime helpers that distinguish `int64` from `float64`. This is required when generalized source functions retain type variables and Go consequently represents their parameters as `any`; native Go comparison operators are used only where the operands have concrete compatible representations.
+Unused pure generalized declarations may be omitted. Observable monomorphic top-level initializers retain source order. Bottom expressions such as `raise` need no value representation and remain executable even when their semantic result type is open.
 
 ## Runtime and foreign calls
 
