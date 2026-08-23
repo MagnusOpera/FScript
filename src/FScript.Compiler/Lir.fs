@@ -45,6 +45,7 @@ module Lir =
         | RecordUpdate of Expression * (string * Expression) list
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
+        | UnionCase of string * string * Expression option
 
     and InterpolationPart =
         | TextPart of string
@@ -65,6 +66,7 @@ module Lir =
         | RecordPattern of (string * Pattern) list
         | SomePattern of Pattern
         | NonePattern
+        | UnionPattern of string * string * Pattern option
 
     and DecisionCase =
         { Pattern: Pattern
@@ -117,6 +119,7 @@ module LirLowering =
             | Hir.RecordPattern fields -> Lir.RecordPattern(fields |> List.map (fun (name, item) -> name, pattern item))
             | Hir.SomePattern item -> Lir.SomePattern(pattern item)
             | Hir.NonePattern -> Lir.NonePattern
+            | Hir.UnionPattern(typeName, caseName, payload) -> Lir.UnionPattern(typeName, caseName, Option.map pattern payload)
         { Type = value.Type; Span = value.Span; Node = node }
 
     let rec private expression (value: Hir.Expression) : Lir.Expression =
@@ -148,6 +151,7 @@ module LirLowering =
             | Hir.RecordUpdate(target, fields) -> Lir.RecordUpdate(expression target, fields |> List.map (fun (name, item) -> name, expression item))
             | Hir.IndexGet(target, index) -> Lir.IndexGet(expression target, expression index)
             | Hir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Hir.TextPart text -> Lir.TextPart text | Hir.ValuePart item -> Lir.ValuePart(expression item)))
+            | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

@@ -90,3 +90,13 @@ type HirTests() =
                 match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
                 | Ok result -> Assert.That(result.Value, Is.EqualTo(expected), source)
                 | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Executes declared union construction and matching`` () =
+        let source = "type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Point -> 0\n    | Circle r -> r\nradius (Circle 3)"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 3L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

@@ -35,6 +35,7 @@ module HirValidation =
                         | Hir.TuplePattern items -> items |> List.map bindings |> Set.unionMany
                         | Hir.RecordPattern fields -> fields |> List.map (snd >> bindings) |> Set.unionMany
                         | Hir.SomePattern item -> bindings item
+                        | Hir.UnionPattern(_, _, payload) -> payload |> Option.map bindings |> Option.defaultValue Set.empty
                         | _ -> Set.empty
                     let caseReferences (case: Hir.MatchCase) =
                         let bound = bindings case.Pattern
@@ -44,6 +45,7 @@ module HirValidation =
                 | Hir.Range(startValue, endValue) | Hir.IndexGet(startValue, endValue) -> Set.union (references startValue) (references endValue)
                 | Hir.RecordUpdate(target, fields) -> Set.union (references target) (fields |> List.map (snd >> references) |> Set.unionMany)
                 | Hir.Interpolate parts -> parts |> List.choose (function Hir.TextPart _ -> None | Hir.ValuePart item -> Some(references item)) |> Set.unionMany
+                | Hir.UnionCase(_, _, payload) -> payload |> Option.map references |> Option.defaultValue Set.empty
             let declared = declarationIds |> Set.ofList
             let unresolved =
                 [ yield! program.Declarations |> List.collect (fun value -> references value.Value |> Set.toList)

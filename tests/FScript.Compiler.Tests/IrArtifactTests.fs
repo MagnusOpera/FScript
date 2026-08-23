@@ -47,7 +47,8 @@ type IrArtifactTests() =
               "raise \"failure\""
               "match Some 2 with\n    | Some x when x > 0 -> x\n    | None -> 0"
               "([1..3][0], $\"answer {42}\")"
-              "let value = {| Count = 1 |}\n{| value with Count = 2 |}" ] do
+              "let value = {| Count = 1 |}\n{| value with Count = 2 |}"
+              "type Shape = | Point | Circle of int\nmatch Circle 2 with\n    | Point -> 0\n    | Circle radius -> radius" ] do
             let bytes = compile source |> _.Lir |> IrArtifact.serialize
             match IrArtifact.deserialize bytes with
             | Ok _ -> ()

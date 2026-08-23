@@ -6,6 +6,7 @@ module HirLowering =
     type private State =
         { mutable NextSymbol: int
           ExpressionTypes: Map<Expr, Type>
+          mutable UnionCases: Map<string, string * Type option>
           mutable Diagnostics: CompilerDiagnostic list }
 
     let private newSymbol state =
@@ -83,6 +84,17 @@ module HirLowering =
                 let fields, bindingMaps = List.unzip values
                 let bindings = bindingMaps |> List.fold (Map.fold (fun env key value -> Map.add key value env)) Map.empty
                 make (Hir.RecordPattern fields), bindings)
+        | PUnionCase(typeName, caseName, payload, _) ->
+            let resolvedTypeName, payloadType =
+                match expected with
+                | TUnion(name, cases) -> name, cases |> Map.tryFind caseName |> Option.flatten
+                | _ ->
+                    state.UnionCases |> Map.tryFind caseName
+                    |> Option.defaultValue (typeName |> Option.defaultValue "", None)
+            match payload, payloadType with
+            | None, _ -> Ok(make (Hir.UnionPattern(resolvedTypeName, caseName, None)), Map.empty)
+            | Some item, Some itemType -> lowerPattern state itemType item |> Result.map (fun (value, bindings) -> make (Hir.UnionPattern(resolvedTypeName, caseName, Some value)), bindings)
+            | Some item, None -> lowerPattern state (Types.freshVar()) item |> Result.map (fun (value, bindings) -> make (Hir.UnionPattern(resolvedTypeName, caseName, Some value)), bindings)
         | _ -> Error [ Diagnostic.hir "FSH1004" "Pattern form is not yet supported by HIR lowering." (Some span) ]
 
     let rec private lowerExpression state environment fallback expression =
@@ -229,13 +241,35 @@ module HirLowering =
         let expressionTypes =
             resolved.ExpressionTypes
             |> List.fold (fun state item -> state |> Map.add item.Expr item.Type) Map.empty
-        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; Diagnostics = [] }
+        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; UnionCases = Map.empty; Diagnostics = [] }
         let builtins =
             BuiltinSignatures.builtinSchemes
             |> Map.toList
             |> List.sortBy fst
             |> List.map (fun (name, _) -> name, newSymbol state)
             |> Map.ofList
+        let typeDefinitions =
+            resolved.TypedProgram |> List.choose (function TypeInfer.TSType definition -> Some definition | _ -> None)
+        let rec typeFromRef = function
+            | TRName "unit" -> TUnit | TRName "int" -> TInt | TRName "float" -> TFloat | TRName "bool" -> TBool | TRName "string" -> TString
+            | TRName name -> TNamed name
+            | TRTuple items -> TTuple(List.map typeFromRef items)
+            | TRFun(argument, result) -> TFun(typeFromRef argument, typeFromRef result)
+            | TRPostfix(item, "list") -> TList(typeFromRef item)
+            | TRPostfix(item, "option") -> TOption(typeFromRef item)
+            | TRPostfix(item, "task") -> TTask(typeFromRef item)
+            | TRRecord fields | TRStructuralRecord fields -> TRecord(fields |> List.map (fun (name, item) -> name, typeFromRef item) |> Map.ofList)
+            | value -> TNamed(sprintf "%A" value)
+        let unionDefinitions =
+            typeDefinitions |> List.filter (fun definition -> not definition.Cases.IsEmpty) |> List.map (fun definition ->
+                let cases = definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList
+                definition, TUnion(definition.Name, cases))
+        state.UnionCases <-
+            unionDefinitions |> List.collect (fun (definition, _) ->
+                let cases = definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList
+                definition.Cases |> List.map (fun (caseName, _) -> caseName, (definition.Name, cases.[caseName]))) |> Map.ofList
+        let constructorSymbols =
+            unionDefinitions |> List.collect (fun (definition, _) -> definition.Cases |> List.map (fun (caseName, _) -> definition.Name, caseName, newSymbol state))
         let topLevel =
             resolved.TypedProgram
             |> List.collect (function
@@ -244,8 +278,21 @@ module HirLowering =
                 | _ -> [])
             |> List.distinct
             |> List.fold (fun env name -> env |> Map.add name (newSymbol state)) builtins
+        let topLevel =
+            constructorSymbols |> List.fold (fun env (typeName, caseName, id) -> env |> Map.add caseName id |> Map.add $"{typeName}.{caseName}" id) topLevel
 
-        let mutable declarations = []
+        let mutable declarations =
+            constructorSymbols |> List.map (fun (typeName, caseName, id) ->
+                let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
+                let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef
+                let value =
+                    match payloadType with
+                    | None -> ({ Type = unionType; Span = definition.Span; Node = Hir.UnionCase(typeName, caseName, None) }: Hir.Expression)
+                    | Some itemType ->
+                        let parameter = newSymbol state
+                        let body = ({ Type = unionType; Span = definition.Span; Node = Hir.UnionCase(typeName, caseName, Some({ Type = itemType; Span = definition.Span; Node = Hir.Reference parameter })) }: Hir.Expression)
+                        ({ Type = TFun(itemType, unionType); Span = definition.Span; Node = Hir.Lambda(parameter, "value", itemType, body) }: Hir.Expression)
+                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; IsRecursive = false; IsExported = false; Span = definition.Span; Value = value }: Hir.Declaration))
         let mutable entry = None
         let mutable errors = []
         for statement in resolved.TypedProgram do

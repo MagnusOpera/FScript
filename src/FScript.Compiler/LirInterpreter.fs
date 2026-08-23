@@ -16,6 +16,7 @@ type LirValue =
     | VList of LirValue list
     | VRecord of Map<string, LirValue>
     | VOption of LirValue option
+    | VUnion of string * string * LirValue option
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -36,6 +37,7 @@ module LirInterpreter =
         | VRecord a, VRecord b -> a.Count = b.Count && (a |> Map.forall (fun key value -> b |> Map.tryFind key |> Option.exists (equal value)))
         | VOption None, VOption None -> true
         | VOption(Some a), VOption(Some b) -> equal a b
+        | VUnion(aType, aCase, aValue), VUnion(bType, bCase, bValue) -> aType = bType && aCase = bCase && equal (VOption aValue) (VOption bValue)
         | _ -> false
 
     let rec private formatValue = function
@@ -47,6 +49,7 @@ module LirInterpreter =
             let rendered = fields |> Map.toList |> List.map (fun (name, value) -> name + " = " + formatValue value) |> String.concat "; "
             "{ " + rendered + " }"
         | VOption None -> "None" | VOption(Some value) -> $"Some {formatValue value}"
+        | VUnion(_, caseName, None) -> caseName | VUnion(_, caseName, Some value) -> $"{caseName} {formatValue value}"
         | VClosure _ -> "<function>"
 
     let private fail code span message =
@@ -71,6 +74,8 @@ module LirInterpreter =
                 combine state (values |> Map.tryFind name |> Option.bind (matchPattern itemPattern))) (Some Map.empty)
         | Lir.SomePattern itemPattern, VOption(Some item) -> matchPattern itemPattern item
         | Lir.NonePattern, VOption None -> Some Map.empty
+        | Lir.UnionPattern(typeName, caseName, payloadPattern), VUnion(valueType, valueCase, payload) when typeName = valueType && caseName = valueCase ->
+            match payloadPattern, payload with None, None -> Some Map.empty | Some pattern, Some value -> matchPattern pattern value | _ -> None
         | _ -> None
 
     let rec private evaluate environment (expression: Lir.Expression) =
@@ -202,6 +207,9 @@ module LirInterpreter =
         | Lir.Interpolate parts ->
             parts |> List.map (function Lir.TextPart text -> Ok text | Lir.ValuePart item -> evaluate environment item |> Result.map formatValue)
             |> collect |> Result.map (String.concat "" >> VString)
+        | Lir.UnionCase(typeName, caseName, payload) ->
+            payload |> Option.map (fun value -> evaluate environment value |> Result.map Some) |> Option.defaultValue (Ok None)
+            |> Result.map (fun value -> VUnion(typeName, caseName, value))
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

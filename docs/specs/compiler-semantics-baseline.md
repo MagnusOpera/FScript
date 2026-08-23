@@ -14,6 +14,8 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 The first aggregate compiler slice preserves tuple field order, record field names, option presence, list element order, list cons/append behavior, and recursively structural equality through HIR, serialized LIR, interpretation, and Go generation.
 
 Ranges preserve inclusive ascending or descending order. List indexing returns an option and never throws for an out-of-range integer. Record updates allocate a new value, interpolation evaluates embedded expressions from left to right, and generated program output uses FScript value formatting rather than Go's default aggregate formatting.
+
+Declared unions retain their type and case identity plus an optional erased payload. Constructors are deterministic compiler declarations, qualified and unqualified case references share one identity, pattern tests check both type and case tags, and equality recursively compares payloads.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and closures capture their lexical environment. Single and mutual recursive function groups are supported.
 
 ## Types and values

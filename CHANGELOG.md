@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added declared-union constructors, payloads, structural equality, pattern matching, artifact serialization, and Go runtime representation.
 - Added compiled ranges, safe list indexing, immutable record updates, interpolation, and FScript-style generated-program result formatting.
 - Added deterministic LIR pattern decision trees with single scrutinee evaluation, ordered guards, bindings, and match-failure diagnostics.
 - Added compiled local bindings, recursive lexical closures, and explicit runtime failures to HIR, LIR, and Go projects.

@@ -57,6 +57,7 @@ module Hir =
         | RecordUpdate of Expression * (string * Expression) list
         | IndexGet of Expression * Expression
         | Interpolate of InterpolationPart list
+        | UnionCase of string * string * Expression option
 
     and InterpolationPart =
         | TextPart of string
@@ -77,6 +78,7 @@ module Hir =
         | RecordPattern of (string * Pattern) list
         | SomePattern of Pattern
         | NonePattern
+        | UnionPattern of string * string * Pattern option
 
     and MatchCase =
         { Pattern: Pattern
@@ -162,6 +164,9 @@ module Hir =
             | Interpolate parts ->
                 lines.Add(typed "interpolate")
                 parts |> List.iter (function TextPart _ -> () | ValuePart item -> expression (indent + 2) item)
+            | UnionCase(typeName, caseName, payload) ->
+                lines.Add(typed $"union {typeName}.{caseName}")
+                payload |> Option.iter (expression (indent + 2))
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))

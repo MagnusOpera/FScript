@@ -91,6 +91,9 @@ module IrArtifact =
             for name, item in fields do
                 writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("pattern"); writePattern writer item; writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.UnionPattern(typeName, caseName, payload) ->
+            writer.WriteString("kind", "union"); writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName)
+            match payload with Some item -> writer.WritePropertyName("payload"); writePattern writer item | None -> writer.WriteNull("payload")
         writer.WriteEndObject()
 
     let rec private writeExpression (writer: Utf8JsonWriter) (value: Lir.Expression) =
@@ -169,6 +172,9 @@ module IrArtifact =
                 | Lir.ValuePart item -> writer.WriteString("kind", "value"); writer.WritePropertyName("value"); writeExpression writer item
                 writer.WriteEndObject()
             writer.WriteEndArray()
+        | Lir.UnionCase(typeName, caseName, payload) ->
+            writer.WriteString("kind", "union-case"); writer.WriteString("typeName", typeName); writer.WriteString("caseName", caseName)
+            match payload with Some item -> writer.WritePropertyName("payload"); writeExpression writer item | None -> writer.WriteNull("payload")
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -242,6 +248,9 @@ module IrArtifact =
             | "cons" -> Lir.ConsPattern(readPattern (property "head" element), readPattern (property "tail" element))
             | "tuple" -> Lir.TuplePattern((property "items" element).EnumerateArray() |> Seq.map readPattern |> Seq.toList)
             | "record" -> Lir.RecordPattern((property "fields" element).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readPattern (property "pattern" field)) |> Seq.toList)
+            | "union" ->
+                let payload = property "payload" element
+                Lir.UnionPattern(stringProperty "typeName" element, stringProperty "caseName" element, if payload.ValueKind = JsonValueKind.Null then None else Some(readPattern payload))
             | kind -> invalidOp $"Unknown LIR pattern kind '{kind}'."
         { Type = readType (property "type" element); Span = readSpan (property "span" element); Node = node }
 
@@ -288,6 +297,9 @@ module IrArtifact =
                     | "text" -> Lir.TextPart(stringProperty "text" item)
                     | "value" -> Lir.ValuePart(readExpression (property "value" item))
                     | kind -> invalidOp $"Unknown interpolation part '{kind}'.") |> Seq.toList)
+            | "union-case" ->
+                let payload = property "payload" element
+                Lir.UnionCase(stringProperty "typeName" element, stringProperty "caseName" element, if payload.ValueKind = JsonValueKind.Null then None else Some(readExpression payload))
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 
