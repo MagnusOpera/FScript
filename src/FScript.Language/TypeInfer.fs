@@ -167,7 +167,25 @@ module TypeInfer =
     type ResolvedSymbolReference =
         { SymbolId: int
           Name: string
+          Type: Type
           Span: Span }
+
+    type ResolvedSymbolKind =
+        | TypeSymbol
+        | DeclarationSymbol
+        | ParameterSymbol
+        | PatternBindingSymbol
+        | LocalSymbol
+        | BuiltinSymbol
+        | ExternSymbol
+        | UnionCaseSymbol
+
+    type ResolvedSymbol =
+        { SymbolId: int
+          Name: string
+          Kind: ResolvedSymbolKind
+          Span: Span
+          Scheme: Scheme option }
 
     type private LocalVariableTypeCapture =
         { Name: string
@@ -184,6 +202,7 @@ module TypeInfer =
     type ResolvedProgram =
         { TypedProgram: TypedProgram
           ExpressionTypes: ResolvedExpressionType list
+          Symbols: ResolvedSymbol list
           SymbolReferences: ResolvedSymbolReference list }
 
     type private InferenceTelemetry =
@@ -1445,9 +1464,137 @@ module TypeInfer =
 
     let inferResolvedProgramWithExterns (externs: ExternalFunction list) (program: Program) : ResolvedProgram =
         let typed, _, expressions = inferProgramWithExternsRawAndLocals true externs program
+        let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
+        let mutable nextSymbol = 0
+        let symbols = ResizeArray<ResolvedSymbol>()
+        let references = ResizeArray<ResolvedSymbolReference>()
+        let normalizeScheme (Forall(variables, schemeType)) =
+            let mapping = variables |> List.mapi (fun index variable -> variable, index) |> Map.ofList
+            let rec normalize = function
+                | TVar variable -> TVar(mapping |> Map.tryFind variable |> Option.defaultValue variable)
+                | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
+                | TTuple items -> TTuple(List.map normalize items)
+                | TRecord fields -> TRecord(Map.map (fun _ value -> normalize value) fields)
+                | TMap(key, value) -> TMap(normalize key, normalize value)
+                | TFun(argument, result) -> TFun(normalize argument, normalize result)
+                | TUnion(name, cases) -> TUnion(name, Map.map (fun _ payload -> Option.map normalize payload) cases)
+                | value -> value
+            Forall([ 0 .. variables.Length - 1 ], normalize schemeType)
+        let normalizeTypeVariables value =
+            let mutable next = 0
+            let mutable mapping = Map.empty
+            let rec normalize = function
+                | TVar variable ->
+                    match Map.tryFind variable mapping with
+                    | Some normalized -> TVar normalized
+                    | None ->
+                        let normalized = next
+                        next <- next + 1
+                        mapping <- Map.add variable normalized mapping
+                        TVar normalized
+                | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
+                | TTuple items -> TTuple(List.map normalize items)
+                | TRecord fields -> TRecord(Map.map (fun _ item -> normalize item) fields)
+                | TMap(key, item) -> TMap(normalize key, normalize item)
+                | TFun(argument, result) -> TFun(normalize argument, normalize result)
+                | TUnion(name, cases) -> TUnion(name, Map.map (fun _ payload -> Option.map normalize payload) cases)
+                | item -> item
+            normalize value
+        let allocate name kind span scheme =
+            let id = nextSymbol
+            nextSymbol <- nextSymbol + 1
+            symbols.Add { SymbolId = id; Name = name; Kind = kind; Span = span; Scheme = Option.map normalizeScheme scheme }
+            id
+        let syntheticSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+        let mutable globalEnvironment = Map.empty
+        for name, scheme in BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst do
+            globalEnvironment <- Map.add name (allocate name BuiltinSymbol syntheticSpan (Some scheme)) globalEnvironment
+        for external in externs |> List.sortBy _.Name do
+            globalEnvironment <- Map.add external.Name (allocate external.Name ExternSymbol syntheticSpan (Some external.Scheme)) globalEnvironment
+        for statement in typed do
+            match statement with
+            | TSType definition ->
+                globalEnvironment <- Map.add definition.Name (allocate definition.Name TypeSymbol definition.Span None) globalEnvironment
+                for caseName, _ in definition.Cases do
+                    let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
+                    globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+            | TSLet(name, _, inferred, _, _, span) ->
+                globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSLetPattern(_, _, bindings, _, span) ->
+                for name, inferred in bindings |> Map.toList do
+                    globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSLetRecGroup(bindings, _, _) ->
+                for name, _, inferred, span in bindings do
+                    globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSExpr _ -> ()
+        let recordReference environment name expression span =
+            environment |> Map.tryFind name |> Option.iter (fun id ->
+                references.Add { SymbolId = id; Name = name; Type = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables; Span = span })
+        let rec bindPattern kind environment pattern =
+            match pattern with
+            | PVar(name, span) -> Map.add name (allocate name kind span None) environment
+            | PCons(head, tail, _) -> bindPattern kind (bindPattern kind environment head) tail
+            | PTuple(items, _) -> items |> List.fold (bindPattern kind) environment
+            | PRecord(fields, _) -> fields |> List.fold (fun env (_, item) -> bindPattern kind env item) environment
+            | PMap(clauses, tail, _) ->
+                let withClauses = clauses |> List.fold (fun env (key, value) -> bindPattern kind (bindPattern kind env key) value) environment
+                tail |> Option.map (bindPattern kind withClauses) |> Option.defaultValue withClauses
+            | PSome(item, _) -> bindPattern kind environment item
+            | PUnionCase(_, _, payload, _) -> payload |> Option.map (bindPattern kind environment) |> Option.defaultValue environment
+            | _ -> environment
+        let rec visit environment expression =
+            let visitSame item = visit environment item
+            match expression with
+            | EVar(name, span) -> recordReference environment name expression span
+            | ENameOf(name, span) -> recordReference environment name expression span
+            | ETypeOf(name, span) -> recordReference environment name expression span
+            | ELambda(parameter, body, _) ->
+                let id = allocate parameter.Name ParameterSymbol parameter.Span None
+                visit (Map.add parameter.Name id environment) body
+            | EApply(fn, argument, _) | EBinOp(_, fn, argument, _) | EAppend(fn, argument, _) | ECons(fn, argument, _) | EIndexGet(fn, argument, _) -> visitSame fn; visitSame argument
+            | EIf(condition, whenTrue, whenFalse, _) -> visitSame condition; visitSame whenTrue; visitSame whenFalse
+            | ELet(name, binding, body, recursive, _, span) ->
+                let id = allocate name LocalSymbol span None
+                visit (if recursive then Map.add name id environment else environment) binding
+                visit (Map.add name id environment) body
+            | ELetPattern(pattern, binding, body, _) -> visitSame binding; visit (bindPattern PatternBindingSymbol environment pattern) body
+            | ELetRecGroup(bindings, body, _) ->
+                let recursiveEnvironment = bindings |> List.fold (fun env (name, _, _, _, span) -> Map.add name (allocate name LocalSymbol span None) env) environment
+                for _, parameters, _, value, span in bindings do
+                    let folded = Seq.foldBack (fun parameter inner -> ELambda(parameter, inner, span)) parameters value
+                    visit recursiveEnvironment folded
+                visit recursiveEnvironment body
+            | EMatch(target, cases, _) ->
+                visitSame target
+                for pattern, guard, body, _ in cases do
+                    let caseEnvironment = bindPattern PatternBindingSymbol environment pattern
+                    Option.iter (visit caseEnvironment) guard
+                    visit caseEnvironment body
+            | EFor(name, source, body, span) ->
+                visitSame source
+                let id = allocate name LocalSymbol span None
+                visit (Map.add name id environment) body
+            | EList(items, _) | ETuple(items, _) -> List.iter visitSame items
+            | ERecord(fields, _) | EStructuralRecord(fields, _) -> fields |> List.iter (snd >> visitSame)
+            | EMap(entries, _) -> entries |> List.iter (function MEKeyValue(key, value) -> visitSame key; visitSame value | MESpread value -> visitSame value)
+            | ERecordUpdate(target, fields, _) | EStructuralRecordUpdate(target, fields, _) -> visitSame target; fields |> List.iter (snd >> visitSame)
+            | EFieldGet(EVar(moduleName, _), fieldName, span) when Map.containsKey $"{moduleName}.{fieldName}" environment -> recordReference environment $"{moduleName}.{fieldName}" expression span
+            | EFieldGet(target, _, _) -> visitSame target
+            | ESome(item, _) | EParen(item, _) | ERaise(item, _) -> visitSame item
+            | ERange(first, last, _) -> visitSame first; visitSame last
+            | EInterpolatedString(parts, _) -> parts |> List.iter (function IPText _ -> () | IPExpr item -> visitSame item)
+            | EUnit _ | ELiteral _ | ENone _ -> ()
+        for statement in typed do
+            match statement with
+            | TSLet(_, expression, _, _, _, _) -> visit globalEnvironment expression
+            | TSLetPattern(pattern, expression, _, _, _) -> visit globalEnvironment expression; bindPattern PatternBindingSymbol globalEnvironment pattern |> ignore
+            | TSLetRecGroup(bindings, _, _) -> bindings |> List.iter (fun (_, expression, _, _) -> visit globalEnvironment expression)
+            | TSExpr expression -> visit globalEnvironment expression.Expr
+            | TSType _ -> ()
         { TypedProgram = typed
           ExpressionTypes = expressions
-          SymbolReferences = [] }
+          Symbols = symbols |> Seq.toList
+          SymbolReferences = references |> Seq.toList }
 
     let inferResolvedProgram (program: Program) : ResolvedProgram =
         inferResolvedProgramWithExterns [] program

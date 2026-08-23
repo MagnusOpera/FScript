@@ -29,3 +29,25 @@ type ResolvedInferenceTests() =
         let resolved = TypeInfer.inferResolvedProgram program
 
         Assert.That(resolved.ExpressionTypes |> List.exists (fun item -> item.Type = TInt), Is.True)
+
+    [<Test>]
+    member _.``Resolved inference assigns deterministic semantic symbols and typed references`` () =
+        let program = Helpers.parse "let apply f value = f value\napply (fun item -> item + 1) 41"
+        let first = TypeInfer.inferResolvedProgram program
+        let second = TypeInfer.inferResolvedProgram program
+
+        Assert.That(first.Symbols = second.Symbols, Is.True)
+        Assert.That(first.SymbolReferences = second.SymbolReferences, Is.True)
+        Assert.That((first.Symbols |> List.map _.SymbolId) = [ 0 .. first.Symbols.Length - 1 ], Is.True)
+        Assert.That(first.Symbols |> List.exists (fun symbol -> symbol.Name = "apply" && symbol.Kind = TypeInfer.DeclarationSymbol), Is.True)
+        Assert.That(first.Symbols |> List.exists (fun symbol -> symbol.Name = "item" && symbol.Kind = TypeInfer.ParameterSymbol), Is.True)
+        Assert.That(first.SymbolReferences |> List.exists (fun reference -> reference.Name = "apply" && reference.Type = TFun(TFun(TInt, TInt), TFun(TInt, TInt))), Is.True)
+
+    [<Test>]
+    member _.``Resolved declaration schemes normalize type variables`` () =
+        let resolved = Helpers.parse "let identity value = value\nidentity 1" |> TypeInfer.inferResolvedProgram
+        let scheme =
+            resolved.Symbols
+            |> List.find (fun symbol -> symbol.Name = "identity" && symbol.Kind = TypeInfer.DeclarationSymbol)
+            |> _.Scheme
+        Assert.That(scheme, Is.EqualTo(Some(Forall([ 0 ], TFun(TVar 0, TVar 0)))))

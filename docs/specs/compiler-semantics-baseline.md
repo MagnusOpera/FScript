@@ -9,6 +9,7 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 - Includes are resolved into one flattened program before inference. Alias-qualified declarations are rewritten by the include resolver; unresolved `SImport` nodes are rejected by inference.
 - Hindley-Milner inference generalizes top-level and local let bindings after applying substitutions. Recursive bindings are inferred monomorphically inside their recursive group and generalized afterward.
 - The active typed program stores top-level types but retains parser expressions in bodies. Compiler lowering therefore requires a new resolved, recursively typed result emitted by the inference pass; types cannot safely be reconstructed afterward.
+- Resolved inference exposes deterministic symbols for every lexical binding category and links each captured reference to its target ID with its instantiated type. Type-variable numbering in resolved schemes and reference types is normalized independently of prior inference calls.
 - Top-level statements execute in source order. Every non-final expression must have type `unit`; the final expression is the program result.
 - Compiled top-level expressions execute exactly once in source order even when interleaved with declarations. Top-level pattern bindings evaluate their scrutinee once, fail before later statements when unmatched, and expose all bound names to subsequent statements.
 
