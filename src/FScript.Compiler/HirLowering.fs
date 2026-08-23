@@ -15,8 +15,22 @@ module HirLowering =
         state.NextSymbol <- value + 1
         Hir.SymbolId value
 
+    let rec private representationType state = function
+        | TFun(argument, result) -> TFun(representationType state argument, representationType state result)
+        | TTuple items -> TTuple(List.map (representationType state) items)
+        | TList item -> TList(representationType state item)
+        | TOption item -> TOption(representationType state item)
+        | TMap(key, value) -> TMap(representationType state key, representationType state value)
+        | TTask item -> TTask(representationType state item)
+        | TRecord fields -> TRecord(fields |> Map.map (fun _ -> representationType state))
+        | TNamed name -> state.TypeDefinitions |> Map.tryFind name |> Option.defaultValue (TNamed name)
+        | value -> value
+
     let private expressionType state expression fallback =
-        state.ExpressionTypes |> Map.tryFind expression |> Option.defaultValue fallback
+        state.ExpressionTypes
+        |> Map.tryFind expression
+        |> Option.defaultValue fallback
+        |> representationType state
 
     let private literal = function
         | LInt value -> Hir.Int value, TInt

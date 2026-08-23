@@ -183,8 +183,7 @@ module LirLowering =
         { Declarations =
             program.Declarations
             |> List.map (fun value ->
-                let (Forall(_, declarationType)) = value.Scheme
-                ({ Id = symbol value.Id; Name = value.Name; Type = declarationType
+                ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
                    IsRecursive = value.IsRecursive; IsExported = value.IsExported
                    Span = value.Span; Value = expression value.Value }: Lir.Declaration))
           Entry = program.Entry |> Option.map expression }

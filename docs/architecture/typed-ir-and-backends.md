@@ -68,6 +68,10 @@ The LIR interpreter rejects reachable target imports it cannot supply. The Go ba
 
 Initial Go imports use `[<Import("module/path", "Member")>] let name : complete -> signature` with no body. The frontend requires a function type and records linkage separately from its FScript signature. Go emission uses deterministic package aliases and currently accepts only primitive/unit arguments and results; other representations receive `FSB4003`. The LIR interpreter keeps unused imports inert and reports `FSI3023` only when one is fully applied.
 
+## Cross-runtime conformance
+
+The conformance suite evaluates one source program through the legacy evaluator, a serialized-and-deserialized LIR program, and a generated Go executable. It compares successful results and failure categories across nested structural equality, named/structural record conversion, unions, higher-order and polymorphic functions, mutual recursion, and ordered maps. Named semantic types are resolved to their record or union representation while HIR is built, so a named record crossing a function boundary cannot accidentally receive the union representation in a downstream consumer.
+
 ## Previous experiment
 
 The `feature/in-memory-execution` branch is useful only as evidence about closures, invocation, and host integration. Its dynamic-method/in-memory assembly backend is not an IR layer and is neither copied nor referenced by the new compiler architecture.
