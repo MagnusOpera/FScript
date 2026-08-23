@@ -4,6 +4,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 
 ## Language and type system
 
+- Compiler semantic baseline: [`compiler-semantics-baseline.md`](./compiler-semantics-baseline.md)
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)
 - Supported types: [`supported-types.md`](./supported-types.md)
 - Function annotations: [`function-annotations.md`](./function-annotations.md)
