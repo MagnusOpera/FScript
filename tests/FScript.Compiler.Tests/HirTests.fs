@@ -165,6 +165,21 @@ type HirTests() =
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))
 
     [<Test>]
+    member _.``HIR validation rejects unknown semantic types and every unresolved symbol ID`` () =
+        let unknown = ({ Type = TNamed "Missing"; Span = span; Node = Hir.NoneValue }: Hir.Expression)
+        match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = []; Entry = Some unknown } with
+        | Ok _ -> Assert.Fail("Expected unknown HIR type diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1109"))
+
+        let reference = ({ Type = TUnit; Span = span; Node = Hir.Reference(Hir.SymbolId 0) }: Hir.Expression)
+        let declaration: Hir.Declaration =
+            { Id = Hir.SymbolId 10; Name = "value"; Scheme = Forall([], TUnit)
+              Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = reference }
+        match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
+        | Ok _ -> Assert.Fail("Expected unresolved HIR symbol diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1102"))
+
+    [<Test>]
     member _.``LIR validation rejects inconsistent control flow`` () =
         let constant valueType value = ({ Type = valueType; Span = span; Node = Lir.Constant value }: Lir.Expression)
         let branch: Lir.Expression =
@@ -180,6 +195,20 @@ type HirTests() =
         match LirValidation.validate { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some intrinsic } with
         | Ok _ -> Assert.Fail("Expected unavailable primitive diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2009"))
+
+    [<Test>]
+    member _.``LIR validation rejects unknown types and invalid nested spans`` () =
+        let unknown = ({ Type = TNamed "Missing"; Span = span; Node = Lir.NoneValue }: Lir.Expression)
+        match LirValidation.validate { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some unknown } with
+        | Ok _ -> Assert.Fail("Expected unknown LIR type diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2017"))
+
+        let invalidSpan = Span.mk (Span.pos -1 0) (Span.pos -1 1)
+        let child = ({ Type = TInt; Span = invalidSpan; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
+        let tuple = ({ Type = TTuple [ TInt ]; Span = span; Node = Lir.Tuple [ child ] }: Lir.Expression)
+        match LirValidation.validate { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some tuple } with
+        | Ok _ -> Assert.Fail("Expected nested LIR span diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2002"))
 
     [<Test>]
     member _.``Initial LIR optimization pass is identity`` () =

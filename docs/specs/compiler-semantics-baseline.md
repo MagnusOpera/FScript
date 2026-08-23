@@ -91,4 +91,4 @@ All entries are type-checkable and retained as linkage in HIR/LIR. Except for th
 
 Parse, type, and evaluation failures currently use source spans and exceptions. Compiler entry points translate expected failures into structured stage diagnostics while leaving existing embedding APIs behavior-compatible.
 
-Version-1 `.fsir` artifacts require compiler and language versions, source metadata, ordered dependencies, and a complete program. Unknown formats and versions are rejected before LIR construction; malformed metadata and invalid reconstructed LIR receive `FSA5xxx` diagnostics.
+Version-1 `.fsir` artifacts require compiler and language versions, source metadata, ordered dependencies, and a complete program. Unknown formats and versions are rejected before LIR construction; malformed metadata receives `FSA5xxx`, while reconstructed programs containing unknown named types, unresolved symbols, or invalid nested spans are rejected by the shared `FSL2xxx` validator before execution or generation.

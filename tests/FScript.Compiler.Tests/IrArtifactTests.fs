@@ -78,6 +78,23 @@ type IrArtifactTests() =
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5005"))
 
     [<Test>]
+    member _.``IR artifact post-load validation rejects unknown semantic types`` () =
+        let artifact = compile "1" |> _.Lir |> IrArtifact.serialize |> parseObject
+        let required (name: string) (value: JsonObject) : JsonNode =
+            match value[name] with
+            | null -> failwith $"Expected '{name}'"
+            | node -> node
+        let program = (required "program" artifact).AsObject()
+        let entry = (required "entry" program).AsObject()
+        let unknownType = JsonObject()
+        unknownType["kind"] <- "named"
+        unknownType["name"] <- "Missing"
+        entry["type"] <- unknownType
+        match IrArtifact.deserialize (Encoding.UTF8.GetBytes(artifact.ToJsonString())) with
+        | Ok _ -> Assert.Fail("Expected post-load semantic-type diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2017"))
+
+    [<Test>]
     member _.``IR artifact records normalized source paths and SHA256 hashes`` () =
         let path = IO.Path.Combine(IO.Path.GetTempPath(), $"fscript-source-{Guid.NewGuid():N}.fss")
         try

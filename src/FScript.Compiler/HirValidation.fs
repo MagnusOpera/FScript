@@ -43,12 +43,75 @@ module HirValidation =
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
+        let knownTypes = program.Types |> List.map _.Name |> Set.ofList
+        let rec validType (quantified: Set<int>) = function
+            | TVar variable -> variable >= 0 && (quantified.IsEmpty || Set.contains variable quantified)
+            | TFun(argument, result) -> validType quantified argument && validType quantified result
+            | TTuple items -> items |> List.forall (validType quantified)
+            | TList item | TOption item | TTask item -> validType quantified item
+            | TMap(key, value) -> validType quantified key && validType quantified value
+            | TRecord fields -> fields |> Map.forall (fun name fieldType -> not (System.String.IsNullOrWhiteSpace name) && validType quantified fieldType)
+            | TUnion(name, cases) ->
+                Set.contains name knownTypes
+                && cases |> Map.forall (fun caseName payload -> not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall (validType quantified))
+            | TNamed name -> Set.contains name knownTypes
+            | _ -> true
+        let validClosedType = validType Set.empty
+        let validScheme (Forall(variables, valueType)) =
+            variables = [ 0 .. variables.Length - 1 ] && validType (Set.ofList variables) valueType
+        let rec validPattern (pattern: Hir.Pattern) =
+            validSpan pattern.Span
+            && validClosedType pattern.Type
+            && match pattern.Node with
+               | Hir.ConsPattern(head, tail) -> validPattern head && validPattern tail
+               | Hir.TuplePattern items -> items |> List.forall validPattern
+               | Hir.RecordPattern fields -> fields |> List.forall (fun (name, value) -> not (System.String.IsNullOrWhiteSpace name) && validPattern value)
+               | Hir.MapPattern(clauses, tail) -> clauses |> List.forall (fun (key, value) -> validPattern key && validPattern value) && tail |> Option.forall validPattern
+               | Hir.SomePattern item -> validPattern item
+               | Hir.UnionPattern(typeName, caseName, payload) -> Set.contains typeName knownTypes && not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall validPattern
+               | Hir.TypePattern patternType -> validClosedType patternType
+               | _ -> true
+        let rec validExpression (expression: Hir.Expression) =
+            let valid = validExpression
+            validSpan expression.Span
+            && validClosedType expression.Type
+            && match expression.Node with
+               | Hir.Lambda(_, name, parameterType, body) -> not (System.String.IsNullOrWhiteSpace name) && validClosedType parameterType && valid body
+               | Hir.Apply(fn, argument) | Hir.Pipe(argument, fn) | Hir.Cons(fn, argument) | Hir.Append(fn, argument)
+               | Hir.Range(fn, argument) | Hir.IndexGet(fn, argument) -> valid fn && valid argument
+               | Hir.If(condition, whenTrue, whenFalse) -> valid condition && valid whenTrue && valid whenFalse
+               | Hir.Primitive(_, arguments) | Hir.Tuple arguments | Hir.List arguments -> arguments |> List.forall valid
+               | Hir.Record fields -> fields |> List.forall (fun (name, value) -> not (System.String.IsNullOrWhiteSpace name) && valid value)
+               | Hir.FieldGet(target, name) -> valid target && not (System.String.IsNullOrWhiteSpace name)
+               | Hir.SomeValue target | Hir.Fail target -> valid target
+               | Hir.Let(_, name, _, binding, body) -> not (System.String.IsNullOrWhiteSpace name) && valid binding && valid body
+               | Hir.LetRecursiveGroup(bindings, body) ->
+                   bindings |> List.forall (fun (_, name, bindingType, value) -> not (System.String.IsNullOrWhiteSpace name) && validClosedType bindingType && valid value)
+                   && valid body
+               | Hir.Match(target, cases) ->
+                   valid target
+                   && cases |> List.forall (fun case -> validSpan case.Span && validPattern case.Pattern && case.Guard |> Option.forall valid && valid case.Body)
+               | Hir.RecordUpdate(target, fields) -> valid target && fields |> List.forall (fun (name, value) -> not (System.String.IsNullOrWhiteSpace name) && valid value)
+               | Hir.RecordConvert(target, targetType) -> valid target && validClosedType targetType
+               | Hir.Interpolate parts -> parts |> List.forall (function Hir.TextPart _ -> true | Hir.ValuePart value -> valid value)
+               | Hir.UnionCase(typeName, caseName, payload) -> Set.contains typeName knownTypes && not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall valid
+               | Hir.Map entries -> entries |> List.forall (function Hir.KeyValue(key, value) -> valid key && valid value | Hir.Spread value -> valid value)
+               | Hir.ForEach(_, name, itemType, source, body) -> not (System.String.IsNullOrWhiteSpace name) && validClosedType itemType && valid source && valid body
+               | Hir.TypeToken tokenType -> validClosedType tokenType
+               | _ -> true
+        let invalidTypeReferences =
+            program.Types |> List.exists (fun declaration -> not (validClosedType declaration.Definition))
+            || program.ImportedRecords |> List.exists (fun record -> record.Fields |> List.exists (snd >> validClosedType >> not))
+            || program.Declarations |> List.exists (fun declaration -> not (validScheme declaration.Scheme) || not (validExpression declaration.Value))
+            || program.Entry |> Option.exists (validExpression >> not)
         if invalidAttributes then
             Error [ Diagnostic.hir "FSH1108" "HIR structured attribute metadata is invalid or inconsistent." None ]
         elif invalidTypes then
             Error [ Diagnostic.hir "FSH1107" "HIR type declarations must be unique, well-formed, and consistently linked." None ]
         elif invalidImports then
             Error [ Diagnostic.hir "FSH1105" "HIR imported record linkage must be complete and uniquely named." None ]
+        elif invalidTypeReferences then
+            Error [ Diagnostic.hir "FSH1109" "HIR contains an unresolved or invalid semantic type, nested span, or field name." None ]
         elif not duplicateIds.IsEmpty then
             Error [ Diagnostic.hir "FSH1101" "HIR declaration IDs must be unique." None ]
         elif program.Declarations |> List.exists (fun declaration -> declaration.IsExported <> declaration.Export.IsSome || (declaration.Export |> Option.exists (fun export -> export.Name <> declaration.Name || not (validSpan export.Span)))) then
@@ -124,16 +187,10 @@ module HirValidation =
                   | None -> () ]
                 |> Set.ofList
                 |> Set.filter (fun id -> not (Set.contains id declared))
-            // IDs below the first declaration are reserved deterministic builtin symbols.
-            let firstDeclaration =
-                match declarationIds |> List.map Hir.symbolNumber with
-                | [] -> 0
-                | values -> List.min values
-            let invalid = unresolved |> Set.filter (fun id -> Hir.symbolNumber id >= firstDeclaration)
-            if invalid.IsEmpty then Ok program
+            if unresolved.IsEmpty then Ok program
             else
                 let identifiers =
-                    invalid
+                    unresolved
                     |> Seq.map (Hir.symbolNumber >> string)
                     |> String.concat ", "
                 Error [ Diagnostic.hir "FSH1102" $"HIR contains unresolved symbol references: {identifiers}." None ]

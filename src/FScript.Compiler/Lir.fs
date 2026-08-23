@@ -439,6 +439,7 @@ module LirValidation =
         let ids = program.Declarations |> List.map _.Id
         let typeIds = program.Types |> List.map _.Id
         let typeDefinitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
+        let knownTypes = typeDefinitions |> Map.keys |> Set.ofSeq
         let resolve = function
             | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
             | value -> value
@@ -461,19 +462,40 @@ module LirValidation =
                     | TUnion(ln, _), TUnion(rn, _) -> ln = rn
                     | left, right -> left = right
             loop Set.empty left right
+        let validSpan (span: Span) =
+            span.Start.Line >= 0 && span.Start.Column >= 0 && span.End.Line >= 0 && span.End.Column >= 0
+            && (span.Start.File <> span.End.File
+                || span.End.Line > span.Start.Line
+                || (span.End.Line = span.Start.Line && span.End.Column >= span.Start.Column))
+        let rec validType = function
+            | TVar variable -> variable >= 0
+            | TFun(argument, result) -> validType argument && validType result
+            | TTuple items -> items |> List.forall validType
+            | TList item | TOption item | TTask item -> validType item
+            | TMap(key, value) -> validType key && validType value
+            | TRecord fields -> fields |> Map.forall (fun name fieldType -> not (System.String.IsNullOrWhiteSpace name) && validType fieldType)
+            | TUnion(name, cases) ->
+                Set.contains name knownTypes
+                && cases |> Map.forall (fun caseName payload -> not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall validType)
+            | TNamed name -> Set.contains name knownTypes
+            | _ -> true
         let functionIds = program.Functions |> List.map _.Id
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let invalidImports =
-            program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
+            program.ImportedRecords |> List.exists (fun record ->
+                System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName)
+                || not (validSpan record.Span)
+                || record.Fields |> List.exists (fun (name, fieldType) -> System.String.IsNullOrWhiteSpace name || not (validType fieldType)))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
         let invalidTypes =
             (program.Types |> List.map _.Name |> List.distinct |> List.length) <> program.Types.Length
             || (typeIds @ ids |> List.distinct |> List.length) <> typeIds.Length + ids.Length
             || program.Types |> List.exists (fun declaration ->
-                match declaration.Definition with
-                | TRecord _ -> false
-                | TUnion(name, _) -> name <> declaration.Name
-                | _ -> true)
+                not (validSpan declaration.Span) || not (validType declaration.Definition)
+                || match declaration.Definition with
+                   | TRecord _ -> false
+                   | TUnion(name, _) -> name <> declaration.Name
+                   | _ -> true)
         if invalidTypes then
             Error [ { Code = "FSL2016"; Stage = Lowering; Message = "LIR type declarations must have unique IDs and names with valid definitions."; Span = None } ]
         elif invalidImports then
@@ -486,12 +508,8 @@ module LirValidation =
             let diagnostics = ResizeArray<CompilerDiagnostic>()
             let report code message span =
                 diagnostics.Add({ Code = code; Stage = Lowering; Message = message; Span = Some span })
-            let validSpan (span: Span) =
-                span.Start.Line >= 0 && span.Start.Column >= 0 && span.End.Line >= 0 && span.End.Column >= 0
-                && (span.Start.File <> span.End.File
-                    || span.End.Line > span.Start.Line
-                    || (span.End.Line = span.Start.Line && span.End.Column >= span.Start.Column))
             let checkSpan span = if not (validSpan span) then report "FSL2002" "LIR source span is invalid." span
+            let checkType span valueType = if not (validType valueType) then report "FSL2017" "LIR contains an unresolved or invalid semantic type." span
             program.Declarations |> List.iter (fun declaration ->
                 if declaration.IsExported <> declaration.Export.IsSome || (declaration.Export |> Option.exists (fun export -> export.Name <> declaration.Name || not (validSpan export.Span))) then
                     report "FSL2015" "LIR export metadata is inconsistent." declaration.Span)
@@ -515,6 +533,7 @@ module LirValidation =
                     next |> Option.bind (fun item -> projectionType checks (traversed @ [ step ]) item rest)
             let rec checkPlan expected (plan: Lir.PatternPlan) =
                 checkSpan plan.Span
+                checkType plan.Span expected
                 let at projection = projectionType plan.Checks [] expected projection
                 let require projection predicate message =
                     match at projection with Some value when predicate (resolve value) -> () | _ -> report "FSL2003" message plan.Span
@@ -527,8 +546,9 @@ module LirValidation =
                     | Lir.SomeCheck projection | Lir.NoneCheck projection -> require projection (function TOption _ -> true | _ -> false) "LIR option plan requires an option projection."
                     | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) ->
                         require projection (function TUnion(actual, cases) when actual = typeName -> Map.tryFind caseName cases |> Option.exists (fun payload -> payload.IsSome = hasPayload) | _ -> false) "LIR union plan has inconsistent case metadata."
-                    | Lir.TypeCheck(projection, _) -> require projection (fun _ -> true) "LIR type-test plan has an invalid projection."
+                    | Lir.TypeCheck(projection, patternType) -> checkType plan.Span patternType; require projection (fun _ -> true) "LIR type-test plan has an invalid projection."
                 for binding in plan.Bindings do
+                    checkType plan.Span binding.Type
                     require binding.Projection (compatible binding.Type) "LIR pattern binding has an inconsistent projection type."
                 for mapPlan in plan.Maps do
                     match at mapPlan.Projection |> Option.map resolve with
@@ -547,6 +567,7 @@ module LirValidation =
             let declared = ids |> Set.ofList
             let rec checkExpression locals (expression: Lir.Expression) =
                 checkSpan expression.Span
+                checkType expression.Span expression.Type
                 let check = checkExpression locals
                 match expression.Node with
                 | Lir.Constant value when not (compatible expression.Type (literalType value)) -> report "FSL2004" "LIR constant has an inconsistent type." expression.Span
@@ -596,7 +617,7 @@ module LirValidation =
                 | Lir.Cons(head, tail) -> check head; check tail; match expression.Type, tail.Type with TList item, TList tailItem when compatible item head.Type && compatible item tailItem -> () | _ -> report "FSL2004" "LIR cons representation is inconsistent." expression.Span
                 | Lir.Append(left, right) -> check left; check right; if not (compatible expression.Type left.Type && compatible expression.Type right.Type) then report "FSL2004" "LIR append representation is inconsistent." expression.Span
                 | Lir.Let(id, _, recursive, binding, body) -> let scope = Set.add id locals in checkExpression (if recursive then scope else locals) binding; checkExpression scope body; if not (compatible expression.Type body.Type) then report "FSL2004" "LIR let result type is inconsistent." expression.Span
-                | Lir.LetRecursiveGroup(bindings, body) -> let scope = bindings |> List.fold (fun value (id, _, _, _) -> Set.add id value) locals in bindings |> List.iter (fun (_, _, bindingType, value) -> checkExpression scope value; if not (compatible bindingType value.Type) then report "FSL2006" "LIR recursive binding signature is inconsistent." value.Span); checkExpression scope body; if not (compatible expression.Type body.Type) then report "FSL2004" "LIR recursive group result is inconsistent." expression.Span
+                | Lir.LetRecursiveGroup(bindings, body) -> let scope = bindings |> List.fold (fun value (id, _, _, _) -> Set.add id value) locals in bindings |> List.iter (fun (_, _, bindingType, value) -> checkType value.Span bindingType; checkExpression scope value; if not (compatible bindingType value.Type) then report "FSL2006" "LIR recursive binding signature is inconsistent." value.Span); checkExpression scope body; if not (compatible expression.Type body.Type) then report "FSL2004" "LIR recursive group result is inconsistent." expression.Span
                 | Lir.Fail value -> check value
                 | Lir.DecisionTree(target, cases) -> check target; cases |> List.iter (fun case -> let caseLocals = Set.union locals (patternBindings case.Plan) in checkPlan target.Type case.Plan; case.Guard |> Option.iter (fun guard -> checkExpression caseLocals guard; if not (compatible guard.Type TBool) then report "FSL2007" "LIR decision guard must be Boolean." guard.Span); checkExpression caseLocals case.Body; if not (compatible expression.Type case.Body.Type) then report "FSL2007" "LIR decision body type is inconsistent." case.Body.Span)
                 | Lir.Range(first, last) -> check first; check last; if not (compatible first.Type TInt && compatible last.Type TInt && compatible expression.Type (TList TInt)) then report "FSL2004" "LIR range representation is inconsistent." expression.Span
@@ -616,7 +637,7 @@ module LirValidation =
                         if not (preservesTarget && validUpdates) then
                             report "FSL2004" "LIR record update representation is inconsistent." expression.Span
                     | _ -> report "FSL2004" "LIR record update representation is inconsistent." expression.Span
-                | Lir.RecordConvert(target, targetType) -> check target; match resolve target.Type, resolve targetType with TRecord _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span
+                | Lir.RecordConvert(target, targetType) -> check target; checkType expression.Span targetType; match resolve target.Type, resolve targetType with TRecord _, TRecord _ when compatible expression.Type targetType -> () | _ -> report "FSL2004" "LIR record conversion evidence is inconsistent." expression.Span
                 | Lir.IndexGet(target, index) -> check target; check index; match target.Type, expression.Type with TList item, TOption result when compatible index.Type TInt && compatible item result -> () | TMap(key, value), TOption result when compatible key index.Type && compatible value result -> () | _ -> report "FSL2004" "LIR index representation is inconsistent." expression.Span
                 | Lir.Interpolate parts -> parts |> List.iter (function Lir.TextPart _ -> () | Lir.ValuePart value -> check value); if not (compatible expression.Type TString) then report "FSL2004" "LIR interpolation must produce string." expression.Span
                 | Lir.UnionCase(typeName, caseName, payload) -> payload |> Option.iter check; match resolve expression.Type with TUnion(actual, cases) when actual = typeName && Map.containsKey caseName cases -> () | _ -> report "FSL2004" "LIR union representation is inconsistent." expression.Span
@@ -624,16 +645,18 @@ module LirValidation =
                 | Lir.Intrinsic name when not (Map.containsKey name BuiltinSignatures.builtinSchemes || Map.containsKey name RuntimeIntrinsics.schemes) -> report "FSL2009" $"Unknown LIR intrinsic '{name}'." expression.Span
                 | Lir.HostExternal(_, arity) when arity < 0 -> report "FSL2010" "LIR host external arity cannot be negative." expression.Span
                 | Lir.TargetImport(modulePath, memberName) when System.String.IsNullOrWhiteSpace(modulePath) || System.String.IsNullOrWhiteSpace(memberName) -> report "FSL2011" "LIR target import linkage is incomplete." expression.Span
-                | Lir.ForEach(id, _, itemType, source, body) -> check source; checkExpression (Set.add id locals) body; match source.Type with TList actual when compatible actual itemType && compatible expression.Type TUnit -> () | _ -> report "FSL2004" "LIR for-loop representation is inconsistent." expression.Span
-                | Lir.TypeToken _ when not (compatible expression.Type TTypeToken) -> report "FSL2004" "LIR type token has an inconsistent type." expression.Span
+                | Lir.ForEach(id, _, itemType, source, body) -> checkType expression.Span itemType; check source; checkExpression (Set.add id locals) body; match source.Type with TList actual when compatible actual itemType && compatible expression.Type TUnit -> () | _ -> report "FSL2004" "LIR for-loop representation is inconsistent." expression.Span
+                | Lir.TypeToken tokenType -> checkType expression.Span tokenType; if not (compatible expression.Type TTypeToken) then report "FSL2004" "LIR type token has an inconsistent type." expression.Span
                 | _ -> ()
             program.Functions |> List.iter (fun fn ->
                 checkSpan fn.Span
+                checkType fn.Span fn.ParameterType
+                checkType fn.Span fn.ReturnType
                 let expected = LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber
                 if fn.Captures <> expected then report "FSL2013" "Lifted LIR function captures do not match its ordered free-symbol set." fn.Span
                 checkExpression (Set.add fn.Parameter (Set.ofList fn.Captures)) fn.Body
                 if not (compatible fn.ReturnType fn.Body.Type) then report "FSL2006" "Lifted LIR function return type is inconsistent." fn.Span)
-            program.Declarations |> List.iter (fun declaration -> checkSpan declaration.Span; checkExpression Set.empty declaration.Value; if not (compatible declaration.Type declaration.Value.Type) then report "FSL2004" $"LIR declaration '{declaration.Name}' type is inconsistent." declaration.Span)
+            program.Declarations |> List.iter (fun declaration -> checkSpan declaration.Span; checkType declaration.Span declaration.Type; checkExpression Set.empty declaration.Value; if not (compatible declaration.Type declaration.Value.Type) then report "FSL2004" $"LIR declaration '{declaration.Name}' type is inconsistent." declaration.Span)
             program.Entry |> Option.iter (checkExpression Set.empty)
             if diagnostics.Count = 0 then Ok program else Error(List.ofSeq diagnostics)
 

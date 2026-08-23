@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Rejected malformed HIR, LIR, and loaded IR artifacts containing unknown semantic types, nested invalid spans, or any unresolved symbol ID.
+
 - Compiled every shipped sample by preserving interpolation scopes, intrinsic types, recursive representations, and structural record-width conversions.
 
 - Lowered source patterns into backend-neutral executable LIR projection and decision plans.
