@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Enforced cross-runtime equality conformance for closures, type tokens, and unequal collections.
+
 - Added short-circuit evaluation for Boolean `&&` and `||` across interpreted and generated programs.
 
 - Preserved sequential top-level shadowing identities through resolved inference, LIR interpretation, and generated Go.
