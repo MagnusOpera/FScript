@@ -245,10 +245,12 @@ module GoBackend =
                 program.Declarations
                 |> List.fold (fun env declaration -> env |> Map.add declaration.Id (identifier "value" declaration.Id)) Map.empty
             let declarations = StringBuilder()
+            let initializers = StringBuilder()
             let mutable error = None
             for declaration in program.Declarations do
+                declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
                 match emitExpression names declaration.Value with
-                | Ok code -> declarations.AppendLine($"var {names.[declaration.Id]} = {code}") |> ignore
+                | Ok code -> initializers.AppendLine($"\t{names.[declaration.Id]} = {code}") |> ignore
                 | Error message -> error <- Some(message, declaration.Span)
             let entry =
                 match program.Entry with
@@ -261,7 +263,7 @@ module GoBackend =
                 Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = message; Span = None } ]
             | None, Ok entryCode ->
                 let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
-                let programSource = $"package fscriptprogram\n\nimport \"{moduleName}/internal/fsruntime\"\n\n{declarations}\nfunc Run() any {{ return {entryCode} }}\n"
+                let programSource = $"package fscriptprogram\n\nimport \"{moduleName}/internal/fsruntime\"\n\n{declarations}\nfunc init() {{\n{initializers}}}\n\nfunc Run() any {{ return {entryCode} }}\n"
                 Ok
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"{moduleName}/internal/fsruntime\"\n)\n\nfunc main() {{ fmt.Println(fsruntime.Format(fscriptprogram.Run())) }}\n" }

@@ -21,6 +21,7 @@ type GoBackendTests() =
     [<TestCase("$\"value {1 + 2}\"", "value 3")>]
     [<TestCase("type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Point -> 0\n    | Circle r -> r\nradius (Circle 3)", "3")>]
     [<TestCase("let tail = { [\"a\"] = 2; [\"b\"] = 3 }\nlet values = { [\"a\"] = 1; ..tail }\nvalues[\"b\"]", "Some 3")>]
+    [<TestCase("let rec even n =\n    if n = 0 then true else odd (n - 1)\nand odd n =\n    if n = 0 then false else even (n - 1)\n\neven 10", "true")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =

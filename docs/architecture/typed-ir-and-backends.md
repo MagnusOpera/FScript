@@ -24,6 +24,8 @@ Lexical `let` is retained as a structured LIR node. Its symbol is visible only i
 
 Matches lower to a structured decision tree whose target is evaluated once. Cases remain ordered; each pattern test creates artifact-local bindings, then its guard is evaluated, and only then is its body selected. A failed guard continues at the next case. Exhaustion is the explicit FScript match-failure path. Literal, list, tuple, record, and option patterns use the same tree in serialized artifacts, the LIR interpreter, and generated Go.
 
+Top-level mutual-recursive declarations are initialized as an atomic closure group. The interpreter creates every closure against the preceding environment, extends that environment with the complete group, and updates all captures together. Generated Go declares typed slots for all declarations and assigns them in source order from `init`, allowing closures in one recursive group to refer to every peer.
+
 Serialized `.fsir` files contain one closed resolved program plus explicit foreign linkage declarations. JSON format versions are internal and may be rejected rather than upgraded.
 
 ## Representation policy

@@ -322,6 +322,19 @@ module HirLowering =
                 match lowerExpression state topLevel expression.Type expression.Expr with
                 | Ok value -> entry <- Some value
                 | Error diagnostics -> errors <- errors @ diagnostics
+            | TypeInfer.TSLetRecGroup(bindings, isExported, groupSpan) ->
+                for name, expression, inferred, span in bindings do
+                    match lowerExpression state topLevel inferred expression with
+                    | Ok value ->
+                        declarations <- declarations @
+                            [ ({ Id = Map.find name topLevel
+                                 Name = name
+                                 Scheme = Types.generalize Map.empty inferred
+                                 IsRecursive = true
+                                 IsExported = isExported
+                                 Span = span
+                                 Value = value }: Hir.Declaration) ]
+                    | Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSType _ -> ()
             | _ -> errors <- errors @ [ Diagnostic.hir "FSH1098" "Top-level declaration form is not yet supported by HIR lowering." None ]
         if errors.IsEmpty then Ok { Declarations = declarations; Entry = entry }

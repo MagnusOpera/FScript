@@ -110,3 +110,13 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VOption(Some(LirValue.VInt 3L))))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Initializes mutual recursive groups atomically`` () =
+        let source = "let rec even n =\n    if n = 0 then true else odd (n - 1)\nand odd n =\n    if n = 0 then false else even (n - 1)\n\neven 10"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VBool true))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

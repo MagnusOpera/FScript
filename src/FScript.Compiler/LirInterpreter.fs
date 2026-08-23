@@ -244,15 +244,26 @@ module LirInterpreter =
     let execute (_context: InterpreterContext) (program: Lir.Program) =
         let environment = ref Map.empty
         let mutable failure = None
-        for declaration in program.Declarations do
-            if failure.IsNone then
+        let rec initialize (declarations: Lir.Declaration list) =
+            match declarations with
+            | [] -> ()
+            | declaration :: rest when not declaration.IsRecursive ->
                 match evaluate environment.Value declaration.Value with
                 | Error errors -> failure <- Some errors
-                | Ok(VClosure(id, name, body, captured) as closure) ->
-                    let next = environment.Value |> Map.add declaration.Id closure
-                    if declaration.IsRecursive then captured.Value <- next
+                | Ok value -> environment.Value <- environment.Value |> Map.add declaration.Id value; initialize rest
+            | _ ->
+                let group = declarations |> List.takeWhile _.IsRecursive
+                let remainder = declarations |> List.skip group.Length
+                let closures = group |> List.map (fun declaration -> declaration, evaluate environment.Value declaration.Value)
+                let errors = closures |> List.collect (fun (_, result) -> match result with Error values -> values | Ok _ -> [])
+                if not errors.IsEmpty then failure <- Some errors
+                else
+                    let next = closures |> List.fold (fun env (declaration, result) -> match result with Ok closure -> Map.add declaration.Id closure env | Error _ -> env) environment.Value
+                    for _, result in closures do
+                        match result with Ok(VClosure(_, _, _, captured)) -> captured.Value <- next | _ -> ()
                     environment.Value <- next
-                | Ok value -> environment.Value <- environment.Value |> Map.add declaration.Id value
+                    initialize remainder
+        initialize program.Declarations
         match failure, program.Entry with
         | Some errors, _ -> Error errors
         | None, Some entry -> evaluate environment.Value entry |> Result.map (fun value -> { Value = value })
