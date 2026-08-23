@@ -10,23 +10,24 @@ open NUnit.Framework
 module private Harness =
     type Outcome = { Value: string; Stdout: string list }
 
-    let rec formatLir = function
+    let rec private formatLirValue nested = function
         | LirValue.VUnit -> "()"
         | LirValue.VInt value -> string value
         | LirValue.VFloat value -> value.ToString("R", Globalization.CultureInfo.InvariantCulture)
         | LirValue.VBool value -> string value |> _.ToLowerInvariant()
-        | LirValue.VString value -> value
+        | LirValue.VString value -> if nested then System.Text.Json.JsonSerializer.Serialize(value) else value
         | LirValue.VOption None -> "None"
-        | LirValue.VOption(Some value) -> "Some " + formatLir value
-        | LirValue.VList values -> "[" + (values |> List.map formatLir |> String.concat "; ") + "]"
-        | LirValue.VTuple values -> "(" + (values |> List.map formatLir |> String.concat ", ") + ")"
-        | LirValue.VRecord fields -> "{ " + (fields |> Map.toList |> List.map (fun (name, value) -> name + " = " + formatLir value) |> String.concat "; ") + " }"
+        | LirValue.VOption(Some value) -> "Some " + formatLirValue true value
+        | LirValue.VList values -> "[" + (values |> List.map (formatLirValue true) |> String.concat ";") + "]"
+        | LirValue.VTuple values -> "(" + (values |> List.map (formatLirValue true) |> String.concat ", ") + ")"
+        | LirValue.VRecord fields -> "{ " + (fields |> Map.toList |> List.map (fun (name, value) -> name + " = " + formatLirValue true value) |> String.concat "; ") + " }"
         | LirValue.VUnion(_, caseName, None) -> caseName
-        | LirValue.VUnion(_, caseName, Some value) -> caseName + " " + formatLir value
-        | LirValue.VMap entries -> "{ " + (entries |> List.map (fun (key, value) -> "[" + formatLir key + "] = " + formatLir value) |> String.concat "; ") + " }"
+        | LirValue.VUnion(_, caseName, Some value) -> caseName + " " + formatLirValue true value
+        | LirValue.VMap entries -> "{ " + (entries |> List.map (fun (key, value) -> "[" + formatLirValue false key + "] = " + formatLirValue true value) |> String.concat "; ") + " }"
         | LirValue.VTypeToken value -> "<type " + Types.typeToString value + ">"
         | LirValue.VClosure _ | LirValue.VIntrinsic _ | LirValue.VExternal _ | LirValue.VTargetImport _ -> "<function>"
         | LirValue.VRuntimeContext -> "<runtime-context>"
+    let formatLir value = formatLirValue false value
 
     let compile source =
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
@@ -103,6 +104,14 @@ type ConformanceTests() =
     [<TestCase("let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10")>]
     [<TestCase("match { [\"answer\"] = 42 }[\"answer\"] with | Some value -> value | None -> 0")>]
     [<TestCase("Console.writeLine \"hello\"")>]
+    [<TestCase("[Some (1, [2; 3]); None] = [Some (1, [2; 3]); None]")>]
+    [<TestCase("type Person = { Name: string; Age: int }\n{ Name = \"Ada\"; Age = 42 } = {| Name = \"Ada\"; Age = 42 |}")>]
+    [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\n{ person with Age = 43 }.Age")>]
+    [<TestCase("type Person = { Name: string }\ntype Lookup = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }")>]
+    [<TestCase("{ [\"b\"] = [2]; [\"a\"] = [1] } = { [\"a\"] = [1]; [\"b\"] = [2] }")>]
+    [<TestCase("let applyTwice fn value = fn (fn value)\nlet add amount = fun value -> value + amount\napplyTwice (add 2) 3")>]
+    [<TestCase("let identity value = value\n(identity [1; 2], identity (Some \"ok\"))")>]
+    [<TestCase("match [1; 2] with | head::tail when List.length tail = 1 -> head | _ -> 0")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with

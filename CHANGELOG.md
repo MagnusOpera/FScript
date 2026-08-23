@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Consumed normalized frontend declaration schemes in HIR and expanded cross-runtime aggregate, closure, record, union, and map conformance.
+
 - Generated distinct tagged Go structs with case-specific payload fields for ordinary declared unions.
 
 - Reused resolved frontend symbol IDs unchanged throughout HIR lowering, including interleaved types and local bindings.

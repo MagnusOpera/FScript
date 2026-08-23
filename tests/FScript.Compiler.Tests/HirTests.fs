@@ -91,6 +91,13 @@ type HirTests() =
         Assert.That(applyBindings.["z"], Is.EqualTo(resolvedId TypeInfer.PatternBindingSymbol "z"))
 
     [<Test>]
+    member _.``HIR consumes normalized resolved declaration schemes`` () =
+        TypeInfer.inferProgram (Parser.parseProgram "let perturb left right = (left, right)") |> ignore
+        let compiled = match Compiler.compile { Program = Parser.parseProgram "let identity value = value\nidentity 42"; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        let identity = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "identity")
+        Assert.That(identity.Scheme, Is.EqualTo(Forall([ 0 ], TFun(TVar 0, TVar 0))))
+
+    [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =

@@ -376,6 +376,11 @@ module HirLowering =
         let state =
             { NextSymbol = nextSynthetic; ExpressionTypes = expressionTypes; Coercions = coercions
               UnionCases = Map.empty; TypeDefinitions = Map.empty; AvailableSymbols = resolved.Symbols; Diagnostics = [] }
+        let resolvedSchemes =
+            resolved.Symbols
+            |> List.choose (fun symbol -> symbol.Scheme |> Option.map (fun scheme -> Hir.SymbolId symbol.SymbolId, scheme))
+            |> Map.ofList
+        let schemeFor id fallback = resolvedSchemes |> Map.tryFind id |> Option.defaultValue fallback
         let syntheticSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
         let builtins =
             BuiltinSignatures.builtinSchemes
@@ -435,7 +440,7 @@ module HirLowering =
                 BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst |> List.map (fun (name, scheme) ->
                     let (Forall(_, valueType)) = scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    ({ Id = builtins.[name]; Name = name; Scheme = scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
+                    ({ Id = builtins.[name]; Name = name; Scheme = schemeFor builtins.[name] scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
             let externalDeclarations =
                 externs |> List.sortBy _.Name |> List.map (fun external ->
                     let (Forall(_, valueType)) = external.Scheme
@@ -445,7 +450,7 @@ module HirLowering =
                         | RuntimeContextIntrinsic -> Hir.RuntimeContext
                         | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
-                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
+                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = schemeFor externSymbols.[external.Name] external.Scheme; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, _ = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
                 let unionType = TNamed typeName
@@ -468,7 +473,7 @@ module HirLowering =
                     declarations <- declarations @
                         [ ({ Id = Map.find name topLevel;
                             Name = name;
-                            Scheme = Types.generalize Map.empty inferred;
+                            Scheme = schemeFor (Map.find name topLevel) (Types.generalize Map.empty inferred);
                             IsRecursive = isRecursive;
                             IsExported = isExported;
                             Export = (exportMetadata name span isExported);
@@ -518,7 +523,7 @@ module HirLowering =
                             let body = ({ Type = inferred; Span = span; Node = Hir.Reference patternId }: Hir.Expression)
                             let projection = ({ Type = inferred; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = body; Span = span } ]) }: Hir.Expression)
                             declarations <- declarations @
-                                [ ({ Id = Map.find name topLevel; Name = name; Scheme = Types.generalize Map.empty inferred; IsRecursive = false; IsExported = isExported; Export = (exportMetadata name span isExported); Span = span; Value = projection }: Hir.Declaration) ]
+                                [ ({ Id = Map.find name topLevel; Name = name; Scheme = schemeFor (Map.find name topLevel) (Types.generalize Map.empty inferred); IsRecursive = false; IsExported = isExported; Export = (exportMetadata name span isExported); Span = span; Value = projection }: Hir.Declaration) ]
                 | Error a, Error b -> errors <- errors @ a @ b
                 | Error diagnostics, _ | _, Error diagnostics -> errors <- errors @ diagnostics
             | TypeInfer.TSLetRecGroup(bindings, isExported, groupSpan) ->
@@ -528,7 +533,7 @@ module HirLowering =
                         declarations <- declarations @
                             [ ({ Id = Map.find name topLevel
                                  Name = name
-                                 Scheme = Types.generalize Map.empty inferred
+                                 Scheme = schemeFor (Map.find name topLevel) (Types.generalize Map.empty inferred)
                                  IsRecursive = true
                                  IsExported = isExported
                                  Export = (exportMetadata name span isExported)
@@ -539,7 +544,7 @@ module HirLowering =
                 declarations <- declarations @
                     [ ({ Id = Map.find name topLevel
                          Name = name
-                         Scheme = Forall([], importedType)
+                         Scheme = schemeFor (Map.find name topLevel) (Forall([], importedType))
                          IsRecursive = false
                          IsExported = false
                          Export = None

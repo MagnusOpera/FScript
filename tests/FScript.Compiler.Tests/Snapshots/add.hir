@@ -1,4 +1,4 @@
-decl %54 add: ('b -> ('b -> int))
+decl %54 add: ('a -> ('a -> int))
   lambda %55 x: 'a : ('a -> ('a -> int))
     lambda %56 y: 'a : ('a -> int)
       primitive IntAdd : int

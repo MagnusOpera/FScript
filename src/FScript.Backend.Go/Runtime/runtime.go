@@ -351,12 +351,13 @@ func Intrinsic(name string, args []any) any {
 		panic("Unsupported FScript intrinsic: " + name)
 	}
 }
-func Format(value any) string {
+func Format(value any) string { return formatValue(value, false) }
+func formatValue(value any, nested bool) string {
 	if item, ok := TryUnion(value); ok {
 		if !item.HasValue {
 			return item.CaseName
 		}
-		return item.CaseName + " " + Format(item.Value)
+		return item.CaseName + " " + formatValue(item.Value, true)
 	}
 	switch item := value.(type) {
 	case bool:
@@ -364,27 +365,32 @@ func Format(value any) string {
 			return "true"
 		}
 		return "false"
+	case string:
+		if nested {
+			return strconv.Quote(item)
+		}
+		return item
 	case Option:
 		if !item.HasValue {
 			return "None"
 		}
-		return "Some " + Format(item.Value)
+		return "Some " + formatValue(item.Value, true)
 	case OrderedMap:
 		parts := make([]string, len(item.Entries))
 		for index, entry := range item.Entries {
-			parts[index] = "[" + Format(entry.Key) + "] = " + Format(entry.Value)
+			parts[index] = "[" + formatValue(entry.Key, false) + "] = " + formatValue(entry.Value, true)
 		}
 		return "{ " + strings.Join(parts, "; ") + " }"
 	case []any:
 		parts := make([]string, len(item))
 		for index, value := range item {
-			parts[index] = Format(value)
+			parts[index] = formatValue(value, true)
 		}
 		return "[" + strings.Join(parts, ";") + "]"
 	case Tuple:
 		parts := make([]string, len(item))
 		for index, value := range item {
-			parts[index] = Format(value)
+			parts[index] = formatValue(value, true)
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	case map[string]any:
@@ -395,13 +401,13 @@ func Format(value any) string {
 		sort.Strings(names)
 		parts := make([]string, len(names))
 		for index, name := range names {
-			parts[index] = name + " = " + Format(item[name])
+			parts[index] = name + " = " + formatValue(item[name], true)
 		}
 		return "{ " + strings.Join(parts, "; ") + " }"
 	default:
 		if reflected := reflect.ValueOf(value); reflected.IsValid() && (reflected.Kind() == reflect.Struct || (reflected.Kind() == reflect.Pointer && !reflected.IsNil() && reflected.Elem().Kind() == reflect.Struct)) {
 			if record, ok := TryRecord(value); ok {
-				return Format(record)
+				return formatValue(record, nested)
 			}
 		}
 		return fmt.Sprint(value)
