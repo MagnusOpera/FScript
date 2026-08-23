@@ -9,12 +9,28 @@ module HirLowering =
           Coercions: Map<Expr, TypeInfer.RecordCoercionEvidence>
           mutable UnionCases: Map<string, string * Type option>
           mutable TypeDefinitions: Map<string, Type>
+          mutable AvailableSymbols: TypeInfer.ResolvedSymbol list
           mutable Diagnostics: CompilerDiagnostic list }
 
     let private newSymbol state =
         let value = state.NextSymbol
         state.NextSymbol <- value + 1
         Hir.SymbolId value
+
+    let private claimSymbol state kind name span =
+        match state.AvailableSymbols |> List.tryFind (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span) with
+        | Some symbol ->
+            state.AvailableSymbols <- state.AvailableSymbols |> List.filter (fun candidate -> candidate.SymbolId <> symbol.SymbolId)
+            Hir.SymbolId symbol.SymbolId
+        | None ->
+            state.Diagnostics <- state.Diagnostics @ [ Diagnostic.hir "FSH1007" $"Resolved symbol '{name}' was not available during HIR lowering." (Some span) ]
+            newSymbol state
+
+    let private findSymbol state kind name span =
+        state.AvailableSymbols
+        |> List.tryFind (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
+        |> Option.map (fun symbol -> Hir.SymbolId symbol.SymbolId)
+        |> Option.defaultWith (fun () -> claimSymbol state kind name span)
 
     let rec private representationType state = function
         | TFun(argument, result) -> TFun(representationType state argument, representationType state result)
@@ -82,7 +98,7 @@ module HirLowering =
         match pattern with
         | PWildcard _ -> Ok(make Hir.Wildcard, Map.empty)
         | PVar(name, _) ->
-            let id = newSymbol state
+            let id = claimSymbol state TypeInfer.PatternBindingSymbol name span
             Ok(make (Hir.Binding(id, name)), Map.ofList [ name, id ])
         | PLiteral(value, _) -> let lowered, _ = literal value in Ok(make (Hir.LiteralPattern lowered), Map.empty)
         | PNil _ -> Ok(make Hir.EmptyList, Map.empty)
@@ -157,7 +173,7 @@ module HirLowering =
         | ELambda(parameter, body, _) ->
             match inferred with
             | TFun(parameterType, resultType) ->
-                let id = newSymbol state
+                let id = claimSymbol state TypeInfer.ParameterSymbol parameter.Name parameter.Span
                 lowerExpression state (environment |> Map.add parameter.Name id) resultType body
                 |> Result.map (fun lowered -> make (Hir.Lambda(id, parameter.Name, parameterType, lowered)))
             | _ -> Error [ Diagnostic.hir "FSH1002" "Lambda does not have a function type." (Some span) ]
@@ -247,7 +263,7 @@ module HirLowering =
             match lowerExpression state environment inferred left, lowerExpression state environment inferred right with
             | Ok l, Ok r -> Ok(make (Hir.Append(l, r))) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
         | ELet(name, binding, body, isRecursive, _, _) ->
-            let id = newSymbol state
+            let id = claimSymbol state TypeInfer.LocalSymbol name span
             let bindingType = expressionType state binding (Types.freshVar())
             let bodyEnvironment = environment |> Map.add name id
             let bindingEnvironment = if isRecursive then bodyEnvironment else environment
@@ -256,7 +272,7 @@ module HirLowering =
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
         | ELetRecGroup(bindings, body, _) ->
-            let ids = bindings |> List.map (fun (name, _, _, _, _) -> name, newSymbol state) |> Map.ofList
+            let ids = bindings |> List.map (fun (name, _, _, _, bindingSpan) -> name, claimSymbol state TypeInfer.LocalSymbol name bindingSpan) |> Map.ofList
             let recursiveEnvironment = Map.fold (fun env name id -> Map.add name id env) environment ids
             let loweredBindings =
                 bindings
@@ -282,7 +298,7 @@ module HirLowering =
         | EFor(name, source, body, _) ->
             let sourceType = expressionType state source (TList(Types.freshVar()))
             let itemType = match sourceType with TList item -> item | _ -> Types.freshVar()
-            let id = newSymbol state
+            let id = claimSymbol state TypeInfer.LocalSymbol name span
             match lowerExpression state environment sourceType source, lowerExpression state (environment |> Map.add name id) TUnit body with
             | Ok loweredSource, Ok loweredBody -> Ok(make (Hir.ForEach(id, name, itemType, loweredSource, loweredBody)))
             | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
@@ -356,14 +372,18 @@ module HirLowering =
                 let state = item.RecordCoercion |> Option.map (fun evidence -> Map.add item.Source evidence state) |> Option.defaultValue state
                 item.Children |> List.fold collect state
             resolved.ResolvedStatements |> List.collect _.Expressions |> List.fold collect Map.empty
-        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; Coercions = coercions; UnionCases = Map.empty; TypeDefinitions = Map.empty; Diagnostics = [] }
+        let nextSynthetic = resolved.Symbols |> List.map _.SymbolId |> function [] -> 0 | values -> List.max values + 1
+        let state =
+            { NextSymbol = nextSynthetic; ExpressionTypes = expressionTypes; Coercions = coercions
+              UnionCases = Map.empty; TypeDefinitions = Map.empty; AvailableSymbols = resolved.Symbols; Diagnostics = [] }
+        let syntheticSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
         let builtins =
             BuiltinSignatures.builtinSchemes
             |> Map.toList
             |> List.sortBy fst
-            |> List.map (fun (name, _) -> name, newSymbol state)
+            |> List.map (fun (name, _) -> name, findSymbol state TypeInfer.BuiltinSymbol name syntheticSpan)
             |> Map.ofList
-        let externSymbols = externs |> List.sortBy _.Name |> List.map (fun value -> value.Name, newSymbol state) |> Map.ofList
+        let externSymbols = externs |> List.sortBy _.Name |> List.map (fun value -> value.Name, findSymbol state TypeInfer.ExternSymbol value.Name syntheticSpan) |> Map.ofList
         let typeDefinitions =
             resolved.TypedProgram |> List.choose (function TypeInfer.TSType definition -> Some definition | _ -> None)
         let rec typeFromRef = function
@@ -393,20 +413,20 @@ module HirLowering =
                 definition.Cases |> List.map (fun (caseName, _) -> caseName, (definition.Name, cases.[caseName]))) |> Map.ofList
         let typeSymbols =
             typeDefinitions
-            |> List.map (fun definition -> definition.Name, newSymbol state)
+            |> List.map (fun definition -> definition.Name, findSymbol state TypeInfer.TypeSymbol definition.Name definition.Span)
             |> Map.ofList
         let constructorSymbols =
-            unionDefinitions |> List.collect (fun (definition, _) -> definition.Cases |> List.map (fun (caseName, _) -> definition.Name, caseName, newSymbol state))
+            unionDefinitions |> List.collect (fun (definition, _) -> definition.Cases |> List.map (fun (caseName, _) -> definition.Name, caseName, findSymbol state TypeInfer.UnionCaseSymbol $"{definition.Name}.{caseName}" definition.Span))
         let topLevel =
             resolved.TypedProgram
             |> List.collect (function
-                | TypeInfer.TSLet(name, _, _, _, _, _) -> [ name ]
-                | TypeInfer.TSLetPattern(_, _, bindings, _, _) -> bindings |> Map.keys |> Seq.toList
-                | TypeInfer.TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
-                | TypeInfer.TSBackendImport(name, _, _, _) -> [ name ]
+                | TypeInfer.TSLet(name, _, _, _, _, span) -> [ name, span ]
+                | TypeInfer.TSLetPattern(_, _, bindings, _, span) -> bindings |> Map.keys |> Seq.map (fun name -> name, span) |> Seq.toList
+                | TypeInfer.TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, span) -> name, span)
+                | TypeInfer.TSBackendImport(name, _, _, span) -> [ name, span ]
                 | _ -> [])
             |> List.distinct
-            |> List.fold (fun env name -> env |> Map.add name (newSymbol state)) (Map.fold (fun env name id -> Map.add name id env) builtins externSymbols)
+            |> List.fold (fun env (name, span) -> env |> Map.add name (findSymbol state TypeInfer.DeclarationSymbol name span)) (Map.fold (fun env name id -> Map.add name id env) builtins externSymbols)
         let topLevel =
             constructorSymbols |> List.fold (fun env (typeName, caseName, id) -> env |> Map.add caseName id |> Map.add $"{typeName}.{caseName}" id) topLevel
 
@@ -543,5 +563,6 @@ module HirLowering =
                    Definition = state.TypeDefinitions.[definition.Name]
                    Import = importedRecords |> List.tryFind (fun imported -> imported.Name = definition.Name)
                    Span = definition.Span }: Hir.TypeDeclaration))
-        if errors.IsEmpty then Ok { Types = hirTypes; ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
-        else Error errors
+        let diagnostics = errors @ state.Diagnostics
+        if diagnostics.IsEmpty then Ok { Types = hirTypes; ImportedRecords = importedRecords; Declarations = declarations; Entry = entry }
+        else Error diagnostics

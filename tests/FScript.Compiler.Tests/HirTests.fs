@@ -54,6 +54,43 @@ type HirTests() =
         Assert.That(compiled.Hir.Declarations |> List.exists (fun declaration -> declaration.Value.Type = TNamed "Person"), Is.True)
 
     [<Test>]
+    member _.``HIR reuses deterministic resolved frontend symbol IDs`` () =
+        let source = "let first = 1\ntype Choice = | Pick of int\nlet apply x = (let y = x\n    match Some y with\n    | Some z -> z\n)\napply first"
+        let program = Parser.parseProgram source
+        let external name scheme arity = ({ Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }: ExternalFunction)
+        let frontendExterns =
+            [ external "Env" (Forall([], TNamed "Environment")) 0
+              yield! RuntimeIntrinsics.schemes |> Map.toList |> List.map (fun (name, scheme) -> external name scheme 1)
+              external "Task.spawn" (Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))) 1
+              external "Task.await" (Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))) 1 ]
+        let resolved = TypeInfer.inferResolvedProgramWithExterns frontendExterns program
+        let compiled = match Compiler.compile { Program = program; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        let resolvedId kind name = resolved.Symbols |> List.find (fun symbol -> symbol.Kind = kind && symbol.Name = name) |> _.SymbolId
+        let declarationId name = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = name) |> _.Id |> Hir.symbolNumber
+        Assert.That(declarationId "first", Is.EqualTo(resolvedId TypeInfer.DeclarationSymbol "first"))
+        Assert.That(declarationId "Choice.Pick", Is.EqualTo(resolvedId TypeInfer.UnionCaseSymbol "Choice.Pick"))
+        Assert.That(declarationId "apply", Is.EqualTo(resolvedId TypeInfer.DeclarationSymbol "apply"))
+        Assert.That(compiled.Hir.Types.Head.Id |> Hir.symbolNumber, Is.EqualTo(resolvedId TypeInfer.TypeSymbol "Choice"))
+        let rec bindings (expression: Hir.Expression) =
+            let patternBindings (pattern: Hir.Pattern) =
+                let rec collect (pattern: Hir.Pattern) =
+                    match pattern.Node with
+                    | Hir.Binding(id, name) -> [ name, Hir.symbolNumber id ]
+                    | Hir.SomePattern item -> collect item
+                    | _ -> []
+                collect pattern
+            match expression.Node with
+            | Hir.Lambda(id, name, _, body) -> (name, Hir.symbolNumber id) :: bindings body
+            | Hir.Let(id, name, _, value, body) -> (name, Hir.symbolNumber id) :: (bindings value @ bindings body)
+            | Hir.Match(target, cases) -> bindings target @ (cases |> List.collect (fun case -> patternBindings case.Pattern @ bindings case.Body))
+            | Hir.Apply(left, right) -> bindings left @ bindings right
+            | _ -> []
+        let applyBindings = compiled.Hir.Declarations |> List.find (fun declaration -> declaration.Name = "apply") |> _.Value |> bindings |> Map.ofList
+        Assert.That(applyBindings.["x"], Is.EqualTo(resolvedId TypeInfer.ParameterSymbol "x"))
+        Assert.That(applyBindings.["y"], Is.EqualTo(resolvedId TypeInfer.LocalSymbol "y"))
+        Assert.That(applyBindings.["z"], Is.EqualTo(resolvedId TypeInfer.PatternBindingSymbol "z"))
+
+    [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =
