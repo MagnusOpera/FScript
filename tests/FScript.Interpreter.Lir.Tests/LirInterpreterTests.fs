@@ -140,6 +140,23 @@ type LirInterpreterTests() =
             | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))
 
     [<Test>]
+    member _.``Retains tasks in LIR and rejects them only when reached`` () =
+        let compile source = Compiler.compile { Program = Parser.parseProgram source; Externs = [] }
+        match compile "let unused = Task.spawn\n1" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 1L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        match compile "Task.await (Task.spawn (fun _ -> 42))" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> match declaration.Value.Node with Lir.HostExternal("Task.spawn", 1) -> true | _ -> false), Is.True)
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Fail("Expected unsupported task diagnostic")
+            | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))
+
+    [<Test>]
     member _.``Executes local binding patterns iteration and type tokens`` () =
         let cases =
             [ "let sum pair = (let (left, right) = pair\n    left + right\n)\nsum (1, 2)", LirValue.VInt 3L

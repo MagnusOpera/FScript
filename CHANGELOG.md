@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Preserved `Task.spawn`/`Task.await` as typed host linkage in compiled IR, with reachable-use diagnostics in LIR execution and Go generation.
 - Added HIR/LIR validation for declaration schemes, source spans, representations, calls, control flow, references, imports, and primitive availability.
 - Added a serialized-LIR/legacy-evaluator/generated-Go conformance suite and corrected named-record representation in generated functions.
 - Added bodyless `[<Import("module", "Member")>]` declarations with typed HIR/LIR linkage and primitive Go package bindings.

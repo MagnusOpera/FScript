@@ -44,6 +44,8 @@ Generated Go represents every FScript function as an erased `fsruntime.Closure` 
 
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.
 
+`Task.spawn` and `Task.await` are compiler-known host-linkage descriptors with their polymorphic task signatures. This lets task-typed declarations survive inference, HIR, LIR, and artifact serialization. The LIR interpreter reports `FSI3021` only when either descriptor is fully applied; the Go backend performs deterministic reachability over declaration references and reports `FSB4004` when a reachable declaration requires a task representation.
+
 Local binding patterns reuse the same single-scrutinee decision-tree representation as `match`. Sequential `for ... in ... do ...` is explicit in HIR and LIR so each consumer evaluates the input list once, visits values in order, and discards each body result before returning unit. `typeof` resolves declared record and union definitions during HIR construction and carries the semantic type as a serializable type-token node.
 
 Every top-level source expression becomes a synthetic declaration at its exact position in the declaration stream; the program entry references the final such value. This preserves eager source ordering without evaluating the result expression twice. Top-level pattern bindings similarly store their scrutinee in one synthetic declaration, validate the pattern, and publish deterministic projections for each bound name.

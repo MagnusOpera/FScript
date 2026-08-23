@@ -11,15 +11,21 @@ type CompiledProgram =
       Lir: Lir.Program }
 
 module Compiler =
+    let private descriptor name scheme arity : ExternalFunction =
+        { Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }
+
     let private runtimeContext : ExternalFunction =
-        { Name = "Env"
-          Scheme = Forall([], TNamed "Environment")
-          Arity = 0
-          Impl = fun _ _ -> VUnit }
+        descriptor "Env" (Forall([], TNamed "Environment")) 0
+
+    let private taskBindings =
+        [ descriptor "Task.spawn" (Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))) 1
+          descriptor "Task.await" (Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))) 1 ]
 
     let compile input =
         try
-            let externs = runtimeContext :: (input.Externs |> List.filter (fun external -> external.Name <> runtimeContext.Name))
+            let compilerBindings = runtimeContext :: taskBindings
+            let reserved = compilerBindings |> List.map _.Name |> Set.ofList
+            let externs = compilerBindings @ (input.Externs |> List.filter (fun external -> not (Set.contains external.Name reserved)))
             input.Program
             |> TypeInfer.inferResolvedProgramWithExterns externs
             |> HirLowering.lower externs

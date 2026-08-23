@@ -9,6 +9,16 @@ open NUnit.Framework
 
 [<TestFixture>]
 type GoBackendTests() =
+    [<Test>]
+    member _.``Go backend reports reachable tasks explicitly`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/tasks" } compiled.Lir with
+        | Ok _ -> Assert.Fail("Expected unsupported task diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4004"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
