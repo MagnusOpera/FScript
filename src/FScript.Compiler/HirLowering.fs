@@ -366,7 +366,8 @@ module HirLowering =
                 externs |> List.sortBy _.Name |> List.map (fun external ->
                     let (Forall(_, valueType)) = external.Scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = Hir.HostExternal(external.Name, external.Arity) } }: Hir.Declaration))
+                    let node = if external.Name = "Env" then Hir.RuntimeContext else Hir.HostExternal(external.Name, external.Arity)
+                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
                 let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef

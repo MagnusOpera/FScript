@@ -21,6 +21,7 @@ type LirValue =
     | VIntrinsic of string * LirValue list
     | VExternal of string * int * LirValue list
     | VTypeToken of Type
+    | VRuntimeContext
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -62,6 +63,7 @@ module LirInterpreter =
         | VIntrinsic _ -> "<intrinsic>"
         | VExternal _ -> "<external>"
         | VTypeToken value -> $"<type {Types.typeToString value}>"
+        | VRuntimeContext -> "<runtime-context>"
 
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
@@ -394,6 +396,7 @@ module LirInterpreter =
             if intrinsicArity name = 0 then invokeIntrinsic (applyValue expression.Span) expression.Span name []
             else Ok(VIntrinsic(name, []))
         | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
+        | Lir.RuntimeContext -> Ok VRuntimeContext
         | Lir.ForEach(id, _, _, source, body) ->
             match evaluate environment source with
             | Ok(VList values) ->
@@ -425,7 +428,11 @@ module LirInterpreter =
         results |> List.fold (fun state result ->
             match state, result with Ok values, Ok value -> Ok(values @ [ value ]) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e) (Ok [])
 
-    let execute (_context: InterpreterContext) (program: Lir.Program) =
+    let execute (context: InterpreterContext) (program: Lir.Program) =
+        let runtimeContext =
+            VRecord(Map.ofList
+                [ "ScriptName", VOption(Option.map VString context.ScriptName)
+                  "Arguments", VList(List.map VString context.Arguments) ])
         let environment = ref Map.empty
         let mutable failure = None
         let rec initialize (declarations: Lir.Declaration list) =
@@ -434,7 +441,10 @@ module LirInterpreter =
             | declaration :: rest when not declaration.IsRecursive ->
                 match evaluate environment.Value declaration.Value with
                 | Error errors -> failure <- Some errors
-                | Ok value -> environment.Value <- environment.Value |> Map.add declaration.Id value; initialize rest
+                | Ok value ->
+                    let initialized = match value with VRuntimeContext -> runtimeContext | _ -> value
+                    environment.Value <- environment.Value |> Map.add declaration.Id initialized
+                    initialize rest
             | _ ->
                 let group = declarations |> List.takeWhile _.IsRecursive
                 let remainder = declarations |> List.skip group.Length

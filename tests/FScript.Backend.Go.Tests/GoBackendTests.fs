@@ -50,6 +50,8 @@ type GoBackendTests() =
     [<TestCase("(let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10\n)", "true")>]
     [<TestCase("match { [\"b\"] = 2; [\"a\"] = 1 } with\n    | { [key] = value; ..tail } -> value\n    | {} -> 0", "1")>]
     [<TestCase("match {| Name = \"Ada\"; Age = 42 |} with\n    | {| Name: string |} -> true\n    | _ -> false", "true")>]
+    [<TestCase("List.length Env.Arguments", "0")>]
+    [<TestCase("Option.isSome Env.ScriptName", "true")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =

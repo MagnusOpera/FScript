@@ -208,3 +208,14 @@ type LirInterpreterTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok _ -> Assert.Pass()
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Supplies Env from the LIR interpreter context`` () =
+        let source = "(Env.ScriptName, Env.Arguments)"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = Some "sample.fss"; Arguments = [ "one"; "two" ] } compiled.Lir with
+            | Ok result ->
+                Assert.That(result.Value, Is.EqualTo(LirValue.VTuple [ LirValue.VOption(Some(LirValue.VString "sample.fss")); LirValue.VList [ LirValue.VString "one"; LirValue.VString "two" ] ]))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

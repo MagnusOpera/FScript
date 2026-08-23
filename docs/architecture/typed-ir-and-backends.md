@@ -62,6 +62,8 @@ Artifact metadata records the actual compiler and language assembly versions, no
 
 Compiler bindings classify names as portable intrinsics, backend runtime primitives, target imports, or unsupported host externs. This metadata is distinct from executable .NET `ExternalFunction` implementations.
 
+`Env` is a compiler runtime-context primitive, not a serialized host delegate. LIR interpretation materializes its named record from `InterpreterContext`; generated Go materializes the same fields from `os.Args`, including the executable base name and arguments after it.
+
 The LIR interpreter rejects reachable target imports it cannot supply. The Go backend initially rejects unsupported host externs and tasks with backend diagnostics. Imports describe complete ordinary FScript declarations plus target linkage and do not create a second foreign type system.
 
 ## Previous experiment

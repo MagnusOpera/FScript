@@ -60,6 +60,7 @@ module HirValidation =
                     entries |> List.map (function Hir.KeyValue(key, value) -> Set.union (references key) (references value) | Hir.Spread value -> references value) |> Set.unionMany
                 | Hir.Intrinsic _ -> Set.empty
                 | Hir.HostExternal _ -> Set.empty
+                | Hir.RuntimeContext -> Set.empty
                 | Hir.ForEach(id, _, _, source, body) -> Set.union (references source) (references body |> Set.remove id)
                 | Hir.TypeToken _ -> Set.empty
             let declared = declarationIds |> Set.ofList
