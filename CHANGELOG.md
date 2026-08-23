@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added deterministic explicit closure captures to LIR serialization, validation, and interpretation.
+
 - Exposed recursively typed resolved expressions and preserved explicit structural record conversions through HIR, LIR, and IR artifacts.
 
 - Added imported record declarations with serialized HIR/LIR metadata, primitive Go boundary adapters, and explicit unsupported-shape diagnostics.

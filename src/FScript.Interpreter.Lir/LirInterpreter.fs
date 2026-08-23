@@ -260,7 +260,9 @@ module LirInterpreter =
         | Lir.Load id ->
             environment |> Map.tryFind id |> Option.map Ok
             |> Option.defaultWith (fun () -> fail "FSI3001" expression.Span (sprintf "Unknown LIR symbol %%%d." (Lir.symbolNumber id)))
-        | Lir.MakeClosure(id, name, _, body) -> Ok(VClosure(id, name, body, ref environment))
+        | Lir.MakeClosure(id, name, _, captures, body) ->
+            let captured = captures |> List.choose (fun symbol -> Map.tryFind symbol environment |> Option.map (fun value -> symbol, value)) |> Map.ofList
+            Ok(VClosure(id, name, body, ref captured))
         | Lir.CallClosure(fn, argument) ->
             match evaluate environment fn, evaluate environment argument with
             | Ok fnValue, Ok value -> applyValue expression.Span fnValue value

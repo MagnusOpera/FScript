@@ -245,7 +245,7 @@ module GoBackend =
             environment |> Map.tryFind id
             |> Option.map Ok
             |> Option.defaultValue (Error(sprintf "Unknown symbol %%%d" (Lir.symbolNumber id)))
-        | Lir.MakeClosure(parameter, _, parameterType, body) ->
+        | Lir.MakeClosure(parameter, _, parameterType, _, body) ->
             let name = identifier "arg" parameter
             let parameterValue = cast parameterType "rawValue"
             emitExpression (environment |> Map.add parameter name) body
@@ -568,7 +568,7 @@ func Environment() map[string]any {
             let many values = values |> List.map references |> Set.unionMany
             match expression.Node with
             | Lir.Load id -> Set.singleton id
-            | Lir.MakeClosure(_, _, _, body) | Lir.Fail body | Lir.FieldGet(body, _) | Lir.SomeValue body -> references body
+            | Lir.MakeClosure(_, _, _, _, body) | Lir.Fail body | Lir.FieldGet(body, _) | Lir.SomeValue body -> references body
             | Lir.CallClosure(left, right) | Lir.Append(left, right) | Lir.Cons(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> Set.union (references left) (references right)
             | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values

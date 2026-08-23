@@ -26,7 +26,7 @@ module Lir =
     and ExpressionNode =
         | Constant of Constant
         | Load of SymbolId
-        | MakeClosure of SymbolId * string * Type * Expression
+        | MakeClosure of SymbolId * string * Type * SymbolId list * Expression
         | CallClosure of Expression * Expression
         | Branch of Expression * Expression * Expression
         | Operation of Operation * Expression list
@@ -148,12 +148,62 @@ module LirLowering =
             | Hir.TypePattern patternType -> Lir.TypePattern patternType
         { Type = value.Type; Span = value.Span; Node = node }
 
+    let rec private patternBindings (value: Lir.Pattern) =
+        match value.Node with
+        | Lir.Binding(id, _) -> Set.singleton id
+        | Lir.ConsPattern(head, tail) -> Set.union (patternBindings head) (patternBindings tail)
+        | Lir.TuplePattern items -> items |> List.map patternBindings |> Set.unionMany
+        | Lir.RecordPattern fields -> fields |> List.map (snd >> patternBindings) |> Set.unionMany
+        | Lir.MapPattern(clauses, tail) ->
+            [ yield! clauses |> List.collect (fun (key, value) -> [ patternBindings key; patternBindings value ])
+              tail |> Option.map patternBindings |> Option.defaultValue Set.empty ]
+            |> Set.unionMany
+        | Lir.SomePattern item -> patternBindings item
+        | Lir.UnionPattern(_, _, payload) -> payload |> Option.map patternBindings |> Option.defaultValue Set.empty
+        | _ -> Set.empty
+
+    let rec capturedReferences bound (value: Lir.Expression) =
+        let free = capturedReferences bound
+        match value.Node with
+        | Lir.Load id -> if Set.contains id bound then Set.empty else Set.singleton id
+        | Lir.MakeClosure(_, _, _, captures, _) -> Set.difference (Set.ofList captures) bound
+        | Lir.CallClosure(fn, argument) | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
+        | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (free fn) (free argument)
+        | Lir.Branch(condition, whenTrue, whenFalse) -> [ free condition; free whenTrue; free whenFalse ] |> Set.unionMany
+        | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map free |> Set.unionMany
+        | Lir.Record fields -> fields |> List.map (snd >> free) |> Set.unionMany
+        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> free target
+        | Lir.Let(id, _, recursive, binding, body) ->
+            let scope = Set.add id bound
+            Set.union (capturedReferences (if recursive then scope else bound) binding) (capturedReferences scope body)
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            let scope = bindings |> List.fold (fun state (id, _, _, _) -> Set.add id state) bound
+            (capturedReferences scope body :: (bindings |> List.map (fun (_, _, _, binding) -> capturedReferences scope binding))) |> Set.unionMany
+        | Lir.DecisionTree(target, cases) ->
+            free target
+            :: (cases |> List.collect (fun case ->
+                let scope = Set.union bound (patternBindings case.Pattern)
+                [ yield! case.Guard |> Option.map (capturedReferences scope) |> Option.toList
+                  capturedReferences scope case.Body ]))
+            |> Set.unionMany
+        | Lir.RecordUpdate(target, fields) -> free target :: (fields |> List.map (snd >> free)) |> Set.unionMany
+        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart item -> Some(free item)) |> Set.unionMany
+        | Lir.UnionCase(_, _, payload) -> payload |> Option.map free |> Option.defaultValue Set.empty
+        | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, item) -> Set.union (free key) (free item) | Lir.Spread item -> free item) |> Set.unionMany
+        | Lir.ForEach(id, _, _, source, body) -> Set.union (free source) (capturedReferences (Set.add id bound) body)
+        | Lir.Constant _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _ | Lir.RuntimeContext
+        | Lir.TargetImport _ | Lir.TypeToken _ -> Set.empty
+
     let rec private expression (value: Hir.Expression) : Lir.Expression =
         let node =
             match value.Node with
             | Hir.Constant value -> Lir.Constant(constant value)
             | Hir.Reference id -> Lir.Load(symbol id)
-            | Hir.Lambda(id, name, parameterType, body) -> Lir.MakeClosure(symbol id, name, parameterType, expression body)
+            | Hir.Lambda(id, name, parameterType, body) ->
+                let parameter = symbol id
+                let loweredBody = expression body
+                let captures = capturedReferences (Set.singleton parameter) loweredBody |> Set.toList |> List.sortBy Lir.symbolNumber
+                Lir.MakeClosure(parameter, name, parameterType, captures, loweredBody)
             | Hir.Apply(fn, argument) -> Lir.CallClosure(expression fn, expression argument)
             | Hir.If(condition, whenTrue, whenFalse) -> Lir.Branch(expression condition, expression whenTrue, expression whenFalse)
             | Hir.Primitive(op, arguments) -> Lir.Operation(operation op, arguments |> List.map expression)
@@ -293,7 +343,12 @@ module LirValidation =
                 match expression.Node with
                 | Lir.Constant value when not (compatible expression.Type (literalType value)) -> report "FSL2004" "LIR constant has an inconsistent type." expression.Span
                 | Lir.Load id when not (Set.contains id locals || Set.contains id declared) -> report "FSL2005" (sprintf "LIR reference %%%d is unresolved." (Lir.symbolNumber id)) expression.Span
-                | Lir.MakeClosure(parameter, _, parameterType, body) ->
+                | Lir.MakeClosure(parameter, _, parameterType, captures, body) ->
+                    let expectedCaptures = LirLowering.capturedReferences (Set.singleton parameter) body |> Set.toList |> List.sortBy Lir.symbolNumber
+                    if captures <> expectedCaptures then
+                        report "FSL2013" "LIR closure captures do not match its ordered free-symbol set." expression.Span
+                    if captures |> List.exists (fun id -> not (Set.contains id locals || Set.contains id declared)) then
+                        report "FSL2005" "LIR closure contains an unresolved capture." expression.Span
                     checkExpression (Set.add parameter locals) body
                     match expression.Type with TFun(argument, result) when compatible argument parameterType && compatible result body.Type -> () | _ -> report "FSL2006" "LIR closure signature is inconsistent with its body." expression.Span
                 | Lir.CallClosure(fn, argument) ->

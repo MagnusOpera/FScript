@@ -143,9 +143,10 @@ module IrArtifact =
         | Lir.Constant constant ->
             writer.WriteString("kind", "constant"); writeConstantValue writer constant
         | Lir.Load id -> writer.WriteString("kind", "load"); writer.WriteNumber("symbol", Lir.symbolNumber id)
-        | Lir.MakeClosure(id, name, parameterType, body) ->
+        | Lir.MakeClosure(id, name, parameterType, captures, body) ->
             writer.WriteString("kind", "closure"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
             writer.WritePropertyName("parameterType"); writeType writer parameterType
+            writer.WriteStartArray("captures"); captures |> List.iter (Lir.symbolNumber >> writer.WriteNumberValue); writer.WriteEndArray()
             writer.WritePropertyName("body"); writeExpression writer body
         | Lir.CallClosure(fn, argument) ->
             writer.WriteString("kind", "call"); writer.WritePropertyName("function"); writeExpression writer fn
@@ -350,8 +351,13 @@ module IrArtifact =
             match stringProperty "kind" element with
             | "constant" -> Lir.Constant(readConstant element)
             | "load" -> Lir.Load(Lir.SymbolId((property "symbol" element).GetInt32()))
-            | "closure" -> Lir.MakeClosure(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
-                                                           readType (property "parameterType" element), readExpression (property "body" element))
+            | "closure" ->
+                Lir.MakeClosure(
+                    Lir.SymbolId((property "symbol" element).GetInt32()),
+                    stringProperty "name" element,
+                    readType (property "parameterType" element),
+                    (property "captures" element).EnumerateArray() |> Seq.map (fun item -> Lir.SymbolId(item.GetInt32())) |> Seq.toList,
+                    readExpression (property "body" element))
             | "call" -> Lir.CallClosure(readExpression (property "function" element), readExpression (property "argument" element))
             | "branch" -> Lir.Branch(readExpression (property "condition" element), readExpression (property "whenTrue" element), readExpression (property "whenFalse" element))
             | "operation" -> Lir.Operation(readOperation (stringProperty "operation" element), (property "arguments" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)

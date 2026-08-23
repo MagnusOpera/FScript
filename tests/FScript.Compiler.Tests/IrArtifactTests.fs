@@ -109,3 +109,23 @@ type IrArtifactTests() =
         match IrArtifact.deserialize bytes with
         | Ok loaded -> Assert.That(loaded, Is.EqualTo(lir))
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``LIR closures serialize deterministic explicit captures`` () =
+        let source = "let outer x = (let inner y = x + y\n    inner\n)\nouter 40 2"
+        let bytes = (compile source).Lir |> IrArtifact.serialize
+        let json = Encoding.UTF8.GetString(bytes)
+        Assert.That(json, Does.Match("\\\"captures\\\": \\[\\s+[0-9]+"))
+        match IrArtifact.deserialize bytes with
+        | Ok _ -> ()
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``IR artifact validation rejects forged closure captures`` () =
+        let source = "let outer x = (let inner y = x + y\n    inner\n)\nouter 40 2"
+        let json = (compile source).Lir |> IrArtifact.serialize |> Encoding.UTF8.GetString
+        let capturePattern = System.Text.RegularExpressions.Regex("\\\"captures\\\": \\[\\s+[0-9]+\\s+\\]")
+        let invalid = capturePattern.Replace(json, "\"captures\": [ ]", 1) |> Encoding.UTF8.GetBytes
+        match IrArtifact.deserialize invalid with
+        | Ok _ -> Assert.Fail("Expected invalid closure-capture diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2013"))

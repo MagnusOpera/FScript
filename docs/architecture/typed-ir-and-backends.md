@@ -22,7 +22,7 @@ Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` 
 
 HIR is language-oriented and contains resolved artifact-local symbol identities, complete semantic types and schemes, source locations, declaration attributes, and explicit nodes for named/structural record conversions. Conversion evidence is produced by inference, not rediscovered from backend representations. HIR contains no Go types.
 
-LIR is executable but not a Go AST. It uses lifted functions, explicit captures and closure creation, resolved primitive operations, aggregate construction/projection, and structured control flow. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types may remain alongside selected runtime representations for validation and diagnostics.
+LIR is executable but not a Go AST. Closure creation carries a canonical ordered set of captured symbol IDs, alongside resolved primitive operations, aggregate construction/projection, and structured control flow. Validation recomputes each closure's free-symbol set and rejects forged, missing, duplicate, or unordered captures. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types may remain alongside selected runtime representations for validation and diagnostics; moving closure bodies into a separate function table remains a representation-only lowering step.
 
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
