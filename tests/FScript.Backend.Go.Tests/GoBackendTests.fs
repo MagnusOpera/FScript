@@ -219,6 +219,20 @@ type GoBackendTests() =
             formatProcess.WaitForExit()
             Assert.That(formatProcess.ExitCode, Is.EqualTo(0))
             Assert.That(formatDiff, Is.Empty, "Generated Go sources must already be gofmt-compatible")
+            let testStart = ProcessStartInfo("go")
+            testStart.WorkingDirectory <- directory
+            testStart.ArgumentList.Add("test")
+            testStart.ArgumentList.Add("./...")
+            testStart.RedirectStandardOutput <- true
+            testStart.RedirectStandardError <- true
+            use testProcess =
+                match Process.Start(testStart) with
+                | null -> failwith "Failed to start go test"
+                | value -> value
+            let testOutput = testProcess.StandardOutput.ReadToEnd()
+            let testError = testProcess.StandardError.ReadToEnd()
+            testProcess.WaitForExit()
+            Assert.That(testProcess.ExitCode, Is.EqualTo(0), testOutput + testError)
             let start = ProcessStartInfo("go")
             start.WorkingDirectory <- directory
             start.ArgumentList.Add("run")

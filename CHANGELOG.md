@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Hardened canonical IR metadata validation and required generated projects to pass `go test ./...`.
+
 - Made Go generation reject invalid caller-provided LIR before representation selection.
 
 - Made LIR execution validate inputs and stop left-to-right evaluation at the first structured diagnostic.

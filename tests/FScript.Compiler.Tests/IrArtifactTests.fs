@@ -62,6 +62,21 @@ type IrArtifactTests() =
         | Ok _ -> Assert.Fail("Expected non-canonical-metadata diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5005"))
 
+        let invalidSource = parseObject bytes
+        let sourceMetadata = JsonObject()
+        sourceMetadata["path"] <- "z\\program.fss"
+        sourceMetadata["sha256"] <- String.replicate 64 "A"
+        invalidSource["sources"] <- JsonArray(sourceMetadata)
+        match IrArtifact.deserialize (Encoding.UTF8.GetBytes(invalidSource.ToJsonString())) with
+        | Ok _ -> Assert.Fail("Expected invalid source-metadata diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5005"))
+
+        let invalidVersion = parseObject bytes
+        invalidVersion["compilerVersion"] <- ""
+        match IrArtifact.deserialize (Encoding.UTF8.GetBytes(invalidVersion.ToJsonString())) with
+        | Ok _ -> Assert.Fail("Expected invalid version-metadata diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5005"))
+
     [<Test>]
     member _.``IR artifact records normalized source paths and SHA256 hashes`` () =
         let path = IO.Path.Combine(IO.Path.GetTempPath(), $"fscript-source-{Guid.NewGuid():N}.fss")

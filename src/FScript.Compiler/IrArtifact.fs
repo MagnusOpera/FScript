@@ -449,16 +449,28 @@ module IrArtifact =
             elif [ "compilerVersion"; "languageVersion"; "sources"; "dependencies"; "program" ] |> List.exists (fun name -> not (hasProperty name root)) then
                 Error [ { Code = "FSA5004"; Stage = Artifact; Message = "IR artifact is missing required metadata."; Span = None } ]
             else
+                let sourceElements =
+                    if (property "sources" root).ValueKind = JsonValueKind.Array then
+                        (property "sources" root).EnumerateArray() |> Seq.toList
+                    else []
+                let sourceValues = sourceElements |> List.map (fun source -> stringProperty "path" source, stringProperty "sha256" source)
+                let validHash (hash: string) =
+                    hash.Length = 64
+                    && hash |> Seq.forall (fun character -> System.Char.IsDigit character || (character >= 'a' && character <= 'f'))
                 let sourcesValid =
                     (property "sources" root).ValueKind = JsonValueKind.Array
-                    && ((property "sources" root).EnumerateArray() |> Seq.forall (fun source ->
-                        hasProperty "path" source && hasProperty "sha256" source
-                        && (stringProperty "sha256" source).Length = 64))
-                let dependencyValues =
+                    && sourceElements |> List.forall (fun source -> hasProperty "path" source && hasProperty "sha256" source)
+                    && sourceValues |> List.forall (fun (path, hash) -> not (String.IsNullOrWhiteSpace path) && path = normalizePath path && validHash hash)
+                    && sourceValues = (sourceValues |> List.distinct |> List.sortBy fst)
+                let dependencyElements =
                     if (property "dependencies" root).ValueKind = JsonValueKind.Array then
-                        (property "dependencies" root).EnumerateArray() |> Seq.map _.GetString() |> Seq.choose Option.ofObj |> Seq.toList
+                        (property "dependencies" root).EnumerateArray() |> Seq.toList
                     else []
-                if not sourcesValid || dependencyValues <> (dependencyValues |> List.distinct |> List.sort) then
+                let dependencyValues = dependencyElements |> List.map _.GetString() |> List.map (Option.ofObj >> Option.defaultValue "")
+                let versionsValid =
+                    not (String.IsNullOrWhiteSpace(stringProperty "compilerVersion" root))
+                    && not (String.IsNullOrWhiteSpace(stringProperty "languageVersion" root))
+                if not versionsValid || not sourcesValid || dependencyValues |> List.exists String.IsNullOrWhiteSpace || dependencyValues <> (dependencyValues |> List.distinct |> List.sort) then
                     Error [ { Code = "FSA5005"; Stage = Artifact; Message = "IR artifact metadata is invalid or non-canonical."; Span = None } ]
                 else
                     let programElement = property "program" root
