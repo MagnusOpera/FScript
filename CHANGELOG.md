@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Executed floating-point comparisons and empty-list tail failures consistently in LIR and generated Go.
+
 - Enforced cross-runtime equality conformance for closures, type tokens, and unequal collections.
 
 - Added short-circuit evaluation for Boolean `&&` and `||` across interpreted and generated programs.

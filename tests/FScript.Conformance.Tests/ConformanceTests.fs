@@ -98,6 +98,7 @@ module private Harness =
         | Error "FSI3005" -> Some DivisionByZero
         | Error "FSI3012" -> Some MatchFailure
         | Error "FSI3011" -> Some Raised
+        | Error "FSI3022" -> Some Raised
         | Error code -> failwith $"Unexpected LIR failure category {code}"
 
     let goFailure source =
@@ -155,6 +156,7 @@ type ConformanceTests() =
     [<TestCase("(fun value -> value) = (fun value -> value)")>]
     [<TestCase("type Package = { Name: string }\ntypeof Package = typeof Package")>]
     [<TestCase("[1; 2] = [1; 3]")>]
+    [<TestCase("(1.5 < 2.0, 2.0 > 1.5, 1.5 <= 1.5, 2.0 >= 2.0)")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with
@@ -171,6 +173,7 @@ type ConformanceTests() =
     [<TestCase("raise \"boom\"")>]
     [<TestCase("match 1 with | 2 -> 0")>]
     [<TestCase("1 / 0")>]
+    [<TestCase("List.tail []")>]
     member _.``Failure categories conform`` (source: string) =
         let expected = Harness.legacyFailure source
         Assert.That(expected.IsSome, Is.True, source)

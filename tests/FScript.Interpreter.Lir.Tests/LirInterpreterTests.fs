@@ -44,6 +44,24 @@ type LirInterpreterTests() =
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VBool expected))
             | Error diagnostic -> Assert.Fail(errorText diagnostic)
 
+    [<Test>]
+    member _.``Executes float comparisons`` () =
+        match Compiler.compile { Program = Parser.parseProgram "(1.5 < 2.0, 2.0 >= 2.0)"; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VTuple [ LirValue.VBool true; LirValue.VBool true ]))
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+
+    [<Test>]
+    member _.``Reports an empty List tail as a runtime error`` () =
+        match Compiler.compile { Program = Parser.parseProgram "List.tail []"; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Fail("Expected List.tail to fail")
+            | Error diagnostic -> Assert.That(diagnostic.Code, Is.EqualTo("FSI3022"))
+
     [<TestCase("(1, true)")>]
     [<TestCase("Some 4")>]
     [<TestCase("{| Age = 42 |}.Age")>]
