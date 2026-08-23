@@ -7,6 +7,58 @@ open CliArgs
 open FScript.Language
 open FScript.Runtime
 
+let writeGeneratedFile (root: string) (file: FScript.Compiler.GeneratedFile) =
+    let path = Path.Combine(root, file.RelativePath)
+    match Path.GetDirectoryName(path) with
+    | null -> ()
+    | directory -> Directory.CreateDirectory(directory) |> ignore
+    File.WriteAllText(path, file.Content)
+
+let runCompileCommand (argv: string array) =
+    let usage () =
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go> --output <directory>")
+        1
+    if argv.Length < 2 then usage ()
+    else
+        let scriptPath = Path.GetFullPath(argv.[1])
+        let tryOption name =
+            argv |> Array.tryFindIndex ((=) name)
+            |> Option.bind (fun index -> if index + 1 < argv.Length then Some argv.[index + 1] else None)
+        match tryOption "--target", tryOption "--output" with
+        | Some target, Some output when File.Exists scriptPath ->
+            try
+                let outputDirectory = Path.GetFullPath(output)
+                let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+                let program = FScript.parseFileWithIncludes sourceRoot scriptPath
+                match FScript.Compiler.Compiler.compile { Program = program; Externs = [] } with
+                | Error diagnostics ->
+                    diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
+                    4
+                | Ok compiled ->
+                    Directory.CreateDirectory(outputDirectory) |> ignore
+                    match target.ToLowerInvariant() with
+                    | "ir" ->
+                        let baseName =
+                            match Path.GetFileNameWithoutExtension(scriptPath) with
+                            | null | "" -> "program"
+                            | value -> value
+                        let name = baseName + ".fsir"
+                        File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize compiled.Lir)
+                        0
+                    | "go" ->
+                        match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } compiled.Lir with
+                        | Error diagnostics ->
+                            diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
+                            4
+                        | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                    | _ -> usage ()
+            with
+            | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1
+            | TypeException error -> Console.Error.WriteLine($"Type error: {error.Message}"); 2
+            | ex -> Console.Error.WriteLine(ex.Message); 4
+        | Some _, Some _ -> Console.Error.WriteLine($"File not found: {scriptPath}"); 1
+        | _ -> usage ()
+
 let formatSpan (span: Span) =
     match span.Start.File with
     | Some file -> sprintf "(%s:%d:%d)" file span.Start.Line span.Start.Column
@@ -375,9 +427,12 @@ let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
 
 [<EntryPoint>]
 let main argv =
-    let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
-    let cliArgv, scriptArguments = splitScriptArguments argv
-    try
+    if argv.Length > 0 && String.Equals(argv.[0], "compile", StringComparison.OrdinalIgnoreCase) then
+        runCompileCommand argv
+    else
+      let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
+      let cliArgv, scriptArguments = splitScriptArguments argv
+      try
         if scriptArguments.IsEmpty && cliArgv.Length = 1 && String.Equals(cliArgv.[0], "version", StringComparison.OrdinalIgnoreCase) then
             Console.WriteLine(printVersion ())
             0
@@ -433,7 +488,7 @@ let main argv =
             | EvalException err ->
                 Console.Error.WriteLine($"Eval error {formatSpan err.Span}: {err.Message}")
                 3
-    with
-    | :? ArguParseException as ex ->
-        Console.Error.WriteLine(ex.Message)
-        1
+      with
+      | :? ArguParseException as ex ->
+          Console.Error.WriteLine(ex.Message)
+          1

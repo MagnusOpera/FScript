@@ -6,7 +6,7 @@ type DiagnosticStage =
     | Hir
     | Lowering
     | Interpreter
-    | GoBackend
+    | GoGeneration
     | Artifact
 
 type CompilerDiagnostic =

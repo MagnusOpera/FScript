@@ -91,9 +91,9 @@ module GoBackend =
                 | Some value -> emitExpression names value
             match error, entry with
             | Some(message, span), _ ->
-                Error [ { Code = "FSB4001"; Stage = GoBackend; Message = message; Span = Some span } ]
+                Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = message; Span = Some span } ]
             | None, Error message ->
-                Error [ { Code = "FSB4001"; Stage = GoBackend; Message = message; Span = None } ]
+                Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = message; Span = None } ]
             | None, Ok entryCode ->
                 let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
                 let programSource = $"package fscriptprogram\n\nimport \"{moduleName}/internal/fsruntime\"\n\n{declarations}\nfunc Run() any {{ return {entryCode} }}\n"
@@ -103,4 +103,4 @@ module GoBackend =
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
                       { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nfunc Int(value any) int64 { return value.(int64) }\n" } ]
         with ex ->
-            Error [ { Code = "FSB4002"; Stage = GoBackend; Message = ex.Message; Span = None } ]
+            Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

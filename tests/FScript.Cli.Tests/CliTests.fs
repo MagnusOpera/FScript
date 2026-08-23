@@ -110,6 +110,39 @@ type CliTests() =
         Assert.That(Regex.IsMatch(stdout.Trim(), "^\\d+\\.\\d+\\.\\d+"), Is.True)
 
     [<Test>]
+    member _.``Compiles a whole program to versioned IR`` () =
+        let repoRoot = findRepoRoot ()
+        let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-compile-ir-{Guid.NewGuid():N}")
+        let script = Path.Combine(tempRoot, "program.fss")
+        let output = Path.Combine(tempRoot, "out")
+        try
+            Directory.CreateDirectory(tempRoot) |> ignore
+            File.WriteAllText(script, "let add x y = x + y\nadd 1 2")
+            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "ir"; "--output"; output ] None
+            Assert.That(code, Is.EqualTo(0), stderr)
+            let artifact = Path.Combine(output, "program.fsir")
+            Assert.That(File.Exists artifact, Is.True)
+            Assert.That(File.ReadAllText(artifact), Does.Contain("\"format\": \"fscript-lir\""))
+        finally
+            if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
+
+    [<Test>]
+    member _.``Compiles a whole program to a Go project`` () =
+        let repoRoot = findRepoRoot ()
+        let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-compile-go-{Guid.NewGuid():N}")
+        let script = Path.Combine(tempRoot, "program.fss")
+        let output = Path.Combine(tempRoot, "out")
+        try
+            Directory.CreateDirectory(tempRoot) |> ignore
+            File.WriteAllText(script, "let add x y = x + y\nadd 1 2")
+            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
+            Assert.That(code, Is.EqualTo(0), stderr)
+            Assert.That(File.Exists(Path.Combine(output, "go.mod")), Is.True)
+            Assert.That(File.Exists(Path.Combine(output, "internal", "fscriptprogram", "program.go")), Is.True)
+        finally
+            if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
+
+    [<Test>]
     member _.``No args with redirected stdin executes stdin mode`` () =
         let repoRoot = findRepoRoot ()
         let code, stdout, stderr = runCli repoRoot repoRoot [] (Some "40 + 2")

@@ -38,6 +38,18 @@ Use this when:
 - You want to embed the language in another .NET application.
 - You need language processing independently from default runtime extern catalog.
 
+### `FScript.Compiler`
+Role:
+- Reusable .NET compiler pipeline for typed HIR, executable LIR, IR artifacts, interpretation, and source backends.
+
+Responsibilities:
+- Consume the resolved typed result produced by `FScript.Language`.
+- Validate and lower HIR to backend-independent LIR.
+- Serialize and validate whole-program `.fsir` artifacts.
+- Execute supported LIR and generate deterministic Go source projects.
+
+`FScript.Compiler` depends on `FScript.Language` and is intentionally excluded from the Fable JavaScript package.
+
 NuGet:
 - `MagnusOpera.FScript.Language`
 

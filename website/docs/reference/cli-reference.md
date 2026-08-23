@@ -20,6 +20,22 @@ fscript
 fscript version
 ```
 
+## Compile programs
+
+Generate one versioned whole-program IR artifact:
+
+```bash
+fscript compile program.fss --target ir --output ./out
+```
+
+Generate an inspectable Go 1.25 source project without invoking `go build`:
+
+```bash
+fscript compile program.fss --target go --output ./out
+```
+
+The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, generated program source, and the required FScript runtime package. Unsupported features use structured compiler/backend diagnostic codes.
+
 ## From source
 
 ```bash
