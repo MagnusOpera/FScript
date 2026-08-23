@@ -49,6 +49,8 @@ module Lir =
         | Map of MapEntry list
         | Intrinsic of string
         | HostExternal of string * int
+        | ForEach of SymbolId * string * Type * Expression * Expression
+        | TypeToken of Type
 
     and MapEntry =
         | KeyValue of Expression * Expression
@@ -162,6 +164,8 @@ module LirLowering =
             | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression key, expression item) | Hir.Spread item -> Lir.Spread(expression item)))
             | Hir.Intrinsic name -> Lir.Intrinsic name
             | Hir.HostExternal(name, arity) -> Lir.HostExternal(name, arity)
+            | Hir.ForEach(id, name, itemType, source, body) -> Lir.ForEach(symbol id, name, itemType, expression source, expression body)
+            | Hir.TypeToken tokenType -> Lir.TypeToken tokenType
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

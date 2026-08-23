@@ -186,6 +186,11 @@ module IrArtifact =
             writer.WriteEndArray()
         | Lir.Intrinsic name -> writer.WriteString("kind", "intrinsic"); writer.WriteString("name", name)
         | Lir.HostExternal(name, arity) -> writer.WriteString("kind", "host-external"); writer.WriteString("name", name); writer.WriteNumber("arity", arity)
+        | Lir.ForEach(id, name, itemType, source, body) ->
+            writer.WriteString("kind", "for-each"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
+            writer.WritePropertyName("itemType"); writeType writer itemType; writer.WritePropertyName("source"); writeExpression writer source
+            writer.WritePropertyName("body"); writeExpression writer body
+        | Lir.TypeToken tokenType -> writer.WriteString("kind", "type-token"); writer.WritePropertyName("tokenType"); writeType writer tokenType
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -319,6 +324,9 @@ module IrArtifact =
                     | kind -> invalidOp $"Unknown map entry '{kind}'.") |> Seq.toList)
             | "intrinsic" -> Lir.Intrinsic(stringProperty "name" element)
             | "host-external" -> Lir.HostExternal(stringProperty "name" element, (property "arity" element).GetInt32())
+            | "for-each" -> Lir.ForEach(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
+                                         readType (property "itemType" element), readExpression (property "source" element), readExpression (property "body" element))
+            | "type-token" -> Lir.TypeToken(readType (property "tokenType" element))
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

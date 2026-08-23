@@ -25,6 +25,9 @@ type GoBackendTests() =
     [<TestCase("String.toUpper \"hello\"", "HELLO")>]
     [<TestCase("List.length [1; 2; 3]", "3")>]
     [<TestCase("Option.defaultValue 9 None", "9")>]
+    [<TestCase("let sum pair = (let (left, right) = pair\n    left + right\n)\nsum (1, 2)", "3")>]
+    [<TestCase("for value in [1; 2; 3] do ignore value", "()")>]
+    [<TestCase("type Package = { Name: string }\ntypeof Package", "{ Name: string }")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =

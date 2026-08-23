@@ -7,6 +7,7 @@ module HirLowering =
         { mutable NextSymbol: int
           ExpressionTypes: Map<Expr, Type>
           mutable UnionCases: Map<string, string * Type option>
+          mutable TypeDefinitions: Map<string, Type>
           mutable Diagnostics: CompilerDiagnostic list }
 
     let private newSymbol state =
@@ -205,6 +206,21 @@ module HirLowering =
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
         | ERaise(value, _) -> lowerExpression state environment TString value |> Result.map (Hir.Fail >> make)
+        | ELetPattern(pattern, binding, body, _) ->
+            let bindingType = expressionType state binding (Types.freshVar())
+            match lowerExpression state environment bindingType binding, lowerPattern state bindingType pattern with
+            | Ok loweredBinding, Ok(loweredPattern, bindings) ->
+                let bodyEnvironment = Map.fold (fun env name id -> Map.add name id env) environment bindings
+                lowerExpression state bodyEnvironment inferred body
+                |> Result.map (fun loweredBody -> make (Hir.Match(loweredBinding, [ { Pattern = loweredPattern; Guard = None; Body = loweredBody; Span = Ast.spanOfPattern pattern } ])))
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | EFor(name, source, body, _) ->
+            let sourceType = expressionType state source (TList(Types.freshVar()))
+            let itemType = match sourceType with TList item -> item | _ -> Types.freshVar()
+            let id = newSymbol state
+            match lowerExpression state environment sourceType source, lowerExpression state (environment |> Map.add name id) TUnit body with
+            | Ok loweredSource, Ok loweredBody -> Ok(make (Hir.ForEach(id, name, itemType, loweredSource, loweredBody)))
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
         | EMatch(target, cases, _) ->
             let targetType = expressionType state target (Types.freshVar())
             match lowerExpression state environment targetType target with
@@ -235,6 +251,10 @@ module HirLowering =
             | Ok loweredTarget, Ok loweredIndex -> Ok(make (Hir.IndexGet(loweredTarget, loweredIndex)))
             | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
         | ENameOf(name, _) -> Ok(make (Hir.Constant(Hir.String name)))
+        | ETypeOf(name, _) ->
+            match state.TypeDefinitions |> Map.tryFind name with
+            | Some value -> Ok(make (Hir.TypeToken value))
+            | None -> Error [ Diagnostic.hir "FSH1005" $"Unknown type '{name}'." (Some span) ]
         | EInterpolatedString(parts, _) ->
             parts |> List.map (function
                 | IPText text -> Ok(Hir.TextPart text)
@@ -255,7 +275,7 @@ module HirLowering =
         let expressionTypes =
             resolved.ExpressionTypes
             |> List.fold (fun state item -> state |> Map.add item.Expr item.Type) Map.empty
-        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; UnionCases = Map.empty; Diagnostics = [] }
+        let state = { NextSymbol = 0; ExpressionTypes = expressionTypes; UnionCases = Map.empty; TypeDefinitions = Map.empty; Diagnostics = [] }
         let builtins =
             BuiltinSignatures.builtinSchemes
             |> Map.toList
@@ -279,6 +299,13 @@ module HirLowering =
             typeDefinitions |> List.filter (fun definition -> not definition.Cases.IsEmpty) |> List.map (fun definition ->
                 let cases = definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList
                 definition, TUnion(definition.Name, cases))
+        state.TypeDefinitions <-
+            typeDefinitions |> List.map (fun definition ->
+                let value =
+                    if not definition.Cases.IsEmpty then
+                        TUnion(definition.Name, definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList)
+                    else TRecord(definition.Fields |> List.map (fun (name, fieldType) -> name, typeFromRef fieldType) |> Map.ofList)
+                definition.Name, value) |> Map.ofList
         state.UnionCases <-
             unionDefinitions |> List.collect (fun (definition, _) ->
                 let cases = definition.Cases |> List.map (fun (name, payload) -> name, Option.map typeFromRef payload) |> Map.ofList

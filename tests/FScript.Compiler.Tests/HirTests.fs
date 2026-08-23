@@ -153,3 +153,17 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok _ -> Assert.Fail("Expected unsupported external diagnostic")
             | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))
+
+    [<Test>]
+    member _.``Executes local binding patterns iteration and type tokens`` () =
+        let cases =
+            [ "let sum pair = (let (left, right) = pair\n    left + right\n)\nsum (1, 2)", LirValue.VInt 3L
+              "for value in [1; 2; 3] do ignore value", LirValue.VUnit
+              "type Package = { Name: string }\ntypeof Package", LirValue.VTypeToken(TRecord(Map.ofList [ "Name", TString ])) ]
+        for source, expected in cases do
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok compiled ->
+                match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+                | Ok result -> Assert.That(result.Value, Is.EqualTo(expected), source)
+                | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

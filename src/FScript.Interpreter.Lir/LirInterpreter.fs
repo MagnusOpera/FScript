@@ -20,6 +20,7 @@ type LirValue =
     | VMap of (LirValue * LirValue) list
     | VIntrinsic of string * LirValue list
     | VExternal of string * int * LirValue list
+    | VTypeToken of Type
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -42,6 +43,7 @@ module LirInterpreter =
         | VOption(Some a), VOption(Some b) -> equal a b
         | VUnion(aType, aCase, aValue), VUnion(bType, bCase, bValue) -> aType = bType && aCase = bCase && equal (VOption aValue) (VOption bValue)
         | VMap a, VMap b -> a.Length = b.Length && List.forall2 (fun (ak, av) (bk, bv) -> equal ak bk && equal av bv) a b
+        | VTypeToken a, VTypeToken b -> a = b
         | _ -> false
 
     let rec private formatValue = function
@@ -59,6 +61,7 @@ module LirInterpreter =
         | VClosure _ -> "<function>"
         | VIntrinsic _ -> "<intrinsic>"
         | VExternal _ -> "<external>"
+        | VTypeToken value -> $"<type {Types.typeToString value}>"
 
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
@@ -286,6 +289,17 @@ module LirInterpreter =
             build [] entries
         | Lir.Intrinsic name -> Ok(VIntrinsic(name, []))
         | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
+        | Lir.ForEach(id, _, _, source, body) ->
+            match evaluate environment source with
+            | Ok(VList values) ->
+                let rec loop remaining =
+                    match remaining with
+                    | [] -> Ok VUnit
+                    | value :: tail -> evaluate (environment |> Map.add id value) body |> Result.bind (fun _ -> loop tail)
+                loop values
+            | Ok _ -> fail "FSI3018" expression.Span "For-loop source must be a list."
+            | Error errors -> Error errors
+        | Lir.TypeToken tokenType -> Ok(VTypeToken tokenType)
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

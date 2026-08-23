@@ -61,6 +61,8 @@ module Hir =
         | Map of MapEntry list
         | Intrinsic of string
         | HostExternal of string * int
+        | ForEach of SymbolId * string * Type * Expression * Expression
+        | TypeToken of Type
 
     and MapEntry =
         | KeyValue of Expression * Expression
@@ -179,6 +181,9 @@ module Hir =
                 entries |> List.iter (function KeyValue(key, value) -> expression (indent + 2) key; expression (indent + 2) value | Spread value -> expression (indent + 2) value)
             | Intrinsic name -> lines.Add(typed $"intrinsic {name}")
             | HostExternal(name, arity) -> lines.Add(typed $"host-extern {name}/{arity}")
+            | ForEach(id, name, _, source, body) ->
+                lines.Add(typed (sprintf "for %%%d %s" (symbolNumber id) name)); expression (indent + 2) source; expression (indent + 2) body
+            | TypeToken tokenType -> lines.Add(typed $"typeof {formatType tokenType}")
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))

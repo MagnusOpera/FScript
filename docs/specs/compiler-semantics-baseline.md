@@ -28,6 +28,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Declared records retain declaration identity for named annotations. Structural record annotations retain field-shape compatibility and may accept additional fields where current inference permits it. A backend must insert representation conversions rather than change compatibility rules.
 - Discriminated unions retain their declared type name, case name, and optional payload. Recursive types require `type rec`; mutually recursive type-definition graphs are rejected.
 - `typeof` produces an FScript type token and `nameof` produces the resolved source name.
+- Compiled local pattern bindings evaluate their source once and use the ordinary match-failure path. Compiled `for` evaluates its list once, executes bodies from first to last, discards their values, and returns unit. Compiled `typeof` retains the resolved declared record or union shape in the artifact instead of performing a name lookup at execution time.
 
 ## Expressions, patterns, and equality
 
