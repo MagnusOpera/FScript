@@ -109,7 +109,7 @@ module LirInterpreter =
                 | [] -> List.rev ((key, value) :: acc)
                 | (existing, _) :: rest when equal existing key -> List.rev acc @ ((key, value) :: rest)
                 | entry :: rest -> loop (entry :: acc) rest
-            loop [] entries
+            loop [] entries |> List.sortBy (fst >> formatValue)
         match name, arguments with
         | "Console.writeLine", [ VString value ] -> currentOutput.Value.Add(value); Ok VUnit
         | "ignore", [ _ ] -> Ok VUnit

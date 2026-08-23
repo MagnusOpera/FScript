@@ -46,13 +46,13 @@ Top-level mutual-recursive declarations are initialized as an atomic closure gro
 
 Local `let rec ... and ...` uses the same atomic rule inside a structured expression node. All local names are allocated before any member is lowered, every binding must evaluate to a closure, captures are updated with the complete group, and the body runs only after group initialization.
 
-Language builtins are explicit `Intrinsic` declarations rather than magic unresolved references. Consumers accumulate their curried arguments according to the catalog signature and dispatch only at full application. The initial portable implementations cover scalar parsing/formatting, strings, simple list and option operations, and map queries; a reachable catalog entry without an implementation receives a stage-specific unsupported diagnostic or runtime failure.
+Language builtins are explicit `Intrinsic` declarations rather than magic unresolved references. Consumers accumulate their curried arguments according to the catalog signature and dispatch only at full application. Both executable consumers cover the complete pure scalar, string, list, option, and ordered-map catalog; a reachable non-portable linkage receives a stage-specific unsupported diagnostic or runtime failure.
 
 The LIR interpreter implements the pure builtin catalog, including callbacks for list mapping, selection, collection, folding, filtering and search; lazy option fallback and mapping; and ordered-map construction, folds, transforms, iteration, and removal. Callback application goes through the same curried closure path as ordinary source calls, preserving failure propagation and evaluation order.
 
 Generated Go represents every FScript function as an erased `fsruntime.Closure` with a single `any -> any` call slot. Typed values are checked at closure entry and result use. This uniform convention permits ordinary source closures, partial application, recursion, and higher-order runtime intrinsics to interoperate without Go generics or reflection-based invocation.
 
-The Go runtime is stored as formatted `.go` resources embedded in `FScript.Backend.Go`. Program emission uses multiline structured constructs for closures, local control flow, decision trees, recursive groups, loops, and imports. Generation never invokes Go tooling; the backend tests run `gofmt -d` over every generated project and require an empty diff before `go run`.
+The Go runtime is stored as formatted `.go` resources embedded in `FScript.Backend.Go`. Program emission uses multiline structured constructs for closures, local control flow, decision trees, recursive groups, loops, and imports. Generation never invokes Go tooling; the backend tests run `gofmt -d`, `go test ./...`, and `go run` over generated projects.
 
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.
 
@@ -99,3 +99,5 @@ The conformance suite evaluates one source program through the legacy evaluator,
 ## Previous experiment
 
 The `feature/in-memory-execution` branch is useful only as evidence about closures, invocation, and host integration. Its dynamic-method/in-memory assembly backend is not an IR layer and is neither copied nor referenced by the new compiler architecture.
+
+The optional migration of ordinary .NET script execution remains deliberately inactive: task execution and supported host-extern adapters have not reached full parity. The CLI and `ScriptHost` therefore retain the legacy evaluator for execution, and the Fable/JavaScript surface is unchanged; compiler CLI targets, LIR interpretation, and Go generation are available without deleting that reference path.

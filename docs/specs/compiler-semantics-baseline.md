@@ -22,6 +22,7 @@ Ranges preserve inclusive ascending or descending order. List indexing returns a
 Declared unions retain their type and case identity plus an optional erased payload. Constructors are deterministic compiler declarations, qualified and unqualified case references share one identity, pattern tests check both type and case tags, and equality recursively compares payloads.
 
 Compiled maps use an ordered entry representation for string and integer keys. Explicit key/value entries replace an earlier value; spread entries retain values already present on their left. Indexing returns an option, and deterministic ordering participates in artifacts, equality, formatting, and generated Go behavior.
+- `Map.ofList` and `Map.add` restore canonical key order after insertion or replacement rather than exposing source-list insertion order.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and LIR closures record only their deterministic free-symbol capture set. Single and mutual recursive function groups are supported.
 - Local mutual-recursive function groups initialize atomically: every peer is visible from every closure before the group body executes.
 

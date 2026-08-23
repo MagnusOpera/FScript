@@ -171,6 +171,7 @@ type GoBackendTests() =
     [<TestCase("List.tryFind (fun value -> value > 1) [1; 2; 3]", "Some 2")>]
     [<TestCase("List.tryItem 1 [4; 5]", "Some 5")>]
     [<TestCase("Map.add \"b\" 2 (Map.ofList [(\"a\", 1)])", "map { \"a\" => 1; \"b\" => 2 }")>]
+    [<TestCase("Map.ofList [(\"b\", 2); (\"a\", 1)]", "map { \"a\" => 1; \"b\" => 2 }")>]
     [<TestCase("Map.map (fun value -> value + 1) (Map.filter (fun key value -> value > 1) (Map.ofList [(\"b\", 2); (\"a\", 1)]))", "map { \"b\" => 3 }")>]
     [<TestCase("Map.choose (fun key value -> if value > 1 then Some (value + 1) else None) { [\"a\"] = 1; [\"b\"] = 2 }", "map { \"b\" => 3 }")>]
     [<TestCase("Map.remove \"a\" { [\"a\"] = 1; [\"b\"] = 2 }", "map { \"b\" => 2 }")>]

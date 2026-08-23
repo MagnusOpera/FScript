@@ -233,10 +233,23 @@ func mapSet(entries []MapEntry, key any, value any, replace bool) []MapEntry {
 			if replace {
 				entries[index].Value = value
 			}
+			sortMapEntries(entries)
 			return entries
 		}
 	}
-	return append(entries, MapEntry{Key: key, Value: value})
+	entries = append(entries, MapEntry{Key: key, Value: value})
+	sortMapEntries(entries)
+	return entries
+}
+func sortMapEntries(entries []MapEntry) {
+	sort.SliceStable(entries, func(left int, right int) bool {
+		leftString, leftIsString := entries[left].Key.(string)
+		rightString, rightIsString := entries[right].Key.(string)
+		if leftIsString && rightIsString {
+			return leftString < rightString
+		}
+		return Format(entries[left].Key) < Format(entries[right].Key)
+	})
 }
 func BuildMap(parts []MapPart) OrderedMap {
 	entries := []MapEntry{}
@@ -249,7 +262,6 @@ func BuildMap(parts []MapPart) OrderedMap {
 			entries = mapSet(entries, part.Key, part.Value, true)
 		}
 	}
-	sort.SliceStable(entries, func(left int, right int) bool { return Format(entries[left].Key) < Format(entries[right].Key) })
 	return OrderedMap{Entries: entries}
 }
 func Index(value any, index any) Option {

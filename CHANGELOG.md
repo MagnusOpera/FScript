@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Preserved canonical ordered-map key order across `Map.ofList` and `Map.add` in LIR and Go.
+
 - Hardened canonical IR metadata validation and required generated projects to pass `go test ./...`.
 
 - Made Go generation reject invalid caller-provided LIR before representation selection.
