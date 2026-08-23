@@ -84,10 +84,50 @@ func Unit(value any) struct{}                         { return struct{}{} }
 func Int(value any) int64                             { return value.(int64) }
 func Float(value any) float64                         { return value.(float64) }
 func FloatDivide(left float64, right float64) float64 { return left / right }
-func Bool(value any) bool                             { return value.(bool) }
-func String(value any) string                         { return value.(string) }
-func List(value any) []any                            { return value.([]any) }
-func AsTuple(value any) Tuple                         { return value.(Tuple) }
+func LessThan(left any, right any) bool {
+	switch value := left.(type) {
+	case int64:
+		return value < Int(right)
+	case float64:
+		return value < Float(right)
+	default:
+		panic("Numeric comparison requires numbers")
+	}
+}
+func GreaterThan(left any, right any) bool {
+	switch value := left.(type) {
+	case int64:
+		return value > Int(right)
+	case float64:
+		return value > Float(right)
+	default:
+		panic("Numeric comparison requires numbers")
+	}
+}
+func LessThanOrEqual(left any, right any) bool {
+	switch value := left.(type) {
+	case int64:
+		return value <= Int(right)
+	case float64:
+		return value <= Float(right)
+	default:
+		panic("Numeric comparison requires numbers")
+	}
+}
+func GreaterThanOrEqual(left any, right any) bool {
+	switch value := left.(type) {
+	case int64:
+		return value >= Int(right)
+	case float64:
+		return value >= Float(right)
+	default:
+		panic("Numeric comparison requires numbers")
+	}
+}
+func Bool(value any) bool     { return value.(bool) }
+func String(value any) string { return value.(string) }
+func List(value any) []any    { return value.([]any) }
+func AsTuple(value any) Tuple { return value.(Tuple) }
 func TryRecord(value any) (map[string]any, bool) {
 	if record, ok := value.(map[string]any); ok {
 		return record, true

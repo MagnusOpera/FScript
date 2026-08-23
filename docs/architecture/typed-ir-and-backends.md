@@ -80,6 +80,8 @@ Artifact metadata records the actual compiler and language assembly versions, no
 
 Generated Go uses `fsruntime.Tuple` for tuple shapes and `[]any` only for erased lists. This preserves tuple/list formatting and prevents tuple patterns or `(key, value)` map inputs from depending on a shared slice representation.
 
+Ordered numeric LIR operations dispatch through runtime helpers that distinguish `int64` from `float64`. This is required when generalized source functions retain type variables and Go consequently represents their parameters as `any`; native Go comparison operators are used only where the operands have concrete compatible representations.
+
 ## Runtime and foreign calls
 
 Compiler bindings classify names as portable intrinsics, backend runtime primitives, target imports, or unsupported host externs. This metadata is distinct from executable .NET `ExternalFunction` implementations.

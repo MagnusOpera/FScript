@@ -90,10 +90,8 @@ module GoBackend =
         | Lir.IntDivide | Lir.FloatDivide -> Some "/"
         | Lir.IntRemainder -> Some "%"
         | Lir.StructuralEqual -> None
-        | Lir.NumericLessThan -> Some "<"
-        | Lir.NumericGreaterThan -> Some ">"
-        | Lir.NumericLessThanOrEqual -> Some "<="
-        | Lir.NumericGreaterThanOrEqual -> Some ">="
+        | Lir.NumericLessThan | Lir.NumericGreaterThan
+        | Lir.NumericLessThanOrEqual | Lir.NumericGreaterThanOrEqual -> None
         | Lir.BooleanAnd -> Some "&&"
         | Lir.BooleanOr -> Some "||"
 
@@ -264,6 +262,10 @@ module GoBackend =
             match emitExpression environment left, emitExpression environment right with
             | Ok l, Ok r when op = Lir.StructuralEqual -> Ok $"fsruntime.Equal({l}, {r})"
             | Ok l, Ok r when op = Lir.FloatDivide -> Ok $"fsruntime.FloatDivide({l}, {r})"
+            | Ok l, Ok r when op = Lir.NumericLessThan -> Ok $"fsruntime.LessThan({l}, {r})"
+            | Ok l, Ok r when op = Lir.NumericGreaterThan -> Ok $"fsruntime.GreaterThan({l}, {r})"
+            | Ok l, Ok r when op = Lir.NumericLessThanOrEqual -> Ok $"fsruntime.LessThanOrEqual({l}, {r})"
+            | Ok l, Ok r when op = Lir.NumericGreaterThanOrEqual -> Ok $"fsruntime.GreaterThanOrEqual({l}, {r})"
             | Ok l, Ok r ->
                 match operation op with
                 | Some token ->
@@ -273,7 +275,7 @@ module GoBackend =
                             $"fsruntime.Int({l})", $"fsruntime.Int({r})"
                         | _ -> l, r
                     match op with
-                    | Lir.NumericLessThan | Lir.NumericGreaterThan | Lir.NumericLessThanOrEqual | Lir.NumericGreaterThanOrEqual | Lir.BooleanAnd | Lir.BooleanOr -> Ok $"{l} {token} {r}"
+                    | Lir.BooleanAnd | Lir.BooleanOr -> Ok $"{l} {token} {r}"
                     | _ -> Ok $"({l} {token} {r})"
                 | None -> Error $"Unsupported Go operation {op}"
             | Error error, _ | _, Error error -> Error error
