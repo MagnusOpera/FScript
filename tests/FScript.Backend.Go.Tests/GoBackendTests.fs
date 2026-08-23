@@ -115,6 +115,18 @@ type GoBackendTests() =
             Assert.That(program, Does.Contain("Case0 int64"))
             Assert.That(program, Does.Contain("FScriptUnion() fsruntime.Union"))
 
+    [<Test>]
+    member _.``Go emitter delegates LIR pattern plans to the runtime`` () =
+        let source = "match Some (1, 2) with | Some (left, right) -> left + right | None -> 0"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/patterns" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("fsruntime.MatchPattern(matchValue"))
+            Assert.That(program, Does.Not.Contain("fsruntime.OptionValue(matchValue"))
+            Assert.That(program, Does.Not.Contain("fsruntime.AsTuple(matchValue"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]

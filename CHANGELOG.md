@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Routed every generated Go pattern plan through one deterministic runtime matcher.
+
 - Preserved arbitrary structured top-level declaration attributes through resolved inference and HIR.
 
 - Generated Go now preserves FScript UTF-16 string indices, strict Boolean parsing, and reference-compatible result formatting across the complete intrinsic conformance catalog.

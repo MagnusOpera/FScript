@@ -166,53 +166,13 @@ module GoBackend =
             $"fsruntime.Pattern{{Kind: \"union\", TypeName: {quoted typeName}, CaseName: {quoted caseName}, Items: {payloadValue}}}"
         | Lir.TypePattern patternType -> $"fsruntime.Pattern{{Kind: \"type\", TypeName: {quoted (Types.typeToString patternType)}}}"
 
-    let rec private emitPattern valueCode (pattern: Lir.Pattern) =
-        let combine parts =
-            let tests, assignments = List.unzip parts
-            let test = tests |> List.filter ((<>) "true") |> function [] -> "true" | values -> String.concat " && " values
-            test, List.concat assignments
-        match pattern.Node with
-        | Lir.Wildcard -> "true", []
-        | Lir.Binding(id, _) ->
+    let private emitPatternBindings bindingsName (pattern: Lir.Pattern) =
+        patternBindingDetails pattern
+        |> List.distinctBy fst
+        |> List.map (fun (id, bindingType) ->
             let name = identifier "match" id
-            "true", [ $"{name} := {cast pattern.Type valueCode}; _ = {name}" ]
-        | Lir.LiteralPattern value -> $"fsruntime.Equal({valueCode}, {constant value})", []
-        | Lir.EmptyList -> $"len(fsruntime.List({valueCode})) == 0", []
-        | Lir.NonePattern -> $"!fsruntime.IsSome({valueCode})", []
-        | Lir.SomePattern item ->
-            let test, assignments = emitPattern $"fsruntime.OptionValue({valueCode})" item
-            $"fsruntime.IsSome({valueCode}) && ({test})", assignments
-        | Lir.ConsPattern(head, tail) ->
-            let headPart = emitPattern $"fsruntime.List({valueCode})[0]" head
-            let tailPart = emitPattern $"fsruntime.Tail({valueCode})" tail
-            let test, assignments = combine [ headPart; tailPart ]
-            $"len(fsruntime.List({valueCode})) > 0 && ({test})", assignments
-        | Lir.TuplePattern items ->
-            items |> List.mapi (fun index item -> emitPattern $"fsruntime.AsTuple({valueCode})[{index}]" item)
-            |> combine |> fun (test, assignments) -> $"len(fsruntime.AsTuple({valueCode})) == {items.Length} && ({test})", assignments
-        | Lir.RecordPattern fields ->
-            fields |> List.map (fun (name, item) ->
-                let quoted = System.Text.Json.JsonSerializer.Serialize(name)
-                let test, assignments = emitPattern $"fsruntime.Record({valueCode})[{quoted}]" item
-                $"fsruntime.HasField({valueCode}, {quoted}) && ({test})", assignments)
-            |> combine
-        | Lir.MapPattern _ ->
-            let descriptor = emitPatternDescriptor pattern
-            let assignments =
-                patternBindingDetails pattern |> List.distinctBy fst |> List.map (fun (id, bindingType) ->
-                    let name = identifier "match" id
-                    let bindingValue = $"fsruntime.PatternBinding({valueCode}, {descriptor}, {Lir.symbolNumber id})"
-                    $"{name} := {cast bindingType bindingValue}; _ = {name}")
-            $"fsruntime.PatternMatches({valueCode}, {descriptor})", assignments
-        | Lir.UnionPattern(typeName, caseName, payload) ->
-            let quotedType = System.Text.Json.JsonSerializer.Serialize(typeName)
-            let quotedCase = System.Text.Json.JsonSerializer.Serialize(caseName)
-            match payload with
-            | None -> $"fsruntime.IsUnion({valueCode}, {quotedType}, {quotedCase}) && !fsruntime.UnionHasValue({valueCode})", []
-            | Some item ->
-                let test, assignments = emitPattern $"fsruntime.UnionValue({valueCode})" item
-                $"fsruntime.IsUnion({valueCode}, {quotedType}, {quotedCase}) && fsruntime.UnionHasValue({valueCode}) && ({test})", assignments
-        | Lir.TypePattern patternType -> $"fsruntime.TypeMatches({valueCode}, {System.Text.Json.JsonSerializer.Serialize(Types.typeToString patternType)})", []
+            let bindingValue = $"fsruntime.PatternBinding({bindingsName}, {Lir.symbolNumber id})"
+            $"{name} := {cast bindingType bindingValue}; _ = {name}")
 
     let private emitIntrinsic name intrinsicType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
@@ -371,13 +331,16 @@ module GoBackend =
             emitExpression environment target |> Result.bind (fun targetCode ->
                 let mutable failure = None
                 let clauses = StringBuilder()
-                for case in cases do
+                for caseIndex, case in cases |> List.indexed do
                     let bindings = patternBindings case.Pattern
                     let caseEnvironment = bindings |> List.fold (fun env id -> Map.add id (identifier "match" id) env) environment
                     match case.Guard |> Option.map (emitExpression caseEnvironment) |> Option.defaultValue (Ok "true"), emitExpression caseEnvironment case.Body with
                     | Ok guardCode, Ok bodyCode ->
-                        let test, assignments = emitPattern "matchValue" case.Pattern
-                        clauses.Append($"\tif {test} {{\n") |> ignore
+                        let descriptor = emitPatternDescriptor case.Pattern
+                        let bindingsName = $"patternBindings{caseIndex}"
+                        let matchedName = $"patternMatched{caseIndex}"
+                        let assignments = emitPatternBindings bindingsName case.Pattern
+                        clauses.Append($"\t{bindingsName}, {matchedName} := fsruntime.MatchPattern(matchValue, {descriptor})\n\t_ = {bindingsName}\n\tif {matchedName} {{\n") |> ignore
                         assignments |> List.iter (fun assignment -> clauses.Append("\t\t").Append(assignment.Replace("; ", "\n\t\t")).Append("\n") |> ignore)
                         clauses.Append($"\t\tif {guardCode} {{\n\t\t\treturn {indent (indent (indent bodyCode))}\n\t\t}}\n\t}}\n") |> ignore
                     | Error error, _ | _, Error error -> failure <- Some error

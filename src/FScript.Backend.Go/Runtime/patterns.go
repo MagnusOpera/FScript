@@ -172,15 +172,10 @@ func matchRuntimePattern(value any, pattern Pattern) (map[int]any, bool) {
 	}
 }
 
-func PatternMatches(value any, pattern Pattern) bool {
-	_, matched := matchRuntimePattern(value, pattern)
-	return matched
+func MatchPattern(value any, pattern Pattern) (map[int]any, bool) {
+	return matchRuntimePattern(value, pattern)
 }
-func PatternBinding(value any, pattern Pattern, symbol int) any {
-	bindings, matched := matchRuntimePattern(value, pattern)
-	if !matched {
-		panic("Pattern did not match")
-	}
+func PatternBinding(bindings map[int]any, symbol int) any {
 	return bindings[symbol]
 }
 func TypeMatches(value any, typeName string) bool {
