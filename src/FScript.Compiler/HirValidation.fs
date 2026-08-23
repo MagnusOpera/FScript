@@ -1,11 +1,34 @@
 namespace FScript.Compiler
 
+open FScript.Language
+
 module HirValidation =
+    let rec private compatible left right =
+        match left, right with
+        | TVar _, _ | _, TVar _ -> true
+        | TFun(la, lr), TFun(ra, rr) -> compatible la ra && compatible lr rr
+        | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 compatible left right
+        | TList left, TList right | TOption left, TOption right | TTask left, TTask right -> compatible left right
+        | TMap(lk, lv), TMap(rk, rv) -> compatible lk rk && compatible lv rv
+        | TRecord left, TRecord right -> left.Count = right.Count && (left |> Map.forall (fun name item -> right |> Map.tryFind name |> Option.exists (compatible item)))
+        | TUnion(ln, _), TUnion(rn, _) -> ln = rn
+        | TNamed name, TUnion(actual, _) | TUnion(actual, _), TNamed name -> name = actual
+        | TNamed _, TRecord _ | TRecord _, TNamed _ -> true
+        | _ -> left = right
+
+    let private validSpan (span: Span) =
+        span.Start.Line >= 0 && span.Start.Column >= 0 && span.End.Line >= 0 && span.End.Column >= 0
+        && (span.Start.File <> span.End.File || span.End.Line > span.Start.Line || (span.End.Line = span.Start.Line && span.End.Column >= span.Start.Column))
+
     let validate (program: Hir.Program) =
         let declarationIds = program.Declarations |> List.map (fun value -> value.Id)
         let duplicateIds = declarationIds |> List.countBy id |> List.filter (fun (_, count) -> count > 1)
         if not duplicateIds.IsEmpty then
             Error [ Diagnostic.hir "FSH1101" "HIR declaration IDs must be unique." None ]
+        elif program.Declarations |> List.exists (fun declaration -> not (validSpan declaration.Span && validSpan declaration.Value.Span)) then
+            Error [ Diagnostic.hir "FSH1103" "HIR contains an invalid source span." None ]
+        elif program.Declarations |> List.exists (fun declaration -> let (Forall(_, declaredType)) = declaration.Scheme in not (compatible declaredType declaration.Value.Type)) then
+            Error [ Diagnostic.hir "FSH1104" "HIR declaration scheme does not match its value type." None ]
         else
             let rec references (expression: Hir.Expression) =
                 match expression.Node with
