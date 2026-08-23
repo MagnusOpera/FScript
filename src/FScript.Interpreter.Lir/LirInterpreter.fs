@@ -64,7 +64,15 @@ module LirInterpreter =
         | VOption None -> "None" | VOption(Some value) -> $"Some {formatValue value}"
         | VUnion(_, caseName, None) -> caseName | VUnion(_, caseName, Some value) -> $"{caseName} {formatValue value}"
         | VMap entries ->
-            entries |> List.map (fun (key, value) -> $"[{formatValue key}] = {formatValue value}") |> String.concat "; " |> fun value -> "{ " + value + " }"
+            entries
+            |> List.map (fun (key, value) ->
+                let renderedKey =
+                    match key with
+                    | VString text -> "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
+                    | _ -> formatValue key
+                $"{renderedKey} => {formatValue value}")
+            |> String.concat "; "
+            |> fun value -> "map { " + value + " }"
         | VClosure _ -> "<function>"
         | VIntrinsic _ -> "<intrinsic>"
         | VExternal _ -> "<external>"

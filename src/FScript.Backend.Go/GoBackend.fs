@@ -54,7 +54,7 @@ module GoBackend =
         | TFloat -> "float64"
         | TBool -> "bool"
         | TString -> "string"
-        | TTypeToken -> "string"
+        | TTypeToken -> "fsruntime.TypeToken"
         | TVar _ -> "any"
         | TFun _ -> "fsruntime.Closure"
         | TTuple _ -> "fsruntime.Tuple"
@@ -472,7 +472,7 @@ module GoBackend =
                 let itemCode = cast itemType "rawValue"
                 Ok $"func() struct{{}} {{\n\tfor _, rawValue := range fsruntime.List({sourceCode}) {{\n\t\t{name} := {itemCode}\n\t\t_ = {indent (indent bodyCode)}\n\t}}\n\treturn struct{{}}{{}}\n}}()"
             | Error error, _ | _, Error error -> Error error
-        | Lir.TypeToken tokenType -> Ok(System.Text.Json.JsonSerializer.Serialize(Types.typeToString tokenType))
+        | Lir.TypeToken tokenType -> Ok($"fsruntime.TypeToken{{Value: {System.Text.Json.JsonSerializer.Serialize(Types.typeToString tokenType)}}}")
         | Lir.Operation _ -> Error "Invalid operation arity"
 
     and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =

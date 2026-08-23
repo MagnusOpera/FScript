@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Generated Go now preserves FScript UTF-16 string indices, strict Boolean parsing, and reference-compatible result formatting across the complete intrinsic conformance catalog.
+
 - HIR lowering now consumes parser-independent semantic resolved statements, expressions, patterns, references, and declaration schemes.
 
 - Compilation now preserves every default runtime external as typed host linkage with reachability-based backend diagnostics.

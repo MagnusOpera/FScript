@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 type Option struct {
@@ -13,6 +14,7 @@ type Option struct {
 	Value    any
 }
 type Tuple []any
+type TypeToken struct{ Value string }
 type Union struct {
 	TypeName string
 	CaseName string
@@ -32,6 +34,35 @@ type MapPart struct {
 	Key      any
 	Value    any
 	Map      OrderedMap
+}
+
+func utf16Index(value string, needle string) int64 {
+	valueUnits := utf16.Encode([]rune(value))
+	needleUnits := utf16.Encode([]rune(needle))
+	if len(needleUnits) == 0 {
+		return 0
+	}
+	for start := 0; start+len(needleUnits) <= len(valueUnits); start++ {
+		matches := true
+		for offset, unit := range needleUnits {
+			if valueUnits[start+offset] != unit {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return int64(start)
+		}
+	}
+	return -1
+}
+
+func utf16Substring(value string, start int64, length int64) Option {
+	units := utf16.Encode([]rune(value))
+	if start < 0 || length < 0 || start+length > int64(len(units)) {
+		return None()
+	}
+	return Some(string(utf16.Decode(units[start : start+length])))
 }
 
 func Unit(value any) struct{} { return struct{}{} }
@@ -264,31 +295,31 @@ func Intrinsic(name string, args []any) any {
 		}
 		return Some(value)
 	case "Bool.tryParse":
-		value, error := strconv.ParseBool(String(args[0]))
-		if error != nil {
+		switch strings.ToLower(String(args[0])) {
+		case "true":
+			return Some(true)
+		case "false":
+			return Some(false)
+		default:
 			return None()
 		}
-		return Some(value)
 	case "Int.toString", "Float.toString", "Bool.toString":
 		return Format(args[0])
 	case "String.replace":
 		return strings.ReplaceAll(String(args[2]), String(args[0]), String(args[1]))
 	case "String.indexOf":
-		index := strings.Index(String(args[1]), String(args[0]))
+		index := utf16Index(String(args[1]), String(args[0]))
 		if index < 0 {
 			return None()
 		}
-		return Some(int64(index))
+		return Some(index)
 	case "String.toLower":
 		return strings.ToLower(String(args[0]))
 	case "String.toUpper":
 		return strings.ToUpper(String(args[0]))
 	case "String.substring":
 		start, length, value := Int(args[0]), Int(args[1]), String(args[2])
-		if start < 0 || length < 0 || start+length > int64(len(value)) {
-			return None()
-		}
-		return Some(value[start : start+length])
+		return utf16Substring(value, start, length)
 	case "String.concat":
 		values := List(args[1])
 		parts := make([]string, len(values))
@@ -366,10 +397,11 @@ func formatValue(value any, nested bool) string {
 		}
 		return "false"
 	case string:
-		if nested {
-			return strconv.Quote(item)
-		}
-		return item
+		return strconv.Quote(item)
+	case TypeToken:
+		return "<type " + item.Value + ">"
+	case struct{}:
+		return "()"
 	case Option:
 		if !item.HasValue {
 			return "None"
@@ -378,9 +410,9 @@ func formatValue(value any, nested bool) string {
 	case OrderedMap:
 		parts := make([]string, len(item.Entries))
 		for index, entry := range item.Entries {
-			parts[index] = "[" + formatValue(entry.Key, false) + "] = " + formatValue(entry.Value, true)
+			parts[index] = formatValue(entry.Key, true) + " => " + formatValue(entry.Value, true)
 		}
-		return "{ " + strings.Join(parts, "; ") + " }"
+		return "map { " + strings.Join(parts, "; ") + " }"
 	case []any:
 		parts := make([]string, len(item))
 		for index, value := range item {
@@ -416,8 +448,69 @@ func formatValue(value any, nested bool) string {
 func Interpolate(values []any) string {
 	var result strings.Builder
 	for _, value := range values {
-		result.WriteString(Format(value))
+		result.WriteString(formatInterpolationValue(value))
 	}
 	return result.String()
+}
+
+func formatInterpolationValue(value any) string {
+	if item, ok := TryUnion(value); ok {
+		if !item.HasValue {
+			return item.CaseName
+		}
+		return item.CaseName + " " + formatInterpolationValue(item.Value)
+	}
+	switch item := value.(type) {
+	case string:
+		return item
+	case TypeToken:
+		return "<type " + item.Value + ">"
+	case struct{}:
+		return "()"
+	case Option:
+		if !item.HasValue {
+			return "None"
+		}
+		return "Some " + formatInterpolationValue(item.Value)
+	case OrderedMap:
+		parts := make([]string, len(item.Entries))
+		for index, entry := range item.Entries {
+			key, ok := entry.Key.(string)
+			if ok {
+				parts[index] = strconv.Quote(key) + " => " + formatInterpolationValue(entry.Value)
+			} else {
+				parts[index] = formatInterpolationValue(entry.Key) + " => " + formatInterpolationValue(entry.Value)
+			}
+		}
+		return "map { " + strings.Join(parts, "; ") + " }"
+	case []any:
+		parts := make([]string, len(item))
+		for index, value := range item {
+			parts[index] = formatInterpolationValue(value)
+		}
+		return "[" + strings.Join(parts, ";") + "]"
+	case Tuple:
+		parts := make([]string, len(item))
+		for index, value := range item {
+			parts[index] = formatInterpolationValue(value)
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	case map[string]any:
+		names := make([]string, 0, len(item))
+		for name := range item {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, len(names))
+		for index, name := range names {
+			parts[index] = name + " = " + formatInterpolationValue(item[name])
+		}
+		return "{ " + strings.Join(parts, "; ") + " }"
+	default:
+		if record, ok := TryRecord(value); ok {
+			return formatInterpolationValue(record)
+		}
+		return fmt.Sprint(value)
+	}
 }
 func Fail(value any) { panic(fmt.Sprint(value)) }
