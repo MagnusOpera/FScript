@@ -76,7 +76,9 @@ module GoBackend =
     let private constant = function
         | Lir.Unit -> "struct{}{}"
         | Lir.Int value -> $"int64({value})"
-        | Lir.Float value -> value.ToString("R", Globalization.CultureInfo.InvariantCulture)
+        | Lir.Float value ->
+            let rendered = value.ToString("R", Globalization.CultureInfo.InvariantCulture)
+            if rendered.Contains(".") || rendered.Contains("E") || rendered.Contains("e") then rendered else rendered + ".0"
         | Lir.Bool true -> "true"
         | Lir.Bool false -> "false"
         | Lir.String value -> System.Text.Json.JsonSerializer.Serialize(value)
@@ -261,6 +263,7 @@ module GoBackend =
         | Lir.Operation(op, [ left; right ]) ->
             match emitExpression environment left, emitExpression environment right with
             | Ok l, Ok r when op = Lir.StructuralEqual -> Ok $"fsruntime.Equal({l}, {r})"
+            | Ok l, Ok r when op = Lir.FloatDivide -> Ok $"fsruntime.FloatDivide({l}, {r})"
             | Ok l, Ok r ->
                 match operation op with
                 | Some token ->

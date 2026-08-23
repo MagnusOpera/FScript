@@ -209,6 +209,7 @@ type GoBackendTests() =
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]
     [<TestCase("type Shape = | Point | Circle of int\nCircle 2 = Circle 2", "true")>]
     [<TestCase("type Person = { Name: string }\ntype Result = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }", "true")>]
+    [<TestCase("(1.0, [2.0], 1.0 / 0.0, 0.0 / 0.0)", "(1, [2], Infinity, NaN)")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         requireGo ()
         let input = { Program = Parser.parseProgram source; Externs = [] }

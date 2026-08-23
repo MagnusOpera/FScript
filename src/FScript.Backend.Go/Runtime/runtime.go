@@ -2,6 +2,7 @@ package fsruntime
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -65,13 +66,14 @@ func utf16Substring(value string, start int64, length int64) Option {
 	return Some(string(utf16.Decode(units[start : start+length])))
 }
 
-func Unit(value any) struct{} { return struct{}{} }
-func Int(value any) int64     { return value.(int64) }
-func Float(value any) float64 { return value.(float64) }
-func Bool(value any) bool     { return value.(bool) }
-func String(value any) string { return value.(string) }
-func List(value any) []any    { return value.([]any) }
-func AsTuple(value any) Tuple { return value.(Tuple) }
+func Unit(value any) struct{}                         { return struct{}{} }
+func Int(value any) int64                             { return value.(int64) }
+func Float(value any) float64                         { return value.(float64) }
+func FloatDivide(left float64, right float64) float64 { return left / right }
+func Bool(value any) bool                             { return value.(bool) }
+func String(value any) string                         { return value.(string) }
+func List(value any) []any                            { return value.([]any) }
+func AsTuple(value any) Tuple                         { return value.(Tuple) }
 func TryRecord(value any) (map[string]any, bool) {
 	if record, ok := value.(map[string]any); ok {
 		return record, true
@@ -395,6 +397,18 @@ func Intrinsic(name string, args []any) any {
 	}
 }
 func Format(value any) string { return formatValue(value, false) }
+func formatFloat(value float64) string {
+	if math.IsInf(value, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(value, -1) {
+		return "-Infinity"
+	}
+	if math.IsNaN(value) {
+		return "NaN"
+	}
+	return strconv.FormatFloat(value, 'g', -1, 64)
+}
 func formatValue(value any, nested bool) string {
 	if item, ok := TryUnion(value); ok {
 		if !item.HasValue {
@@ -408,6 +422,8 @@ func formatValue(value any, nested bool) string {
 			return "true"
 		}
 		return "false"
+	case float64:
+		return formatFloat(item)
 	case string:
 		return strconv.Quote(item)
 	case TypeToken:
@@ -473,6 +489,8 @@ func formatInterpolationValue(value any) string {
 		return item.CaseName + " " + formatInterpolationValue(item.Value)
 	}
 	switch item := value.(type) {
+	case float64:
+		return formatFloat(item)
 	case string:
 		return item
 	case TypeToken:

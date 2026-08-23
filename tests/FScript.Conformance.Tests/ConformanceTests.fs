@@ -157,6 +157,7 @@ type ConformanceTests() =
     [<TestCase("type Package = { Name: string }\ntypeof Package = typeof Package")>]
     [<TestCase("[1; 2] = [1; 3]")>]
     [<TestCase("(1.5 < 2.0, 2.0 > 1.5, 1.5 <= 1.5, 2.0 >= 2.0)")>]
+    [<TestCase("(1.0, [2.0], 1.0 / 0.0, 0.0 / 0.0)")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with
