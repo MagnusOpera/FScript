@@ -26,36 +26,41 @@ let runCompileCommand (argv: string array) =
             |> Option.bind (fun index -> if index + 1 < argv.Length then Some argv.[index + 1] else None)
         match tryOption "--target", tryOption "--output" with
         | Some target, Some output when File.Exists scriptPath ->
-            try
-                let outputDirectory = Path.GetFullPath(output)
-                let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
-                let program = FScript.parseFileWithIncludes sourceRoot scriptPath
-                match FScript.Compiler.Compiler.compile { Program = program; Externs = [] } with
-                | Error diagnostics ->
-                    diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
-                    4
-                | Ok compiled ->
-                    Directory.CreateDirectory(outputDirectory) |> ignore
-                    match target.ToLowerInvariant() with
-                    | "ir" ->
-                        let baseName =
-                            match Path.GetFileNameWithoutExtension(scriptPath) with
-                            | null | "" -> "program"
-                            | value -> value
-                        let name = baseName + ".fsir"
-                        File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize compiled.Lir)
-                        0
-                    | "go" ->
-                        match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } compiled.Lir with
-                        | Error diagnostics ->
-                            diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
-                            4
-                        | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
-                    | _ -> usage ()
-            with
-            | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1
-            | TypeException error -> Console.Error.WriteLine($"Type error: {error.Message}"); 2
-            | ex -> Console.Error.WriteLine(ex.Message); 4
+            let normalizedTarget = target.ToLowerInvariant()
+            if normalizedTarget <> "ir" && normalizedTarget <> "go" then usage ()
+            else
+                try
+                    let outputDirectory = Path.GetFullPath(output)
+                    let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+                    let program = FScript.parseFileWithIncludes sourceRoot scriptPath
+                    match FScript.Compiler.Compiler.compile { Program = program; Externs = [] } with
+                    | Error diagnostics ->
+                        diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
+                        4
+                    | Ok compiled ->
+                        Directory.CreateDirectory(outputDirectory) |> ignore
+                        match normalizedTarget with
+                        | "ir" ->
+                            let baseName =
+                                match Path.GetFileNameWithoutExtension(scriptPath) with
+                                | null | "" -> "program"
+                                | value -> value
+                            let name = baseName + ".fsir"
+                            File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize compiled.Lir)
+                            0
+                        | "go" ->
+                            match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } compiled.Lir with
+                            | Error diagnostics ->
+                                diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
+                                4
+                            | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                        | _ -> usage ()
+                with
+                | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1
+                | TypeException error -> Console.Error.WriteLine($"Type error: {error.Message}"); 2
+                | :? UnauthorizedAccessException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
+                | :? IOException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
+                | ex -> Console.Error.WriteLine(ex.Message); 4
         | Some _, Some _ -> Console.Error.WriteLine($"File not found: {scriptPath}"); 1
         | _ -> usage ()
 

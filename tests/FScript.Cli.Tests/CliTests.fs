@@ -122,7 +122,12 @@ type CliTests() =
             Assert.That(code, Is.EqualTo(0), stderr)
             let artifact = Path.Combine(output, "program.fsir")
             Assert.That(File.Exists artifact, Is.True)
+            let expected = File.ReadAllBytes(artifact)
             Assert.That(File.ReadAllText(artifact), Does.Contain("\"format\": \"fscript-lir\""))
+            File.WriteAllText(artifact, "stale")
+            let secondCode, _, secondError = runCli repoRoot repoRoot [ "compile"; script; "--target"; "ir"; "--output"; output ] None
+            Assert.That(secondCode, Is.EqualTo(0), secondError)
+            Assert.That(File.ReadAllBytes(artifact) = expected, Is.True, "IR compilation must deterministically replace an existing artifact")
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
@@ -138,7 +143,29 @@ type CliTests() =
             let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
             Assert.That(code, Is.EqualTo(0), stderr)
             Assert.That(File.Exists(Path.Combine(output, "go.mod")), Is.True)
-            Assert.That(File.Exists(Path.Combine(output, "internal", "fscriptprogram", "program.go")), Is.True)
+            let programFile = Path.Combine(output, "internal", "fscriptprogram", "program.go")
+            Assert.That(File.Exists(programFile), Is.True)
+            let expected = File.ReadAllText(programFile)
+            File.WriteAllText(programFile, "stale")
+            let secondCode, _, secondError = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
+            Assert.That(secondCode, Is.EqualTo(0), secondError)
+            Assert.That(File.ReadAllText(programFile), Is.EqualTo(expected), "Go compilation must deterministically replace generated files")
+        finally
+            if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
+
+    [<Test>]
+    member _.``Invalid compile target does not create output`` () =
+        let repoRoot = findRepoRoot ()
+        let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-compile-invalid-{Guid.NewGuid():N}")
+        let script = Path.Combine(tempRoot, "program.fss")
+        let output = Path.Combine(tempRoot, "out")
+        try
+            Directory.CreateDirectory(tempRoot) |> ignore
+            File.WriteAllText(script, "1")
+            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "unknown"; "--output"; output ] None
+            Assert.That(code, Is.EqualTo(1))
+            Assert.That(stderr, Does.Contain("Usage: fscript compile"))
+            Assert.That(Directory.Exists(output), Is.False)
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
