@@ -151,6 +151,21 @@ type LirInterpreterTests() =
             | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))
 
     [<Test>]
+    member _.``Default host runtime externs remain inert until reached`` () =
+        let execute source =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Error diagnostics -> Error diagnostics
+            | Ok compiled -> LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir
+
+        match execute "let unused = Fs.exists\n42" with
+        | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 42L))
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+        match execute "Fs.exists \"missing\"" with
+        | Ok _ -> Assert.Fail("Expected unsupported host-runtime diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))
+
+    [<Test>]
     member _.``Retains tasks in LIR and rejects them only when reached`` () =
         let compile source = Compiler.compile { Program = Parser.parseProgram source; Externs = [] }
         match compile "let unused = Task.spawn\n1" with

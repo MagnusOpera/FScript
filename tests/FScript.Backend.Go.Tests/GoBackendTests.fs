@@ -49,6 +49,21 @@ type GoBackendTests() =
         | Ok _ -> ()
 
     [<Test>]
+    member _.``Go backend reports default host runtime externs only when reachable`` () =
+        let compile source =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value.Lir
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+
+        match GoBackend.generate { ModuleName = "fscript.generated/runtimeexterns" } (compile "let unused = Fs.exists\n1") with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok _ -> ()
+
+        match GoBackend.generate { ModuleName = "fscript.generated/runtimeexterns" } (compile "Fs.exists \"missing\"") with
+        | Ok _ -> Assert.Fail("Expected unsupported host-runtime diagnostic")
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4006"))
+
+    [<Test>]
     member _.``Go backend emits imported record boundary adapters`` () =
         let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string; Age: int }\n[<Import(\"example.com/model\", \"Birthday\")>] let birthday : Person -> Person\nbirthday { Name = \"Ada\"; Age = 42 }"
         let compiled =

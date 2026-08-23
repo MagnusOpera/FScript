@@ -65,6 +65,20 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
 - Both `[<export>]` and `[<Export>]` normalize to a structured `Export` attribute in resolved statements and HIR. `Import` attributes retain their two arguments and attribute span on ordinary HIR function/type declarations in addition to dedicated backend linkage.
 
+The compiler-owned runtime catalog is declarative and contains no executable host delegates:
+
+| Classification | Current bindings |
+| --- | --- |
+| Compiler context intrinsic | `Env` |
+| Portable runtime intrinsic | `Console.writeLine` |
+| Deferred host input | `Console.readLine` |
+| Host filesystem | `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles` |
+| Pure host candidates | `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension`, `Regex.matchGroups`, `Hash.md5` |
+| Host-only/deferred data services | `Guid.new`, `Json.deserialize`, `Json.serialize`, `Xml.queryValues` |
+| Deferred task runtime | `Task.spawn`, `Task.await` |
+
+All entries are type-checkable and retained as linkage in HIR/LIR. Except for the compiler context and portable intrinsic rows, reaching one produces an interpreter or backend unsupported diagnostic; unused linkage remains inert.
+
 ## Diagnostics
 
 Parse, type, and evaluation failures currently use source spans and exceptions. Compiler entry points translate expected failures into structured stage diagnostics while leaving existing embedding APIs behavior-compatible.

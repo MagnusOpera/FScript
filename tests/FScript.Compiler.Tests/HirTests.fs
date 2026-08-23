@@ -15,6 +15,27 @@ type HirTests() =
         | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
+    member _.``Compiler catalog describes every default runtime external without delegates`` () =
+        let expected =
+            [ "Console.readLine"; "Console.writeLine"; "Env"
+              "Fs.combinePath"; "Fs.createDirectory"; "Fs.enumerateFiles"; "Fs.exists"
+              "Fs.extension"; "Fs.fileNameWithoutExtension"; "Fs.glob"; "Fs.kind"
+              "Fs.parentDirectory"; "Fs.readText"; "Fs.writeText"
+              "Guid.new"; "Hash.md5"; "Json.deserialize"; "Json.serialize"
+              "Regex.matchGroups"; "Task.await"; "Task.spawn"; "Xml.queryValues" ]
+        Assert.That((CompilerExternCatalog.defaults |> List.map _.Name |> List.sort) = expected, Is.True)
+
+        match Compiler.compile { Program = Parser.parseProgram "Fs.exists \"missing\""; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            Assert.That(
+                compiled.Lir.Declarations
+                |> List.exists (fun declaration ->
+                    declaration.Name = "Fs.exists"
+                    && match declaration.Value.Node with Lir.HostExternal("Fs.exists", 1) -> true | _ -> false),
+                Is.True)
+
+    [<Test>]
     member _.``Lowers deterministic typed add program`` () =
         let source = "let add x y = x + y\nadd 1 2"
         let input = { Program = Parser.parseProgram source; Externs = [] }
@@ -59,10 +80,8 @@ type HirTests() =
         let program = Parser.parseProgram source
         let external name scheme arity = ({ Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }: ExternalFunction)
         let frontendExterns =
-            [ external "Env" (Forall([], TNamed "Environment")) 0
-              yield! RuntimeIntrinsics.schemes |> Map.toList |> List.map (fun (name, scheme) -> external name scheme 1)
-              external "Task.spawn" (Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))) 1
-              external "Task.await" (Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))) 1 ]
+            CompilerExternCatalog.defaults
+            |> List.map (fun descriptor -> external descriptor.Name descriptor.Scheme descriptor.Arity)
         let resolved = TypeInfer.inferResolvedProgramWithExterns frontendExterns program
         let compiled = match Compiler.compile { Program = program; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
         let resolvedId kind name = resolved.Symbols |> List.find (fun symbol -> symbol.Kind = kind && symbol.Name = name) |> _.SymbolId

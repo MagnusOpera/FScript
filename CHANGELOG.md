@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Compilation now preserves every default runtime external as typed host linkage with reachability-based backend diagnostics.
+
 - Attached normalized structured Export and Import attributes to resolved statements and HIR declarations.
 
 - Consumed normalized frontend declaration schemes in HIR and expanded cross-runtime aggregate, closure, record, union, and map conformance.
