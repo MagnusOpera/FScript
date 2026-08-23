@@ -111,7 +111,14 @@ module LirInterpreter =
                 | entry :: rest -> loop (entry :: acc) rest
             loop [] entries |> List.sortBy (fst >> formatValue)
         match name, arguments with
+        | "Console.readLine", [ VUnit ] ->
+            match System.Console.ReadLine() with
+            | null -> Ok(VOption None)
+            | value -> Ok(VOption(Some(VString value)))
         | "Console.writeLine", [ VString value ] -> currentOutput.Value.Add(value); Ok VUnit
+        | "Fs.readText", [ VString path ] ->
+            try Ok(VOption(Some(VString(System.IO.File.ReadAllText(path)))))
+            with _ -> Ok(VOption None)
         | "ignore", [ _ ] -> Ok VUnit
         | "Int.tryParse", [ VString value ] -> match System.Int64.TryParse value with true, parsed -> Ok(VOption(Some(VInt parsed))) | _ -> Ok(VOption None)
         | "Float.tryParse", [ VString value ] -> match System.Double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with true, parsed -> Ok(VOption(Some(VFloat parsed))) | _ -> Ok(VOption None)

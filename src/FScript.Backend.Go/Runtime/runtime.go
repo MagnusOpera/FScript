@@ -1,8 +1,10 @@
 package fsruntime
 
 import (
+	"bufio"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -35,6 +37,18 @@ type MapPart struct {
 	Key      any
 	Value    any
 	Map      OrderedMap
+}
+
+var consoleInput = bufio.NewReader(os.Stdin)
+
+func readLine() Option {
+	line, err := consoleInput.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return None()
+	}
+	line = strings.TrimSuffix(line, "\n")
+	line = strings.TrimSuffix(line, "\r")
+	return Some(line)
 }
 
 func utf16Index(value string, needle string) int64 {
@@ -287,9 +301,17 @@ func Index(value any, index any) Option {
 }
 func Intrinsic(name string, args []any) any {
 	switch name {
+	case "Console.readLine":
+		return readLine()
 	case "Console.writeLine":
 		fmt.Println(String(args[0]))
 		return struct{}{}
+	case "Fs.readText":
+		value, err := os.ReadFile(String(args[0]))
+		if err != nil {
+			return None()
+		}
+		return Some(string(value))
 	case "ignore":
 		return struct{}{}
 	case "List.empty":

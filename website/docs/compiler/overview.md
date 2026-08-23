@@ -41,7 +41,7 @@ The compiler does not reference either consumer. This keeps LIR reusable for fut
 
 ## Initial support boundary
 
-The compiler covers the core language, closures, recursion, pattern matching, records and unions, collections, structural equality, the portable pure builtin catalog, `Console.writeLine`, and `Env`.
+The compiler covers the core language, closures, recursion, pattern matching, records and unions, collections, structural equality, the portable pure builtin catalog, console input/output, read-only `Fs.readText`, and `Env`.
 
 Reachable Tasks and arbitrary host externs receive explicit diagnostics in the LIR interpreter and Go backend. Existing .NET and JavaScript execution paths remain available for host-oriented scripts.
 

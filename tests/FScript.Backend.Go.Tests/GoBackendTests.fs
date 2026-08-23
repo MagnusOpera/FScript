@@ -273,3 +273,45 @@ type GoBackendTests() =
             Assert.That(output.Trim(), Is.EqualTo(expected))
         finally
             if Directory.Exists directory then Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``Generated runtime reads standard input and text files`` () =
+        requireGo ()
+        let source = "(Console.readLine (), Console.readLine (), Fs.readText \"input.txt\")"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let files =
+            match GoBackend.generate { ModuleName = "fscript.generated/consoleinput" } compiled.Lir with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let directory = Path.Combine(Path.GetTempPath(), $"fscript-go-{Guid.NewGuid():N}")
+        try
+            for file in files do
+                let path = Path.Combine(directory, file.RelativePath)
+                match Path.GetDirectoryName(path) with
+                | null -> ()
+                | parent -> Directory.CreateDirectory(parent) |> ignore
+                File.WriteAllText(path, file.Content)
+            File.WriteAllText(Path.Combine(directory, "input.txt"), "loaded")
+            let start = ProcessStartInfo("go")
+            start.WorkingDirectory <- directory
+            start.ArgumentList.Add("run")
+            start.ArgumentList.Add(".")
+            start.RedirectStandardInput <- true
+            start.RedirectStandardOutput <- true
+            start.RedirectStandardError <- true
+            use proc =
+                match Process.Start(start) with
+                | null -> failwith "Failed to start Go"
+                | value -> value
+            proc.StandardInput.WriteLine("Ada")
+            proc.StandardInput.Close()
+            let output = proc.StandardOutput.ReadToEnd()
+            let error = proc.StandardError.ReadToEnd()
+            proc.WaitForExit()
+            Assert.That(proc.ExitCode, Is.EqualTo(0), error)
+            Assert.That(output.Trim(), Is.EqualTo("(Some \"Ada\", None, Some \"loaded\")"))
+        finally
+            if Directory.Exists directory then Directory.Delete(directory, true)

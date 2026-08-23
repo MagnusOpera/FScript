@@ -1,5 +1,6 @@
 namespace FScript.Interpreter.Lir.Tests
 
+open System.IO
 open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
@@ -22,6 +23,53 @@ type LirInterpreterTests() =
             | Ok result ->
                 Assert.That(result.Value, Is.EqualTo(LirValue.VUnit))
                 Assert.That(System.String.Join("\n", result.Stdout), Is.EqualTo("hello"))
+
+    [<Test>]
+    [<NonParallelizable>]
+    member _.``Reads portable console input and reports end of input`` () =
+        let originalInput = System.Console.In
+        try
+            System.Console.SetIn(new StringReader("Ada\n"))
+            match Compiler.compile { Program = Parser.parseProgram "(Console.readLine (), Console.readLine ())"; Externs = [] } with
+            | Error diagnostics -> Assert.Fail(errorText diagnostics)
+            | Ok compiled ->
+                match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+                | Error diagnostics -> Assert.Fail(errorText diagnostics)
+                | Ok result ->
+                    Assert.That(
+                        result.Value,
+                        Is.EqualTo(
+                            LirValue.VTuple
+                                [ LirValue.VOption(Some(LirValue.VString "Ada"))
+                                  LirValue.VOption None ]
+                        )
+                    )
+        finally
+            System.Console.SetIn(originalInput)
+
+    [<Test>]
+    member _.``Reads portable text files and reports missing files`` () =
+        let path = Path.GetTempFileName()
+        try
+            File.WriteAllText(path, "hello")
+            let escapedPath = path.Replace("\\", "\\\\").Replace("\"", "\\\"")
+            let source = $"(Fs.readText \"{escapedPath}\", Fs.readText \"{escapedPath}.missing\")"
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Error diagnostics -> Assert.Fail(errorText diagnostics)
+            | Ok compiled ->
+                match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+                | Error diagnostics -> Assert.Fail(errorText diagnostics)
+                | Ok result ->
+                    Assert.That(
+                        result.Value,
+                        Is.EqualTo(
+                            LirValue.VTuple
+                                [ LirValue.VOption(Some(LirValue.VString "hello"))
+                                  LirValue.VOption None ]
+                        )
+                    )
+        finally
+            File.Delete(path)
 
 
     [<Test>]

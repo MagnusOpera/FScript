@@ -62,6 +62,8 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
 - Generated Go rejects a reachable arbitrary host extern with `FSB4006`; an unused host-extern descriptor remains inert and does not block generation.
 - `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
+- `Console.readLine ()` consumes one line from process stdin, strips the line terminator, and returns `Some text`. It returns `None` only when stdin is exhausted before any text is read; a final unterminated line is still returned.
+- `Fs.readText path` reads the complete text file and returns `Some text`; missing, inaccessible, or otherwise unreadable paths return `None`. This read-only operation is portable so generated command-line programs can load their inputs.
 - Generated Go source is deterministic and already canonical according to `gofmt`; generation itself has no installed-Go dependency. Local integration tests skip only when Go is unavailable, while CI installs Go 1.25 and treats its absence as a failure.
 - Tuples and lists remain observably distinct in generated Go: tuples format with parentheses, lists with brackets, tuple patterns require tuple values, and map pair inputs consume tuple values.
 - Backend-imported records retain exact field names and declaration linkage. The initial Go adapter accepts exported primitive fields only, performs record/struct conversion solely at target-call boundaries, and rejects imported unions, empty schemas, lowercase fields, tasks, and aggregate/function fields with `FSB4005`.
@@ -71,7 +73,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Scalar conversions, string helpers, `List`, `Option`, and `Map` functions are protected builtin symbols with explicit polymorphic schemes. They are initial compiler/runtime intrinsics even where a future implementation can compile their FScript source.
 - The LIR interpreter and Go runtime execute the complete pure builtin catalog, including higher-order list, option, and ordered-map functions. Callback invocation remains curried and follows source collection order.
 - Generated Go implements FScript string indexing and substring ranges in UTF-16 code units, matching the reference evaluator and Fable string model rather than Go byte offsets. Boolean parsing accepts only case-insensitive `true` and `false`, matching the reference runtime.
-- `Console.writeLine`, `Console.readLine`, and the CLI `Env` value are candidate portable runtime primitives. Filesystem, regex, hashing, GUID, JSON, and XML functions remain host externs initially.
+- `Console.writeLine`, `Console.readLine`, `Fs.readText`, and the CLI `Env` value are portable runtime primitives. The remaining filesystem, regex, hashing, GUID, JSON, and XML functions remain host externs initially.
 - Compiled `Env` is a runtime-context intrinsic. The LIR interpreter uses its explicit script name and arguments; generated Go uses the executable base name and `os.Args[1:]`.
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
@@ -83,9 +85,8 @@ The compiler-owned runtime catalog is declarative and contains no executable hos
 | Classification | Current bindings |
 | --- | --- |
 | Compiler context intrinsic | `Env` |
-| Portable runtime intrinsic | `Console.writeLine` |
-| Deferred host input | `Console.readLine` |
-| Host filesystem | `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles` |
+| Portable runtime intrinsic | `Console.writeLine`, `Console.readLine`, `Fs.readText` |
+| Host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles` |
 | Pure host candidates | `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension`, `Regex.matchGroups`, `Hash.md5` |
 | Host-only/deferred data services | `Guid.new`, `Json.deserialize`, `Json.serialize`, `Xml.queryValues` |
 | Deferred task runtime | `Task.spawn`, `Task.await` |

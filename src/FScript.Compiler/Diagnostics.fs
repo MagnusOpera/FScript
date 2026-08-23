@@ -29,7 +29,9 @@ type CompilerExtern =
 module RuntimeIntrinsics =
     let schemes =
         Map.ofList
-            [ "Console.writeLine", Forall([], TFun(TString, TUnit)) ]
+            [ "Console.readLine", Forall([], TFun(TUnit, TOption TString))
+              "Console.writeLine", Forall([], TFun(TString, TUnit))
+              "Fs.readText", Forall([], TFun(TString, TOption TString)) ]
 
 /// Declarative descriptions of the runtime surface known to the compiler.
 /// These values deliberately contain no executable .NET delegates.
@@ -49,9 +51,7 @@ module CompilerExternCatalog =
         |> List.map (fun (name, scheme) -> descriptor name scheme 1 PortableRuntimeIntrinsic)
 
     let unsupportedHostRuntime =
-        [ descriptor "Console.readLine" (Forall([], TFun(TUnit, TOption TString))) 1 UnsupportedHostExtern
-          descriptor "Fs.readText" (Forall([], TFun(TString, TOption TString))) 1 UnsupportedHostExtern
-          descriptor "Fs.exists" (Forall([], TFun(TString, TBool))) 1 UnsupportedHostExtern
+        [ descriptor "Fs.exists" (Forall([], TFun(TString, TBool))) 1 UnsupportedHostExtern
           descriptor "Fs.kind" (Forall([], TFun(TString, TNamed "FsKind"))) 1 UnsupportedHostExtern
           descriptor "Fs.createDirectory" (Forall([], TFun(TString, TBool))) 1 UnsupportedHostExtern
           descriptor "Fs.writeText" (Forall([], TFun(TString, TFun(TString, TBool)))) 2 UnsupportedHostExtern

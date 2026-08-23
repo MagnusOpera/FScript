@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added portable console input and read-only text-file loading to LIR execution and generated Go programs.
+
 - Added website documentation and homepage paths for Go compilation and LIR interpretation.
 
 - Documented the typed HIR, executable LIR, Go compilation workflow, and IR interpreter API.

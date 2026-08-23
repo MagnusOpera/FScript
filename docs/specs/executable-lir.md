@@ -150,6 +150,6 @@ LirInterpreter.execute :
   InterpreterContext -> Lir.Program -> Result<ExecutionResult, CompilerDiagnostic>
 ```
 
-`InterpreterContext` supplies an optional script name and argument list. `ExecutionResult` contains the final `LirValue` and ordered `Console.writeLine` output.
+`InterpreterContext` supplies an optional script name and argument list. `ExecutionResult` contains the final `LirValue` and ordered `Console.writeLine` output. `Console.readLine` consumes the interpreter process stdin and returns `None` at end of input; hosts that need controlled input can temporarily supply a `TextReader` through `Console.SetIn` around execution.
 
 `Lir.format : Lir.Program -> string` is a deterministic debug/snapshot representation and is not the artifact encoding.

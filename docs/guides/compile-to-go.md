@@ -88,10 +88,25 @@ The initial backend preserves:
 - ordered maps and recursive structural equality;
 - pattern decision plans and guards;
 - scalar, string, list, option, map, and portable console intrinsics;
+- line-oriented stdin/stdout through `Console.readLine` and `Console.writeLine`;
+- read-only text input through `Fs.readText`;
 - short-circuit Boolean operations and left-to-right evaluation;
 - FScript-compatible result formatting, including IEEE floating results.
 
 The backend deliberately does not use Go generics.
+
+## Console input and text files
+
+Generated programs use their process stdin and stdout:
+
+```fsharp
+Console.writeLine "What is your name?"
+match Console.readLine () with
+| Some name -> $"Hello, {name}!"
+| None -> "No input"
+```
+
+`Console.readLine ()` returns `None` at EOF. A final line without a trailing newline is returned as `Some`. `Fs.readText path` is also portable and returns `None` when the file cannot be read; other filesystem functions remain unsupported by the Go backend.
 
 ## Go imports
 

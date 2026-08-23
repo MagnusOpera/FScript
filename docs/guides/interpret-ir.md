@@ -69,7 +69,7 @@ match IrArtifact.deserialize artifact with
         0
 ```
 
-`ExecutionResult.Stdout` contains `Console.writeLine` output in execution order. `ExecutionResult.Value` is an `LirValue`, with cases for primitives, tuples, lists, records, options, unions, ordered maps, type tokens, and callable/runtime handles.
+`ExecutionResult.Stdout` contains `Console.writeLine` output in execution order. `Console.readLine` reads the interpreter process stdin and returns `None` at EOF; an embedding host can provide deterministic input with `Console.SetIn` around execution. `ExecutionResult.Value` is an `LirValue`, with cases for primitives, tuples, lists, records, options, unions, ordered maps, type tokens, and callable/runtime handles.
 
 Applications should pattern-match `LirValue` when they need a stable domain conversion instead of relying on `%A` formatting.
 

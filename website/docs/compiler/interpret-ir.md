@@ -45,7 +45,7 @@ match File.ReadAllBytes "out/program.fsir" |> IrArtifact.deserialize with
         printfn "Result: %A" execution.Value
 ```
 
-`ExecutionResult` contains the final typed `LirValue` and ordered `Console.writeLine` output. The host supplies `Env.ScriptName` and `Env.Arguments` through `InterpreterContext`; execution does not read process arguments implicitly.
+`ExecutionResult` contains the final typed `LirValue` and ordered `Console.writeLine` output. `Console.readLine` consumes process stdin and returns `None` at EOF; embedding hosts can control it with `Console.SetIn` around execution. The host supplies `Env.ScriptName` and `Env.Arguments` through `InterpreterContext`; execution does not read process arguments implicitly.
 
 ## Safety checks
 
@@ -55,7 +55,7 @@ Deserialization checks the artifact format and version, required metadata, DTO s
 - `FSL2xxx`: invalid LIR;
 - `FSI3xxx`: execution failures.
 
-Reachable target imports, Tasks, and arbitrary host externs are rejected explicitly. Pure core-language programs, portable builtins, and `Console.writeLine` execute directly from LIR.
+Reachable target imports, Tasks, and arbitrary host externs are rejected explicitly. Pure core-language programs, portable builtins, console input/output, and read-only `Fs.readText` execute directly from LIR.
 
 Version-1 `.fsir` is internal and does not promise backward compatibility. Use matching compiler and interpreter builds.
 

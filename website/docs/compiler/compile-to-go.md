@@ -53,9 +53,11 @@ Source generation itself does not require or invoke Go. The caller decides wheth
 
 ## Supported semantics
 
-The backend preserves closures, currying, recursion, concrete declared records and unions, structural conversions, patterns and guards, ordered maps, structural equality, erased polymorphic containers, portable builtins, `Console.writeLine`, and `Env`.
+The backend preserves closures, currying, recursion, concrete declared records and unions, structural conversions, patterns and guards, ordered maps, structural equality, erased polymorphic containers, portable builtins, `Console.readLine`, `Console.writeLine`, read-only `Fs.readText`, and `Env`.
 
 Generated code preserves FScript evaluation order and formatting rather than inheriting accidental Go behavior.
+
+`Console.readLine ()` consumes generated-program stdin and returns `None` at EOF. `Console.writeLine` writes one stdout line. `Fs.readText path` returns `Some text` when a file can be read and `None` otherwise; the remaining filesystem externs are not yet portable.
 
 ## Import Go functions
 
