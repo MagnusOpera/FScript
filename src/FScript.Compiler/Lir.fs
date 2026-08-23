@@ -48,6 +48,7 @@ module Lir =
         | UnionCase of string * string * Expression option
         | Map of MapEntry list
         | Intrinsic of string
+        | HostExternal of string * int
 
     and MapEntry =
         | KeyValue of Expression * Expression
@@ -160,6 +161,7 @@ module LirLowering =
             | Hir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map expression payload)
             | Hir.Map entries -> Lir.Map(entries |> List.map (function Hir.KeyValue(key, item) -> Lir.KeyValue(expression key, expression item) | Hir.Spread item -> Lir.Spread(expression item)))
             | Hir.Intrinsic name -> Lir.Intrinsic name
+            | Hir.HostExternal(name, arity) -> Lir.HostExternal(name, arity)
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

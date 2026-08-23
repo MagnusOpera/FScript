@@ -251,7 +251,7 @@ module HirLowering =
             |> collectResults |> Result.map (Hir.Map >> make)
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
 
-    let lower (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
+    let lower (externs: ExternalFunction list) (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =
             resolved.ExpressionTypes
             |> List.fold (fun state item -> state |> Map.add item.Expr item.Type) Map.empty
@@ -262,6 +262,7 @@ module HirLowering =
             |> List.sortBy fst
             |> List.map (fun (name, _) -> name, newSymbol state)
             |> Map.ofList
+        let externSymbols = externs |> List.sortBy _.Name |> List.map (fun value -> value.Name, newSymbol state) |> Map.ofList
         let typeDefinitions =
             resolved.TypedProgram |> List.choose (function TypeInfer.TSType definition -> Some definition | _ -> None)
         let rec typeFromRef = function
@@ -291,7 +292,7 @@ module HirLowering =
                 | TypeInfer.TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _) -> name)
                 | _ -> [])
             |> List.distinct
-            |> List.fold (fun env name -> env |> Map.add name (newSymbol state)) builtins
+            |> List.fold (fun env name -> env |> Map.add name (newSymbol state)) (Map.fold (fun env name id -> Map.add name id env) builtins externSymbols)
         let topLevel =
             constructorSymbols |> List.fold (fun env (typeName, caseName, id) -> env |> Map.add caseName id |> Map.add $"{typeName}.{caseName}" id) topLevel
 
@@ -301,7 +302,12 @@ module HirLowering =
                     let (Forall(_, valueType)) = scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
                     ({ Id = builtins.[name]; Name = name; Scheme = scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
-            builtinDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
+            let externalDeclarations =
+                externs |> List.sortBy _.Name |> List.map (fun external ->
+                    let (Forall(_, valueType)) = external.Scheme
+                    let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = Hir.HostExternal(external.Name, external.Arity) } }: Hir.Declaration))
+            builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->
                 let definition, unionType = unionDefinitions |> List.find (fun (definition, _) -> definition.Name = typeName)
                 let payloadType = definition.Cases |> List.find (fst >> (=) caseName) |> snd |> Option.map typeFromRef
                 let value =

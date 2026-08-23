@@ -132,3 +132,24 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VString expected))
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Retains host linkage but rejects only reachable external calls`` () =
+        let external : ExternalFunction =
+            { Name = "Host.echo"
+              Scheme = Forall([], TFun(TString, TString))
+              Arity = 1
+              Impl = fun _ values -> values.Head }
+        let compile source = Compiler.compile { Program = Parser.parseProgram source; Externs = [ external ] }
+        match compile "1" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 1L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        match compile "Host.echo \"value\"" with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Fail("Expected unsupported external diagnostic")
+            | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3021"))

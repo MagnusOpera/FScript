@@ -19,6 +19,7 @@ type LirValue =
     | VUnion of string * string * LirValue option
     | VMap of (LirValue * LirValue) list
     | VIntrinsic of string * LirValue list
+    | VExternal of string * int * LirValue list
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
 type ExecutionResult = { Value: LirValue }
@@ -57,6 +58,7 @@ module LirInterpreter =
             entries |> List.map (fun (key, value) -> $"[{formatValue key}] = {formatValue value}") |> String.concat "; " |> fun value -> "{ " + value + " }"
         | VClosure _ -> "<function>"
         | VIntrinsic _ -> "<intrinsic>"
+        | VExternal _ -> "<external>"
 
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
@@ -145,6 +147,10 @@ module LirInterpreter =
                 let arguments = existing @ [ value ]
                 if arguments.Length = intrinsicArity name then invokeIntrinsic expression.Span name arguments
                 else Ok(VIntrinsic(name, arguments))
+            | Ok(VExternal(name, arity, existing)), Ok value ->
+                let arguments = existing @ [ value ]
+                if arguments.Length = arity then fail "FSI3021" expression.Span $"Host external '{name}' is not executable from LIR."
+                else Ok(VExternal(name, arity, arguments))
             | Ok _, Ok _ -> fail "FSI3003" expression.Span "Attempted to call a non-function value."
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
@@ -279,6 +285,7 @@ module LirInterpreter =
                     | Error errors -> Error errors
             build [] entries
         | Lir.Intrinsic name -> Ok(VIntrinsic(name, []))
+        | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

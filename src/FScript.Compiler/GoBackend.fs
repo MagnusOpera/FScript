@@ -123,6 +123,18 @@ module GoBackend =
                 cast resultType $"fsruntime.Intrinsic({quoted}, []any{{{values}}})"
         build 0 [] intrinsicType
 
+    let private emitHostExternal name externalType =
+        let quoted = System.Text.Json.JsonSerializer.Serialize(name)
+        let rec build index arguments = function
+            | TFun(argumentType, resultType) ->
+                let argument = $"externalArg{index}"
+                let body = build (index + 1) (arguments @ [ argument ]) resultType
+                $"func({argument} {goType argumentType}) {goType resultType} {{ return {body} }}"
+            | resultType ->
+                let values = String.concat ", " arguments
+                cast resultType $"fsruntime.Intrinsic(\"__host:\" + {quoted}, []any{{{values}}})"
+        build 0 [] externalType
+
     let rec private emitExpression environment (expression: Lir.Expression) =
         match expression.Node with
         | Lir.Constant value -> Ok(constant value)
@@ -247,6 +259,7 @@ module GoBackend =
                 let joined = String.concat ", " parts
                 $"fsruntime.BuildMap([]fsruntime.MapPart{{{joined}}})")
         | Lir.Intrinsic name -> Ok(emitIntrinsic name expression.Type)
+        | Lir.HostExternal(name, _) -> Ok(emitHostExternal name expression.Type)
         | Lir.Operation _ -> Error "Invalid operation arity"
 
     and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =

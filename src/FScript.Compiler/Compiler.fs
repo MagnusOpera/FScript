@@ -15,7 +15,7 @@ module Compiler =
         try
             input.Program
             |> TypeInfer.inferResolvedProgramWithExterns input.Externs
-            |> HirLowering.lower
+            |> HirLowering.lower input.Externs
             |> Result.bind HirValidation.validate
             |> Result.bind (fun hir ->
                 hir |> LirLowering.lower |> LirValidation.validate

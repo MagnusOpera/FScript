@@ -185,6 +185,7 @@ module IrArtifact =
                 writer.WriteEndObject()
             writer.WriteEndArray()
         | Lir.Intrinsic name -> writer.WriteString("kind", "intrinsic"); writer.WriteString("name", name)
+        | Lir.HostExternal(name, arity) -> writer.WriteString("kind", "host-external"); writer.WriteString("name", name); writer.WriteNumber("arity", arity)
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -317,6 +318,7 @@ module IrArtifact =
                     | "spread" -> Lir.Spread(readExpression (property "value" item))
                     | kind -> invalidOp $"Unknown map entry '{kind}'.") |> Seq.toList)
             | "intrinsic" -> Lir.Intrinsic(stringProperty "name" element)
+            | "host-external" -> Lir.HostExternal(stringProperty "name" element, (property "arity" element).GetInt32())
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 
