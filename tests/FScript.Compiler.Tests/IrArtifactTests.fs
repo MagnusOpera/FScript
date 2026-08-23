@@ -39,3 +39,11 @@ type IrArtifactTests() =
         match IrArtifact.deserialize (Encoding.UTF8.GetBytes("{")) with
         | Ok _ -> Assert.Fail("Expected corrupt-artifact diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSA5003"))
+
+    [<Test>]
+    member _.``IR artifact round trips lexical let and fail nodes`` () =
+        for source in [ "let f x = (let y = x + 1\n    y\n)\nf 2"; "raise \"failure\"" ] do
+            let bytes = compile source |> _.Lir |> IrArtifact.serialize
+            match IrArtifact.deserialize bytes with
+            | Ok _ -> ()
+            | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))

@@ -20,6 +20,8 @@ HIR is language-oriented and contains resolved artifact-local symbol identities,
 
 LIR is executable but not a Go AST. It uses lifted functions, explicit captures and closure creation, resolved primitive operations, aggregate construction/projection, and structured control flow. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types may remain alongside selected runtime representations for validation and diagnostics.
 
+Lexical `let` is retained as a structured LIR node. Its symbol is visible only in the body, or in both the binding and body for recursive functions. The interpreter closes the recursive environment explicitly; Go emission declares the function slot before assigning its closure. `raise` becomes an explicit `Fail` node so consumers preserve evaluation order and attach their own stage-specific failure diagnostic.
+
 Serialized `.fsir` files contain one closed resolved program plus explicit foreign linkage declarations. JSON format versions are internal and may be rejected rather than upgraded.
 
 ## Representation policy

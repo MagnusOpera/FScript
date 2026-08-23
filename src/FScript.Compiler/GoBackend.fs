@@ -101,6 +101,19 @@ module GoBackend =
             match emitExpression environment left, emitExpression environment right with
             | Ok l, Ok r -> Ok $"fsruntime.Append({l}, {r})"
             | Error error, _ | _, Error error -> Error error
+        | Lir.Let(id, _, recursive, binding, body) ->
+            let name = identifier "local" id
+            let scoped = environment |> Map.add id name
+            match emitExpression scoped binding, emitExpression scoped body with
+            | Ok bindingCode, Ok bodyCode ->
+                let declaration =
+                    if recursive then $"var {name} {goType binding.Type}; {name} = {bindingCode}"
+                    else $"{name} := {bindingCode}"
+                Ok $"func() {goType expression.Type} {{ {declaration}; return {bodyCode} }}()"
+            | Error error, _ | _, Error error -> Error error
+        | Lir.Fail value ->
+            emitExpression environment value
+            |> Result.map (fun code -> $"func() {goType expression.Type} {{ fsruntime.Fail({code}); var zero {goType expression.Type}; return zero }}()")
         | Lir.Operation _ -> Error "Invalid operation arity"
 
     and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =
@@ -134,6 +147,6 @@ module GoBackend =
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n)\n\nfunc main() {{ fmt.Println(fscriptprogram.Run()) }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
-                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport \"reflect\"\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\n" } ]
+                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n)\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

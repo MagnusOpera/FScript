@@ -109,6 +109,11 @@ module IrArtifact =
         | Lir.Append(left, right) ->
             writer.WriteString("kind", "append"); writer.WritePropertyName("left"); writeExpression writer left
             writer.WritePropertyName("right"); writeExpression writer right
+        | Lir.Let(id, name, recursive, binding, body) ->
+            writer.WriteString("kind", "let"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
+            writer.WriteBoolean("recursive", recursive); writer.WritePropertyName("binding"); writeExpression writer binding
+            writer.WritePropertyName("body"); writeExpression writer body
+        | Lir.Fail value -> writer.WriteString("kind", "fail"); writer.WritePropertyName("value"); writeExpression writer value
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -188,6 +193,9 @@ module IrArtifact =
             | "none" -> Lir.NoneValue
             | "cons" -> Lir.Cons(readExpression (property "head" element), readExpression (property "tail" element))
             | "append" -> Lir.Append(readExpression (property "left" element), readExpression (property "right" element))
+            | "let" -> Lir.Let(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
+                                (property "recursive" element).GetBoolean(), readExpression (property "binding" element), readExpression (property "body" element))
+            | "fail" -> Lir.Fail(readExpression (property "value" element))
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added compiled local bindings, recursive lexical closures, and explicit runtime failures to HIR, LIR, and Go projects.
 - Added compiler, serialized LIR, interpreter, and Go support for tuples, records, options, lists, append, and recursive structural equality.
 - Added `fscript compile` targets for whole-program `.fsir` artifacts and deterministic Go source projects.
 - Added deterministic, versioned JSON `.fsir` serialization and validated deserialization for executable LIR.

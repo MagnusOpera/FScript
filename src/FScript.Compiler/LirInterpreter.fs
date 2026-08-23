@@ -107,6 +107,22 @@ module LirInterpreter =
             match evaluate environment left, evaluate environment right with
             | Ok(VList l), Ok(VList r) -> Ok(VList(l @ r)) | Ok _, Ok _ -> fail "FSI3009" expression.Span "Append operands must be lists."
             | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | Lir.Let(id, _, recursive, binding, body) ->
+            if recursive then
+                match evaluate environment binding with
+                | Ok(VClosure(_, _, _, captured) as closure) ->
+                    let next = environment |> Map.add id closure
+                    captured.Value <- next
+                    evaluate next body
+                | Ok _ -> fail "FSI3010" expression.Span "Recursive local bindings must be functions."
+                | Error errors -> Error errors
+            else
+                evaluate environment binding |> Result.bind (fun value -> evaluate (environment |> Map.add id value) body)
+        | Lir.Fail value ->
+            match evaluate environment value with
+            | Ok(VString message) -> fail "FSI3011" expression.Span message
+            | Ok _ -> fail "FSI3011" expression.Span "FScript program raised a non-string value."
+            | Error errors -> Error errors
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

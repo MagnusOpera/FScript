@@ -21,6 +21,12 @@ module HirValidation =
                 | Hir.FieldGet(target, _) | Hir.SomeValue target -> references target
                 | Hir.NoneValue -> Set.empty
                 | Hir.Cons(head, tail) | Hir.Append(head, tail) -> Set.union (references head) (references tail)
+                | Hir.Let(id, _, recursive, binding, body) ->
+                    let bindingReferences =
+                        let value = references binding
+                        if recursive then Set.remove id value else value
+                    Set.union bindingReferences (references body |> Set.remove id)
+                | Hir.Fail value -> references value
             let declared = declarationIds |> Set.ofList
             let unresolved =
                 [ yield! program.Declarations |> List.collect (fun value -> references value.Value |> Set.toList)

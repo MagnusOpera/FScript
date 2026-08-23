@@ -42,3 +42,24 @@ type HirTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok _ -> Assert.Pass()
             | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Executes lexical let bindings and recursive closures`` () =
+        let source = "let f x = (let rec loop n = if n = 0 then x else loop (n - 1)\n    loop 2\n)\nf 7"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 7L))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Raise preserves an interpreter diagnostic`` () =
+        match Compiler.compile { Program = Parser.parseProgram "raise \"boom\""; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok _ -> Assert.Fail("Expected failure")
+            | Error diagnostics ->
+                Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3011"))
+                Assert.That(diagnostics |> List.map _.Message, Does.Contain("boom"))

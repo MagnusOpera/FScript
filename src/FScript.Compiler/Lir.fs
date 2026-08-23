@@ -38,6 +38,8 @@ module Lir =
         | NoneValue
         | Cons of Expression * Expression
         | Append of Expression * Expression
+        | Let of SymbolId * string * bool * Expression * Expression
+        | Fail of Expression
 
     type Declaration =
         { Id: SymbolId
@@ -89,6 +91,8 @@ module LirLowering =
             | Hir.NoneValue -> Lir.NoneValue
             | Hir.Cons(head, tail) -> Lir.Cons(expression head, expression tail)
             | Hir.Append(left, right) -> Lir.Append(expression left, expression right)
+            | Hir.Let(id, name, recursive, binding, body) -> Lir.Let(symbol id, name, recursive, expression binding, expression body)
+            | Hir.Fail value -> Lir.Fail(expression value)
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

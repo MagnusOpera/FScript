@@ -135,6 +135,16 @@ module HirLowering =
         | EAppend(left, right, _) ->
             match lowerExpression state environment inferred left, lowerExpression state environment inferred right with
             | Ok l, Ok r -> Ok(make (Hir.Append(l, r))) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | ELet(name, binding, body, isRecursive, _, _) ->
+            let id = newSymbol state
+            let bindingType = expressionType state binding (Types.freshVar())
+            let bodyEnvironment = environment |> Map.add name id
+            let bindingEnvironment = if isRecursive then bodyEnvironment else environment
+            match lowerExpression state bindingEnvironment bindingType binding, lowerExpression state bodyEnvironment inferred body with
+            | Ok value, Ok loweredBody -> Ok(make (Hir.Let(id, name, isRecursive, value, loweredBody)))
+            | Error a, Error b -> Error(a @ b)
+            | Error errors, _ | _, Error errors -> Error errors
+        | ERaise(value, _) -> lowerExpression state environment TString value |> Result.map (Hir.Fail >> make)
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
 
     and private collectResults<'a> (results: Result<'a, CompilerDiagnostic list> list) : Result<'a list, CompilerDiagnostic list> =

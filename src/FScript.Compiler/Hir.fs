@@ -50,6 +50,8 @@ module Hir =
         | NoneValue
         | Cons of Expression * Expression
         | Append of Expression * Expression
+        | Let of SymbolId * string * bool * Expression * Expression
+        | Fail of Expression
 
     type Declaration =
         { Id: SymbolId
@@ -112,6 +114,11 @@ module Hir =
             | NoneValue -> lines.Add(typed "none")
             | Cons(head, tail) -> lines.Add(typed "cons"); expression (indent + 2) head; expression (indent + 2) tail
             | Append(left, right) -> lines.Add(typed "append"); expression (indent + 2) left; expression (indent + 2) right
+            | Let(id, name, recursive, binding, body) ->
+                lines.Add(typed (sprintf "let%s %%%d %s" (if recursive then " rec" else "") (symbolNumber id) name))
+                expression (indent + 2) binding
+                expression (indent + 2) body
+            | Fail value -> lines.Add(typed "fail"); expression (indent + 2) value
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))

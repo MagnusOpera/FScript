@@ -12,6 +12,8 @@ type GoBackendTests() =
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1 2 3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
+    [<TestCase("let f x = (let y = x + 1\n    y * 2\n)\nf 2", "6")>]
+    [<TestCase("let f x = (let rec loop n = if n = 0 then x else loop (n - 1)\n    loop 2\n)\nf 7", "7")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =
