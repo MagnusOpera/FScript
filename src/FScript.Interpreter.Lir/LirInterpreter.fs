@@ -1,5 +1,6 @@
 namespace FScript.Compiler
 
+open System.Threading
 open FScript.Language
 
 type InterpreterContext =
@@ -25,9 +26,12 @@ type LirValue =
     | VTargetImport of string * string * int * LirValue list
     | VClosure of Lir.SymbolId * string * Lir.Expression * Map<Lir.SymbolId, LirValue> ref
 
-type ExecutionResult = { Value: LirValue }
+type ExecutionResult =
+    { Value: LirValue
+      Stdout: string list }
 
 module LirInterpreter =
+    let private currentOutput = AsyncLocal<ResizeArray<string>>()
     let private constantValue = function
         | Lir.Unit -> VUnit | Lir.Int value -> VInt value | Lir.Float value -> VFloat value
         | Lir.Bool value -> VBool value | Lir.String value -> VString value
@@ -71,7 +75,12 @@ module LirInterpreter =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
 
     let private intrinsicArity name =
-        let (Forall(_, valueType)) = FScript.Language.BuiltinSignatures.builtinSchemes.[name]
+        let scheme =
+            FScript.Language.BuiltinSignatures.builtinSchemes
+            |> Map.tryFind name
+            |> Option.orElseWith (fun () -> RuntimeIntrinsics.schemes |> Map.tryFind name)
+            |> Option.defaultWith (fun () -> invalidArg "name" $"Unknown intrinsic '{name}'.")
+        let (Forall(_, valueType)) = scheme
         let rec count = function TFun(_, result) -> 1 + count result | _ -> 0
         count valueType
 
@@ -93,6 +102,7 @@ module LirInterpreter =
                 | entry :: rest -> loop (entry :: acc) rest
             loop [] entries
         match name, arguments with
+        | "Console.writeLine", [ VString value ] -> currentOutput.Value.Add(value); Ok VUnit
         | "ignore", [ _ ] -> Ok VUnit
         | "Int.tryParse", [ VString value ] -> match System.Int64.TryParse value with true, parsed -> Ok(VOption(Some(VInt parsed))) | _ -> Ok(VOption None)
         | "Float.tryParse", [ VString value ] -> match System.Double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with true, parsed -> Ok(VOption(Some(VFloat parsed))) | _ -> Ok(VOption None)
@@ -438,6 +448,8 @@ module LirInterpreter =
             match state, result with Ok values, Ok value -> Ok(values @ [ value ]) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e) (Ok [])
 
     let execute (context: InterpreterContext) (program: Lir.Program) =
+        let output = ResizeArray<string>()
+        currentOutput.Value <- output
         let runtimeContext =
             VRecord(Map.ofList
                 [ "ScriptName", VOption(Option.map VString context.ScriptName)
@@ -469,5 +481,5 @@ module LirInterpreter =
         initialize program.Declarations
         match failure, program.Entry with
         | Some errors, _ -> Error errors
-        | None, Some entry -> evaluate environment.Value entry |> Result.map (fun value -> { Value = value })
-        | None, None -> Ok { Value = VUnit }
+        | None, Some entry -> evaluate environment.Value entry |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output })
+        | None, None -> Ok { Value = VUnit; Stdout = List.ofSeq output }

@@ -384,6 +384,7 @@ module HirLowering =
                     let node =
                         match external.Kind with
                         | RuntimeContextIntrinsic -> Hir.RuntimeContext
+                        | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
                     ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = external.Scheme; IsRecursive = false; IsExported = false; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorSymbols |> List.map (fun (typeName, caseName, id) ->

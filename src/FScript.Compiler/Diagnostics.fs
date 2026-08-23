@@ -17,6 +17,7 @@ type CompilerDiagnostic =
 
 type CompilerExternKind =
     | RuntimeContextIntrinsic
+    | PortableRuntimeIntrinsic
     | UnsupportedHostExtern
 
 type CompilerExtern =
@@ -24,6 +25,11 @@ type CompilerExtern =
       Scheme: Scheme
       Arity: int
       Kind: CompilerExternKind }
+
+module RuntimeIntrinsics =
+    let schemes =
+        Map.ofList
+            [ "Console.writeLine", Forall([], TFun(TString, TUnit)) ]
 
 module Diagnostic =
     let hir code message span =

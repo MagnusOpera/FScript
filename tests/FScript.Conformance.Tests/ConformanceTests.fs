@@ -8,6 +8,8 @@ open FScript.Language
 open NUnit.Framework
 
 module private Harness =
+    type Outcome = { Value: string; Stdout: string list }
+
     let rec formatLir = function
         | LirValue.VUnit -> "()"
         | LirValue.VInt value -> string value
@@ -31,13 +33,20 @@ module private Harness =
         | Ok value -> value
         | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
 
-    let legacy source = source |> Parser.parseProgram |> TypeInfer.inferProgram |> Eval.evalProgram |> Pretty.valueToString
+    let legacy source =
+        let output = ResizeArray<string>()
+        let console : ExternalFunction =
+            { Name = "Console.writeLine"; Scheme = Forall([], TFun(TString, TUnit)); Arity = 1
+              Impl = fun _ values -> match values with [ VString value ] -> output.Add(value); VUnit | _ -> VUnit }
+        let program = Parser.parseProgram source
+        let value = program |> TypeInfer.inferProgramWithExterns [ console ] |> Eval.evalProgramWithExterns [ console ] |> Pretty.valueToString
+        { Value = value; Stdout = List.ofSeq output }
 
     let lir source =
         let artifact = compile source |> _.Lir |> IrArtifact.serialize
         let loaded = match IrArtifact.deserialize artifact with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match LirInterpreter.execute { ScriptName = None; Arguments = [] } loaded with
-        | Ok result -> Ok(formatLir result.Value)
+        | Ok result -> Ok { Value = formatLir result.Value; Stdout = result.Stdout }
         | Error diagnostics -> Error diagnostics.Head.Code
 
     let go source =
@@ -60,7 +69,12 @@ module private Harness =
             let output = proc.StandardOutput.ReadToEnd().Trim()
             let error = proc.StandardError.ReadToEnd()
             proc.WaitForExit()
-            if proc.ExitCode = 0 then Ok output else Error error
+            if proc.ExitCode = 0 then
+                let lines = output.Replace("\r\n", "\n").Split('\n') |> Array.toList
+                match List.rev lines with
+                | value :: reversedOutput -> Ok { Value = value; Stdout = List.rev reversedOutput }
+                | [] -> Ok { Value = ""; Stdout = [] }
+            else Error error
         finally
             if Directory.Exists directory then Directory.Delete(directory, true)
 
@@ -73,13 +87,18 @@ type ConformanceTests() =
     [<TestCase("List.fold (fun state value -> state + value) 0 [1; 2; 3]")>]
     [<TestCase("let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10")>]
     [<TestCase("match { [\"answer\"] = 42 }[\"answer\"] with | Some value -> value | None -> 0")>]
+    [<TestCase("Console.writeLine \"hello\"")>]
     member _.``Legacy LIR artifact and Go results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with
-        | Ok actual -> Assert.That(actual, Is.EqualTo(expected), source)
+        | Ok actual ->
+            Assert.That(actual.Value, Is.EqualTo(expected.Value), source)
+            Assert.That(System.String.Join("\n", actual.Stdout), Is.EqualTo(System.String.Join("\n", expected.Stdout)), source)
         | Error code -> Assert.Fail($"LIR failed with {code}: {source}")
         match Harness.go source with
-        | Ok actual -> Assert.That(actual, Is.EqualTo(expected), source)
+        | Ok actual ->
+            Assert.That(actual.Value, Is.EqualTo(expected.Value), source)
+            Assert.That(System.String.Join("\n", actual.Stdout), Is.EqualTo(System.String.Join("\n", expected.Stdout)), source)
         | Error error -> Assert.Fail($"Go failed with {error}: {source}")
 
     [<Test>]

@@ -63,6 +63,7 @@ type GoBackendTests() =
     [<TestCase("List.length Env.Arguments", "0")>]
     [<TestCase("Option.isSome Env.ScriptName", "true")>]
     [<TestCase("[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"", "HELLO")>]
+    [<TestCase("Console.writeLine \"hello\"", "hello\n()")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =

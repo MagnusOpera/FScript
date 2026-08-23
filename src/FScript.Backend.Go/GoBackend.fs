@@ -549,4 +549,9 @@ func Environment() map[string]any {
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind (fun entry -> if containsTask entry.Type then Some entry.Span else None))
         match taskSpan with
         | Some span -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
-        | None -> generateCore options program
+        | None ->
+            generateCore options program
+            |> Result.map (List.map (fun file ->
+                if file.RelativePath = "internal/fsruntime/runtime.go" then
+                    { file with Content = file.Content.Replace("case \"ignore\":", "case \"Console.writeLine\": fmt.Println(String(args[0])); return struct{}{}; case \"ignore\":") }
+                else file))

@@ -6,6 +6,17 @@ open NUnit.Framework
 
 [<TestFixture>]
 type LirInterpreterTests() =
+    [<Test>]
+    member _.``Captures portable console output`` () =
+        match Compiler.compile { Program = Parser.parseProgram "Console.writeLine \"hello\""; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok result ->
+                Assert.That(result.Value, Is.EqualTo(LirValue.VUnit))
+                Assert.That(System.String.Join("\n", result.Stdout), Is.EqualTo("hello"))
+
 
     [<Test>]
     member _.``Executes aggregate expressions in LIR`` () =

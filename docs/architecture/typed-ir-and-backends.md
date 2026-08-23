@@ -68,6 +68,8 @@ Compiler bindings classify names as portable intrinsics, backend runtime primiti
 
 `CompileInput.Externs` contains `CompilerExtern` descriptors only: name, normalized scheme, arity, and `CompilerExternKind`. Compilation creates private no-op inference shims because the language inference API still consumes `ExternalFunction`, but no executable delegate enters HIR, LIR, artifacts, the interpreter assembly, or a backend assembly.
 
+`Console.writeLine` is a portable runtime intrinsic. LIR execution captures each line in `ExecutionResult.Stdout` without depending on the process console; generated Go dispatches the same intrinsic to stdout before printing the program result. The cross-runtime harness separates those lines from the final value and compares both channels against the legacy evaluator.
+
 `Env` is a compiler runtime-context primitive, not a serialized host delegate. LIR interpretation materializes its named record from `InterpreterContext`; generated Go materializes the same fields from `os.Args`, including the executable base name and arguments after it.
 
 The LIR interpreter rejects reachable target imports it cannot supply. The Go backend initially rejects unsupported host externs and tasks with backend diagnostics. Imports describe complete ordinary FScript declarations plus target linkage and do not create a second foreign type system.

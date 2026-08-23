@@ -45,6 +45,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - HIR and LIR are accepted only when artifact-local references resolve, source spans are valid, declaration and expression types agree, calls and control-flow nodes have consistent signatures, aggregate representations match their semantic types, and referenced primitives/imports are available and complete.
 - Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert; fully applying `Task.spawn` or `Task.await` in LIR reports `FSI3021`, while a Go program whose reachable declaration graph requires a task reports `FSB4004`.
 - Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
+- `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
 
 ## Builtins, externs, attributes, and tasks
 
