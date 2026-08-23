@@ -14,7 +14,8 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 - Top-level declarations resolve sequentially: a non-recursive shadowing initializer refers to the preceding binding, recursive groups see every peer atomically, and subsequent expressions refer to the newest binding.
 - HIR reuses those resolved IDs unchanged for source symbols even when type and value declarations are interleaved; compiler-synthesized temporaries and constructor payload parameters occupy IDs above the resolved frontend range.
 - Top-level statements execute in source order. Every non-final expression must have type `unit`; the final expression is the program result.
-- LIR expression children execute strictly from left to right and stop at the first failure; later arguments, aggregate fields, interpolation parts, map entries, and operands are not evaluated after that failure.
+- LIR expression children execute strictly from left to right and stop at the first failure; later arguments, aggregate fields, interpolation parts, map entries, and ordinary operands are not evaluated after that failure. Boolean operators additionally skip an unnecessary right operand.
+- Boolean `&&` and `||` evaluate the left operand first and skip the right operand when the result is already known. The legacy evaluator, LIR interpreter, and generated Go share this short-circuit behavior.
 - Pipeline application retains its distinct value-then-function evaluation order through resolved inference, HIR, LIR, interpretation, serialization, and Go generation; it is not rewritten into ordinary function-first application.
 - Compiled top-level expressions execute exactly once in source order even when interleaved with declarations. Top-level pattern bindings evaluate their scrutinee once, fail before later statements when unmatched, and expose all bound names to subsequent statements.
 

@@ -303,6 +303,22 @@ module LirInterpreter =
             | Ok(VBool false) -> evaluate environment whenFalse
             | Ok _ -> fail "FSI3004" expression.Span "Branch condition is not Boolean."
             | Error errors -> Error errors
+        | Lir.Operation(Lir.BooleanAnd, [ left; right ]) ->
+            evaluate environment left
+            |> Result.bind (function
+                | VBool false -> Ok(VBool false)
+                | VBool true ->
+                    evaluate environment right
+                    |> Result.bind (function VBool value -> Ok(VBool value) | _ -> fail "FSI3006" expression.Span "Primitive operands do not match their LIR operation.")
+                | _ -> fail "FSI3006" expression.Span "Primitive operands do not match their LIR operation.")
+        | Lir.Operation(Lir.BooleanOr, [ left; right ]) ->
+            evaluate environment left
+            |> Result.bind (function
+                | VBool true -> Ok(VBool true)
+                | VBool false ->
+                    evaluate environment right
+                    |> Result.bind (function VBool value -> Ok(VBool value) | _ -> fail "FSI3006" expression.Span "Primitive operands do not match their LIR operation.")
+                | _ -> fail "FSI3006" expression.Span "Primitive operands do not match their LIR operation.")
         | Lir.Operation(op, _) ->
             binary (fun left right ->
                 match op, left, right with

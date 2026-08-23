@@ -428,6 +428,11 @@ type EvalTests () =
         Helpers.eval "true && false" |> assertBool false
 
     [<Test>]
+    member _.``Logical operators short circuit their right operand`` () =
+        Helpers.eval "false && raise \"and-right\"" |> assertBool false
+        Helpers.eval "true || raise \"or-right\"" |> assertBool true
+
+    [<Test>]
     member _.``Evaluates pipeline operator`` () =
         Helpers.eval "let inc x = x + 1\n1 |> inc" |> assertInt 2L
         Helpers.eval "1 |> (fun x -> x + 2)" |> assertInt 3L

@@ -653,6 +653,22 @@ module Eval =
             match av, bv with
             | VList xs, VList ys -> VList (xs @ ys)
             | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
+        | EBinOp ("&&", a, b, span) ->
+            match evalExpr runtime typeDefs env a with
+            | VBool false -> VBool false
+            | VBool true ->
+                match evalExpr runtime typeDefs env b with
+                | VBool value -> VBool value
+                | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
+            | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
+        | EBinOp ("||", a, b, span) ->
+            match evalExpr runtime typeDefs env a with
+            | VBool true -> VBool true
+            | VBool false ->
+                match evalExpr runtime typeDefs env b with
+                | VBool value -> VBool value
+                | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
+            | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
         | EBinOp (op, a, b, span) ->
             let av = evalExpr runtime typeDefs env a
             let bv = evalExpr runtime typeDefs env b
@@ -662,8 +678,7 @@ module Eval =
                 | VFloat x, VFloat y -> VFloat (fFloat x y)
                 | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
             match op with
-            | "|>" ->
-                applyFunctionValue runtime evalExpr typeDefs span bv av
+            | "|>" -> applyFunctionValue runtime evalExpr typeDefs span bv av
             | "+" -> arith ( + ) ( + )
             | "-" -> arith ( - ) ( - )
             | "*" -> arith ( * ) ( * )
@@ -698,12 +713,6 @@ module Eval =
                         | _ -> false
                     VBool res
                 | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
-            | "&&" | "||" ->
-                match av, bv with
-                | VBool x, VBool y ->
-                    let res = if op = "&&" then x && y else x || y
-                    VBool res
-                | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
             | "::" ->
                 match bv with
                 | VList xs -> VList (av :: xs)

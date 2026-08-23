@@ -34,6 +34,16 @@ type LirInterpreterTests() =
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VList [ LirValue.VInt 1L; LirValue.VInt 2L; LirValue.VInt 3L ]))
             | Error diagnostics -> Assert.Fail(errorText diagnostics)
 
+    [<TestCase("false && raise \"and-right\"", false)>]
+    [<TestCase("true || raise \"or-right\"", true)>]
+    member _.``Logical operations short circuit in LIR`` (source: string, expected: bool) =
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VBool expected))
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+
     [<TestCase("(1, true)")>]
     [<TestCase("Some 4")>]
     [<TestCase("{| Age = 42 |}.Age")>]

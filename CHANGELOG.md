@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added short-circuit evaluation for Boolean `&&` and `||` across interpreted and generated programs.
+
 - Preserved sequential top-level shadowing identities through resolved inference, LIR interpretation, and generated Go.
 
 - Enforced deterministic non-generic Go output and cross-runtime conformance for structural width, recursive records, and distinct failure categories.
