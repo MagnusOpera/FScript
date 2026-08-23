@@ -32,6 +32,8 @@ Language builtins are explicit `Intrinsic` declarations rather than magic unreso
 
 The LIR interpreter implements the pure builtin catalog, including callbacks for list mapping, selection, collection, folding, filtering and search; lazy option fallback and mapping; and ordered-map construction, folds, transforms, iteration, and removal. Callback application goes through the same curried closure path as ordinary source calls, preserving failure propagation and evaluation order.
 
+Generated Go represents every FScript function as an erased `fsruntime.Closure` with a single `any -> any` call slot. Typed values are checked at closure entry and result use. This uniform convention permits ordinary source closures, partial application, recursion, and higher-order runtime intrinsics to interoperate without Go generics or reflection-based invocation.
+
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.
 
 Local binding patterns reuse the same single-scrutinee decision-tree representation as `match`. Sequential `for ... in ... do ...` is explicit in HIR and LIR so each consumer evaluates the input list once, visits values in order, and discards each body result before returning unit. `typeof` resolves declared record and union definitions during HIR construction and carries the semantic type as a serializable type-token node.

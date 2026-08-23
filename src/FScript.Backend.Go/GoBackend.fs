@@ -16,7 +16,7 @@ module GoBackend =
         | TString -> "string"
         | TTypeToken -> "string"
         | TVar _ -> "any"
-        | TFun(argument, result) -> $"func({goType argument}) {goType result}"
+        | TFun _ -> "fsruntime.Closure"
         | TTuple _ -> "[]any"
         | TList _ -> "[]any"
         | TOption _ -> "fsruntime.Option"
@@ -61,6 +61,7 @@ module GoBackend =
         | TOption _ -> $"fsruntime.AsOption({code})"
         | TUnion _ | TNamed _ -> $"fsruntime.AsUnion({code})"
         | TMap _ -> $"fsruntime.AsMap({code})"
+        | TFun _ -> $"fsruntime.AsClosure({code})"
         | _ -> code
 
     let rec private patternBindings (pattern: Lir.Pattern) =
@@ -115,22 +116,22 @@ module GoBackend =
     let private emitIntrinsic name intrinsicType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
         let rec build index arguments = function
-            | TFun(argumentType, resultType) ->
+            | TFun(_, resultType) ->
                 let argument = $"intrinsicArg{index}"
                 let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"func({argument} {goType argumentType}) {goType resultType} {{ return {body} }}"
+                $"fsruntime.Closure{{Call: func({argument} any) any {{ return {body} }}}}"
             | resultType ->
                 let values = String.concat ", " arguments
-                cast resultType $"fsruntime.Intrinsic({quoted}, []any{{{values}}})"
+                cast resultType $"fsruntime.DispatchIntrinsic({quoted}, []any{{{values}}})"
         build 0 [] intrinsicType
 
     let private emitHostExternal name externalType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
         let rec build index arguments = function
-            | TFun(argumentType, resultType) ->
+            | TFun(_, resultType) ->
                 let argument = $"externalArg{index}"
                 let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"func({argument} {goType argumentType}) {goType resultType} {{ return {body} }}"
+                $"fsruntime.Closure{{Call: func({argument} any) any {{ return {body} }}}}"
             | resultType ->
                 let values = String.concat ", " arguments
                 cast resultType $"fsruntime.Intrinsic(\"__host:\" + {quoted}, []any{{{values}}})"
@@ -145,11 +146,12 @@ module GoBackend =
             |> Option.defaultValue (Error(sprintf "Unknown symbol %%%d" (Lir.symbolNumber id)))
         | Lir.MakeClosure(parameter, _, parameterType, body) ->
             let name = identifier "arg" parameter
+            let parameterValue = cast parameterType "rawValue"
             emitExpression (environment |> Map.add parameter name) body
-            |> Result.map (fun bodyCode -> $"func({name} {goType parameterType}) {goType body.Type} {{ return {bodyCode} }}")
+            |> Result.map (fun bodyCode -> $"fsruntime.Closure{{Call: func(rawValue any) any {{ {name} := {parameterValue}; _ = {name}; return {bodyCode} }}}}")
         | Lir.CallClosure(fn, argument) ->
             match emitExpression environment fn, emitExpression environment argument with
-            | Ok fnCode, Ok argumentCode -> Ok $"({fnCode})({argumentCode})"
+            | Ok fnCode, Ok argumentCode -> Ok(cast expression.Type $"fsruntime.Call({fnCode}, {argumentCode})")
             | Error error, _ | _, Error error -> Error error
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match emitExpression environment condition, emitExpression environment whenTrue, emitExpression environment whenFalse with
@@ -276,6 +278,41 @@ module GoBackend =
         results |> List.fold (fun state result ->
             match state, result with Ok values, Ok value -> Ok(values @ [ value ]) | Error error, _ | _, Error error -> Error error) (Ok [])
 
+    let private closureRuntime = """package fsruntime
+
+type Closure struct { Call func(any) any }
+
+func AsClosure(value any) Closure { return value.(Closure) }
+func Call(function any, argument any) any { return AsClosure(function).Call(argument) }
+
+func DispatchIntrinsic(name string, args []any) any {
+	switch name {
+	case "List.map": callback, values := AsClosure(args[0]), List(args[1]); result := make([]any, len(values)); for index, value := range values { result[index] = callback.Call(value) }; return result
+	case "List.iter": callback := AsClosure(args[0]); for _, value := range List(args[1]) { callback.Call(value) }; return struct{}{}
+	case "List.choose": callback, result := AsClosure(args[0]), []any{}; for _, value := range List(args[1]) { chosen := AsOption(callback.Call(value)); if chosen.HasValue { result = append(result, chosen.Value) } }; return result
+	case "List.collect": callback, result := AsClosure(args[0]), []any{}; for _, value := range List(args[1]) { result = append(result, List(callback.Call(value))...) }; return result
+	case "List.exists": callback := AsClosure(args[0]); for _, value := range List(args[1]) { if Bool(callback.Call(value)) { return true } }; return false
+	case "List.distinct": result := []any{}; for _, value := range List(args[0]) { found := false; for _, existing := range result { if Equal(existing, value) { found = true; break } }; if !found { result = append(result, value) } }; return result
+	case "List.fold": callback, state := AsClosure(args[0]), args[1]; for _, value := range List(args[2]) { state = Call(callback.Call(state), value) }; return state
+	case "List.filter": callback, result := AsClosure(args[0]), []any{}; for _, value := range List(args[1]) { if Bool(callback.Call(value)) { result = append(result, value) } }; return result
+	case "List.tryFind": callback := AsClosure(args[0]); for _, value := range List(args[1]) { if Bool(callback.Call(value)) { return Some(value) } }; return None()
+	case "List.tryGet": callback := AsClosure(args[0]); for index, value := range List(args[1]) { if Bool(callback.Call(value)) { return Some(int64(index)) } }; return None()
+	case "List.tryItem": index, values := Int(args[0]), List(args[1]); if index < 0 || index >= int64(len(values)) { return None() }; return Some(values[index])
+	case "Option.defaultWith": option := AsOption(args[1]); if option.HasValue { return option.Value }; return Call(args[0], struct{}{})
+	case "Option.map": option := AsOption(args[1]); if !option.HasValue { return None() }; return Some(Call(args[0], option.Value))
+	case "Map.add": values := append([]MapEntry{}, AsMap(args[2]).Entries...); return OrderedMap{Entries: mapSet(values, args[0], args[1], true)}
+	case "Map.ofList": values := []MapEntry{}; for _, pair := range List(args[0]) { tuple := List(pair); values = mapSet(values, tuple[0], tuple[1], true) }; return OrderedMap{Entries: values}
+	case "Map.fold": callback, state := AsClosure(args[0]), args[1]; for _, entry := range AsMap(args[2]).Entries { state = Call(Call(callback.Call(state), entry.Key), entry.Value) }; return state
+	case "Map.filter": callback, result := AsClosure(args[0]), []MapEntry{}; for _, entry := range AsMap(args[1]).Entries { if Bool(Call(callback.Call(entry.Key), entry.Value)) { result = append(result, entry) } }; return OrderedMap{Entries: result}
+	case "Map.choose": callback, result := AsClosure(args[0]), []MapEntry{}; for _, entry := range AsMap(args[1]).Entries { chosen := AsOption(Call(callback.Call(entry.Key), entry.Value)); if chosen.HasValue { result = append(result, MapEntry{Key: entry.Key, Value: chosen.Value}) } }; return OrderedMap{Entries: result}
+	case "Map.map": callback, result := AsClosure(args[0]), []MapEntry{}; for _, entry := range AsMap(args[1]).Entries { result = append(result, MapEntry{Key: entry.Key, Value: callback.Call(entry.Value)}) }; return OrderedMap{Entries: result}
+	case "Map.iter": callback := AsClosure(args[0]); for _, entry := range AsMap(args[1]).Entries { Call(callback.Call(entry.Key), entry.Value) }; return struct{}{}
+	case "Map.remove": result := []MapEntry{}; for _, entry := range AsMap(args[1]).Entries { if !Equal(entry.Key, args[0]) { result = append(result, entry) } }; return OrderedMap{Entries: result}
+	default: return Intrinsic(name, args)
+	}
+}
+"""
+
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         try
             let names =
@@ -309,6 +346,7 @@ module GoBackend =
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"{moduleName}/internal/fsruntime\"\n)\n\nfunc main() {{ {printExpression} }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
+                      { RelativePath = "internal/fsruntime/closures.go"; Content = closureRuntime }
                       { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n)\n\ntype Option struct { HasValue bool; Value any }\ntype Union struct { TypeName string; CaseName string; HasValue bool; Value any }\ntype MapEntry struct { Key any; Value any }\ntype OrderedMap struct { Entries []MapEntry }\ntype MapPart struct { IsSpread bool; Key any; Value any; Map OrderedMap }\n\nfunc Unit(value any) struct{} { return struct{}{} }\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc AsUnion(value any) Union { return value.(Union) }\nfunc AsMap(value any) OrderedMap { return value.(OrderedMap) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc MakeUnion(typeName string, caseName string) Union { return Union{TypeName: typeName, CaseName: caseName} }\nfunc MakeUnionValue(typeName string, caseName string, value any) Union { return Union{TypeName: typeName, CaseName: caseName, HasValue: true, Value: value} }\nfunc IsUnion(value any, typeName string, caseName string) bool { item := AsUnion(value); return item.TypeName == typeName && item.CaseName == caseName }\nfunc UnionHasValue(value any) bool { return AsUnion(value).HasValue }\nfunc UnionValue(value any) any { return AsUnion(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Range(first int64, last int64) []any { step := int64(1); if first > last { step = -1 }; values := []any{}; for current := first; ; current += step { values = append(values, current); if current == last { break } }; return values }\nfunc UpdateRecord(value any, updates map[string]any) map[string]any { result := map[string]any{}; for key, item := range Record(value) { result[key] = item }; for key, item := range updates { result[key] = item }; return result }\nfunc Pair(key any, value any) MapPart { return MapPart{Key: key, Value: value} }\nfunc SpreadMap(value any) MapPart { return MapPart{IsSpread: true, Map: AsMap(value)} }\nfunc mapSet(entries []MapEntry, key any, value any, replace bool) []MapEntry { for index, entry := range entries { if Equal(entry.Key, key) { if replace { entries[index].Value = value }; return entries } }; return append(entries, MapEntry{Key: key, Value: value}) }\nfunc BuildMap(parts []MapPart) OrderedMap { entries := []MapEntry{}; for _, part := range parts { if part.IsSpread { for _, entry := range part.Map.Entries { entries = mapSet(entries, entry.Key, entry.Value, false) } } else { entries = mapSet(entries, part.Key, part.Value, true) } }; sort.SliceStable(entries, func(left int, right int) bool { return Format(entries[left].Key) < Format(entries[right].Key) }); return OrderedMap{Entries: entries} }\nfunc Index(value any, index any) Option { switch target := value.(type) { case []any: position := Int(index); if position < 0 || position >= int64(len(target)) { return None() }; return Some(target[position]); case OrderedMap: for _, entry := range target.Entries { if Equal(entry.Key, index) { return Some(entry.Value) } }; return None(); default: panic(\"Index access requires a list or map\") } }\nfunc Intrinsic(name string, args []any) any { switch name { case \"ignore\": return struct{}{}; case \"List.empty\": return []any{}; case \"Map.empty\": return OrderedMap{}; case \"Int.tryParse\": value, error := strconv.ParseInt(String(args[0]), 10, 64); if error != nil { return None() }; return Some(value); case \"Float.tryParse\": value, error := strconv.ParseFloat(String(args[0]), 64); if error != nil { return None() }; return Some(value); case \"Bool.tryParse\": value, error := strconv.ParseBool(String(args[0])); if error != nil { return None() }; return Some(value); case \"Int.toString\", \"Float.toString\", \"Bool.toString\": return Format(args[0]); case \"String.replace\": return strings.ReplaceAll(String(args[2]), String(args[0]), String(args[1])); case \"String.indexOf\": index := strings.Index(String(args[1]), String(args[0])); if index < 0 { return None() }; return Some(int64(index)); case \"String.toLower\": return strings.ToLower(String(args[0])); case \"String.toUpper\": return strings.ToUpper(String(args[0])); case \"String.substring\": start, length, value := Int(args[0]), Int(args[1]), String(args[2]); if start < 0 || length < 0 || start + length > int64(len(value)) { return None() }; return Some(value[start:start+length]); case \"String.concat\": values := List(args[1]); parts := make([]string, len(values)); for index, value := range values { parts[index] = String(value) }; return strings.Join(parts, String(args[0])); case \"String.split\": values := strings.Split(String(args[1]), String(args[0])); result := make([]any, len(values)); for index, value := range values { result[index] = value }; return result; case \"String.endsWith\": return strings.HasSuffix(String(args[1]), String(args[0])); case \"List.length\": return int64(len(List(args[0]))); case \"List.rev\": values := List(args[0]); result := make([]any, len(values)); for index, value := range values { result[len(values)-index-1] = value }; return result; case \"List.tryHead\": values := List(args[0]); if len(values) == 0 { return None() }; return Some(values[0]); case \"List.tail\": return Tail(args[0]); case \"List.append\": return Append(List(args[0]), List(args[1])); case \"List.contains\": for _, value := range List(args[1]) { if Equal(args[0], value) { return true } }; return false; case \"Option.isNone\": return !IsSome(args[0]); case \"Option.isSome\": return IsSome(args[0]); case \"Option.defaultValue\": option := AsOption(args[1]); if option.HasValue { return option.Value }; return args[0]; case \"Map.count\": return int64(len(AsMap(args[0]).Entries)); case \"Map.containsKey\": return IsSome(Index(args[1], args[0])); case \"Map.tryGet\": return Index(args[1], args[0]); default: panic(\"Unsupported FScript intrinsic: \" + name) } }\nfunc Format(value any) string { switch item := value.(type) { case bool: if item { return \"true\" }; return \"false\"; case Option: if !item.HasValue { return \"None\" }; return \"Some \" + Format(item.Value); case Union: if !item.HasValue { return item.CaseName }; return item.CaseName + \" \" + Format(item.Value); case OrderedMap: parts := make([]string, len(item.Entries)); for index, entry := range item.Entries { parts[index] = \"[\" + Format(entry.Key) + \"] = \" + Format(entry.Value) }; return \"{ \" + strings.Join(parts, \"; \") + \" }\"; case []any: parts := make([]string, len(item)); for index, value := range item { parts[index] = Format(value) }; return \"[\" + strings.Join(parts, \";\") + \"]\"; default: return fmt.Sprint(value) } }\nfunc Interpolate(values []any) string { var result strings.Builder; for _, value := range values { result.WriteString(Format(value)) }; return result.String() }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

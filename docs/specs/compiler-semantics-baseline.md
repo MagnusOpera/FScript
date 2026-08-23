@@ -41,6 +41,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 ## Builtins, externs, attributes, and tasks
 
 - Scalar conversions, string helpers, `List`, `Option`, and `Map` functions are protected builtin symbols with explicit polymorphic schemes. They are initial compiler/runtime intrinsics even where a future implementation can compile their FScript source.
+- The LIR interpreter and Go runtime execute the complete pure builtin catalog, including higher-order list, option, and ordered-map functions. Callback invocation remains curried and follows source collection order.
 - `Console.writeLine`, `Console.readLine`, and the CLI `Env` value are candidate portable runtime primitives. Filesystem, regex, hashing, GUID, JSON, and XML functions remain host externs initially.
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.

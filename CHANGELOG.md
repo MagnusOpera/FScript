@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a universal erased Go closure convention and generated-runtime support for all pure list, option, and ordered-map intrinsics.
 - Added dedicated LIR-interpreter and Go-backend test assemblies, and completed higher-order collection intrinsics in LIR execution.
 - Added compiled local binding patterns, sequential list iteration, and record/union type tokens across LIR artifacts, interpretation, and Go generation.
 - Split LIR execution and Go generation into independent `FScript.Interpreter.Lir` and `FScript.Backend.Go` assemblies.
