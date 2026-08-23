@@ -46,6 +46,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert; fully applying `Task.spawn` or `Task.await` in LIR reports `FSI3021`, while a Go program whose reachable declaration graph requires a task reports `FSB4004`.
 - Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
 - `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
+- Generated Go source is deterministic and already canonical according to `gofmt`; generation itself has no installed-Go dependency. Local integration tests skip only when Go is unavailable, while CI installs Go 1.25 and treats its absence as a failure.
 
 ## Builtins, externs, attributes, and tasks
 

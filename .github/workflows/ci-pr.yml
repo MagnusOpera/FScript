@@ -35,6 +35,11 @@ jobs:
         with:
           dotnet-version: 10.0.201
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
       - name: Restore
         run: dotnet restore FScript.sln
 

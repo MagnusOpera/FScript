@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Embedded preformatted Go runtime templates and made every generated project pass a zero-diff `gofmt` gate without production toolchain dependence.
 - Added portable `Console.writeLine` execution and stdout capture across LIR and generated Go conformance runs.
 - Separated compiler extern descriptors from executable `.NET` external functions and classified runtime-context versus unsupported host linkage.
 - Preserved `Task.spawn`/`Task.await` as typed host linkage in compiled IR, with reachable-use diagnostics in LIR execution and Go generation.

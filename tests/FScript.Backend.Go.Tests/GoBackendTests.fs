@@ -9,6 +9,19 @@ open NUnit.Framework
 
 [<TestFixture>]
 type GoBackendTests() =
+    let requireGo () =
+        try
+            use proc =
+                match Process.Start(ProcessStartInfo("go", "version", RedirectStandardOutput = true)) with
+                | null -> raise (InvalidOperationException("Could not start go"))
+                | value -> value
+            proc.WaitForExit()
+            if proc.ExitCode <> 0 then raise (InvalidOperationException("go version failed"))
+        with ex ->
+            if String.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase) then
+                Assert.Fail($"Go is required in CI: {ex.Message}")
+            else Assert.Ignore($"Go is not installed: {ex.Message}")
+
     [<Test>]
     member _.``Go backend reports reachable tasks explicitly`` () =
         let compiled =
@@ -65,6 +78,7 @@ type GoBackendTests() =
     [<TestCase("[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"", "HELLO")>]
     [<TestCase("Console.writeLine \"hello\"", "hello\n()")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
+        requireGo ()
         let input = { Program = Parser.parseProgram source; Externs = [] }
         let compiled =
             match Compiler.compile input with
@@ -82,6 +96,19 @@ type GoBackendTests() =
                 | null -> ()
                 | parent -> Directory.CreateDirectory(parent) |> ignore
                 File.WriteAllText(path, file.Content)
+            let formatStart = ProcessStartInfo("gofmt")
+            formatStart.WorkingDirectory <- directory
+            formatStart.ArgumentList.Add("-d")
+            formatStart.ArgumentList.Add(directory)
+            formatStart.RedirectStandardOutput <- true
+            use formatProcess =
+                match Process.Start(formatStart) with
+                | null -> failwith "Failed to start gofmt"
+                | value -> value
+            let formatDiff = formatProcess.StandardOutput.ReadToEnd()
+            formatProcess.WaitForExit()
+            Assert.That(formatProcess.ExitCode, Is.EqualTo(0))
+            Assert.That(formatDiff, Is.Empty, "Generated Go sources must already be gofmt-compatible")
             let start = ProcessStartInfo("go")
             start.WorkingDirectory <- directory
             start.ArgumentList.Add("run")

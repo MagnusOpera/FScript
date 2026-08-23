@@ -42,6 +42,8 @@ The LIR interpreter implements the pure builtin catalog, including callbacks for
 
 Generated Go represents every FScript function as an erased `fsruntime.Closure` with a single `any -> any` call slot. Typed values are checked at closure entry and result use. This uniform convention permits ordinary source closures, partial application, recursion, and higher-order runtime intrinsics to interoperate without Go generics or reflection-based invocation.
 
+The Go runtime is stored as formatted `.go` resources embedded in `FScript.Backend.Go`. Program emission uses multiline structured constructs for closures, local control flow, decision trees, recursive groups, loops, and imports. Generation never invokes Go tooling; the backend tests run `gofmt -d` over every generated project and require an empty diff before `go run`.
+
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.
 
 `Task.spawn` and `Task.await` are compiler-known host-linkage descriptors with their polymorphic task signatures. This lets task-typed declarations survive inference, HIR, LIR, and artifact serialization. The LIR interpreter reports `FSI3021` only when either descriptor is fully applied; the Go backend performs deterministic reachability over declaration references and reports `FSB4004` when a reachable declaration requires a task representation.

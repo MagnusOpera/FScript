@@ -80,6 +80,20 @@ module private Harness =
 
 [<TestFixture>]
 type ConformanceTests() =
+    [<OneTimeSetUp>]
+    member _.``Require Go toolchain`` () =
+        try
+            use proc =
+                match Process.Start(ProcessStartInfo("go", "version", RedirectStandardOutput = true)) with
+                | null -> raise (InvalidOperationException("Could not start go"))
+                | value -> value
+            proc.WaitForExit()
+            if proc.ExitCode <> 0 then raise (InvalidOperationException("go version failed"))
+        with ex ->
+            if String.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase) then
+                Assert.Fail($"Go is required in CI: {ex.Message}")
+            else Assert.Ignore($"Go is not installed: {ex.Message}")
+
     [<TestCase("[Some 1; None] = [Some 1; None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Shape = | Point | Circle of int\nmatch Circle 3 with | Point -> 0 | Circle radius -> radius")>]

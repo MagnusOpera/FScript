@@ -1,6 +1,7 @@
 namespace FScript.Compiler
 
 open System
+open System.IO
 open System.Text
 open FScript.Language
 
@@ -8,6 +9,19 @@ type GoOptions = { ModuleName: string }
 type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
+    let private indent (value: string) = value.Replace("\n", "\n\t")
+
+    let private runtimeTemplate fileName =
+        let assembly = typeof<GoOptions>.Assembly
+        let suffix = $".Runtime.{fileName}"
+        let resourceName = assembly.GetManifestResourceNames() |> Array.find (fun name -> name.EndsWith(suffix, StringComparison.Ordinal))
+        use stream =
+            match assembly.GetManifestResourceStream(resourceName) with
+            | null -> failwith $"Embedded Go runtime template '{fileName}' was not found."
+            | value -> value
+        use reader = new StreamReader(stream)
+        reader.ReadToEnd()
+
     let private importAlias (modulePath: string) =
         let hash = Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(modulePath)) |> Convert.ToHexString
         "goimport" + hash.Substring(0, 8).ToLowerInvariant()
@@ -171,27 +185,15 @@ module GoBackend =
 
     let private emitIntrinsic name intrinsicType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
-        let rec build index arguments = function
-            | TFun(_, resultType) ->
-                let argument = $"intrinsicArg{index}"
-                let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"fsruntime.Closure{{Call: func({argument} any) any {{ return {body} }}}}"
-            | resultType ->
-                let values = String.concat ", " arguments
-                cast resultType $"fsruntime.DispatchIntrinsic({quoted}, []any{{{values}}})"
-        build 0 [] intrinsicType
+        let rec arity = function TFun(_, result) -> 1 + arity result | _ -> 0
+        let count = arity intrinsicType
+        if count = 0 then cast intrinsicType $"fsruntime.DispatchIntrinsic({quoted}, nil)"
+        else $"fsruntime.IntrinsicClosure({quoted}, {count})"
 
     let private emitHostExternal name externalType =
         let quoted = System.Text.Json.JsonSerializer.Serialize(name)
-        let rec build index arguments = function
-            | TFun(_, resultType) ->
-                let argument = $"externalArg{index}"
-                let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"fsruntime.Closure{{Call: func({argument} any) any {{ return {body} }}}}"
-            | resultType ->
-                let values = String.concat ", " arguments
-                cast resultType $"fsruntime.Intrinsic(\"__host:\" + {quoted}, []any{{{values}}})"
-        build 0 [] externalType
+        let rec arity = function TFun(_, result) -> 1 + arity result | _ -> 0
+        $"fsruntime.HostClosure({quoted}, {arity externalType})"
 
     let private emitTargetImport modulePath memberName importType =
         let alias = importAlias modulePath
@@ -200,7 +202,7 @@ module GoBackend =
                 let raw = $"targetArg{index}"
                 let argument = $"targetValue{index}"
                 let body = build (index + 1) (arguments @ [ argument ]) resultType
-                $"fsruntime.Closure{{Call: func({raw} any) any {{ {argument} := {cast argumentType raw}; return {body} }}}}"
+                $"fsruntime.Closure{{Call: func({raw} any) any {{\n\t{argument} := {cast argumentType raw}\n\treturn {indent body}\n}}}}"
             | resultType ->
                 let joined = String.concat ", " arguments
                 match resultType with
@@ -219,14 +221,16 @@ module GoBackend =
             let name = identifier "arg" parameter
             let parameterValue = cast parameterType "rawValue"
             emitExpression (environment |> Map.add parameter name) body
-            |> Result.map (fun bodyCode -> $"fsruntime.Closure{{Call: func(rawValue any) any {{ {name} := {parameterValue}; _ = {name}; return {bodyCode} }}}}")
+            |> Result.map (fun bodyCode ->
+                let indentedBody = bodyCode.Replace("\n", "\n\t")
+                $"fsruntime.Closure{{Call: func(rawValue any) any {{\n\t{name} := {parameterValue}\n\t_ = {name}\n\treturn {indentedBody}\n}}}}")
         | Lir.CallClosure(fn, argument) ->
             match emitExpression environment fn, emitExpression environment argument with
             | Ok fnCode, Ok argumentCode -> Ok(cast expression.Type $"fsruntime.Call({fnCode}, {argumentCode})")
             | Error error, _ | _, Error error -> Error error
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match emitExpression environment condition, emitExpression environment whenTrue, emitExpression environment whenFalse with
-            | Ok c, Ok t, Ok f -> Ok $"func() {goType expression.Type} {{ if {c} {{ return {t} }}; return {f} }}()"
+            | Ok c, Ok t, Ok f -> Ok $"func() {goType expression.Type} {{\n\tif {c} {{\n\t\treturn {indent (indent t)}\n\t}}\n\treturn {indent f}\n}}()"
             | Error error, _, _ | _, Error error, _ | _, _, Error error -> Error error
         | Lir.Operation(op, [ left; right ]) ->
             match emitExpression environment left, emitExpression environment right with
@@ -239,7 +243,9 @@ module GoBackend =
                         | Lir.IntAdd | Lir.IntSubtract | Lir.IntMultiply | Lir.IntDivide | Lir.IntRemainder ->
                             $"fsruntime.Int({l})", $"fsruntime.Int({r})"
                         | _ -> l, r
-                    Ok $"({l} {token} {r})"
+                    match op with
+                    | Lir.NumericLessThan | Lir.NumericGreaterThan | Lir.NumericLessThanOrEqual | Lir.NumericGreaterThanOrEqual | Lir.BooleanAnd | Lir.BooleanOr -> Ok $"{l} {token} {r}"
+                    | _ -> Ok $"({l} {token} {r})"
                 | None -> Error $"Unsupported Go operation {op}"
             | Error error, _ | _, Error error -> Error error
         | Lir.Tuple items | Lir.List items ->
@@ -270,9 +276,9 @@ module GoBackend =
             match emitExpression scoped binding, emitExpression scoped body with
             | Ok bindingCode, Ok bodyCode ->
                 let declaration =
-                    if recursive then $"var {name} {goType binding.Type}; {name} = {bindingCode}"
-                    else $"{name} := {bindingCode}"
-                Ok $"func() {goType expression.Type} {{ {declaration}; return {bodyCode} }}()"
+                    if recursive then $"var {name} {goType binding.Type}\n\t{name} = {indent bindingCode}"
+                    else $"{name} := {indent bindingCode}"
+                Ok $"func() {goType expression.Type} {{\n\t{declaration}\n\treturn {indent bodyCode}\n}}()"
             | Error error, _ | _, Error error -> Error error
         | Lir.LetRecursiveGroup(bindings, body) ->
             let scoped = bindings |> List.fold (fun env (id, _, _, _) -> Map.add id (identifier "localRec" id) env) environment
@@ -282,13 +288,13 @@ module GoBackend =
                 |> collect
             match loweredBindings, emitExpression scoped body with
             | Ok values, Ok bodyCode ->
-                let declarations = values |> List.map (fun (name, bindingType, _) -> $"var {name} {goType bindingType}") |> String.concat "; "
-                let assignments = values |> List.map (fun (name, _, code) -> $"{name} = {code}") |> String.concat "; "
-                Ok $"func() {goType expression.Type} {{ {declarations}; {assignments}; return {bodyCode} }}()"
+                let declarations = values |> List.map (fun (name, bindingType, _) -> $"var {name} {goType bindingType}") |> String.concat "\n\t"
+                let assignments = values |> List.map (fun (name, _, code) -> $"{name} = {indent code}") |> String.concat "\n\t"
+                Ok $"func() {goType expression.Type} {{\n\t{declarations}\n\t{assignments}\n\treturn {indent bodyCode}\n}}()"
             | Error error, _ | _, Error error -> Error error
         | Lir.Fail value ->
             emitExpression environment value
-            |> Result.map (fun code -> $"func() {goType expression.Type} {{ fsruntime.Fail({code}); var zero {goType expression.Type}; return zero }}()")
+            |> Result.map (fun code -> $"func() {goType expression.Type} {{\n\tfsruntime.Fail({indent code})\n\tvar zero {goType expression.Type}\n\treturn zero\n}}()")
         | Lir.DecisionTree(target, cases) ->
             emitExpression environment target |> Result.bind (fun targetCode ->
                 let mutable failure = None
@@ -299,13 +305,13 @@ module GoBackend =
                     match case.Guard |> Option.map (emitExpression caseEnvironment) |> Option.defaultValue (Ok "true"), emitExpression caseEnvironment case.Body with
                     | Ok guardCode, Ok bodyCode ->
                         let test, assignments = emitPattern "matchValue" case.Pattern
-                        clauses.Append($"if {test} {{ ") |> ignore
-                        assignments |> List.iter (fun assignment -> clauses.Append(assignment).Append("; ") |> ignore)
-                        clauses.Append($"if {guardCode} {{ return {bodyCode} }} }}; ") |> ignore
+                        clauses.Append($"\tif {test} {{\n") |> ignore
+                        assignments |> List.iter (fun assignment -> clauses.Append("\t\t").Append(assignment.Replace("; ", "\n\t\t")).Append("\n") |> ignore)
+                        clauses.Append($"\t\tif {guardCode} {{\n\t\t\treturn {indent (indent (indent bodyCode))}\n\t\t}}\n\t}}\n") |> ignore
                     | Error error, _ | _, Error error -> failure <- Some error
                 match failure with
                 | Some error -> Error error
-                | None -> Ok $"func() {goType expression.Type} {{ matchValue := {targetCode}; {clauses}fsruntime.Fail(\"Match failure.\"); var zero {goType expression.Type}; return zero }}()")
+                | None -> Ok $"func() {goType expression.Type} {{\n\tmatchValue := {indent targetCode}\n{clauses}\tfsruntime.Fail(\"Match failure.\")\n\tvar zero {goType expression.Type}\n\treturn zero\n}}()")
         | Lir.Range(startValue, endValue) ->
             match emitExpression environment startValue, emitExpression environment endValue with
             | Ok first, Ok last -> Ok $"fsruntime.Range({first}, {last})"
@@ -354,7 +360,7 @@ module GoBackend =
             match emitExpression environment source, emitExpression scoped body with
             | Ok sourceCode, Ok bodyCode ->
                 let itemCode = cast itemType "rawValue"
-                Ok $"func() struct{{}} {{ for _, rawValue := range fsruntime.List({sourceCode}) {{ {name} := {itemCode}; _ = {bodyCode} }}; return struct{{}}{{}} }}()"
+                Ok $"func() struct{{}} {{\n\tfor _, rawValue := range fsruntime.List({sourceCode}) {{\n\t\t{name} := {itemCode}\n\t\t_ = {indent (indent bodyCode)}\n\t}}\n\treturn struct{{}}{{}}\n}}()"
             | Error error, _ | _, Error error -> Error error
         | Lir.TypeToken tokenType -> Ok(System.Text.Json.JsonSerializer.Serialize(Types.typeToString tokenType))
         | Lir.Operation _ -> Error "Invalid operation arity"
@@ -472,7 +478,9 @@ func Environment() map[string]any {
             for declaration in program.Declarations do
                 declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
                 match emitExpression names declaration.Value with
-                | Ok code -> initializers.AppendLine($"\t{names.[declaration.Id]} = {code}") |> ignore
+                | Ok code ->
+                    let indentedCode = code.Replace("\n", "\n\t")
+                    initializers.AppendLine($"\t{names.[declaration.Id]} = {indentedCode}") |> ignore
                 | Error message -> error <- Some(message, declaration.Span)
             let entry =
                 match program.Entry with
@@ -500,10 +508,10 @@ func Environment() map[string]any {
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"{moduleName}/internal/fsruntime\"\n)\n\nfunc main() {{ {printExpression} }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
-                      { RelativePath = "internal/fsruntime/closures.go"; Content = closureRuntime }
-                      { RelativePath = "internal/fsruntime/patterns.go"; Content = patternRuntime }
-                      { RelativePath = "internal/fsruntime/environment.go"; Content = environmentRuntime }
-                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n)\n\ntype Option struct { HasValue bool; Value any }\ntype Union struct { TypeName string; CaseName string; HasValue bool; Value any }\ntype MapEntry struct { Key any; Value any }\ntype OrderedMap struct { Entries []MapEntry }\ntype MapPart struct { IsSpread bool; Key any; Value any; Map OrderedMap }\n\nfunc Unit(value any) struct{} { return struct{}{} }\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc AsUnion(value any) Union { return value.(Union) }\nfunc AsMap(value any) OrderedMap { return value.(OrderedMap) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc MakeUnion(typeName string, caseName string) Union { return Union{TypeName: typeName, CaseName: caseName} }\nfunc MakeUnionValue(typeName string, caseName string, value any) Union { return Union{TypeName: typeName, CaseName: caseName, HasValue: true, Value: value} }\nfunc IsUnion(value any, typeName string, caseName string) bool { item := AsUnion(value); return item.TypeName == typeName && item.CaseName == caseName }\nfunc UnionHasValue(value any) bool { return AsUnion(value).HasValue }\nfunc UnionValue(value any) any { return AsUnion(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Range(first int64, last int64) []any { step := int64(1); if first > last { step = -1 }; values := []any{}; for current := first; ; current += step { values = append(values, current); if current == last { break } }; return values }\nfunc UpdateRecord(value any, updates map[string]any) map[string]any { result := map[string]any{}; for key, item := range Record(value) { result[key] = item }; for key, item := range updates { result[key] = item }; return result }\nfunc Pair(key any, value any) MapPart { return MapPart{Key: key, Value: value} }\nfunc SpreadMap(value any) MapPart { return MapPart{IsSpread: true, Map: AsMap(value)} }\nfunc mapSet(entries []MapEntry, key any, value any, replace bool) []MapEntry { for index, entry := range entries { if Equal(entry.Key, key) { if replace { entries[index].Value = value }; return entries } }; return append(entries, MapEntry{Key: key, Value: value}) }\nfunc BuildMap(parts []MapPart) OrderedMap { entries := []MapEntry{}; for _, part := range parts { if part.IsSpread { for _, entry := range part.Map.Entries { entries = mapSet(entries, entry.Key, entry.Value, false) } } else { entries = mapSet(entries, part.Key, part.Value, true) } }; sort.SliceStable(entries, func(left int, right int) bool { return Format(entries[left].Key) < Format(entries[right].Key) }); return OrderedMap{Entries: entries} }\nfunc Index(value any, index any) Option { switch target := value.(type) { case []any: position := Int(index); if position < 0 || position >= int64(len(target)) { return None() }; return Some(target[position]); case OrderedMap: for _, entry := range target.Entries { if Equal(entry.Key, index) { return Some(entry.Value) } }; return None(); default: panic(\"Index access requires a list or map\") } }\nfunc Intrinsic(name string, args []any) any { switch name { case \"ignore\": return struct{}{}; case \"List.empty\": return []any{}; case \"Map.empty\": return OrderedMap{}; case \"Int.tryParse\": value, error := strconv.ParseInt(String(args[0]), 10, 64); if error != nil { return None() }; return Some(value); case \"Float.tryParse\": value, error := strconv.ParseFloat(String(args[0]), 64); if error != nil { return None() }; return Some(value); case \"Bool.tryParse\": value, error := strconv.ParseBool(String(args[0])); if error != nil { return None() }; return Some(value); case \"Int.toString\", \"Float.toString\", \"Bool.toString\": return Format(args[0]); case \"String.replace\": return strings.ReplaceAll(String(args[2]), String(args[0]), String(args[1])); case \"String.indexOf\": index := strings.Index(String(args[1]), String(args[0])); if index < 0 { return None() }; return Some(int64(index)); case \"String.toLower\": return strings.ToLower(String(args[0])); case \"String.toUpper\": return strings.ToUpper(String(args[0])); case \"String.substring\": start, length, value := Int(args[0]), Int(args[1]), String(args[2]); if start < 0 || length < 0 || start + length > int64(len(value)) { return None() }; return Some(value[start:start+length]); case \"String.concat\": values := List(args[1]); parts := make([]string, len(values)); for index, value := range values { parts[index] = String(value) }; return strings.Join(parts, String(args[0])); case \"String.split\": values := strings.Split(String(args[1]), String(args[0])); result := make([]any, len(values)); for index, value := range values { result[index] = value }; return result; case \"String.endsWith\": return strings.HasSuffix(String(args[1]), String(args[0])); case \"List.length\": return int64(len(List(args[0]))); case \"List.rev\": values := List(args[0]); result := make([]any, len(values)); for index, value := range values { result[len(values)-index-1] = value }; return result; case \"List.tryHead\": values := List(args[0]); if len(values) == 0 { return None() }; return Some(values[0]); case \"List.tail\": return Tail(args[0]); case \"List.append\": return Append(List(args[0]), List(args[1])); case \"List.contains\": for _, value := range List(args[1]) { if Equal(args[0], value) { return true } }; return false; case \"Option.isNone\": return !IsSome(args[0]); case \"Option.isSome\": return IsSome(args[0]); case \"Option.defaultValue\": option := AsOption(args[1]); if option.HasValue { return option.Value }; return args[0]; case \"Map.count\": return int64(len(AsMap(args[0]).Entries)); case \"Map.containsKey\": return IsSome(Index(args[1], args[0])); case \"Map.tryGet\": return Index(args[1], args[0]); default: panic(\"Unsupported FScript intrinsic: \" + name) } }\nfunc Format(value any) string { switch item := value.(type) { case bool: if item { return \"true\" }; return \"false\"; case Option: if !item.HasValue { return \"None\" }; return \"Some \" + Format(item.Value); case Union: if !item.HasValue { return item.CaseName }; return item.CaseName + \" \" + Format(item.Value); case OrderedMap: parts := make([]string, len(item.Entries)); for index, entry := range item.Entries { parts[index] = \"[\" + Format(entry.Key) + \"] = \" + Format(entry.Value) }; return \"{ \" + strings.Join(parts, \"; \") + \" }\"; case []any: parts := make([]string, len(item)); for index, value := range item { parts[index] = Format(value) }; return \"[\" + strings.Join(parts, \";\") + \"]\"; default: return fmt.Sprint(value) } }\nfunc Interpolate(values []any) string { var result strings.Builder; for _, value := range values { result.WriteString(Format(value)) }; return result.String() }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
+                      { RelativePath = "internal/fsruntime/closures.go"; Content = runtimeTemplate "closures.go" }
+                      { RelativePath = "internal/fsruntime/patterns.go"; Content = runtimeTemplate "patterns.go" }
+                      { RelativePath = "internal/fsruntime/environment.go"; Content = runtimeTemplate "environment.go" }
+                      { RelativePath = "internal/fsruntime/runtime.go"; Content = runtimeTemplate "runtime.go" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
 
@@ -549,9 +557,4 @@ func Environment() map[string]any {
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind (fun entry -> if containsTask entry.Type then Some entry.Span else None))
         match taskSpan with
         | Some span -> Error [ { Code = "FSB4004"; Stage = GoGeneration; Message = "Task values are not supported by the Go backend."; Span = Some span } ]
-        | None ->
-            generateCore options program
-            |> Result.map (List.map (fun file ->
-                if file.RelativePath = "internal/fsruntime/runtime.go" then
-                    { file with Content = file.Content.Replace("case \"ignore\":", "case \"Console.writeLine\": fmt.Println(String(args[0])); return struct{}{}; case \"ignore\":") }
-                else file))
+        | None -> generateCore options program
