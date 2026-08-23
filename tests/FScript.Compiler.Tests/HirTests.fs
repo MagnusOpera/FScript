@@ -1,5 +1,6 @@
 namespace FScript.Compiler.Tests
 
+open System.IO
 open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
@@ -7,6 +8,11 @@ open NUnit.Framework
 [<TestFixture>]
 type HirTests() =
     let span = Span.mk (Span.pos 1 0) (Span.pos 1 1)
+    let snapshot name = File.ReadAllText(Path.Combine(__SOURCE_DIRECTORY__, "Snapshots", name)).Replace("\r\n", "\n")
+    let compiledAdd () =
+        match Compiler.compile { Program = Parser.parseProgram "let add x y = x + y\nadd 1 2"; Externs = [] } with
+        | Ok value -> value
+        | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
     member _.``Lowers deterministic typed add program`` () =
@@ -20,6 +26,18 @@ type HirTests() =
             Assert.That(actual, Does.Contain("primitive IntAdd"))
             Assert.That(actual, Does.Contain("entry"))
             Assert.That(Hir.format compiled.Hir, Is.EqualTo(actual))
+
+    [<Test>]
+    member _.``Canonical HIR add snapshot is stable`` () =
+        let compiled = compiledAdd ()
+        let declarations = compiled.Hir.Declarations |> List.filter (fun declaration -> declaration.Name = "add" || declaration.Name.StartsWith("$expression"))
+        Assert.That(Hir.format { compiled.Hir with Declarations = declarations }, Is.EqualTo(snapshot "add.hir"))
+
+    [<Test>]
+    member _.``Canonical LIR add snapshot is stable`` () =
+        let compiled = compiledAdd ()
+        let declarations = compiled.Lir.Declarations |> List.filter (fun declaration -> declaration.Name = "add" || declaration.Name.StartsWith("$expression"))
+        Assert.That(Lir.format { compiled.Lir with Declarations = declarations }, Is.EqualTo(snapshot "add.lir"))
 
     [<Test>]
     member _.``HIR validation rejects a declaration scheme mismatch`` () =

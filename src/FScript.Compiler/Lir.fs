@@ -131,6 +131,58 @@ module Lir =
     let symbolNumber (SymbolId value) = value
     let functionNumber (FunctionId value) = value
 
+    let format (program: Program) =
+        let lines = ResizeArray<string>()
+        let typeName = Types.typeToString
+        let symbols values = values |> List.map (symbolNumber >> string) |> String.concat "," |> fun value -> "[" + value + "]"
+        let rec expression indent (value: Expression) =
+            let prefix = System.String(' ', indent)
+            let add label = lines.Add($"{prefix}{label} : {typeName value.Type}")
+            let children label values = add label; values |> List.iter (expression (indent + 2))
+            match value.Node with
+            | Constant constant -> add $"const {constant}"
+            | Load id -> add $"load %%{symbolNumber id}"
+            | MakeClosure(id, captures) -> add $"make-closure @{functionNumber id} captures={symbols captures}"
+            | CallClosure(fn, argument) -> children "call-closure" [ fn; argument ]
+            | Branch(condition, whenTrue, whenFalse) -> children "branch" [ condition; whenTrue; whenFalse ]
+            | Operation(operation, arguments) -> children $"operation {operation}" arguments
+            | Tuple items -> children "tuple" items
+            | List items -> children "list" items
+            | Record fields -> children ("record " + (fields |> List.map fst |> String.concat ",")) (List.map snd fields)
+            | FieldGet(target, name) -> children $"field-get {name}" [ target ]
+            | SomeValue item -> children "some" [ item ]
+            | NoneValue -> add "none"
+            | Cons(head, tail) -> children "cons" [ head; tail ]
+            | Append(left, right) -> children "append" [ left; right ]
+            | Let(id, name, recursive, binding, body) -> children $"let %%{symbolNumber id} {name} recursive={recursive}" [ binding; body ]
+            | LetRecursiveGroup(bindings, body) -> children ("let-rec-group " + (bindings |> List.map (fun (id, name, _, _) -> $"%%{symbolNumber id}:{name}") |> String.concat ",")) ((bindings |> List.map (fun (_, _, _, item) -> item)) @ [ body ])
+            | Fail item -> children "fail" [ item ]
+            | DecisionTree(target, cases) ->
+                add $"decision-tree cases={cases.Length}"; expression (indent + 2) target
+                cases |> List.iter (fun case -> case.Guard |> Option.iter (expression (indent + 2)); expression (indent + 2) case.Body)
+            | Range(first, last) -> children "range" [ first; last ]
+            | RecordUpdate(target, fields) -> children ("record-update " + (fields |> List.map fst |> String.concat ",")) (target :: List.map snd fields)
+            | RecordConvert(target, targetType) -> children $"record-convert {typeName targetType}" [ target ]
+            | IndexGet(target, index) -> children "index-get" [ target; index ]
+            | Interpolate parts -> children "interpolate" (parts |> List.choose (function TextPart _ -> None | ValuePart item -> Some item))
+            | UnionCase(typeName, caseName, payload) -> children $"union {typeName}.{caseName}" (Option.toList payload)
+            | Map entries -> children "map" (entries |> List.collect (function KeyValue(key, item) -> [ key; item ] | Spread item -> [ item ]))
+            | Intrinsic name -> add $"intrinsic {name}"
+            | HostExternal(name, arity) -> add $"host-external {name}/{arity}"
+            | RuntimeContext -> add "runtime-context"
+            | TargetImport(modulePath, memberName) -> add $"target-import {modulePath}.{memberName}"
+            | ForEach(id, name, _, source, body) -> children $"for-each %%{symbolNumber id} {name}" [ source; body ]
+            | TypeToken tokenType -> add $"type-token {typeName tokenType}"
+        for fn in program.Functions do
+            lines.Add($"function @{functionNumber fn.Id} %%{symbolNumber fn.Parameter} {fn.Name} captures={symbols fn.Captures}: {typeName fn.ParameterType} -> {typeName fn.ReturnType}")
+            expression 2 fn.Body
+        for declaration in program.Declarations do
+            let export = declaration.Export |> Option.map (fun metadata -> $" export={metadata.Name}") |> Option.defaultValue ""
+            lines.Add($"decl %%{symbolNumber declaration.Id} {declaration.Name}{export}: {typeName declaration.Type}")
+            expression 2 declaration.Value
+        program.Entry |> Option.iter (fun entry -> lines.Add("entry"); expression 2 entry)
+        System.String.Join("\n", lines) + "\n"
+
 module LirLowering =
     type private State =
         { mutable NextFunction: int

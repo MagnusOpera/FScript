@@ -26,6 +26,8 @@ LIR is executable but not a Go AST. Lambda bodies are lifted into a deterministi
 
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
+HIR and LIR expose canonical debug printers with stable artifact-local IDs and normalized type rendering. The arithmetic vertical slice is checked in as paired snapshots so changes to symbol allocation, function lifting, captures, or operation selection are reviewed explicitly.
+
 HIR validation rejects duplicate and unresolved symbols, invalid declaration spans, and schemes inconsistent with their values. LIR validation rechecks artifact-local references and spans, then verifies closure calls, branches and decision guards, primitive signatures, aggregate representations, declaration value types, intrinsic catalog membership, and complete target-import linkage. Artifact deserialization runs the same LIR validator, so malformed JSON cannot bypass compiler invariants.
 
 Lexical `let` is retained as a structured LIR node. Its symbol is visible only in the body, or in both the binding and body for recursive functions. The interpreter closes the recursive environment explicitly; Go emission declares the function slot before assigning its closure. `raise` becomes an explicit `Fail` node so consumers preserve evaluation order and attach their own stage-specific failure diagnostic.

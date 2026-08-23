@@ -1,0 +1,16 @@
+function @0 %55 x captures=[]: 'a -> ('a -> int)
+  make-closure @1 captures=[55] : ('a -> int)
+function @1 %56 y captures=[55]: 'a -> int
+  operation IntAdd : int
+    load %55 : 'a
+    load %56 : 'a
+decl %54 add: ('a -> ('a -> int))
+  make-closure @0 captures=[] : ('a -> ('a -> int))
+decl %57 $expression57: int
+  call-closure : int
+    call-closure : (int -> int)
+      load %54 : (int -> (int -> int))
+      const Int 1L : int
+    const Int 2L : int
+entry
+  load %57 : int
