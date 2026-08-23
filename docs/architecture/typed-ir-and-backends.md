@@ -24,6 +24,8 @@ HIR is language-oriented and contains resolved artifact-local symbol identities,
 
 LIR is executable but not a Go AST. It uses lifted functions, explicit captures and closure creation, resolved primitive operations, aggregate construction/projection, and structured control flow. Pattern matching becomes deterministic tests and projections before reaching a backend. Semantic types may remain alongside selected runtime representations for validation and diagnostics.
 
+The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
+
 HIR validation rejects duplicate and unresolved symbols, invalid declaration spans, and schemes inconsistent with their values. LIR validation rechecks artifact-local references and spans, then verifies closure calls, branches and decision guards, primitive signatures, aggregate representations, declaration value types, intrinsic catalog membership, and complete target-import linkage. Artifact deserialization runs the same LIR validator, so malformed JSON cannot bypass compiler invariants.
 
 Lexical `let` is retained as a structured LIR node. Its symbol is visible only in the body, or in both the binding and body for recursive functions. The interpreter closes the recursive environment explicitly; Go emission declares the function slot before assigning its closure. `raise` becomes an explicit `Fail` node so consumers preserve evaluation order and attach their own stage-specific failure diagnostic.

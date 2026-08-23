@@ -40,7 +40,7 @@ module Compiler =
             |> HirLowering.lower externs
             |> Result.bind HirValidation.validate
             |> Result.bind (fun hir ->
-                hir |> LirLowering.lower |> LirValidation.validate
+                hir |> LirLowering.lower |> LirOptimization.optimize |> LirValidation.validate
                 |> Result.map (fun lir -> { Hir = hir; Lir = lir }))
         with
         | TypeException error ->

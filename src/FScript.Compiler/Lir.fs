@@ -325,3 +325,8 @@ module LirValidation =
             program.Declarations |> List.iter (fun declaration -> checkSpan declaration.Span; checkExpression Set.empty declaration.Value; if not (compatible declaration.Type declaration.Value.Type) then report "FSL2004" $"LIR declaration '{declaration.Name}' type is inconsistent." declaration.Span)
             program.Entry |> Option.iter (checkExpression Set.empty)
             if diagnostics.Count = 0 then Ok program else Error(List.ofSeq diagnostics)
+
+module LirOptimization =
+    /// The initial pipeline deliberately performs no optimization. Keeping this
+    /// pass explicit makes future transformations independently testable.
+    let optimize (program: Lir.Program) = program

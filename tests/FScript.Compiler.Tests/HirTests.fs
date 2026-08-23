@@ -47,3 +47,9 @@ type HirTests() =
         match LirValidation.validate { Declarations = []; Entry = Some intrinsic } with
         | Ok _ -> Assert.Fail("Expected unavailable primitive diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2009"))
+
+    [<Test>]
+    member _.``Initial LIR optimization pass is identity`` () =
+        let expression = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
+        let program: Lir.Program = { Declarations = []; Entry = Some expression }
+        Assert.That(LirOptimization.optimize program = program, Is.True)
