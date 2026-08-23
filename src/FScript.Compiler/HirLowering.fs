@@ -42,6 +42,49 @@ module HirLowering =
         | "||", TBool -> Some Hir.BooleanOr
         | _ -> None
 
+    let private collectResults<'a> (results: Result<'a, CompilerDiagnostic list> list) : Result<'a list, CompilerDiagnostic list> =
+        let folder state result =
+            match state, result with
+            | Ok values, Ok value -> Ok(values @ [ value ])
+            | Error a, Error b -> Error(a @ b)
+            | Error errors, _ | _, Error errors -> Error errors
+        results |> List.fold folder (Ok [])
+
+    let rec private lowerPattern state expected pattern =
+        let span = Ast.spanOfPattern pattern
+        let make node = ({ Type = expected; Span = span; Node = node }: Hir.Pattern)
+        match pattern with
+        | PWildcard _ -> Ok(make Hir.Wildcard, Map.empty)
+        | PVar(name, _) ->
+            let id = newSymbol state
+            Ok(make (Hir.Binding(id, name)), Map.ofList [ name, id ])
+        | PLiteral(value, _) -> let lowered, _ = literal value in Ok(make (Hir.LiteralPattern lowered), Map.empty)
+        | PNil _ -> Ok(make Hir.EmptyList, Map.empty)
+        | PNone _ -> Ok(make Hir.NonePattern, Map.empty)
+        | PSome(inner, _) ->
+            let itemType = match expected with TOption value -> value | _ -> Types.freshVar()
+            lowerPattern state itemType inner |> Result.map (fun (value, bindings) -> make (Hir.SomePattern value), bindings)
+        | PCons(head, tail, _) ->
+            let itemType = match expected with TList value -> value | _ -> Types.freshVar()
+            match lowerPattern state itemType head, lowerPattern state expected tail with
+            | Ok(h, hb), Ok(t, tb) -> Ok(make (Hir.ConsPattern(h, t)), Map.fold (fun env key value -> Map.add key value env) hb tb)
+            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+        | PTuple(items, _) ->
+            let types = match expected with TTuple values when values.Length = items.Length -> values | _ -> List.replicate items.Length (Types.freshVar())
+            List.zip items types |> List.map (fun (item, itemType) -> lowerPattern state itemType item)
+            |> collectResults |> Result.map (fun values ->
+                let patterns, bindingMaps = List.unzip values
+                let bindings = bindingMaps |> List.fold (Map.fold (fun env key value -> Map.add key value env)) Map.empty
+                make (Hir.TuplePattern patterns), bindings)
+        | PRecord(fields, _) ->
+            let types = match expected with TRecord values -> values | _ -> Map.empty
+            fields |> List.map (fun (name, item) -> lowerPattern state (types |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item |> Result.map (fun (value, bindings) -> (name, value), bindings))
+            |> collectResults |> Result.map (fun values ->
+                let fields, bindingMaps = List.unzip values
+                let bindings = bindingMaps |> List.fold (Map.fold (fun env key value -> Map.add key value env)) Map.empty
+                make (Hir.RecordPattern fields), bindings)
+        | _ -> Error [ Diagnostic.hir "FSH1004" "Pattern form is not yet supported by HIR lowering." (Some span) ]
+
     let rec private lowerExpression state environment fallback expression =
         let span = Ast.spanOfExpr expression
         let inferred = expressionType state expression fallback
@@ -145,15 +188,19 @@ module HirLowering =
             | Error a, Error b -> Error(a @ b)
             | Error errors, _ | _, Error errors -> Error errors
         | ERaise(value, _) -> lowerExpression state environment TString value |> Result.map (Hir.Fail >> make)
+        | EMatch(target, cases, _) ->
+            let targetType = expressionType state target (Types.freshVar())
+            match lowerExpression state environment targetType target with
+            | Error errors -> Error errors
+            | Ok loweredTarget ->
+                cases |> List.map (fun (pattern, guard, body, caseSpan) ->
+                    lowerPattern state targetType pattern |> Result.bind (fun (loweredPattern, bindings) ->
+                        let caseEnvironment = Map.fold (fun env name id -> Map.add name id env) environment bindings
+                        match guard |> Option.map (fun value -> lowerExpression state caseEnvironment TBool value |> Result.map Some) |> Option.defaultValue (Ok None), lowerExpression state caseEnvironment inferred body with
+                        | Ok loweredGuard, Ok loweredBody -> Ok({ Pattern = loweredPattern; Guard = loweredGuard; Body = loweredBody; Span = caseSpan }: Hir.MatchCase)
+                        | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e))
+                |> collectResults |> Result.map (fun loweredCases -> make (Hir.Match(loweredTarget, loweredCases)))
         | _ -> Error [ Diagnostic.hir "FSH1099" $"HIR lowering does not yet support {expression.GetType().Name}." (Some span) ]
-
-    and private collectResults<'a> (results: Result<'a, CompilerDiagnostic list> list) : Result<'a list, CompilerDiagnostic list> =
-        let folder state result =
-            match state, result with
-            | Ok values, Ok value -> Ok(values @ [ value ])
-            | Error a, Error b -> Error(a @ b)
-            | Error errors, _ | _, Error errors -> Error errors
-        results |> List.fold folder (Ok [])
 
     let lower (resolved: TypeInfer.ResolvedProgram) : Result<Hir.Program, CompilerDiagnostic list> =
         let expressionTypes =

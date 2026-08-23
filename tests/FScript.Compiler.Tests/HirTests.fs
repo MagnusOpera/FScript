@@ -63,3 +63,15 @@ type HirTests() =
             | Error diagnostics ->
                 Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSI3011"))
                 Assert.That(diagnostics |> List.map _.Message, Does.Contain("boom"))
+
+    [<TestCase("match [1;2] with\n    | x::xs -> x\n    | [] -> 0", 1L)>]
+    [<TestCase("match Some 3 with\n    | Some x -> x + 1\n    | None -> 0", 4L)>]
+    [<TestCase("match (1, true) with\n    | (x, true) -> x\n    | _ -> 0", 1L)>]
+    [<TestCase("match [1] with\n    | x::xs when x < 0 -> x\n    | _ -> 42", 42L)>]
+    member _.``Executes deterministic pattern decision trees`` (source: string, expected: int64) =
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt expected))
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))

@@ -65,15 +65,40 @@ module IrArtifact =
     let private constantName = function
         | Lir.Unit -> "unit" | Lir.Int _ -> "int" | Lir.Float _ -> "float" | Lir.Bool _ -> "bool" | Lir.String _ -> "string"
 
+    let private writeConstantValue (writer: Utf8JsonWriter) constant =
+        writer.WriteString("constantKind", constantName constant)
+        match constant with
+        | Lir.Unit -> () | Lir.Int value -> writer.WriteNumber("intValue", value) | Lir.Float value -> writer.WriteNumber("floatValue", value)
+        | Lir.Bool value -> writer.WriteBoolean("boolValue", value) | Lir.String value -> writer.WriteString("stringValue", value)
+
+    let rec private writePattern (writer: Utf8JsonWriter) (value: Lir.Pattern) =
+        writer.WriteStartObject(); writer.WritePropertyName("type"); writeType writer value.Type
+        writer.WritePropertyName("span"); writeSpan writer value.Span
+        match value.Node with
+        | Lir.Wildcard -> writer.WriteString("kind", "wildcard")
+        | Lir.Binding(id, name) -> writer.WriteString("kind", "binding"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
+        | Lir.LiteralPattern constant -> writer.WriteString("kind", "literal"); writeConstantValue writer constant
+        | Lir.EmptyList -> writer.WriteString("kind", "empty-list")
+        | Lir.NonePattern -> writer.WriteString("kind", "none")
+        | Lir.SomePattern item -> writer.WriteString("kind", "some"); writer.WritePropertyName("item"); writePattern writer item
+        | Lir.ConsPattern(head, tail) ->
+            writer.WriteString("kind", "cons"); writer.WritePropertyName("head"); writePattern writer head
+            writer.WritePropertyName("tail"); writePattern writer tail
+        | Lir.TuplePattern items ->
+            writer.WriteString("kind", "tuple"); writer.WriteStartArray("items"); items |> List.iter (writePattern writer); writer.WriteEndArray()
+        | Lir.RecordPattern fields ->
+            writer.WriteString("kind", "record"); writer.WriteStartArray("fields")
+            for name, item in fields do
+                writer.WriteStartObject(); writer.WriteString("name", name); writer.WritePropertyName("pattern"); writePattern writer item; writer.WriteEndObject()
+            writer.WriteEndArray()
+        writer.WriteEndObject()
+
     let rec private writeExpression (writer: Utf8JsonWriter) (value: Lir.Expression) =
         writer.WriteStartObject(); writer.WritePropertyName("type"); writeType writer value.Type
         writer.WritePropertyName("span"); writeSpan writer value.Span
         match value.Node with
         | Lir.Constant constant ->
-            writer.WriteString("kind", "constant"); writer.WriteString("constantKind", constantName constant)
-            match constant with
-            | Lir.Unit -> () | Lir.Int v -> writer.WriteNumber("intValue", v) | Lir.Float v -> writer.WriteNumber("floatValue", v)
-            | Lir.Bool v -> writer.WriteBoolean("boolValue", v) | Lir.String v -> writer.WriteString("stringValue", v)
+            writer.WriteString("kind", "constant"); writeConstantValue writer constant
         | Lir.Load id -> writer.WriteString("kind", "load"); writer.WriteNumber("symbol", Lir.symbolNumber id)
         | Lir.MakeClosure(id, name, parameterType, body) ->
             writer.WriteString("kind", "closure"); writer.WriteNumber("symbol", Lir.symbolNumber id); writer.WriteString("name", name)
@@ -114,6 +139,15 @@ module IrArtifact =
             writer.WriteBoolean("recursive", recursive); writer.WritePropertyName("binding"); writeExpression writer binding
             writer.WritePropertyName("body"); writeExpression writer body
         | Lir.Fail value -> writer.WriteString("kind", "fail"); writer.WritePropertyName("value"); writeExpression writer value
+        | Lir.DecisionTree(target, cases) ->
+            writer.WriteString("kind", "decision-tree"); writer.WritePropertyName("target"); writeExpression writer target
+            writer.WriteStartArray("cases")
+            for case in cases do
+                writer.WriteStartObject(); writer.WritePropertyName("pattern"); writePattern writer case.Pattern
+                match case.Guard with Some guard -> writer.WritePropertyName("guard"); writeExpression writer guard | None -> writer.WriteNull("guard")
+                writer.WritePropertyName("body"); writeExpression writer case.Body; writer.WritePropertyName("span"); writeSpan writer case.Span
+                writer.WriteEndObject()
+            writer.WriteEndArray()
         writer.WriteEndObject()
 
     let serialize (program: Lir.Program) =
@@ -167,17 +201,35 @@ module IrArtifact =
         | "NumericGreaterThanOrEqual" -> Lir.NumericGreaterThanOrEqual | "BooleanAnd" -> Lir.BooleanAnd | "BooleanOr" -> Lir.BooleanOr
         | value -> invalidOp $"Unknown LIR operation '{value}'."
 
+    let private readConstant (element: JsonElement) =
+        match stringProperty "constantKind" element with
+        | "unit" -> Lir.Unit | "int" -> Lir.Int((property "intValue" element).GetInt64())
+        | "float" -> Lir.Float((property "floatValue" element).GetDouble())
+        | "bool" -> Lir.Bool((property "boolValue" element).GetBoolean())
+        | "string" -> Lir.String(stringProperty "stringValue" element)
+        | value -> invalidOp $"Unknown constant '{value}'."
+
+    let rec private readPattern (element: JsonElement) : Lir.Pattern =
+        let node =
+            match stringProperty "kind" element with
+            | "wildcard" -> Lir.Wildcard
+            | "binding" -> Lir.Binding(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element)
+            | "literal" -> Lir.LiteralPattern(readConstant element)
+            | "empty-list" -> Lir.EmptyList
+            | "none" -> Lir.NonePattern
+            | "some" -> Lir.SomePattern(readPattern (property "item" element))
+            | "cons" -> Lir.ConsPattern(readPattern (property "head" element), readPattern (property "tail" element))
+            | "tuple" -> Lir.TuplePattern((property "items" element).EnumerateArray() |> Seq.map readPattern |> Seq.toList)
+            | "record" -> Lir.RecordPattern((property "fields" element).EnumerateArray() |> Seq.map (fun field -> stringProperty "name" field, readPattern (property "pattern" field)) |> Seq.toList)
+            | kind -> invalidOp $"Unknown LIR pattern kind '{kind}'."
+        { Type = readType (property "type" element); Span = readSpan (property "span" element); Node = node }
+
     let rec private readExpression (element: JsonElement) : Lir.Expression =
         let expressionType = readType (property "type" element)
         let span = readSpan (property "span" element)
         let node =
             match stringProperty "kind" element with
-            | "constant" ->
-                Lir.Constant(match stringProperty "constantKind" element with
-                             | "unit" -> Lir.Unit | "int" -> Lir.Int((property "intValue" element).GetInt64())
-                             | "float" -> Lir.Float((property "floatValue" element).GetDouble())
-                             | "bool" -> Lir.Bool((property "boolValue" element).GetBoolean())
-                             | "string" -> Lir.String(stringProperty "stringValue" element) | value -> invalidOp $"Unknown constant '{value}'.")
+            | "constant" -> Lir.Constant(readConstant element)
             | "load" -> Lir.Load(Lir.SymbolId((property "symbol" element).GetInt32()))
             | "closure" -> Lir.MakeClosure(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
                                                            readType (property "parameterType" element), readExpression (property "body" element))
@@ -196,6 +248,14 @@ module IrArtifact =
             | "let" -> Lir.Let(Lir.SymbolId((property "symbol" element).GetInt32()), stringProperty "name" element,
                                 (property "recursive" element).GetBoolean(), readExpression (property "binding" element), readExpression (property "body" element))
             | "fail" -> Lir.Fail(readExpression (property "value" element))
+            | "decision-tree" ->
+                let cases = (property "cases" element).EnumerateArray() |> Seq.map (fun item ->
+                    let guard = property "guard" item
+                    ({ Pattern = readPattern (property "pattern" item)
+                       Guard = if guard.ValueKind = JsonValueKind.Null then None else Some(readExpression guard)
+                       Body = readExpression (property "body" item)
+                       Span = readSpan (property "span" item) }: Lir.DecisionCase)) |> Seq.toList
+                Lir.DecisionTree(readExpression (property "target" element), cases)
             | kind -> invalidOp $"Unknown LIR expression kind '{kind}'."
         { Type = expressionType; Span = span; Node = node }
 

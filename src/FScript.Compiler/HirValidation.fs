@@ -27,6 +27,20 @@ module HirValidation =
                         if recursive then Set.remove id value else value
                     Set.union bindingReferences (references body |> Set.remove id)
                 | Hir.Fail value -> references value
+                | Hir.Match(target, cases) ->
+                    let rec bindings (pattern: Hir.Pattern) =
+                        match pattern.Node with
+                        | Hir.Binding(id, _) -> Set.singleton id
+                        | Hir.ConsPattern(head, tail) -> Set.union (bindings head) (bindings tail)
+                        | Hir.TuplePattern items -> items |> List.map bindings |> Set.unionMany
+                        | Hir.RecordPattern fields -> fields |> List.map (snd >> bindings) |> Set.unionMany
+                        | Hir.SomePattern item -> bindings item
+                        | _ -> Set.empty
+                    let caseReferences (case: Hir.MatchCase) =
+                        let bound = bindings case.Pattern
+                        let values = Set.union (case.Guard |> Option.map references |> Option.defaultValue Set.empty) (references case.Body)
+                        Set.difference values bound
+                    Set.union (references target) (cases |> List.map caseReferences |> Set.unionMany)
             let declared = declarationIds |> Set.ofList
             let unresolved =
                 [ yield! program.Declarations |> List.collect (fun value -> references value.Value |> Set.toList)

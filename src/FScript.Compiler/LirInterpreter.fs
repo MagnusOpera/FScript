@@ -21,6 +21,10 @@ type LirValue =
 type ExecutionResult = { Value: LirValue }
 
 module LirInterpreter =
+    let private constantValue = function
+        | Lir.Unit -> VUnit | Lir.Int value -> VInt value | Lir.Float value -> VFloat value
+        | Lir.Bool value -> VBool value | Lir.String value -> VString value
+
     let rec private equal left right =
         match left, right with
         | VUnit, VUnit -> true
@@ -37,6 +41,27 @@ module LirInterpreter =
     let private fail code span message =
         Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
 
+    let rec private matchPattern (pattern: Lir.Pattern) value =
+        let combine left right =
+            match left, right with
+            | Some a, Some b -> Some(Map.fold (fun env key item -> Map.add key item env) a b)
+            | _ -> None
+        match pattern.Node, value with
+        | Lir.Wildcard, _ -> Some Map.empty
+        | Lir.Binding(id, _), item -> Some(Map.ofList [ id, item ])
+        | Lir.LiteralPattern literal, item when equal (constantValue literal) item -> Some Map.empty
+        | Lir.EmptyList, VList [] -> Some Map.empty
+        | Lir.ConsPattern(head, tail), VList(headValue :: tailValues) ->
+            combine (matchPattern head headValue) (matchPattern tail (VList tailValues))
+        | Lir.TuplePattern patterns, VTuple values when patterns.Length = values.Length ->
+            List.zip patterns values |> List.fold (fun state (itemPattern, itemValue) -> combine state (matchPattern itemPattern itemValue)) (Some Map.empty)
+        | Lir.RecordPattern patterns, VRecord values ->
+            patterns |> List.fold (fun state (name, itemPattern) ->
+                combine state (values |> Map.tryFind name |> Option.bind (matchPattern itemPattern))) (Some Map.empty)
+        | Lir.SomePattern itemPattern, VOption(Some item) -> matchPattern itemPattern item
+        | Lir.NonePattern, VOption None -> Some Map.empty
+        | _ -> None
+
     let rec private evaluate environment (expression: Lir.Expression) =
         let binary work =
             match expression.Node with
@@ -48,7 +73,7 @@ module LirInterpreter =
             | _ -> fail "FSI3002" expression.Span "Invalid primitive arity."
         match expression.Node with
         | Lir.Constant value ->
-            Ok(match value with Lir.Unit -> VUnit | Lir.Int v -> VInt v | Lir.Float v -> VFloat v | Lir.Bool v -> VBool v | Lir.String v -> VString v)
+            Ok(constantValue value)
         | Lir.Load id ->
             environment |> Map.tryFind id |> Option.map Ok
             |> Option.defaultWith (fun () -> fail "FSI3001" expression.Span (sprintf "Unknown LIR symbol %%%d." (Lir.symbolNumber id)))
@@ -123,6 +148,25 @@ module LirInterpreter =
             | Ok(VString message) -> fail "FSI3011" expression.Span message
             | Ok _ -> fail "FSI3011" expression.Span "FScript program raised a non-string value."
             | Error errors -> Error errors
+        | Lir.DecisionTree(target, cases) ->
+            evaluate environment target |> Result.bind (fun targetValue ->
+                let rec run (remaining: Lir.DecisionCase list) =
+                    match remaining with
+                    | [] -> fail "FSI3012" expression.Span "Match failure."
+                    | case :: rest ->
+                        match matchPattern case.Pattern targetValue with
+                        | None -> run rest
+                        | Some bindings ->
+                            let caseEnvironment = Map.fold (fun env id value -> Map.add id value env) environment bindings
+                            match case.Guard with
+                            | None -> evaluate caseEnvironment case.Body
+                            | Some guard ->
+                                match evaluate caseEnvironment guard with
+                                | Ok(VBool true) -> evaluate caseEnvironment case.Body
+                                | Ok(VBool false) -> run rest
+                                | Ok _ -> fail "FSI3013" guard.Span "Match guard must evaluate to Boolean."
+                                | Error errors -> Error errors
+                run cases)
 
     and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
 

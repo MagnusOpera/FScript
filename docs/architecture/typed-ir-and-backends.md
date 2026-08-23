@@ -22,6 +22,8 @@ LIR is executable but not a Go AST. It uses lifted functions, explicit captures 
 
 Lexical `let` is retained as a structured LIR node. Its symbol is visible only in the body, or in both the binding and body for recursive functions. The interpreter closes the recursive environment explicitly; Go emission declares the function slot before assigning its closure. `raise` becomes an explicit `Fail` node so consumers preserve evaluation order and attach their own stage-specific failure diagnostic.
 
+Matches lower to a structured decision tree whose target is evaluated once. Cases remain ordered; each pattern test creates artifact-local bindings, then its guard is evaluated, and only then is its body selected. A failed guard continues at the next case. Exhaustion is the explicit FScript match-failure path. Literal, list, tuple, record, and option patterns use the same tree in serialized artifacts, the LIR interpreter, and generated Go.
+
 Serialized `.fsir` files contain one closed resolved program plus explicit foreign linkage declarations. JSON format versions are internal and may be rejected rather than upgraded.
 
 ## Representation policy

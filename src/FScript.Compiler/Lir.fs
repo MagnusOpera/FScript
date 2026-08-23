@@ -40,6 +40,29 @@ module Lir =
         | Append of Expression * Expression
         | Let of SymbolId * string * bool * Expression * Expression
         | Fail of Expression
+        | DecisionTree of Expression * DecisionCase list
+
+    and Pattern =
+        { Type: Type
+          Span: Span
+          Node: PatternNode }
+
+    and PatternNode =
+        | Wildcard
+        | Binding of SymbolId * string
+        | LiteralPattern of Constant
+        | EmptyList
+        | ConsPattern of Pattern * Pattern
+        | TuplePattern of Pattern list
+        | RecordPattern of (string * Pattern) list
+        | SomePattern of Pattern
+        | NonePattern
+
+    and DecisionCase =
+        { Pattern: Pattern
+          Guard: Expression option
+          Body: Expression
+          Span: Span }
 
     type Declaration =
         { Id: SymbolId
@@ -74,6 +97,20 @@ module LirLowering =
         | Hir.Unit -> Lir.Unit | Hir.Int value -> Lir.Int value | Hir.Float value -> Lir.Float value
         | Hir.Bool value -> Lir.Bool value | Hir.String value -> Lir.String value
 
+    let rec private pattern (value: Hir.Pattern) : Lir.Pattern =
+        let node =
+            match value.Node with
+            | Hir.Wildcard -> Lir.Wildcard
+            | Hir.Binding(id, name) -> Lir.Binding(symbol id, name)
+            | Hir.LiteralPattern value -> Lir.LiteralPattern(constant value)
+            | Hir.EmptyList -> Lir.EmptyList
+            | Hir.ConsPattern(head, tail) -> Lir.ConsPattern(pattern head, pattern tail)
+            | Hir.TuplePattern items -> Lir.TuplePattern(List.map pattern items)
+            | Hir.RecordPattern fields -> Lir.RecordPattern(fields |> List.map (fun (name, item) -> name, pattern item))
+            | Hir.SomePattern item -> Lir.SomePattern(pattern item)
+            | Hir.NonePattern -> Lir.NonePattern
+        { Type = value.Type; Span = value.Span; Node = node }
+
     let rec private expression (value: Hir.Expression) : Lir.Expression =
         let node =
             match value.Node with
@@ -93,6 +130,12 @@ module LirLowering =
             | Hir.Append(left, right) -> Lir.Append(expression left, expression right)
             | Hir.Let(id, name, recursive, binding, body) -> Lir.Let(symbol id, name, recursive, expression binding, expression body)
             | Hir.Fail value -> Lir.Fail(expression value)
+            | Hir.Match(target, cases) ->
+                Lir.DecisionTree(expression target, cases |> List.map (fun case ->
+                    ({ Pattern = pattern case.Pattern
+                       Guard = Option.map expression case.Guard
+                       Body = expression case.Body
+                       Span = case.Span }: Lir.DecisionCase)))
         { Type = value.Type; Span = value.Span; Node = node }
 
     let lower (program: Hir.Program) : Lir.Program =

@@ -46,6 +46,57 @@ module GoBackend =
         | Lir.BooleanAnd -> Some "&&"
         | Lir.BooleanOr -> Some "||"
 
+    let private cast valueType code =
+        match valueType with
+        | TInt -> $"fsruntime.Int({code})"
+        | TFloat -> $"fsruntime.Float({code})"
+        | TBool -> $"fsruntime.Bool({code})"
+        | TString -> $"fsruntime.String({code})"
+        | TList _ | TTuple _ -> $"fsruntime.List({code})"
+        | TRecord _ -> $"fsruntime.Record({code})"
+        | TOption _ -> $"fsruntime.AsOption({code})"
+        | _ -> code
+
+    let rec private patternBindings (pattern: Lir.Pattern) =
+        match pattern.Node with
+        | Lir.Binding(id, _) -> [ id ]
+        | Lir.ConsPattern(head, tail) -> patternBindings head @ patternBindings tail
+        | Lir.TuplePattern items -> List.collect patternBindings items
+        | Lir.RecordPattern fields -> fields |> List.collect (snd >> patternBindings)
+        | Lir.SomePattern item -> patternBindings item
+        | _ -> []
+
+    let rec private emitPattern valueCode (pattern: Lir.Pattern) =
+        let combine parts =
+            let tests, assignments = List.unzip parts
+            let test = tests |> List.filter ((<>) "true") |> function [] -> "true" | values -> String.concat " && " values
+            test, List.concat assignments
+        match pattern.Node with
+        | Lir.Wildcard -> "true", []
+        | Lir.Binding(id, _) ->
+            let name = identifier "match" id
+            "true", [ $"{name} := {cast pattern.Type valueCode}; _ = {name}" ]
+        | Lir.LiteralPattern value -> $"fsruntime.Equal({valueCode}, {constant value})", []
+        | Lir.EmptyList -> $"len(fsruntime.List({valueCode})) == 0", []
+        | Lir.NonePattern -> $"!fsruntime.IsSome({valueCode})", []
+        | Lir.SomePattern item ->
+            let test, assignments = emitPattern $"fsruntime.OptionValue({valueCode})" item
+            $"fsruntime.IsSome({valueCode}) && ({test})", assignments
+        | Lir.ConsPattern(head, tail) ->
+            let headPart = emitPattern $"fsruntime.List({valueCode})[0]" head
+            let tailPart = emitPattern $"fsruntime.Tail({valueCode})" tail
+            let test, assignments = combine [ headPart; tailPart ]
+            $"len(fsruntime.List({valueCode})) > 0 && ({test})", assignments
+        | Lir.TuplePattern items ->
+            items |> List.mapi (fun index item -> emitPattern $"fsruntime.List({valueCode})[{index}]" item)
+            |> combine |> fun (test, assignments) -> $"len(fsruntime.List({valueCode})) == {items.Length} && ({test})", assignments
+        | Lir.RecordPattern fields ->
+            fields |> List.map (fun (name, item) ->
+                let quoted = System.Text.Json.JsonSerializer.Serialize(name)
+                let test, assignments = emitPattern $"fsruntime.Record({valueCode})[{quoted}]" item
+                $"fsruntime.HasField({valueCode}, {quoted}) && ({test})", assignments)
+            |> combine
+
     let rec private emitExpression environment (expression: Lir.Expression) =
         match expression.Node with
         | Lir.Constant value -> Ok(constant value)
@@ -114,6 +165,23 @@ module GoBackend =
         | Lir.Fail value ->
             emitExpression environment value
             |> Result.map (fun code -> $"func() {goType expression.Type} {{ fsruntime.Fail({code}); var zero {goType expression.Type}; return zero }}()")
+        | Lir.DecisionTree(target, cases) ->
+            emitExpression environment target |> Result.bind (fun targetCode ->
+                let mutable failure = None
+                let clauses = StringBuilder()
+                for case in cases do
+                    let bindings = patternBindings case.Pattern
+                    let caseEnvironment = bindings |> List.fold (fun env id -> Map.add id (identifier "match" id) env) environment
+                    match case.Guard |> Option.map (emitExpression caseEnvironment) |> Option.defaultValue (Ok "true"), emitExpression caseEnvironment case.Body with
+                    | Ok guardCode, Ok bodyCode ->
+                        let test, assignments = emitPattern "matchValue" case.Pattern
+                        clauses.Append($"if {test} {{ ") |> ignore
+                        assignments |> List.iter (fun assignment -> clauses.Append(assignment).Append("; ") |> ignore)
+                        clauses.Append($"if {guardCode} {{ return {bodyCode} }} }}; ") |> ignore
+                    | Error error, _ | _, Error error -> failure <- Some error
+                match failure with
+                | Some error -> Error error
+                | None -> Ok $"func() {goType expression.Type} {{ matchValue := {targetCode}; {clauses}fsruntime.Fail(\"Match failure.\"); var zero {goType expression.Type}; return zero }}()")
         | Lir.Operation _ -> Error "Invalid operation arity"
 
     and private collect<'a> (results: Result<'a, string> list) : Result<'a list, string> =
@@ -147,6 +215,6 @@ module GoBackend =
                     [ { RelativePath = "go.mod"; Content = $"module {moduleName}\n\ngo 1.25\n" }
                       { RelativePath = "main.go"; Content = $"package main\n\nimport (\n\t\"fmt\"\n\t\"{moduleName}/internal/fscriptprogram\"\n)\n\nfunc main() {{ fmt.Println(fscriptprogram.Run()) }}\n" }
                       { RelativePath = "internal/fscriptprogram/program.go"; Content = programSource }
-                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n)\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
+                      { RelativePath = "internal/fsruntime/runtime.go"; Content = "package fsruntime\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n)\n\ntype Option struct { HasValue bool; Value any }\n\nfunc Int(value any) int64 { return value.(int64) }\nfunc Float(value any) float64 { return value.(float64) }\nfunc Bool(value any) bool { return value.(bool) }\nfunc String(value any) string { return value.(string) }\nfunc List(value any) []any { return value.([]any) }\nfunc Record(value any) map[string]any { return value.(map[string]any) }\nfunc AsOption(value any) Option { return value.(Option) }\nfunc Some(value any) Option { return Option{HasValue: true, Value: value} }\nfunc None() Option { return Option{} }\nfunc IsSome(value any) bool { return AsOption(value).HasValue }\nfunc OptionValue(value any) any { return AsOption(value).Value }\nfunc HasField(value any, name string) bool { _, ok := Record(value)[name]; return ok }\nfunc Equal(left any, right any) bool { return reflect.DeepEqual(left, right) }\nfunc Cons(head any, tail []any) []any { return append([]any{head}, tail...) }\nfunc Append(left []any, right []any) []any { return append(append([]any{}, left...), right...) }\nfunc Tail(value any) []any { return append([]any{}, List(value)[1:]...) }\nfunc Fail(value any) { panic(fmt.Sprint(value)) }\n" } ]
         with ex ->
             Error [ { Code = "FSB4002"; Stage = GoGeneration; Message = ex.Message; Span = None } ]

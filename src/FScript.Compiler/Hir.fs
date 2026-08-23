@@ -52,6 +52,29 @@ module Hir =
         | Append of Expression * Expression
         | Let of SymbolId * string * bool * Expression * Expression
         | Fail of Expression
+        | Match of Expression * MatchCase list
+
+    and Pattern =
+        { Type: Type
+          Span: Span
+          Node: PatternNode }
+
+    and PatternNode =
+        | Wildcard
+        | Binding of SymbolId * string
+        | LiteralPattern of LiteralValue
+        | EmptyList
+        | ConsPattern of Pattern * Pattern
+        | TuplePattern of Pattern list
+        | RecordPattern of (string * Pattern) list
+        | SomePattern of Pattern
+        | NonePattern
+
+    and MatchCase =
+        { Pattern: Pattern
+          Guard: Expression option
+          Body: Expression
+          Span: Span }
 
     type Declaration =
         { Id: SymbolId
@@ -82,7 +105,7 @@ module Hir =
 
     let format (program: Program) =
         let lines = ResizeArray<string>()
-        let rec expression indent value =
+        let rec expression indent (value: Expression) =
             let prefix = System.String(' ', indent)
             let typed text = $"{prefix}{text} : {formatType value.Type}"
             match value.Node with
@@ -119,6 +142,10 @@ module Hir =
                 expression (indent + 2) binding
                 expression (indent + 2) body
             | Fail value -> lines.Add(typed "fail"); expression (indent + 2) value
+            | Match(target, cases) ->
+                lines.Add(typed $"match {cases.Length} cases")
+                expression (indent + 2) target
+                cases |> List.iter (fun case -> expression (indent + 2) case.Body)
 
         for declaration in program.Declarations do
             lines.Add(sprintf "decl %%%d %s: %s" (symbolNumber declaration.Id) declaration.Name (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
