@@ -51,7 +51,7 @@ module private Harness =
         let loaded = match IrArtifact.deserialize artifact with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match LirInterpreter.execute { ScriptName = None; Arguments = [] } loaded with
         | Ok result -> Ok { Value = formatLir result.Value; Stdout = result.Stdout }
-        | Error diagnostics -> Error diagnostics.Head.Code
+        | Error diagnostic -> Error diagnostic.Code
 
     let go source =
         let files = match GoBackend.generate { ModuleName = "fscript.generated/conformance" } (compile source).Lir with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))

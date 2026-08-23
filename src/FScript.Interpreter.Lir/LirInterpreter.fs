@@ -81,7 +81,7 @@ module LirInterpreter =
         | VTargetImport _ -> "<target-import>"
 
     let private fail code span message =
-        Error [ { Code = code; Stage = Interpreter; Message = message; Span = Some span } ]
+        Error { Code = code; Stage = Interpreter; Message = message; Span = Some span }
 
     let private intrinsicArity name =
         let scheme =
@@ -258,10 +258,8 @@ module LirInterpreter =
         let binary work =
             match expression.Node with
             | Lir.Operation(_, [ left; right ]) ->
-                match evaluate environment left, evaluate environment right with
-                | Ok a, Ok b -> work a b
-                | Error a, Error b -> Error(a @ b)
-                | Error errors, _ | _, Error errors -> Error errors
+                evaluate environment left
+                |> Result.bind (fun leftValue -> evaluate environment right |> Result.bind (work leftValue))
             | _ -> fail "FSI3002" expression.Span "Invalid primitive arity."
         match expression.Node with
         | Lir.Constant value ->
@@ -276,10 +274,8 @@ module LirInterpreter =
             |> Option.map (fun fn -> Ok(VClosure(fn.Parameter, fn.Name, fn.Body, ref captured)))
             |> Option.defaultWith (fun () -> fail "FSI3024" expression.Span $"Unknown lifted LIR function {Lir.functionNumber functionId}.")
         | Lir.CallClosure(fn, argument) ->
-            match evaluate environment fn, evaluate environment argument with
-            | Ok fnValue, Ok value -> applyValue expression.Span fnValue value
-            | Error a, Error b -> Error(a @ b)
-            | Error errors, _ | _, Error errors -> Error errors
+            evaluate environment fn
+            |> Result.bind (fun fnValue -> evaluate environment argument |> Result.bind (applyValue expression.Span fnValue))
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match evaluate environment condition with
             | Ok(VBool true) -> evaluate environment whenTrue
@@ -311,8 +307,7 @@ module LirInterpreter =
         | Lir.Tuple items -> evaluateMany environment items |> Result.map VTuple
         | Lir.List items -> evaluateMany environment items |> Result.map VList
         | Lir.Record fields ->
-            fields |> List.map (fun (name, item) -> evaluate environment item |> Result.map (fun value -> name, value))
-            |> collect |> Result.map (Map.ofList >> VRecord)
+            evaluateNamed environment fields |> Result.map (Map.ofList >> VRecord)
         | Lir.FieldGet(target, name) ->
             match evaluate environment target with
             | Ok(VRecord fields) -> fields |> Map.tryFind name |> Option.map Ok |> Option.defaultWith (fun () -> fail "FSI3007" expression.Span $"Record field '{name}' was not found.")
@@ -321,13 +316,18 @@ module LirInterpreter =
         | Lir.SomeValue item -> evaluate environment item |> Result.map (Some >> VOption)
         | Lir.NoneValue -> Ok(VOption None)
         | Lir.Cons(head, tail) ->
-            match evaluate environment head, evaluate environment tail with
-            | Ok h, Ok(VList t) -> Ok(VList(h :: t)) | Ok _, Ok _ -> fail "FSI3008" expression.Span "Cons tail must be a list."
-            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+            evaluate environment head
+            |> Result.bind (fun headValue ->
+                evaluate environment tail
+                |> Result.bind (function VList tailValues -> Ok(VList(headValue :: tailValues)) | _ -> fail "FSI3008" expression.Span "Cons tail must be a list."))
         | Lir.Append(left, right) ->
-            match evaluate environment left, evaluate environment right with
-            | Ok(VList l), Ok(VList r) -> Ok(VList(l @ r)) | Ok _, Ok _ -> fail "FSI3009" expression.Span "Append operands must be lists."
-            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+            evaluate environment left
+            |> Result.bind (fun leftValue ->
+                evaluate environment right
+                |> Result.bind (fun rightValue ->
+                    match leftValue, rightValue with
+                    | VList leftValues, VList rightValues -> Ok(VList(leftValues @ rightValues))
+                    | _ -> fail "FSI3009" expression.Span "Append operands must be lists."))
         | Lir.Let(id, _, recursive, binding, body) ->
             if recursive then
                 match evaluate environment binding with
@@ -341,8 +341,8 @@ module LirInterpreter =
                 evaluate environment binding |> Result.bind (fun value -> evaluate (environment |> Map.add id value) body)
         | Lir.LetRecursiveGroup(bindings, body) ->
             let evaluated = bindings |> List.map (fun (id, _, _, binding) -> id, evaluate environment binding)
-            let errors = evaluated |> List.collect (fun (_, result) -> match result with Error values -> values | Ok _ -> [])
-            if not errors.IsEmpty then Error errors
+            let error = evaluated |> List.tryPick (fun (_, result) -> match result with Error value -> Some value | Ok _ -> None)
+            if error.IsSome then Error error.Value
             elif evaluated |> List.exists (fun (_, result) -> match result with Ok(VClosure _) -> false | _ -> true) then
                 fail "FSI3010" expression.Span "Recursive local groups must contain only functions."
             else
@@ -374,17 +374,20 @@ module LirInterpreter =
                                 | Error errors -> Error errors
                 run cases)
         | Lir.Range(startValue, endValue) ->
-            match evaluate environment startValue, evaluate environment endValue with
-            | Ok(VInt first), Ok(VInt last) ->
-                let step = if first <= last then 1L else -1L
-                Ok(VList([ first .. step .. last ] |> List.map VInt))
-            | Ok _, Ok _ -> fail "FSI3014" expression.Span "Range endpoints must be integers."
-            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+            evaluate environment startValue
+            |> Result.bind (fun firstValue ->
+                evaluate environment endValue
+                |> Result.bind (fun lastValue ->
+                    match firstValue, lastValue with
+                    | VInt first, VInt last ->
+                        let step = if first <= last then 1L else -1L
+                        Ok(VList([ first .. step .. last ] |> List.map VInt))
+                    | _ -> fail "FSI3014" expression.Span "Range endpoints must be integers."))
         | Lir.RecordUpdate(target, fields) ->
             match evaluate environment target with
             | Ok(VRecord existing) ->
-                fields |> List.map (fun (name, item) -> evaluate environment item |> Result.map (fun value -> name, value))
-                |> collect |> Result.map (fun updates -> VRecord(List.fold (fun state (name, value) -> Map.add name value state) existing updates))
+                evaluateNamed environment fields
+                |> Result.map (fun updates -> VRecord(List.fold (fun state (name, value) -> Map.add name value state) existing updates))
             | Ok _ -> fail "FSI3015" expression.Span "Record update requires a record."
             | Error errors -> Error errors
         | Lir.RecordConvert(target, _) ->
@@ -393,16 +396,18 @@ module LirInterpreter =
             | Ok _ -> fail "FSI3015" expression.Span "Record conversion requires a record."
             | Error errors -> Error errors
         | Lir.IndexGet(target, index) ->
-            match evaluate environment target, evaluate environment index with
-            | Ok(VList values), Ok(VInt position) ->
-                if position < 0L || position >= int64 values.Length then Ok(VOption None)
-                else Ok(VOption(Some values.[int position]))
-            | Ok(VMap entries), Ok key -> Ok(VOption(entries |> List.tryPick (fun (itemKey, value) -> if equal itemKey key then Some value else None)))
-            | Ok _, Ok _ -> fail "FSI3016" expression.Span "Index access requires a list and integer index."
-            | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+            evaluate environment target
+            |> Result.bind (fun targetValue ->
+                evaluate environment index
+                |> Result.bind (fun indexValue ->
+                    match targetValue, indexValue with
+                    | VList values, VInt position ->
+                        if position < 0L || position >= int64 values.Length then Ok(VOption None)
+                        else Ok(VOption(Some values.[int position]))
+                    | VMap entries, key -> Ok(VOption(entries |> List.tryPick (fun (itemKey, value) -> if equal itemKey key then Some value else None)))
+                    | _ -> fail "FSI3016" expression.Span "Index access requires a list and integer index."))
         | Lir.Interpolate parts ->
-            parts |> List.map (function Lir.TextPart text -> Ok text | Lir.ValuePart item -> evaluate environment item |> Result.map formatValue)
-            |> collect |> Result.map (String.concat "" >> VString)
+            evaluateInterpolation environment parts |> Result.map (String.concat "" >> VString)
         | Lir.UnionCase(typeName, caseName, payload) ->
             payload |> Option.map (fun value -> evaluate environment value |> Result.map Some) |> Option.defaultValue (Ok None)
             |> Result.map (fun value -> VUnion(typeName, caseName, value))
@@ -414,9 +419,10 @@ module LirInterpreter =
                 match remaining with
                 | [] -> Ok(VMap values)
                 | Lir.KeyValue(key, item) :: rest ->
-                    match evaluate environment key, evaluate environment item with
-                    | Ok keyValue, Ok itemValue -> build (add keyValue itemValue values) rest
-                    | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e
+                    evaluate environment key
+                    |> Result.bind (fun keyValue ->
+                        evaluate environment item
+                        |> Result.bind (fun itemValue -> build (add keyValue itemValue values) rest))
                 | Lir.Spread item :: rest ->
                     match evaluate environment item with
                     | Ok(VMap spread) ->
@@ -460,13 +466,29 @@ module LirInterpreter =
             else Ok(VTargetImport(modulePath, memberName, arity, arguments))
         | _ -> fail "FSI3003" span "Attempted to call a non-function value."
 
-    and private evaluateMany environment items = items |> List.map (evaluate environment) |> collect
+    and private evaluateMany environment items =
+        match items with
+        | [] -> Ok []
+        | item :: rest ->
+            evaluate environment item
+            |> Result.bind (fun value -> evaluateMany environment rest |> Result.map (fun values -> value :: values))
 
-    and private collect<'a> (results: Result<'a, CompilerDiagnostic list> list) : Result<'a list, CompilerDiagnostic list> =
-        results |> List.fold (fun state result ->
-            match state, result with Ok values, Ok value -> Ok(values @ [ value ]) | Error a, Error b -> Error(a @ b) | Error e, _ | _, Error e -> Error e) (Ok [])
+    and private evaluateNamed environment fields =
+        match fields with
+        | [] -> Ok []
+        | (name, item) :: rest ->
+            evaluate environment item
+            |> Result.bind (fun value -> evaluateNamed environment rest |> Result.map (fun values -> (name, value) :: values))
 
-    let execute (context: InterpreterContext) (program: Lir.Program) =
+    and private evaluateInterpolation environment parts =
+        match parts with
+        | [] -> Ok []
+        | Lir.TextPart text :: rest -> evaluateInterpolation environment rest |> Result.map (fun values -> text :: values)
+        | Lir.ValuePart item :: rest ->
+            evaluate environment item
+            |> Result.bind (fun value -> evaluateInterpolation environment rest |> Result.map (fun values -> formatValue value :: values))
+
+    let private executeValidated (context: InterpreterContext) (program: Lir.Program) =
         let output = ResizeArray<string>()
         currentOutput.Value <- output
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
@@ -490,8 +512,8 @@ module LirInterpreter =
                 let group = declarations |> List.takeWhile _.IsRecursive
                 let remainder = declarations |> List.skip group.Length
                 let closures = group |> List.map (fun declaration -> declaration, evaluate environment.Value declaration.Value)
-                let errors = closures |> List.collect (fun (_, result) -> match result with Error values -> values | Ok _ -> [])
-                if not errors.IsEmpty then failure <- Some errors
+                let error = closures |> List.tryPick (fun (_, result) -> match result with Error value -> Some value | Ok _ -> None)
+                if error.IsSome then failure <- error
                 else
                     let next = closures |> List.fold (fun env (declaration, result) -> match result with Ok closure -> Map.add declaration.Id closure env | Error _ -> env) environment.Value
                     for _, result in closures do
@@ -503,3 +525,8 @@ module LirInterpreter =
         | Some errors, _ -> Error errors
         | None, Some entry -> evaluate environment.Value entry |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output })
         | None, None -> Ok { Value = VUnit; Stdout = List.ofSeq output }
+
+    let execute (context: InterpreterContext) (program: Lir.Program) : Result<ExecutionResult, CompilerDiagnostic> =
+        match LirValidation.validate program with
+        | Error diagnostics -> Error diagnostics.Head
+        | Ok validated -> executeValidated context validated

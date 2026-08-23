@@ -55,6 +55,7 @@ Role:
 
 Responsibilities:
 - Execute LIR values, closures, decision trees, aggregates, intrinsics, and failures.
+- Validate caller-provided LIR and return one structured execution diagnostic on failure.
 - Supply script identity and arguments through `InterpreterContext`.
 - Reject reachable unsupported target or host linkage with interpreter diagnostics.
 

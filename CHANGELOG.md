@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made LIR execution validate inputs and stop left-to-right evaluation at the first structured diagnostic.
+
 - Routed every generated Go pattern plan through one deterministic runtime matcher.
 
 - Preserved arbitrary structured top-level declaration attributes through resolved inference and HIR.
