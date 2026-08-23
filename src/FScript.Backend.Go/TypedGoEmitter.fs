@@ -7,6 +7,14 @@ open System.Text
 open FScript.Language
 
 module TypedGoEmitter =
+    type private NamedRepresentation =
+        | LocalNamed of recursive: bool
+        | ImportedNamed of alias: string * memberName: string
+
+    let private namedRepresentations = Threading.AsyncLocal<Map<string, NamedRepresentation>>()
+    let private tryNamedRepresentation name =
+        let current = namedRepresentations.Value
+        if isNull (box current) then None else Map.tryFind name current
     let private symbolName prefix id = $"{prefix}{Lir.symbolNumber id}"
     let private indent (value: string) = value.Replace("\n", "\n\t")
     let private key value = Types.typeToString value
@@ -43,7 +51,11 @@ module TypedGoEmitter =
         | TMap _ as value -> $"map_{suffix value}"
         | TUnion _ as value -> $"union_{suffix value}"
         | TNamed "Environment" -> "environment"
-        | TNamed name -> $"*named_{identifier name}"
+        | TNamed name ->
+            match tryNamedRepresentation name with
+            | Some(LocalNamed true) -> $"*named_{identifier name}"
+            | Some(ImportedNamed(alias, memberName)) -> $"{alias}.{memberName}"
+            | _ -> $"named_{identifier name}"
         | value -> invalidArg "value" $"Typed Go vertical slice cannot represent {Types.typeToString value}."
 
     let private constant = function
@@ -72,7 +84,10 @@ module TypedGoEmitter =
               "List.empty"; "List.map"; "List.iter"; "List.choose"; "List.collect"; "List.exists"; "List.contains"; "List.rev"; "List.distinct"
               "List.fold"; "List.filter"; "List.length"; "List.tryFind"; "List.tryGet"; "List.tryItem"; "List.tryHead"; "List.tail"; "List.append"
               "Option.defaultValue"; "Option.defaultWith"; "Option.isNone"; "Option.isSome"; "Option.map"
-              "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.fold"; "Map.count"; "Map.filter"; "Map.choose"; "Map.map"; "Map.iter"; "Map.remove" ]
+              "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.fold"; "Map.count"; "Map.filter"; "Map.choose"; "Map.map"; "Map.iter"; "Map.remove"
+              "Console.readLine"; "Console.writeLine"; "Fs.readText" ]
+
+    let private typedHostExternals = set [ "Console.readLine"; "Console.writeLine"; "Fs.readText" ]
 
     let rec private supportedExpression (functions: Map<Lir.FunctionId, Lir.Function>) (expression: Lir.Expression) =
         let supported = supportedExpression functions
@@ -99,17 +114,63 @@ module TypedGoEmitter =
            | Lir.Interpolate parts -> parts |> List.forall (function Lir.TextPart _ -> true | Lir.ValuePart value -> supported value)
            | Lir.ForEach(_, _, itemType, source, body) -> supportedType itemType && supported source && supported body
            | Lir.Intrinsic name -> Set.contains name typedIntrinsics
-           | _ -> false
+           | Lir.HostExternal(name, _) -> Set.contains name typedHostExternals
+           | Lir.TargetImport _ -> true
 
     let canEmit (program: Lir.Program) =
         let functions = program.Functions |> List.map (fun item -> item.Id, item) |> Map.ofList
-        program.ImportedRecords.IsEmpty
+        let validImportedRecord (record: Lir.ImportedRecord) =
+            not record.IsUnion
+            && not record.Fields.IsEmpty
+            && (record.Fields |> List.forall (fun (name, fieldType) ->
+                not (String.IsNullOrEmpty name)
+                && Char.IsUpper name.[0]
+                && match fieldType with TUnit | TInt | TFloat | TBool | TString -> true | _ -> false))
+        (program.ImportedRecords |> List.forall validImportedRecord)
         && (program.Declarations |> List.forall (fun item -> supportedType item.Type && supportedExpression functions item.Value))
         && program.Entry |> Option.forall (supportedExpression functions)
 
     let generate moduleName (program: Lir.Program) =
+        let rec targetModules (expression: Lir.Expression) =
+            [ match expression.Node with
+              | Lir.TargetImport(modulePath, _) -> yield modulePath
+              | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> yield! targetModules left; yield! targetModules right
+              | Lir.Branch(a, b, c) -> yield! targetModules a; yield! targetModules b; yield! targetModules c
+              | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> for value in values do yield! targetModules value
+              | Lir.Record fields | Lir.RecordUpdate(_, fields) -> for _, value in fields do yield! targetModules value
+              | Lir.FieldGet(value, _) | Lir.SomeValue value | Lir.Fail value | Lir.RecordConvert(value, _) -> yield! targetModules value
+              | Lir.Let(_, _, _, binding, body) -> yield! targetModules binding; yield! targetModules body
+              | Lir.LetRecursiveGroup(bindings, body) -> for _, _, _, value in bindings do yield! targetModules value; yield! targetModules body
+              | Lir.DecisionTree(target, cases) -> yield! targetModules target; for case in cases do yield! case.Guard |> Option.map targetModules |> Option.defaultValue []; yield! targetModules case.Body
+              | Lir.Interpolate parts -> for part in parts do match part with Lir.ValuePart value -> yield! targetModules value | _ -> ()
+              | Lir.UnionCase(_, _, payload) -> yield! payload |> Option.map targetModules |> Option.defaultValue []
+              | Lir.Map entries -> for entry in entries do match entry with Lir.KeyValue(key, value) -> yield! targetModules key; yield! targetModules value | Lir.Spread value -> yield! targetModules value
+              | Lir.ForEach(_, _, _, source, body) -> yield! targetModules source; yield! targetModules body
+              | _ -> () ]
+        let importModules =
+            [ yield! program.ImportedRecords |> List.map _.ModulePath
+              for declaration in program.Declarations do yield! targetModules declaration.Value
+              yield! program.Entry |> Option.map targetModules |> Option.defaultValue [] ]
+            |> List.distinct
+            |> List.sort
+            |> List.mapi (fun index path -> path, $"goimport{index}")
+            |> Map.ofList
+        namedRepresentations.Value <-
+            program.Types
+            |> List.map (fun declaration ->
+                let representation =
+                    match declaration.Import with
+                    | Some imported -> ImportedNamed(importModules.[imported.ModulePath], imported.MemberName)
+                    | None -> LocalNamed declaration.IsRecursive
+                declaration.Name, representation)
+            |> Map.ofList
         let functions = program.Functions |> List.map (fun item -> item.Id, item) |> Map.ofList
         let namedDefinitions = program.Types |> List.map (fun item -> item.Name, item.Definition) |> Map.ofList
+        let namedRepresentation name = tryNamedRepresentation name
+        let emittedField ownerType name =
+            match ownerType with
+            | TNamed typeName -> match namedRepresentation typeName with Some(ImportedNamed _) -> identifier name | _ -> fieldName name
+            | _ -> fieldName name
         let types = HashSet<Type>()
         types.Add(TOption TString) |> ignore
         let rec collectType value =
@@ -259,9 +320,11 @@ module TypedGoEmitter =
                     | TNamed name ->
                         match Map.tryFind name namedDefinitions with
                         | Some(TRecord fields) ->
-                            let parts = fields |> Map.toList |> List.map (fun (field, fieldType) -> Text.Json.JsonSerializer.Serialize(field + " = ") + " + " + $"{formatter fieldType}(value.{fieldName field})")
+                            let parts = fields |> Map.toList |> List.map (fun (field, fieldType) -> Text.Json.JsonSerializer.Serialize(field + " = ") + " + " + $"{formatter fieldType}(value.{emittedField (TNamed name) field})")
                             let rendered = match parts with [] -> "\"{}\"" | _ -> "\"{ \" + " + (parts |> List.reduce (fun left right -> left + " + \"; \" + " + right)) + " + \" }\""
-                            $"if value == nil {{\n\t\treturn \"<nil>\"\n\t}}\n\treturn {rendered}"
+                            match namedRepresentation name with
+                            | Some(LocalNamed true) -> $"if value == nil {{\n\t\treturn \"<nil>\"\n\t}}\n\treturn {rendered}"
+                            | _ -> $"return {rendered}"
                         | Some(TUnion(_, cases)) ->
                             let clauses = cases |> Map.toList |> List.map (fun (caseName, payload) ->
                                 match payload with
@@ -270,7 +333,10 @@ module TypedGoEmitter =
                                     let label = Text.Json.JsonSerializer.Serialize(caseName + " ")
                                     $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {label} + {formatter payloadType}(value.{caseField caseName})")
                             let renderedClauses = String.concat "\n\t" clauses
-                            $"if value == nil {{\n\t\treturn \"<nil>\"\n\t}}\n\tswitch value.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
+                            let switchBody = $"switch value.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
+                            match namedRepresentation name with
+                            | Some(LocalNamed true) -> $"if value == nil {{\n\t\treturn \"<nil>\"\n\t}}\n\t{switchBody}"
+                            | _ -> switchBody
                         | _ -> "return \"<value>\""
                     | other -> invalidArg "value" $"No typed formatter for {Types.typeToString other}."
                 formatterBodies.Add($"func {name}(value {goType value}) string {{\n\t{body}\n}}")
@@ -315,13 +381,18 @@ module TypedGoEmitter =
                     | TNamed name ->
                         match Map.tryFind name namedDefinitions with
                         | Some(TRecord fields) ->
-                            let checks = fields |> Map.toList |> List.map (fun (field, fieldType) -> $"{equality fieldType}(left.{fieldName field}, right.{fieldName field})")
+                            let checks = fields |> Map.toList |> List.map (fun (field, fieldType) -> let emitted = emittedField (TNamed name) field in $"{equality fieldType}(left.{emitted}, right.{emitted})")
                             let result = if checks.IsEmpty then "true" else String.concat " && " checks
-                            $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\treturn {result}"
+                            match namedRepresentation name with
+                            | Some(LocalNamed true) -> $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\treturn {result}"
+                            | _ -> $"return {result}"
                         | Some(TUnion(_, cases)) ->
                             let clauses = cases |> Map.toList |> List.choose (fun (caseName, payload) -> payload |> Option.map (fun payloadType -> $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {equality payloadType}(left.{caseField caseName}, right.{caseField caseName})"))
                             let renderedClauses = String.concat "\n\t" clauses
-                            $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\tif left.Tag != right.Tag {{\n\t\treturn false\n\t}}\n\tswitch left.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn true"
+                            let comparison = $"if left.Tag != right.Tag {{\n\t\treturn false\n\t}}\n\tswitch left.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn true"
+                            match namedRepresentation name with
+                            | Some(LocalNamed true) -> $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\t{comparison}"
+                            | _ -> comparison
                         | _ -> "return left == right"
                     | other -> invalidArg "value" $"No typed equality for {Types.typeToString other}."
                 equalityBodies.Add($"func {name}(left {goType value}, right {goType value}) bool {{\n\t{body}\n}}")
@@ -423,7 +494,38 @@ module TypedGoEmitter =
             | "Map.remove", TFun(_, TFun(_, resultType)) ->
                 let entryType = $"entry_{suffix resultType}"
                 build (fun args _ -> iife resultType $"result := {goType resultType}{{Entries: make([]{entryType}, 0, len({args.[1]}.Entries))}}\nfor _, entry := range {args.[1]}.Entries {{\n\tif entry.Key != {args.[0]} {{\n\t\tresult.Entries = append(result.Entries, entry)\n\t}}\n}}\nreturn result")
+            | "Console.writeLine", TFun(TString, TUnit) ->
+                "func(value string) struct{} {\n\t_, _ = os.Stdout.WriteString(value + \"\\n\")\n\treturn struct{}{}\n}"
+            | "Console.readLine", TFun(TUnit, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(_ struct{{}}) {resultType} {{\n\tif consoleScanner.Scan() {{\n\t\treturn {resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n\t}}\n\treturn {resultType}{{}}\n}}"
+            | "Fs.readText", TFun(TString, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(path string) {resultType} {{\n\tcontent, err := os.ReadFile(path)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
             | _ -> invalidOp $"Unsupported typed intrinsic '{name}' at {Types.typeToString intrinsicType}."
+        let hostExternal (name: string) (externalType: Type) =
+            match name, externalType with
+            | "Console.writeLine", TFun(TString, TUnit) ->
+                "func(value string) struct{} {\n\t_, _ = os.Stdout.WriteString(value + \"\\n\")\n\treturn struct{}{}\n}"
+            | "Console.readLine", TFun(TUnit, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(_ struct{{}}) {resultType} {{\n\tif consoleScanner.Scan() {{\n\t\treturn {resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n\t}}\n\treturn {resultType}{{}}\n}}"
+            | "Fs.readText", TFun(TString, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(path string) {resultType} {{\n\tcontent, err := os.ReadFile(path)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
+            | _ -> invalidOp $"Unsupported typed host external '{name}' at {Types.typeToString externalType}."
+        let targetImport modulePath memberName importType =
+            let alias = importModules.[modulePath]
+            let rec curry index currentType arguments =
+                match currentType with
+                | TFun(argumentType, resultType) ->
+                    let argument = $"importArg{index}"
+                    let inner = curry (index + 1) resultType (arguments @ [ argument ])
+                    $"func({argument} {goType argumentType}) {goType resultType} {{\n\treturn {indent inner}\n}}"
+                | _ ->
+                    let renderedArguments = String.concat ", " arguments
+                    $"{alias}.{memberName}({renderedArguments})"
+            curry 0 importType []
         let rec emit environment (expression: Lir.Expression) =
             let emitChild = emit environment
             match expression.Node with
@@ -461,12 +563,15 @@ module TypedGoEmitter =
                 let values = items |> List.map emitChild |> String.concat ", "
                 $"{goType expression.Type}{{{values}}}"
             | Lir.Record fields ->
-                let values = fields |> List.map (fun (name, value) -> $"{fieldName name}: {emitChild value}") |> String.concat ", "
+                let values = fields |> List.map (fun (name, value) -> $"{emittedField expression.Type name}: {emitChild value}") |> String.concat ", "
                 match expression.Type with
-                | TNamed name -> $"&named_{identifier name}{{{values}}}"
+                | TNamed name ->
+                    match namedRepresentation name with
+                    | Some(LocalNamed true) -> $"&named_{identifier name}{{{values}}}"
+                    | _ -> $"{goType expression.Type}{{{values}}}"
                 | _ -> $"{goType expression.Type}{{{values}}}"
             | Lir.FieldGet(target, name) ->
-                let field = if target.Type = TNamed "Environment" then identifier name else fieldName name
+                let field = if target.Type = TNamed "Environment" then identifier name else emittedField target.Type name
                 $"({emitChild target}).{field}"
             | Lir.SomeValue item -> $"{goType expression.Type}{{HasValue: true, Value: {emitChild item}}}"
             | Lir.NoneValue -> $"{goType expression.Type}{{}}"
@@ -497,7 +602,7 @@ module TypedGoEmitter =
                             | Lir.ListTail, TList item -> $"({code})[1:]", TList item
                             | Lir.TupleItem index, TTuple items -> $"({code}).Item{index}", items.[index]
                             | Lir.RecordField name, recordType ->
-                                let field = if recordType = TNamed "Environment" then identifier name else fieldName name
+                                let field = if recordType = TNamed "Environment" then identifier name else emittedField recordType name
                                 $"({code}).{field}", (recordFields recordType).[name]
                             | Lir.OptionValue, TOption item -> $"({code}).Value", item
                             | Lir.UnionPayload, unionType ->
@@ -586,8 +691,8 @@ module TypedGoEmitter =
                     let bodyCode = emit scoped case.Body
                     let guardedBody =
                         match case.Guard with
-                        | None -> $"return {bodyCode}"
-                        | Some guard -> $"if {goCondition (emit scoped guard)} {{\n\t\t\treturn {indent bodyCode}\n\t\t}}"
+                        | None -> $"return {indent (indent bodyCode)}"
+                        | Some guard -> $"if {goCondition (emit scoped guard)} {{\n\t\t\treturn {indent (indent bodyCode)}\n\t\t}}"
                     let declarationCode = if declarations.IsEmpty then "" else String.concat "\n\t\t" declarations + "\n\t\t"
                     let assignmentCode = if topAssignments.IsEmpty then "" else String.concat "\n\t\t" topAssignments + "\n\t\t"
                     let mapEvaluation =
@@ -601,16 +706,16 @@ module TypedGoEmitter =
                 $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}\n\tpanic(\"Match failure.\")\n}}()"
             | Lir.RecordUpdate(target, fields) ->
                 let targetCode = emitChild target
-                let assignments = fields |> List.map (fun (name, value) -> $"updated.{fieldName name} = {emitChild value}") |> String.concat "\n\t"
+                let assignments = fields |> List.map (fun (name, value) -> $"updated.{emittedField expression.Type name} = {emitChild value}") |> String.concat "\n\t"
                 match expression.Type with
-                | TNamed _ -> $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := *original\n\t{assignments}\n\treturn &updated\n}}()"
+                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := *original\n\t{assignments}\n\treturn &updated\n}}()"
                 | _ -> $"func() {goType expression.Type} {{\n\tupdated := {targetCode}\n\t{assignments}\n\treturn updated\n}}()"
             | Lir.RecordConvert(target, targetType) ->
                 let targetCode = emitChild target
                 let fields = recordFields targetType
-                let assignments = fields |> Map.toList |> List.map (fun (name, _) -> $"{fieldName name}: converted.{fieldName name}") |> String.concat ", "
+                let assignments = fields |> Map.toList |> List.map (fun (name, _) -> $"{emittedField targetType name}: converted.{emittedField target.Type name}") |> String.concat ", "
                 match targetType with
-                | TNamed name -> $"func() {goType targetType} {{\n\tconverted := {targetCode}\n\treturn &named_{identifier name}{{{assignments}}}\n}}()"
+                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType targetType} {{\n\tconverted := {targetCode}\n\treturn &named_{identifier name}{{{assignments}}}\n}}()"
                 | _ -> $"func() {goType targetType} {{\n\tconverted := {targetCode}\n\treturn {goType targetType}{{{assignments}}}\n}}()"
             | Lir.Range(first, last) -> $"func() []int64 {{\n\tfirst, last := {emitChild first}, {emitChild last}\n\tresult := []int64{{}}\n\tif first <= last {{\n\t\tfor value := first; value <= last; value++ {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}} else {{\n\t\tfor value := first; value >= last; value-- {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}}\n\treturn result\n}}()"
             | Lir.IndexGet(target, index) ->
@@ -622,6 +727,8 @@ module TypedGoEmitter =
                 | _ -> invalidOp "Index target is neither list nor map."
             | Lir.Interpolate parts -> parts |> List.map (function Lir.TextPart text -> Text.Json.JsonSerializer.Serialize(text) | Lir.ValuePart value -> $"{formatter value.Type}({emitChild value})") |> String.concat " + "
             | Lir.Intrinsic name -> intrinsic name expression.Type
+            | Lir.HostExternal(name, _) -> hostExternal name expression.Type
+            | Lir.TargetImport(modulePath, memberName) -> targetImport modulePath memberName expression.Type
             | Lir.RuntimeContext -> $"environment{{ScriptName: {goType (TOption TString)}{{HasValue: true, Value: filepath.Base(os.Args[0])}}, Arguments: append([]string{{}}, os.Args[1:]...)}}"
             | Lir.ForEach(id, _, _, source, body) ->
                 let variable = symbolName "item" id
@@ -632,7 +739,7 @@ module TypedGoEmitter =
                 let payloadField = payload |> Option.map (fun value -> $", {caseField caseName}: {emitChild value}") |> Option.defaultValue ""
                 let tag = Text.Json.JsonSerializer.Serialize(caseName)
                 match expression.Type with
-                | TNamed name -> $"&named_{identifier name}{{Tag: {tag}{payloadField}}}"
+                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"&named_{identifier name}{{Tag: {tag}{payloadField}}}"
                 | _ -> $"{goType expression.Type}{{Tag: {tag}{payloadField}}}"
             | Lir.Map entries ->
                 let keyType, valueType = match expression.Type with TMap(k, v) -> k, v | _ -> invalidOp "Map expression has non-map type."
@@ -661,10 +768,15 @@ module TypedGoEmitter =
         let entryCode = emit names entry
         let resultFormatter = formatter entry.Type
         let helperSource = String.concat "\n\n" (Seq.append equalityBodies formatterBodies)
-        let generatedBody = helperSource + declarations.ToString() + entryCode
+        let emittedValues = declarations.ToString() + entryCode
+        let consoleSource = if emittedValues.Contains("consoleScanner", StringComparison.Ordinal) then "var consoleScanner = bufio.NewScanner(os.Stdin)\n\n" else ""
+        let generatedBody = helperSource + consoleSource + emittedValues
         let imports =
-            [ if types.Contains(TNamed "Environment") then
+            [ if generatedBody.Contains("bufio.", StringComparison.Ordinal) then
+                  "\t\"bufio\""
+              if generatedBody.Contains("os.", StringComparison.Ordinal) then
                   "\t\"os\""
+              if generatedBody.Contains("filepath.", StringComparison.Ordinal) then
                   "\t\"path/filepath\""
               if generatedBody.Contains("math.", StringComparison.Ordinal) then
                   "\t\"math\""
@@ -672,13 +784,21 @@ module TypedGoEmitter =
                   "\t\"strconv\""
               if generatedBody.Contains("strings.", StringComparison.Ordinal) then
                   "\t\"strings\"" ]
+        let targetStandardImports, targetExternalImports =
+            importModules
+            |> Map.toList
+            |> List.map (fun (path, alias) -> path, $"\t{alias} {Text.Json.JsonSerializer.Serialize(path)}")
+            |> List.partition (fun (path, _) -> not (path.Contains(".", StringComparison.Ordinal)))
+            |> fun (standard, external) -> List.map snd standard, List.map snd external
         let importSource =
-            match imports with
+            let standard = imports @ targetStandardImports |> List.sort
+            let groups = [ if not standard.IsEmpty then String.concat "\n" standard; if not targetExternalImports.IsEmpty then String.concat "\n" targetExternalImports ]
+            match groups with
             | [] -> ""
             | values ->
-                let renderedImports = values |> List.sort |> String.concat "\n"
-                $"import (\n{renderedImports}\n)\n\n"
-        let programSource = $"package fscriptprogram\n\n{importSource}{typeDeclarations}\n{helperSource}\n\n{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
+                let renderedGroups = String.concat "\n\n" values
+                $"import (\n{renderedGroups}\n)\n\n"
+        let programSource = $"package fscriptprogram\n\n{importSource}{typeDeclarations}\n{helperSource}\n\n{consoleSource}{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
         let mainSource = $"package main\n\nimport (\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"os\"\n)\n\nfunc main() {{\n\tvalue := fscriptprogram.Run()\n\t_, _ = os.Stdout.WriteString(fscriptprogram.FormatResult(value) + \"\\n\")\n}}\n"
         [ "go.mod", $"module {moduleName}\n\ngo 1.25\n"
           "main.go", mainSource

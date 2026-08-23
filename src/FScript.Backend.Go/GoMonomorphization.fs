@@ -206,7 +206,10 @@ module GoMonomorphization =
                 let recurse = transform substitution environment
                 let node =
                     match expression.Node with
-                    | Lir.Load id when state.Declarations.ContainsKey id -> Lir.Load(requestDeclaration id concreteType expression.Span)
+                    | Lir.Load id when state.Declarations.ContainsKey id ->
+                        let declaration = state.Declarations.[id]
+                        let requestedType = if GoSpecialization.containsVariable declaration.Type then concreteType else declaration.Type
+                        Lir.Load(requestDeclaration id requestedType expression.Span)
                     | Lir.Load id -> Lir.Load(lookup expression.Span id (closedType expression.Span concreteType) environment)
                     | Lir.MakeClosure(functionId, _) ->
                         let specialized = requestFunction substitution environment functionId concreteType expression.Span
@@ -281,10 +284,10 @@ module GoMonomorphization =
                     | value -> value
                 { expression with Type = concreteType; Node = node }
 
-            let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
             for declaration in program.Declarations do
                 if GoSpecialization.effect declaration.Value = GoSpecialization.Observable && not (GoSpecialization.containsVariable declaration.Type) then
                     requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
+            let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
             Ok
                 { program with
                     Functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList

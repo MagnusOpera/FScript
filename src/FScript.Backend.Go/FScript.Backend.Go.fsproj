@@ -12,7 +12,4 @@
   <ItemGroup>
     <ProjectReference Include="..\FScript.Compiler\FScript.Compiler.fsproj" />
   </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="Runtime\*.go" />
-  </ItemGroup>
 </Project>

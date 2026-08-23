@@ -158,7 +158,8 @@ type GoBackendTests() =
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
             Assert.That(program, Does.Contain("goimport"))
             Assert.That(program, Does.Contain(".Person{Name:"))
-            Assert.That(program, Does.Contain("importedResult.Name"))
+            Assert.That(program, Does.Contain("func(goimport0.Person) goimport0.Person"))
+            Assert.That(program, Does.Not.Contain("any"))
 
     [<Test>]
     member _.``Go backend rejects unsupported imported record shapes`` () =
@@ -291,6 +292,10 @@ type GoBackendTests() =
             match GoBackend.generate { ModuleName = "fscript.generated/testprogram" } compiled.Lir with
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        for file in files |> List.filter (fun file -> file.RelativePath.EndsWith(".go", StringComparison.Ordinal)) do
+            Assert.That(Regex.IsMatch(file.Content, @"\bany\b|interface\s*\{"), Is.False, file.RelativePath)
+            Assert.That(file.Content, Does.Not.Contain("reflect."), file.RelativePath)
+            Assert.That(file.Content, Does.Not.Contain("IntrinsicClosure"), file.RelativePath)
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-go-{Guid.NewGuid():N}")
         try
             for file in files do

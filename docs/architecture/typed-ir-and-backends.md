@@ -32,6 +32,8 @@ Pattern plans are emitted as concrete checks and projections over those represen
 
 Reachable builtins are emitted at their specialized signatures. List, option, and ordered-map loops call native typed function values, while structural equality and display formatting are generated recursively for each reachable closed representation.
 
+Generated projects contain only the typed program package and its entry point. The former erased runtime templates, universal closure dispatch, dynamic aggregate casts, reflection-oriented carriers, and generic pattern matcher are not embedded or emitted.
+
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
 
 HIR and LIR expose canonical debug printers with stable artifact-local IDs and normalized type rendering. The arithmetic vertical slice is checked in as paired snapshots so changes to symbol allocation, function lifting, captures, or operation selection are reviewed explicitly.
