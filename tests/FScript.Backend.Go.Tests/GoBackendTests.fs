@@ -75,6 +75,38 @@ type GoBackendTests() =
             Assert.That(specialized.Functions |> List.forall (fun item -> not (GoSpecialization.containsVariable item.ParameterType) && not (GoSpecialization.containsVariable item.ReturnType)), Is.True)
 
     [<Test>]
+    member _.``Go specialization uses concrete curry and bottom context`` () =
+        let source = "let fail message = raise message\nlet parse label text =\n    match Int.tryParse text with\n    | Some value -> value\n    | None -> fail $\"Invalid {label}: {text}\"\nparse \"number\" \"1\""
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/context" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let generated = files |> List.map _.Content |> String.concat "\n"
+            Assert.That(generated, Does.Not.Contain("any"))
+
+    [<Test>]
+    member _.``Basic sample reaches its deferred Regex diagnostic after specialization`` () =
+        let samplePath = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/basic/basic.fss"))
+        let sampleDirectory =
+            match Path.GetDirectoryName samplePath with
+            | null -> failwith "The BASIC sample path has no parent directory."
+            | value -> value
+        let program = IncludeResolver.parseProgramFromFile sampleDirectory samplePath
+        let compiled =
+            match Compiler.compile { Program = program; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/basic" } compiled.Lir with
+        | Ok _ -> Assert.Fail("Expected the deferred Regex capability diagnostic")
+        | Error diagnostics ->
+            Assert.That(diagnostics.Length, Is.EqualTo(1))
+            Assert.That(diagnostics.Head.Code, Is.EqualTo("FSB4006"))
+            Assert.That(diagnostics.Head.Message, Does.Contain("Regex.matchGroups"))
+
+    [<Test>]
     member _.``Quicksort uses the zero-erasure Go path`` () =
         requireGo ()
         let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/quicksort.fss"))

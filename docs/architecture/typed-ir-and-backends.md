@@ -28,6 +28,8 @@ LIR is executable but not a Go AST. Lambda bodies are lifted into a deterministi
 
 The Go backend specializes every reachable HM instantiation before selecting representations. Named and structural records, declared unions, tuples, options, lists, maps, and functions therefore receive closed concrete Go types. Explicit LIR conversion nodes copy record fields while evaluating their source once. Imported record adapters remain isolated at target-call boundaries.
 
+Specialization propagates each enclosing concrete function result, application argument, branch result, and pattern-scrutinee representation into its children. This contextual propagation is required because resolved expression types normalize locally quantified variables independently; unrelated curried parameters must not alias merely because both are locally numbered `0`. Pattern bindings derive their closed representation from their projection of the concrete scrutinee, including ignored tuple fields and collection tails.
+
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
 Reachable builtins are emitted at their specialized signatures. List, option, and ordered-map loops call native typed function values, while structural equality and display formatting are generated recursively for each reachable closed representation.

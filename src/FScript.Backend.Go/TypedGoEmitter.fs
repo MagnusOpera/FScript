@@ -89,6 +89,9 @@ module TypedGoEmitter =
 
     let private typedHostExternals = set [ "Console.readLine"; "Console.writeLine"; "Fs.readText" ]
 
+    let isTypedIntrinsic name = Set.contains name typedIntrinsics
+    let isTypedHostExternal name = Set.contains name typedHostExternals
+
     let rec private supportedExpression (functions: Map<Lir.FunctionId, Lir.Function>) (expression: Lir.Expression) =
         let supported = supportedExpression functions
         supportedType expression.Type
@@ -113,8 +116,8 @@ module TypedGoEmitter =
                && (cases |> List.forall (fun case -> case.Guard |> Option.forall supported && supported case.Body))
            | Lir.Interpolate parts -> parts |> List.forall (function Lir.TextPart _ -> true | Lir.ValuePart value -> supported value)
            | Lir.ForEach(_, _, itemType, source, body) -> supportedType itemType && supported source && supported body
-           | Lir.Intrinsic name -> Set.contains name typedIntrinsics
-           | Lir.HostExternal(name, _) -> Set.contains name typedHostExternals
+           | Lir.Intrinsic name -> isTypedIntrinsic name
+           | Lir.HostExternal(name, _) -> isTypedHostExternal name
            | Lir.TargetImport _ -> true
 
     let canEmit (program: Lir.Program) =

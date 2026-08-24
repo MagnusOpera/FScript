@@ -25,8 +25,10 @@ module GoBackend =
             Some(diagnostic "FSB4004" "Task values are not supported by the Go backend." (Some expression.Span))
         else
             match expression.Node with
-            | Lir.HostExternal(name, _) -> Some(diagnostic "FSB4006" $"Host external '{name}' is not supported by the Go backend." (Some expression.Span))
-            | Lir.Intrinsic name -> Some(diagnostic "FSB4006" $"Runtime intrinsic '{name}' is not supported by the Go backend." (Some expression.Span))
+            | Lir.HostExternal(name, _) when not (TypedGoEmitter.isTypedHostExternal name) ->
+                Some(diagnostic "FSB4006" $"Host external '{name}' is not supported by the Go backend." (Some expression.Span))
+            | Lir.Intrinsic name when not (TypedGoEmitter.isTypedIntrinsic name) ->
+                Some(diagnostic "FSB4006" $"Runtime intrinsic '{name}' is not supported by the Go backend." (Some expression.Span))
             | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right) | Lir.Append(left, right)
             | Lir.Range(left, right) | Lir.IndexGet(left, right) -> first [ left; right ]
             | Lir.Branch(condition, whenTrue, whenFalse) -> first [ condition; whenTrue; whenFalse ]

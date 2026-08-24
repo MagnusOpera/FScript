@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed Go specialization for independently polymorphic curried parameters, bottom branches, named-record results, and ignored pattern fields.
+
 - Enforced zero-erasure Go conformance across generated-project builds, quicksort, specialization diagnostics, and the legacy/LIR/Go cross-runtime harness.
 
 - Removed the erased Go runtime, universal closure ABI, dynamic casts, reflection-oriented carriers, and generic pattern dispatcher from generated projects.
