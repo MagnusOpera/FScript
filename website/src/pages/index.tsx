@@ -172,102 +172,153 @@ export default function Home() {
       description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone Go source.">
       <HomepageHeader />
       <main className={styles.main}>
-        <section className={styles.introduction}>
-          <div className="container">
+        <section className={styles.languageScene}>
+          <div className={`container ${styles.sceneIntro}`}>
             <p className={styles.sectionLabel}>Language lineage</p>
-            <div className={styles.introductionGrid}>
-              <Heading as="h2">ML roots. Less luggage.</Heading>
-              <div className={styles.prose}>
-                <p>
-                  Its syntax and type system draw from F# and OCaml. Hindley-Milner inference gives functions
-                  static types without requiring annotations on every binding.
-                </p>
-                <p>
-                  Records, discriminated unions, immutable collections, curried functions, and pattern matching
-                  do most of the work. FScript leaves out the object system and the larger standard library.
-                </p>
-              </div>
+            <Heading as="h2">Name the thing.<br /><em>Or just ask for its shape.</em></Heading>
+            <p className={styles.sceneLead}>
+              FScript keeps the part of the ML family that makes programs pleasant to reason about: inferred
+              types, immutable data, unions, curried functions, and pattern matching. Then it adds a useful choice.
+              A record can carry a domain name, or a function can accept any value with the fields it needs.
+            </p>
+          </div>
+          <div className={`container ${styles.typeCanvas}`}>
+            <div className={styles.namedType}>
+              <span className={styles.canvasKicker}>A name with meaning</span>
+              <pre><code>{`type Customer =
+  { Name: string
+    Plan: string
+    Seats: int }`}</code></pre>
+              <span className={styles.inferredType}>Customer</span>
             </div>
-            <div className={styles.codeStudy}>
-              <pre><code>{`type Payment =
-  { Customer: string
-    Amount: int
-    Attempts: int }
-
-type Action =
-  | Capture
-  | RetryAfter of int
-  | AskForReview
-
-let decide payment =
-  match payment with
-  | { Amount = amount } when amount > 10000 ->
-      AskForReview
-  | { Attempts = attempts } when attempts < 3 ->
-      RetryAfter 60
-  | _ ->
-      Capture`}</code></pre>
-              <aside className={styles.languageNotes}>
-                <Heading as="h3">An ML-style function</Heading>
-                <p><code>Payment</code> fixes the available fields and their types. A misspelled field fails during loading.</p>
-                <p><code>Action</code> fixes the return cases. <code>RetryAfter</code> must carry an integer.</p>
-                <p>The compiler infers <code>decide : Payment -&gt; Action</code> from the function body.</p>
-                <Link className={styles.inlineLink} to="/manual/learn/language-tour">Read the language tour <Arrow /></Link>
-              </aside>
+            <div className={styles.typeFlow} aria-hidden="true">
+              <span>Name</span><i />
+              <span>Plan</span><i />
+              <span>Seats</span><i />
             </div>
+            <div className={styles.structuralType}>
+              <span className={styles.canvasKicker}>A function with modest demands</span>
+              <pre><code>{`let quote
+  (buyer: {| Plan: string
+             Seats: int |}) =
+  price buyer.Plan * buyer.Seats`}</code></pre>
+              <span className={styles.inferredType}>{`{| Plan: string; Seats: int |} → int`}</span>
+            </div>
+            <p className={styles.typeCaption}>
+              <strong><code>quote customer</code> works.</strong> The function sees the shape it asked for. The rest of
+              <code> Customer</code> stays where it belongs.
+            </p>
+          </div>
+          <div className={`container ${styles.sceneLink}`}>
+            <Link className={styles.inlineLink} to="/manual/learn/language-tour">Meet the language <Arrow /></Link>
           </div>
         </section>
 
-        <section className={styles.hostSection}>
-          <div className={`container ${styles.hostGrid}`}>
-            <div className={styles.hostCopy}>
+        <section className={styles.embeddingScene}>
+          <div className={`container ${styles.embeddingGrid}`}>
+            <div className={styles.embeddingCopy}>
               <p className={styles.sectionLabel}>Interpreted embedding</p>
-              <Heading as="h2">Change the script. Leave the process alone.</Heading>
+              <Heading as="h2">Teach a small language the verbs of your application.</Heading>
               <p>
-                The .NET runtime parses and checks an <code>.fss</code> file before evaluating it. The host calls
-                exported functions and registers the external functions that scripts may use. There is no worker
-                process or network boundary.
+                Your application already knows how to find a customer, price an order, or schedule a job. Expose
+                those operations as typed functions and FScript turns them into a vocabulary for changeable rules.
               </p>
               <p>
-                FScript cannot discover your database or HTTP client. If the host does not register an operation,
-                that operation does not exist in the script environment.
+                Scripts are loaded, checked, and called in-process. They compose the capabilities you provide and
+                export ordinary functions back to the host. Your infrastructure remains yours. The policy becomes
+                something people can read, test, and replace.
               </p>
-              <Link className={styles.inlineLink} to="/manual/embedding/overview">How embedding works <Arrow /></Link>
+              <Link className={styles.lightLink} to="/manual/embedding/overview">Build a language inside your application <Arrow /></Link>
             </div>
-            <div className={styles.contract} aria-label="Example host contract">
-              <div className={styles.contractHeading}><span>Registered functions</span><span>pricing.fss</span></div>
-              <code>Customer.find : string -&gt; Customer option</code>
-              <code>Quote.save : Quote -&gt; bool</code>
-              <code>Audit.write : string -&gt; unit</code>
-              <p>The script sees these names and types. The host implements them.</p>
+            <div className={styles.domainOrbit} aria-label="Host functions become a typed FScript vocabulary">
+              <div className={styles.orbitRing} aria-hidden="true" />
+              <div className={`${styles.orbitVerb} ${styles.verbOne}`}><code>Customer.find</code><span>host function</span></div>
+              <div className={`${styles.orbitVerb} ${styles.verbTwo}`}><code>Quote.save</code><span>host function</span></div>
+              <div className={`${styles.orbitVerb} ${styles.verbThree}`}><code>Audit.write</code><span>host function</span></div>
+              <div className={styles.scriptCore}>
+                <span>pricing.fss</span>
+                <strong>your rules</strong>
+                <code>Customer → Quote</code>
+              </div>
+              <div className={styles.exportBeam}><span>[&lt;export&gt;] quote</span><i aria-hidden="true">→</i><strong>YOUR APP</strong></div>
             </div>
           </div>
         </section>
 
-        <section className={styles.useSection}>
-          <div className="container">
-            <div className={styles.useRows}>
-              <article>
-                <div>
-                  <p className={styles.sectionLabel}>JavaScript support</p>
-                  <Heading as="h2">The whole interpreter fits in the browser.</Heading>
+        <section className={styles.javascriptScene}>
+          <div className={`container ${styles.javascriptGrid}`}>
+            <div className={styles.browserStage} aria-label="FScript running in a browser">
+              <div className={styles.browserChrome}><i /><i /><i /><span>localhost / rules</span></div>
+              <div className={styles.browserBody}>
+                <div className={styles.browserEditor}>
+                  <span>discount.fss</span>
+                  <pre><code>{`let discount customer =
+  match customer.Plan with
+  | "scale" -> 20
+  | "team"  -> 10
+  | _       -> 0`}</code></pre>
                 </div>
-                <div>
-                  <p>Fable compiles the FScript parser, type checker, and evaluator to JavaScript. The website sandbox uses that build in the browser. It interprets FScript source rather than generating JavaScript with <code>eval</code>.</p>
-                  <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Use FScript from JavaScript <Arrow /></Link>
+                <div className={styles.browserResult}>
+                  <span>TYPE</span><code>Customer → int</code>
+                  <span>RESULT</span><strong>20</strong>
                 </div>
-              </article>
-              <article>
-                <div>
-                  <p className={styles.sectionLabel}>Go support</p>
-                  <Heading as="h2">Types in. Native binary out.</Heading>
-                </div>
-                <div>
-                  <p>The Go backend specializes inferred types across the whole program. It emits concrete structs, slices, functions, and tagged unions. Imported FScript files become separate Go files in one package.</p>
-                  <Link className={styles.inlineLink} to="/manual/compiler/go">Compile to Go <Arrow /></Link>
-                </div>
-              </article>
+              </div>
+              <div className={styles.browserStatus}><span><i /> checked in this tab</span><span>Fable · ESM</span></div>
             </div>
+            <div className={styles.javascriptCopy}>
+              <p className={styles.sectionLabel}>JavaScript support</p>
+              <Heading as="h2">Put the language where the idea happens.</Heading>
+              <p>
+                Fable compiles the parser, type checker, and evaluator ahead of time to JavaScript modules. A browser,
+                Node application, or playground can load FScript source and get the same types and language semantics
+                without calling a server.
+              </p>
+              <p>
+                The language engine ships as ordinary ESM, so production tooling can bundle and minify it alongside
+                the rest of the application. This website's sandbox is the proof: the editor and the language run
+                together in your tab.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Take FScript to JavaScript <Arrow /></Link>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.goScene}>
+          <div className={`container ${styles.goIntro}`}>
+            <div>
+              <p className={styles.sectionLabel}>Go support</p>
+              <Heading as="h2">A script goes in.<br /><em>A native program walks out.</em></Heading>
+            </div>
+            <p>
+              The Go backend does not drag an interpreter into the binary. It closes the inferred types across the
+              whole program, removes unreachable work, simplifies calls, and turns proven tail recursion into loops.
+              What remains is direct, typed Go.
+            </p>
+          </div>
+          <div className={`container ${styles.goWorkbench}`}>
+            <div className={styles.goSource}>
+              <span className={styles.workbenchLabel}>FScript knows</span>
+              <code>list&lt;int&gt;</code>
+              <code>option&lt;Customer&gt;</code>
+              <code>int → int</code>
+            </div>
+            <div className={styles.optimizerTrack} aria-label="Go compiler optimizations">
+              <span>specialize types</span>
+              <span>prune dead code</span>
+              <span>reduce calls</span>
+              <span>lower tail loops</span>
+            </div>
+            <div className={styles.goOutput}>
+              <span className={styles.workbenchLabel}>Go receives</span>
+              <code>[]int64</code>
+              <code>option_Customer</code>
+              <code>func(int64) int64</code>
+            </div>
+            <div className={styles.binaryStamp} aria-hidden="true"><span>GO</span><strong>01</strong><small>standalone</small></div>
+          </div>
+          <div className={`container ${styles.goFooter}`}>
+            <p>Concrete slices. Concrete structs. Native functions. Separate source files, one optimized package.</p>
+            <Link className={styles.darkLink} to="/manual/compiler/go">Compile your first Go project <Arrow /></Link>
           </div>
         </section>
 

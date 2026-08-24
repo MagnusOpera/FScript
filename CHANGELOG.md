@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Redesigned the homepage with richer language, embedding, JavaScript, and optimized Go stories.
+
 - Reworked the homepage around FScript's language lineage, interpreters, JavaScript runtime, and Go backend.
 
 - Simplified the website by removing compiler-internals pages and the homepage IR section.
