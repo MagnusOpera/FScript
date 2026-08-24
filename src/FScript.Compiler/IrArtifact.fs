@@ -173,6 +173,12 @@ module IrArtifact =
         | Lir.PipeClosure(argument, fn) ->
             writer.WriteString("kind", "pipe-call"); writer.WritePropertyName("argument"); writeExpression writer argument
             writer.WritePropertyName("function"); writeExpression writer fn
+        | Lir.TailCallClosure(fn, argument) ->
+            writer.WriteString("kind", "tail-call"); writer.WritePropertyName("function"); writeExpression writer fn
+            writer.WritePropertyName("argument"); writeExpression writer argument
+        | Lir.TailPipeClosure(argument, fn) ->
+            writer.WriteString("kind", "tail-pipe-call"); writer.WritePropertyName("argument"); writeExpression writer argument
+            writer.WritePropertyName("function"); writeExpression writer fn
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             writer.WriteString("kind", "branch"); writer.WritePropertyName("condition"); writeExpression writer condition
             writer.WritePropertyName("whenTrue"); writeExpression writer whenTrue; writer.WritePropertyName("whenFalse"); writeExpression writer whenFalse
@@ -435,6 +441,8 @@ module IrArtifact =
                     (property "captures" element).EnumerateArray() |> Seq.map (fun item -> Lir.SymbolId(item.GetInt32())) |> Seq.toList)
             | "call" -> Lir.CallClosure(readExpression (property "function" element), readExpression (property "argument" element))
             | "pipe-call" -> Lir.PipeClosure(readExpression (property "argument" element), readExpression (property "function" element))
+            | "tail-call" -> Lir.TailCallClosure(readExpression (property "function" element), readExpression (property "argument" element))
+            | "tail-pipe-call" -> Lir.TailPipeClosure(readExpression (property "argument" element), readExpression (property "function" element))
             | "branch" -> Lir.Branch(readExpression (property "condition" element), readExpression (property "whenTrue" element), readExpression (property "whenFalse" element))
             | "operation" -> Lir.Operation(readOperation (stringProperty "operation" element), (property "arguments" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)
             | "tuple" -> Lir.Tuple((property "items" element).EnumerateArray() |> Seq.map readExpression |> Seq.toList)

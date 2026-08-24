@@ -241,6 +241,24 @@ type HirTests() =
         Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> declaration.Name = "ignored"), Is.True)
 
     [<Test>]
+    member _.``LIR optimization marks calls in function tail position`` () =
+        let source = "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 10"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(Lir.format compiled.Lir, Does.Contain("tail-call-closure"))
+
+    [<Test>]
+    member _.``LIR optimization preserves pipeline evaluation order in tail calls`` () =
+        let source = "let rec loop n = if n <= 0 then n else (n - 1) |> loop\nloop 10"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(Lir.format compiled.Lir, Does.Contain("tail-pipe-closure"))
+
+    [<Test>]
     member _.``LIR lowers patterns into projection and check plans`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "match Some (1, 2) with | Some (left, right) -> left + right | None -> 0"; Externs = [] } with

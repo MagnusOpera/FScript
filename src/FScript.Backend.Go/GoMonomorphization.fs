@@ -70,7 +70,9 @@ module GoMonomorphization =
         match expression.Node with
         | Lir.Load id -> if Set.contains id bound then Set.empty else Set.singleton id
         | Lir.MakeClosure(_, captures) -> Set.difference (Set.ofList captures) bound
-        | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right)
+        | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+        | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+        | Lir.Cons(left, right)
         | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> Set.union (nested left) (nested right)
         | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
         | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values
@@ -97,7 +99,9 @@ module GoMonomorphization =
         let rec visit (value: Lir.Expression) =
             match value.Node with
             | Lir.Load id when id = target -> results.Add(GoSpecialization.apply substitution value.Type)
-            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right)
+            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+            | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+            | Lir.Cons(left, right)
             | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> visit left; visit right
             | Lir.Branch(a, b, c) -> visit a; visit b; visit c
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> List.iter visit values
@@ -250,13 +254,13 @@ module GoMonomorphization =
                 let rec rootName (value: Lir.Expression) =
                     match value.Node with
                     | Lir.Load id when state.Declarations.ContainsKey id -> Some state.Declarations.[id].Name
-                    | Lir.CallClosure(fn, _) -> rootName fn
+                    | Lir.CallClosure(fn, _) | Lir.TailCallClosure(fn, _) -> rootName fn
                     | _ -> None
-                let rec finalArgument (value: Lir.Expression) = match value.Node with Lir.CallClosure(_, argument) -> argument | _ -> value
+                let rec finalArgument (value: Lir.Expression) = match value.Node with Lir.CallClosure(_, argument) | Lir.TailCallClosure(_, argument) -> argument | _ -> value
                 let isBottom =
                     match source.Value.Node with
                     | Lir.Fail _ -> true
-                    | Lir.CallClosure _ when rootName source.Value = Some "List.tail" -> match (finalArgument source.Value).Node with Lir.List [] -> true | _ -> false
+                    | (Lir.CallClosure _ | Lir.TailCallClosure _) when rootName source.Value = Some "List.tail" -> match (finalArgument source.Value).Node with Lir.List [] -> true | _ -> false
                     | _ -> false
                 let concrete =
                     (if isBottom then
@@ -285,13 +289,13 @@ module GoMonomorphization =
                 let rec rootDeclarationName (value: Lir.Expression) =
                     match value.Node with
                     | Lir.Load id when state.Declarations.ContainsKey id -> Some state.Declarations.[id].Name
-                    | Lir.CallClosure(fn, _) -> rootDeclarationName fn
+                    | Lir.CallClosure(fn, _) | Lir.TailCallClosure(fn, _) -> rootDeclarationName fn
                     | _ -> None
                 let rec isBottom (value: Lir.Expression) =
                     match value.Node with
                     | Lir.Fail _ -> true
-                    | Lir.CallClosure _ when rootDeclarationName value = Some "List.tail" ->
-                        let rec finalArgument (current: Lir.Expression) = match current.Node with Lir.CallClosure(_, argument) -> argument | _ -> current
+                    | (Lir.CallClosure _ | Lir.TailCallClosure _) when rootDeclarationName value = Some "List.tail" ->
+                        let rec finalArgument (current: Lir.Expression) = match current.Node with Lir.CallClosure(_, argument) | Lir.TailCallClosure(_, argument) -> argument | _ -> current
                         match (finalArgument value).Node with Lir.List [] -> true | _ -> false
                     | Lir.Branch(_, whenTrue, whenFalse) -> isBottom whenTrue && isBottom whenFalse
                     | Lir.DecisionTree(_, cases) -> not cases.IsEmpty && cases |> List.forall (_.Body >> isBottom)
@@ -299,7 +303,7 @@ module GoMonomorphization =
                 let representationInsensitive =
                     match expression.Node with
                     | Lir.Operation(Lir.StructuralEqual, values) -> values |> List.exists (_.Type >> GoSpecialization.containsVariable)
-                    | Lir.CallClosure _ ->
+                    | Lir.CallClosure _ | Lir.TailCallClosure _ ->
                         match rootDeclarationName expression with
                         | Some("Option.isNone" | "Option.isSome" | "Map.count") -> true
                         | _ -> isBottom expression
@@ -308,7 +312,9 @@ module GoMonomorphization =
                     let own = Types.ftvType (GoSpecialization.apply substitution value.Type)
                     let children =
                         match value.Node with
-                        | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> [ left; right ]
+                        | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+                        | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+                        | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> [ left; right ]
                         | Lir.Branch(a, b, c) -> [ a; b; c ]
                         | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> values
                         | Lir.Record fields -> List.map snd fields
@@ -370,6 +376,14 @@ module GoMonomorphization =
                             | TFun(parameterType, _) -> parameterType
                             | _ -> argumentType
                         Lir.CallClosure(transformedFunction, recurseAs concreteArgument argument)
+                    | Lir.TailCallClosure(fn, argument) ->
+                        let argumentType = resolvedType argument
+                        let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
+                        let concreteArgument =
+                            match transformedFunction.Type with
+                            | TFun(parameterType, _) -> parameterType
+                            | _ -> argumentType
+                        Lir.TailCallClosure(transformedFunction, recurseAs concreteArgument argument)
                     | Lir.PipeClosure(argument, fn) ->
                         let argumentType = resolvedType argument
                         let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
@@ -378,6 +392,14 @@ module GoMonomorphization =
                             | TFun(parameterType, _) -> parameterType
                             | _ -> argumentType
                         Lir.PipeClosure(recurseAs concreteArgument argument, transformedFunction)
+                    | Lir.TailPipeClosure(argument, fn) ->
+                        let argumentType = resolvedType argument
+                        let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
+                        let concreteArgument =
+                            match transformedFunction.Type with
+                            | TFun(parameterType, _) -> parameterType
+                            | _ -> argumentType
+                        Lir.TailPipeClosure(recurseAs concreteArgument argument, transformedFunction)
                     | Lir.Branch(condition, whenTrue, whenFalse) ->
                         Lir.Branch(recurseAs TBool condition, recurseAs concreteType whenTrue, recurseAs concreteType whenFalse)
                     | Lir.Operation(operation, values) -> Lir.Operation(operation, List.map recurse values)

@@ -40,9 +40,11 @@ Every source lambda is lifted into a `Lir.Function` containing:
 - a source span;
 - a body expression.
 
-`MakeClosure(functionId, captures)` constructs a closure. `CallClosure` applies one argument. `PipeClosure` preserves value-first pipeline evaluation. Partial application follows naturally from nested unary closures.
+`MakeClosure(functionId, captures)` constructs a closure. `CallClosure` applies one argument. `PipeClosure` preserves value-first pipeline evaluation. The optimizer rewrites calls in function tail position to `TailCallClosure` or `TailPipeClosure`; keeping two nodes preserves their distinct evaluation order. Partial application follows naturally from nested unary closures.
 
 `LetRecursiveGroup` establishes all recursive values before their bodies run. Lifted functions validate their capture list against the ordered free-symbol set of their body.
+
+Tail position propagates through selected branch and decision-tree bodies and through the body of lexical binding nodes, but never through operands, guards, aggregate construction, or a call whose result is subsequently consumed. The LIR interpreter trampolines explicit tail calls across closures, so deep proper-tail recursion does not consume the host stack.
 
 ## Operations and control flow
 

@@ -17,7 +17,9 @@ module GoBackend =
                 Some(diagnostic "FSB4006" $"Host external '{name}' is not supported by the Go backend." (Some expression.Span))
             | Lir.Intrinsic name when not (TypedGoEmitter.isTypedIntrinsic name) ->
                 Some(diagnostic "FSB4006" $"Runtime intrinsic '{name}' is not supported by the Go backend." (Some expression.Span))
-            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right) | Lir.Append(left, right)
+            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+            | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+            | Lir.Cons(left, right) | Lir.Append(left, right)
             | Lir.Range(left, right) | Lir.IndexGet(left, right) -> first [ left; right ]
             | Lir.Branch(condition, whenTrue, whenFalse) -> first [ condition; whenTrue; whenFalse ]
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> first values

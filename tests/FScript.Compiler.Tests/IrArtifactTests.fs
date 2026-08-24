@@ -31,6 +31,15 @@ type IrArtifactTests() =
         | Ok loaded -> Assert.That(loaded, Is.EqualTo(compiled.Lir))
 
     [<Test>]
+    member _.``IR artifact round trips explicit tail calls`` () =
+        let compiled = compile "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 10"
+        let bytes = IrArtifact.serialize compiled.Lir
+        Assert.That(Encoding.UTF8.GetString(bytes), Does.Contain("\"kind\": \"tail-call\""))
+        match IrArtifact.deserialize bytes with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok loaded -> Assert.That(loaded, Is.EqualTo(compiled.Lir))
+
+    [<Test>]
     member _.``IR artifact rejects incompatible versions`` () =
         let bytes = compile "1" |> _.Lir |> IrArtifact.serialize
         let invalid = Encoding.UTF8.GetString(bytes).Replace("\"irVersion\": 1", "\"irVersion\": 999") |> Encoding.UTF8.GetBytes

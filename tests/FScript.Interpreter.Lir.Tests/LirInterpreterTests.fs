@@ -14,6 +14,16 @@ type LirInterpreterTests() =
         | _ -> string value
 
     [<Test>]
+    member _.``Trampolines deep tail recursion`` () =
+        let source = "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 200000"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 0L))
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+
+    [<Test>]
     member _.``Captures portable console output`` () =
         match Compiler.compile { Program = Parser.parseProgram "Console.writeLine \"hello\""; Externs = [] } with
         | Error diagnostics -> Assert.Fail(errorText diagnostics)

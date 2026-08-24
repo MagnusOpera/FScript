@@ -119,7 +119,9 @@ module TypedGoEmitter =
         && match expression.Node with
            | Lir.Constant _ | Lir.Load _ | Lir.NoneValue | Lir.RuntimeContext | Lir.TypeToken _ -> true
            | Lir.MakeClosure(id, _) -> functions |> Map.tryFind id |> Option.exists (fun fn -> supported fn.Body)
-           | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right)
+           | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+           | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+           | Lir.Cons(left, right)
            | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> supported left && supported right
            | Lir.Branch(a, b, c) -> supported a && supported b && supported c
            | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> List.forall supported values
@@ -158,7 +160,9 @@ module TypedGoEmitter =
         let rec targetModules (expression: Lir.Expression) =
             [ match expression.Node with
               | Lir.TargetImport(modulePath, _) -> yield modulePath
-              | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> yield! targetModules left; yield! targetModules right
+              | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+              | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+              | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> yield! targetModules left; yield! targetModules right
               | Lir.Branch(a, b, c) -> yield! targetModules a; yield! targetModules b; yield! targetModules c
               | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> for value in values do yield! targetModules value
               | Lir.Record fields | Lir.RecordUpdate(_, fields) -> for _, value in fields do yield! targetModules value
@@ -215,7 +219,9 @@ module TypedGoEmitter =
             collectType expression.Type
             match expression.Node with
             | Lir.MakeClosure(id, _) -> let fn = functions.[id] in collectType fn.ParameterType; collectType fn.ReturnType; collectExpression fn.Body
-            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right) | Lir.Cons(left, right)
+            | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+            | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+            | Lir.Cons(left, right)
             | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> collectExpression left; collectExpression right
             | Lir.Branch(a, b, c) -> collectExpression a; collectExpression b; collectExpression c
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> List.iter collectExpression values
@@ -624,7 +630,8 @@ module TypedGoEmitter =
             | Lir.MakeClosure(id, _) ->
                 let fn = functions.[id]
                 TFun(fn.ParameterType, fn.ReturnType)
-            | Lir.CallClosure(fn, _) | Lir.PipeClosure(_, fn) ->
+            | Lir.CallClosure(fn, _) | Lir.PipeClosure(_, fn)
+            | Lir.TailCallClosure(fn, _) | Lir.TailPipeClosure(_, fn) ->
                 match emittedType fn with
                 | TFun(_, resultType) -> resultType
                 | _ -> expression.Type
@@ -639,11 +646,11 @@ module TypedGoEmitter =
                 let parameter = symbolName "arg" fn.Parameter
                 let body = emit (Map.add fn.Parameter parameter environment) fn.Body
                 $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\treturn {indent (coerce fn.Body.Type fn.ReturnType body)}\n}}"
-            | Lir.CallClosure(fn, argument) ->
+            | Lir.CallClosure(fn, argument) | Lir.TailCallClosure(fn, argument) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
                 $"({emitChild fn})({coerce (emittedType argument) parameterType (emitChild argument)})"
-            | Lir.PipeClosure(argument, fn) ->
+            | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
                 $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (coerce (emittedType argument) parameterType (emitChild argument))}\n\tpipelineFunction := {indent (emitChild fn)}\n\treturn pipelineFunction(pipelineArgument)\n}}()"

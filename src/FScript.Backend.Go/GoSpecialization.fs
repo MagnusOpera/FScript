@@ -123,7 +123,7 @@ module GoSpecialization =
         match expression.Node with
         | Lir.Constant _ | Lir.Load _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _
         | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
-        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.Fail _ -> Observable
+        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.TailCallClosure _ | Lir.TailPipeClosure _ | Lir.Fail _ -> Observable
         | Lir.Branch(condition, whenTrue, whenFalse) -> combine [ child condition; child whenTrue; child whenFalse ]
         | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> values |> List.map child |> combine
         | Lir.Record fields -> fields |> List.map (snd >> child) |> combine

@@ -30,6 +30,8 @@ module Lir =
         | MakeClosure of FunctionId * SymbolId list
         | CallClosure of Expression * Expression
         | PipeClosure of Expression * Expression
+        | TailCallClosure of Expression * Expression
+        | TailPipeClosure of Expression * Expression
         | Branch of Expression * Expression * Expression
         | Operation of Operation * Expression list
         | Tuple of Expression list
@@ -177,6 +179,8 @@ module Lir =
             | MakeClosure(id, captures) -> add $"make-closure @{functionNumber id} captures={symbols captures}"
             | CallClosure(fn, argument) -> children "call-closure" [ fn; argument ]
             | PipeClosure(value, fn) -> children "pipe-closure" [ value; fn ]
+            | TailCallClosure(fn, argument) -> children "tail-call-closure" [ fn; argument ]
+            | TailPipeClosure(value, fn) -> children "tail-pipe-closure" [ value; fn ]
             | Branch(condition, whenTrue, whenFalse) -> children "branch" [ condition; whenTrue; whenFalse ]
             | Operation(operation, arguments) -> children $"operation {operation}" arguments
             | Tuple items -> children "tuple" items
@@ -312,7 +316,9 @@ module LirLowering =
         match value.Node with
         | Lir.Load id -> if Set.contains id bound then Set.empty else Set.singleton id
         | Lir.MakeClosure(_, captures) -> Set.difference (Set.ofList captures) bound
-        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
+        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
+        | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn)
+        | Lir.Append(fn, argument) | Lir.Cons(fn, argument)
         | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (free fn) (free argument)
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ free condition; free whenTrue; free whenFalse ] |> Set.unionMany
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map free |> Set.unionMany
@@ -582,10 +588,10 @@ module LirValidation =
                         match expression.Type with
                         | TFun(argument, result) when compatible argument fn.ParameterType && compatible result fn.ReturnType -> ()
                         | _ -> report "FSL2006" "LIR closure signature is inconsistent with its lifted function." expression.Span
-                | Lir.CallClosure(fn, argument) ->
+                | Lir.CallClosure(fn, argument) | Lir.TailCallClosure(fn, argument) ->
                     check fn; check argument
                     match fn.Type with TFun(parameter, result) when compatible parameter argument.Type && compatible result expression.Type -> () | _ -> report "FSL2006" "LIR closure call signature is inconsistent." expression.Span
-                | Lir.PipeClosure(argument, fn) ->
+                | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                     check argument; check fn
                     match fn.Type with TFun(parameter, result) when compatible parameter argument.Type && compatible result expression.Type -> () | _ -> report "FSL2006" "LIR pipeline call signature is inconsistent." expression.Span
                 | Lir.Branch(condition, whenTrue, whenFalse) ->
@@ -673,7 +679,8 @@ module LirOptimization =
         match expression.Node with
         | Lir.Constant _ | Lir.Load _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _
         | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
-        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.Fail _ | Lir.ForEach _ -> Observable
+        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.TailCallClosure _ | Lir.TailPipeClosure _
+        | Lir.Fail _ | Lir.ForEach _ -> Observable
         | Lir.Operation((Lir.IntDivide | Lir.IntRemainder), _) -> Observable
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> combine
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> combine
@@ -698,7 +705,9 @@ module LirOptimization =
         let child = loadedSymbols
         match expression.Node with
         | Lir.Load id -> Set.singleton id
-        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Cons(fn, argument)
+        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
+        | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn)
+        | Lir.Cons(fn, argument)
         | Lir.Append(fn, argument) | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (child fn) (child argument)
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> Set.unionMany
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> Set.unionMany
@@ -755,6 +764,8 @@ module LirOptimization =
             else withNode (Lir.LetRecursiveGroup(bindings, body))
         | Lir.CallClosure(fn, argument) -> withNode (Lir.CallClosure(recurse fn, recurse argument))
         | Lir.PipeClosure(argument, fn) -> withNode (Lir.PipeClosure(recurse argument, recurse fn))
+        | Lir.TailCallClosure(fn, argument) -> withNode (Lir.TailCallClosure(recurse fn, recurse argument))
+        | Lir.TailPipeClosure(argument, fn) -> withNode (Lir.TailPipeClosure(recurse argument, recurse fn))
         | Lir.Operation(operation, arguments) -> withNode (Lir.Operation(operation, List.map recurse arguments))
         | Lir.Tuple items -> withNode (Lir.Tuple(List.map recurse items))
         | Lir.List items -> withNode (Lir.List(List.map recurse items))
@@ -785,6 +796,8 @@ module LirOptimization =
             withNode (Lir.MakeClosure(mapped, Map.tryFind id captureMap |> Option.defaultValue captures))
         | Lir.CallClosure(fn, argument) -> withNode (Lir.CallClosure(recurse fn, recurse argument))
         | Lir.PipeClosure(argument, fn) -> withNode (Lir.PipeClosure(recurse argument, recurse fn))
+        | Lir.TailCallClosure(fn, argument) -> withNode (Lir.TailCallClosure(recurse fn, recurse argument))
+        | Lir.TailPipeClosure(argument, fn) -> withNode (Lir.TailPipeClosure(recurse argument, recurse fn))
         | Lir.Branch(condition, whenTrue, whenFalse) -> withNode (Lir.Branch(recurse condition, recurse whenTrue, recurse whenFalse))
         | Lir.Operation(operation, arguments) -> withNode (Lir.Operation(operation, List.map recurse arguments))
         | Lir.Tuple items -> withNode (Lir.Tuple(List.map recurse items))
@@ -808,8 +821,46 @@ module LirOptimization =
         | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, recurse source, recurse body))
         | _ -> expression
 
+    let rec private markTailCalls isTail (expression: Lir.Expression) =
+        let nested value = markTailCalls false value
+        let tail value = markTailCalls isTail value
+        let withNode node = { expression with Node = node }
+        match expression.Node with
+        | Lir.CallClosure(fn, argument) ->
+            let fn, argument = nested fn, nested argument
+            if isTail then withNode (Lir.TailCallClosure(fn, argument)) else withNode (Lir.CallClosure(fn, argument))
+        | Lir.PipeClosure(argument, fn) ->
+            let argument, fn = nested argument, nested fn
+            if isTail then withNode (Lir.TailPipeClosure(argument, fn)) else withNode (Lir.PipeClosure(argument, fn))
+        | Lir.TailCallClosure(fn, argument) -> withNode (Lir.TailCallClosure(nested fn, nested argument))
+        | Lir.TailPipeClosure(argument, fn) -> withNode (Lir.TailPipeClosure(nested argument, nested fn))
+        | Lir.Branch(condition, whenTrue, whenFalse) -> withNode (Lir.Branch(nested condition, tail whenTrue, tail whenFalse))
+        | Lir.Let(id, name, recursive, binding, body) -> withNode (Lir.Let(id, name, recursive, nested binding, tail body))
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            withNode (Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, valueType, value) -> id, name, valueType, nested value), tail body))
+        | Lir.DecisionTree(target, cases) ->
+            withNode (Lir.DecisionTree(nested target, cases |> List.map (fun case -> { case with Guard = Option.map nested case.Guard; Body = tail case.Body })))
+        | Lir.Operation(operation, arguments) -> withNode (Lir.Operation(operation, List.map nested arguments))
+        | Lir.Tuple items -> withNode (Lir.Tuple(List.map nested items))
+        | Lir.List items -> withNode (Lir.List(List.map nested items))
+        | Lir.Record fields -> withNode (Lir.Record(fields |> List.map (fun (name, value) -> name, nested value)))
+        | Lir.FieldGet(target, name) -> withNode (Lir.FieldGet(nested target, name))
+        | Lir.SomeValue value -> withNode (Lir.SomeValue(nested value))
+        | Lir.Cons(head, rest) -> withNode (Lir.Cons(nested head, nested rest))
+        | Lir.Append(left, right) -> withNode (Lir.Append(nested left, nested right))
+        | Lir.Fail value -> withNode (Lir.Fail(nested value))
+        | Lir.Range(first, last) -> withNode (Lir.Range(nested first, nested last))
+        | Lir.RecordUpdate(target, fields) -> withNode (Lir.RecordUpdate(nested target, fields |> List.map (fun (name, value) -> name, nested value)))
+        | Lir.RecordConvert(target, targetType) -> withNode (Lir.RecordConvert(nested target, targetType))
+        | Lir.IndexGet(target, index) -> withNode (Lir.IndexGet(nested target, nested index))
+        | Lir.Interpolate parts -> withNode (Lir.Interpolate(parts |> List.map (function Lir.TextPart text -> Lir.TextPart text | Lir.ValuePart value -> Lir.ValuePart(nested value))))
+        | Lir.UnionCase(typeName, caseName, payload) -> withNode (Lir.UnionCase(typeName, caseName, Option.map nested payload))
+        | Lir.Map entries -> withNode (Lir.Map(entries |> List.map (function Lir.KeyValue(key, value) -> Lir.KeyValue(nested key, nested value) | Lir.Spread value -> Lir.Spread(nested value))))
+        | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, nested source, nested body))
+        | _ -> expression
+
     let optimize (program: Lir.Program) =
-        let simplifiedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = simplify fn.Body })
+        let simplifiedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = fn.Body |> simplify |> markTailCalls true })
         let captureMap =
             simplifiedFunctions
             |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber))
@@ -834,7 +885,9 @@ module LirOptimization =
                 | _ ->
                     let collect child = closures child
                     match value.Node with
-                    | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Cons(fn, argument)
+                    | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
+                    | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn)
+                    | Lir.Cons(fn, argument)
                     | Lir.Append(fn, argument) | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> collect fn; collect argument
                     | Lir.Branch(condition, whenTrue, whenFalse) -> collect condition; collect whenTrue; collect whenFalse
                     | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> List.iter collect arguments

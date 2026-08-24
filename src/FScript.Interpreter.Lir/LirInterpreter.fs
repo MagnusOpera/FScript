@@ -305,6 +305,12 @@ module LirInterpreter =
         | Lir.PipeClosure(argument, fn) ->
             evaluate environment argument
             |> Result.bind (fun argumentValue -> evaluate environment fn |> Result.bind (fun fnValue -> applyValue expression.Span fnValue argumentValue))
+        | Lir.TailCallClosure(fn, argument) ->
+            evaluate environment fn
+            |> Result.bind (fun fnValue -> evaluate environment argument |> Result.bind (applyValue expression.Span fnValue))
+        | Lir.TailPipeClosure(argument, fn) ->
+            evaluate environment argument
+            |> Result.bind (fun argumentValue -> evaluate environment fn |> Result.bind (fun fnValue -> applyValue expression.Span fnValue argumentValue))
         | Lir.Branch(condition, whenTrue, whenFalse) ->
             match evaluate environment condition with
             | Ok(VBool true) -> evaluate environment whenTrue
@@ -499,21 +505,79 @@ module LirInterpreter =
         | Lir.TypeToken tokenType -> Ok(VTypeToken tokenType)
 
     and private applyValue span fn value =
-        match fn with
-        | VClosure(parameter, _, body, captured) -> evaluate (captured.Value |> Map.add parameter value) body
-        | VIntrinsic(name, existing) ->
-            let arguments = existing @ [ value ]
-            if arguments.Length = intrinsicArity name then invokeIntrinsic (applyValue span) span name arguments
-            else Ok(VIntrinsic(name, arguments))
-        | VExternal(name, arity, existing) ->
-            let arguments = existing @ [ value ]
-            if arguments.Length = arity then fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
-            else Ok(VExternal(name, arity, arguments))
-        | VTargetImport(modulePath, memberName, arity, existing) ->
-            let arguments = existing @ [ value ]
-            if arguments.Length = arity then fail "FSI3023" span $"Target import '{modulePath}.{memberName}' is not executable from LIR."
-            else Ok(VTargetImport(modulePath, memberName, arity, arguments))
-        | _ -> fail "FSI3003" span "Attempted to call a non-function value."
+        let rec loop currentFunction currentValue =
+            match currentFunction with
+            | VClosure(parameter, _, body, captured) -> tailEvaluate (captured.Value |> Map.add parameter currentValue) body
+            | VIntrinsic(name, existing) ->
+                let arguments = existing @ [ currentValue ]
+                if arguments.Length = intrinsicArity name then invokeIntrinsic (applyValue span) span name arguments
+                else Ok(VIntrinsic(name, arguments))
+            | VExternal(name, arity, existing) ->
+                let arguments = existing @ [ currentValue ]
+                if arguments.Length = arity then fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
+                else Ok(VExternal(name, arity, arguments))
+            | VTargetImport(modulePath, memberName, arity, existing) ->
+                let arguments = existing @ [ currentValue ]
+                if arguments.Length = arity then fail "FSI3023" span $"Target import '{modulePath}.{memberName}' is not executable from LIR."
+                else Ok(VTargetImport(modulePath, memberName, arity, arguments))
+            | _ -> fail "FSI3003" span "Attempted to call a non-function value."
+        and tailEvaluate environment (expression: Lir.Expression) =
+            match expression.Node with
+            | Lir.TailCallClosure(fn, argument) ->
+                evaluate environment fn
+                |> Result.bind (fun fnValue -> evaluate environment argument |> Result.bind (loop fnValue))
+            | Lir.TailPipeClosure(argument, fn) ->
+                evaluate environment argument
+                |> Result.bind (fun argumentValue -> evaluate environment fn |> Result.bind (fun fnValue -> loop fnValue argumentValue))
+            | Lir.Branch(condition, whenTrue, whenFalse) ->
+                evaluate environment condition
+                |> Result.bind (function
+                    | VBool true -> tailEvaluate environment whenTrue
+                    | VBool false -> tailEvaluate environment whenFalse
+                    | _ -> fail "FSI3004" expression.Span "Branch condition is not Boolean.")
+            | Lir.Let(id, _, recursive, binding, body) ->
+                if recursive then
+                    match evaluate environment binding with
+                    | Ok(VClosure(_, _, _, captured) as closure) ->
+                        let next = Map.add id closure environment
+                        captured.Value <- next
+                        tailEvaluate next body
+                    | Ok _ -> fail "FSI3010" expression.Span "Recursive local bindings must be functions."
+                    | Error errors -> Error errors
+                else
+                    evaluate environment binding |> Result.bind (fun bound -> tailEvaluate (Map.add id bound environment) body)
+            | Lir.LetRecursiveGroup(bindings, body) ->
+                let evaluated = bindings |> List.map (fun (id, _, _, binding) -> id, evaluate environment binding)
+                match evaluated |> List.tryPick (fun (_, result) -> match result with Error error -> Some error | Ok _ -> None) with
+                | Some error -> Error error
+                | None when evaluated |> List.exists (fun (_, result) -> match result with Ok(VClosure _) -> false | _ -> true) ->
+                    fail "FSI3010" expression.Span "Recursive local groups must contain only functions."
+                | None ->
+                    let recursiveEnvironment = evaluated |> List.fold (fun env (id, result) -> match result with Ok bound -> Map.add id bound env | Error _ -> env) environment
+                    evaluated |> List.iter (fun (_, result) -> match result with Ok(VClosure(_, _, _, captured)) -> captured.Value <- recursiveEnvironment | _ -> ())
+                    tailEvaluate recursiveEnvironment body
+            | Lir.DecisionTree(target, cases) ->
+                evaluate environment target
+                |> Result.bind (fun targetValue ->
+                    let rec select (remaining: Lir.DecisionCase list) =
+                        match remaining with
+                        | [] -> fail "FSI3012" expression.Span "Match failure."
+                        | case :: rest ->
+                            match matchPlan case.Plan targetValue with
+                            | None -> select rest
+                            | Some bindings ->
+                                let caseEnvironment = Map.fold (fun env id bound -> Map.add id bound env) environment bindings
+                                match case.Guard with
+                                | None -> tailEvaluate caseEnvironment case.Body
+                                | Some guard ->
+                                    evaluate caseEnvironment guard
+                                    |> Result.bind (function
+                                        | VBool true -> tailEvaluate caseEnvironment case.Body
+                                        | VBool false -> select rest
+                                        | _ -> fail "FSI3013" guard.Span "Match guard must evaluate to Boolean.")
+                    select cases)
+            | _ -> evaluate environment expression
+        loop fn value
 
     and private evaluateMany environment items =
         match items with

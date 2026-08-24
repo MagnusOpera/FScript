@@ -20,7 +20,7 @@ The optimization pass conservatively removes unreachable declarations, lifted fu
 
 `Lir.Program` contains named type declarations, imported-record linkage, lifted functions, ordered top-level declarations, and an optional entry expression. Every expression retains a semantic type and source span.
 
-Lambdas become unary lifted functions with explicit ordered captures. `MakeClosure` constructs callable values and `CallClosure` applies one argument, preserving currying and partial application. Recursive groups establish every peer closure before use.
+Lambdas become unary lifted functions with explicit ordered captures. `MakeClosure` constructs callable values and `CallClosure` applies one argument, preserving currying and partial application. Calls in function tail position become explicit normal-order or pipeline-order tail calls. The LIR interpreter trampolines them without consuming the host stack. Recursive groups establish every peer closure before use.
 
 ## Data and operations
 
