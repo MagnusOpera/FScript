@@ -33,6 +33,7 @@
     <Compile Include="BuiltinSignatures.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />
+    <Compile Include="ExportSignatures.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Interactive.fs" />
     <Compile Include="Pretty.fs" />

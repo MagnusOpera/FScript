@@ -49,6 +49,17 @@ type HirTests() =
             Assert.That(Hir.format compiled.Hir, Is.EqualTo(actual))
 
     [<Test>]
+    member _.``Compilation exposes exported function signatures from its frontend pass`` () =
+        let source = "[<Export>] let pair (prefix: string) (count: int) = (prefix, count)"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            let signature = compiled.ExportedFunctions.["pair"]
+            Assert.That(signature.ParameterNames = [ "prefix"; "count" ], Is.True)
+            Assert.That(signature.ParameterTypes = [ TString; TInt ], Is.True)
+            Assert.That(signature.ReturnType, Is.EqualTo(TTuple [ TString; TInt ]))
+
+    [<Test>]
     member _.``Canonical HIR add snapshot is stable`` () =
         let compiled = compiledAdd ()
         let declarations = compiled.Hir.Declarations |> List.filter (fun declaration -> declaration.Name = "add" || declaration.Name.StartsWith("$expression"))
