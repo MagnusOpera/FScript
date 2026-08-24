@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed unused pattern-binding locals and dummy reads from generated Go.
+
 - Removed synthetic constant-true map-pattern branches from generated Go.
 
 - Fixed generated Go option fields whose payload crosses a named and structural record boundary.

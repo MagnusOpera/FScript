@@ -1043,6 +1043,34 @@ module TypedGoEmitter =
                         let tag = Text.Json.JsonSerializer.Serialize(caseName)
                         $"({code}).Tag == {tag}"
                 let emitCase (case: Lir.DecisionCase) =
+                    let rec referencedSymbols (value: Lir.Expression) =
+                        let recurse = referencedSymbols
+                        let many values = values |> List.map recurse |> Set.unionMany
+                        match value.Node with
+                        | Lir.Load id -> Set.singleton id
+                        | Lir.MakeClosure(_, captures) -> Set.ofList captures
+                        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
+                        | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn) -> many [ fn; argument ]
+                        | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
+                        | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values
+                        | Lir.Record fields -> fields |> List.map snd |> many
+                        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> recurse target
+                        | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> many [ left; right ]
+                        | Lir.Let(_, _, _, binding, body) -> many [ binding; body ]
+                        | Lir.LetRecursiveGroup(bindings, body) -> many (body :: (bindings |> List.map (fun (_, _, _, binding) -> binding)))
+                        | Lir.DecisionTree(target, cases) ->
+                            recurse target :: (cases |> List.collect (fun nested -> [ yield! Option.toList nested.Guard; nested.Body ] |> List.map recurse))
+                            |> Set.unionMany
+                        | Lir.RecordUpdate(target, fields) -> recurse target :: (fields |> List.map (snd >> recurse)) |> Set.unionMany
+                        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart expression -> Some(recurse expression)) |> Set.unionMany
+                        | Lir.UnionCase(_, _, payload) -> payload |> Option.map recurse |> Option.defaultValue Set.empty
+                        | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, item) -> many [ key; item ] | Lir.Spread item -> recurse item) |> Set.unionMany
+                        | Lir.ForEach(_, _, _, source, body) -> many [ source; body ]
+                        | _ -> Set.empty
+                    let usedPatternSymbols =
+                        case.Body :: Option.toList case.Guard
+                        |> List.map referencedSymbols
+                        |> Set.unionMany
                     let rec allBindings (plan: Lir.PatternPlan) =
                         [ yield! plan.Bindings
                           for mapPlan in plan.Maps do
@@ -1051,13 +1079,28 @@ module TypedGoEmitter =
                                   yield! allBindings clause.Value
                               yield! mapPlan.Tail |> Option.map allBindings |> Option.defaultValue [] ]
                     let groupedBindings = allBindings case.Plan |> List.groupBy _.Id
-                    let scoped, declarations =
-                        groupedBindings
-                        |> List.fold (fun (currentEnvironment, lines) (id, bindings) ->
-                            let binding = List.head bindings
-                            let variable = symbolName "pattern" id
-                            Map.add id variable currentEnvironment, lines @ [ $"var {variable} {goType binding.Type}"; $"_ = {variable}" ]) (environment, [])
-                    let simplePlan (plan: Lir.PatternPlan) root (rootType: Type) =
+                    let mapBindingSymbols =
+                        case.Plan.Maps
+                        |> List.collect (fun mapPlan ->
+                            [ for clause in mapPlan.Clauses do
+                                  yield! allBindings clause.Key
+                                  yield! allBindings clause.Value
+                              yield! mapPlan.Tail |> Option.map allBindings |> Option.defaultValue [] ])
+                        |> List.map _.Id
+                        |> Set.ofList
+                    let usedBindings = groupedBindings |> List.filter (fun (id, _) -> Set.contains id usedPatternSymbols)
+                    let scoped =
+                        usedBindings
+                        |> List.fold (fun current (id, _) -> Map.add id (symbolName "pattern" id) current) environment
+                    let declarations =
+                        usedBindings
+                        |> List.choose (fun (id, bindings) ->
+                            if not (Set.contains id mapBindingSymbols) then None
+                            else
+                                let binding = List.head bindings
+                                let variable = symbolName "pattern" id
+                                Some $"var {variable} {goType binding.Type}")
+                    let simplePlan initializeLocals (plan: Lir.PatternPlan) root (rootType: Type) =
                         let checks = plan.Checks |> List.map (emitPlanCheck plan root rootType)
                         let grouped = plan.Bindings |> List.groupBy _.Id
                         let repeated =
@@ -1068,11 +1111,15 @@ module TypedGoEmitter =
                                     let firstCode, _ = project plan root rootType [] first.Projection
                                     rest |> List.map (fun binding -> let code, _ = project plan root rootType [] binding.Projection in $"{equality binding.Type}({firstCode}, {code})"))
                         let assignments =
-                            grouped |> List.map (fun (id, bindings) ->
-                                let binding = List.head bindings
-                                let code, _ = project plan root rootType [] binding.Projection
-                                let variable = symbolName "pattern" id
-                                $"{variable} = {code}")
+                            grouped
+                            |> List.choose (fun (id, bindings) ->
+                                if not (Set.contains id usedPatternSymbols) then None
+                                else
+                                    let binding = List.head bindings
+                                    let code, _ = project plan root rootType [] binding.Projection
+                                    let variable = symbolName "pattern" id
+                                    let assignment = if initializeLocals && not (Set.contains id mapBindingSymbols) then ":=" else "="
+                                    Some $"{variable} {assignment} {code}")
                         let meaningfulChecks = checks @ repeated |> List.filter ((<>) "true")
                         (match meaningfulChecks with [] -> "true" | values -> String.concat " && " values), assignments
                     let emitMapPlan _ (mapPlan: Lir.MapPlan) =
@@ -1082,8 +1129,8 @@ module TypedGoEmitter =
                         let clauseCases =
                             mapPlan.Clauses
                             |> List.mapi (fun clauseIndex clause ->
-                                let keyCondition, keyAssignments = simplePlan clause.Key "entry.Key" keyType
-                                let valueCondition, valueAssignments = simplePlan clause.Value "entry.Value" valueType
+                                let keyCondition, keyAssignments = simplePlan false clause.Key "entry.Key" keyType
+                                let valueCondition, valueAssignments = simplePlan false clause.Value "entry.Value" valueType
                                 let clauseCondition =
                                     [ keyCondition; valueCondition ]
                                     |> List.filter ((<>) "true")
@@ -1099,19 +1146,22 @@ module TypedGoEmitter =
                                 let attempt =
                                     if clauseCondition = "true" then attemptBody
                                     else $"if {clauseCondition} {{\n\t{indent attemptBody}\n}}"
-                                $"case {clauseIndex}:\n\t\tfor entryIndex, entry := range remaining.Entries {{\n\t\t\t{indent (indent (indent attempt))}\n\t\t}}\n\t\treturn false")
+                                let iteration =
+                                    if attempt.Contains("entry.", StringComparison.Ordinal) then "entryIndex, entry := range"
+                                    else "entryIndex := range"
+                                $"case {clauseIndex}:\n\t\tfor {iteration} remaining.Entries {{\n\t\t\t{indent (indent (indent attempt))}\n\t\t}}\n\t\treturn false")
                             |> String.concat "\n\t"
                         let terminal =
                             match mapPlan.Tail with
                             | None -> if mapPlan.RequireEmptyRemainder then "return len(remaining.Entries) == 0" else "return true"
                             | Some tail ->
-                                let condition, assignments = simplePlan tail "remaining" mapType
+                                let condition, assignments = simplePlan false tail "remaining" mapType
                                 let success = [ yield! assignments; yield "return true" ] |> String.concat "\n"
                                 if condition = "true" then success
                                 else $"if {condition} {{\n\t{indent success}\n}}\nreturn false"
                         let switchSource = if mapPlan.Clauses.IsEmpty then "" else $"\n\t\tswitch clauseIndex {{\n\t\t{indent clauseCases}\n\t\t}}"
                         $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent (indent terminal))}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
-                    let condition, topAssignments = simplePlan case.Plan targetName target.Type
+                    let condition, topAssignments = simplePlan true case.Plan targetName target.Type
                     let mapChecks = case.Plan.Maps |> List.mapi emitMapPlan
                     let bodyCode = coerce case.Body.Type expression.Type (emit scoped functionBindings case.Body)
                     let guardedBody =
@@ -1150,7 +1200,8 @@ module TypedGoEmitter =
                 let emittedCases, exhaustive = emitCases cases
                 let caseCode = emittedCases |> String.concat "\n\t"
                 let failure = if exhaustive then "" else "\n\tpanic(\"Match failure.\")"
-                $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}{failure}\n}}()"
+                let discard = if caseCode.Contains(targetName, StringComparison.Ordinal) then "" else $"\n\t_ = {targetName}"
+                $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}{discard}\n\t{caseCode}{failure}\n}}()"
             | Lir.RecordUpdate(target, fields) ->
                 let targetCode = emitChild target
                 let sourceFields = recordFields target.Type
