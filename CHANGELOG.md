@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added effect-guided Go beta reduction, copy propagation, and post-specialization reachability pruning.
+
 - Flattened generated Go list append and cons trees into single-allocation builders.
 
 - Emitted saturated Go intrinsics without curried declaration and pipeline carriers.

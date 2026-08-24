@@ -58,12 +58,15 @@ module GoBackend =
             match GoMonomorphization.specialize validated with
             | Error diagnostics -> Error diagnostics
             | Ok specialized when TypedGoEmitter.canEmit specialized ->
-                try
-                    let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
-                    TypedGoEmitter.generate moduleName specialized
-                    |> List.map (fun (path, content) -> { RelativePath = path; Content = content })
-                    |> Ok
-                with ex -> Error [ diagnostic "FSB4001" ex.Message None ]
+                match specialized |> GoOptimization.optimize |> LirValidation.validate with
+                | Error diagnostics -> Error diagnostics
+                | Ok optimized ->
+                    try
+                        let moduleName = if String.IsNullOrWhiteSpace options.ModuleName then "fscript.generated/program" else options.ModuleName
+                        TypedGoEmitter.generate moduleName optimized
+                        |> List.map (fun (path, content) -> { RelativePath = path; Content = content })
+                        |> Ok
+                    with ex -> Error [ diagnostic "FSB4001" ex.Message None ]
             | Ok specialized ->
                 match unsupportedDiagnostic specialized with
                 | Some value -> Error [ value ]

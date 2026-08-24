@@ -88,6 +88,22 @@ type GoBackendTests() =
             Assert.That(generated, Does.Not.Contain("any"))
 
     [<Test>]
+    member _.``Go optimization propagates small closures and removes unused pure calls`` () =
+        let source = "let unused = List.length [1; 2]\nlet effect = Console.writeLine \"visible\"\n(fun value -> value + 1) 41"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/optimized" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Not.Contain("len([]int64"), program)
+            Assert.That(program, Does.Not.Contain("func(arg"), program)
+            Assert.That(program, Does.Contain("int64(41) + int64(1)"), program)
+            Assert.That(program, Does.Contain("os.Stdout.WriteString(\"visible\" + \"\\n\")"), program)
+
+    [<Test>]
     member _.``Basic sample compiles and runs as generated Go`` () =
         requireGo ()
         let samplePath = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/basic/basic.fss"))
