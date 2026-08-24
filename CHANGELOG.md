@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Reworked the homepage around FScript's language lineage, interpreters, JavaScript runtime, and Go backend.
+
 - Simplified the website by removing compiler-internals pages and the homepage IR section.
 
 - Split generated Go programs into deterministic source-owned module files within one package.

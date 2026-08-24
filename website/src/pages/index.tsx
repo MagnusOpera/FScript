@@ -68,27 +68,6 @@ const total = invoke(pricing, "quote", [{
   },
 };
 
-const examples = [
-  {
-    number: '01',
-    title: 'Name every outcome',
-    description: 'Use records and unions to describe the data a rule accepts and every result it can return.',
-    code: `type Decision =\n  | Approve of int\n  | Review of string\n  | Decline\n\nlet decide score =\n  match score with\n  | n when n > 80 -> Approve 5000\n  | n when n > 55 -> Review "manual"\n  | _ -> Decline`,
-  },
-  {
-    number: '02',
-    title: 'Choose what scripts can call',
-    description: 'Register typed host functions for the exact operations a script needs. Leave everything else out.',
-    code: `let notifyLateInvoice invoice =\n  match invoice.Status with\n  | "late" ->\n      Host.notify invoice.Owner\n        $"Invoice {invoice.Id} is late"\n  | _ ->\n      ()`,
-  },
-  {
-    number: '03',
-    title: 'Call exports from your app',
-    description: 'Load a script, find its exported functions, and invoke them by name from .NET or JavaScript.',
-    code: `type Event = { Kind: string }\n\n[<export>] let route (event: Event) =\n  match event.Kind with\n  | "signup" -> "onboarding"\n  | "payment.failed" -> "billing"\n  | "churn.risk" -> "success"\n  | _ -> "archive"`,
-  },
-];
-
 function Arrow() {
   return <span aria-hidden="true">↗</span>;
 }
@@ -146,8 +125,8 @@ function HomepageHeader() {
             Change the rules.<br /><em>Keep the host.</em>
           </Heading>
           <p className={styles.heroLead}>
-            Load <code>.fss</code> files, check their types, and run them inside your process—or compile
-            validated executable IR into a standalone Go project.
+            Load <code>.fss</code> files, check their types, and run them inside your process. Or compile
+            them into a standalone Go project.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
@@ -193,128 +172,113 @@ export default function Home() {
       description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone Go source.">
       <HomepageHeader />
       <main className={styles.main}>
-        <section className={styles.statementSection}>
-          <div className={`container ${styles.statementGrid}`}>
-            <p className={styles.sectionKicker}>Why embed a language?</p>
-            <div>
-              <Heading as="h2" className={styles.statementTitle}>
-                A pricing change should not require a new application build.
-              </Heading>
-              <p className={styles.statementCopy}>
-                Put changeable rules in <code>.fss</code> files. FScript checks them before execution,
-                while your host keeps ownership of the database, network, filesystem, and other I/O.
-              </p>
+        <section className={styles.introduction}>
+          <div className="container">
+            <p className={styles.sectionLabel}>Language lineage</p>
+            <div className={styles.introductionGrid}>
+              <Heading as="h2">ML roots. Less luggage.</Heading>
+              <div className={styles.prose}>
+                <p>
+                  Its syntax and type system draw from F# and OCaml. Hindley-Milner inference gives functions
+                  static types without requiring annotations on every binding.
+                </p>
+                <p>
+                  Records, discriminated unions, immutable collections, curried functions, and pattern matching
+                  do most of the work. FScript leaves out the object system and the larger standard library.
+                </p>
+              </div>
+            </div>
+            <div className={styles.codeStudy}>
+              <pre><code>{`type Payment =
+  { Customer: string
+    Amount: int
+    Attempts: int }
+
+type Action =
+  | Capture
+  | RetryAfter of int
+  | AskForReview
+
+let decide payment =
+  match payment with
+  | { Amount = amount } when amount > 10000 ->
+      AskForReview
+  | { Attempts = attempts } when attempts < 3 ->
+      RetryAfter 60
+  | _ ->
+      Capture`}</code></pre>
+              <aside className={styles.languageNotes}>
+                <Heading as="h3">An ML-style function</Heading>
+                <p><code>Payment</code> fixes the available fields and their types. A misspelled field fails during loading.</p>
+                <p><code>Action</code> fixes the return cases. <code>RetryAfter</code> must carry an integer.</p>
+                <p>The compiler infers <code>decide : Payment -&gt; Action</code> from the function body.</p>
+                <Link className={styles.inlineLink} to="/manual/learn/language-tour">Read the language tour <Arrow /></Link>
+              </aside>
             </div>
           </div>
-          <div className={`container ${styles.metricStrip}`}>
-            <div><strong>01</strong><span>Runs in process<br />No service to operate.</span></div>
-            <div><strong>02</strong><span>Checks types first<br />Errors stop before evaluation.</span></div>
-            <div><strong>03</strong><span>Calls registered externs<br />The host controls I/O.</span></div>
-          </div>
         </section>
 
-        <section className={styles.examplesSection}>
-          <div className={`container ${styles.sectionHeading}`}>
-            <p className={styles.sectionKicker}>What the code looks like</p>
-            <Heading as="h2">Typed data.<br /><em>Direct code.</em></Heading>
-            <p>Functions, records, unions, and pattern matching. No class hierarchy required.</p>
-          </div>
-          <div className={`container ${styles.exampleGrid}`}>
-            {examples.map((example) => (
-              <article className={styles.exampleCard} key={example.number}>
-                <div className={styles.exampleTopline}>
-                  <span>{example.number}</span><i />
-                </div>
-                <Heading as="h3">{example.title}</Heading>
-                <p>{example.description}</p>
-                <pre><code>{example.code}</code></pre>
-              </article>
-            ))}
-          </div>
-          <div className={`container ${styles.examplesLink}`}>
-            <Link to="/manual/examples/guided-examples">Explore guided examples <Arrow /></Link>
-          </div>
-        </section>
-
-        <section className={styles.boundarySection}>
-          <div className={`container ${styles.boundaryGrid}`}>
-            <div className={styles.boundaryCopy}>
-              <p className={styles.sectionKicker}>The host sets the boundary</p>
-              <Heading as="h2">Scripts get what<br /><em>you register.</em></Heading>
+        <section className={styles.hostSection}>
+          <div className={`container ${styles.hostGrid}`}>
+            <div className={styles.hostCopy}>
+              <p className={styles.sectionLabel}>Interpreted embedding</p>
+              <Heading as="h2">Change the script. Leave the process alone.</Heading>
               <p>
-                A script cannot query your database or send an HTTP request unless your host gives it a function
-                that does so. Each extern has a name and a checked type signature.
+                The .NET runtime parses and checks an <code>.fss</code> file before evaluating it. The host calls
+                exported functions and registers the external functions that scripts may use. There is no worker
+                process or network boundary.
               </p>
-              <ul>
-                <li><span>01</span> Register the externs the script needs</li>
-                <li><span>02</span> Load and type-check the source</li>
-                <li><span>03</span> Invoke a named export</li>
-              </ul>
-              <Link className={styles.textLink} to="/manual/embedding/overview">See the embedding model <Arrow /></Link>
+              <p>
+                FScript cannot discover your database or HTTP client. If the host does not register an operation,
+                that operation does not exist in the script environment.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/embedding/overview">How embedding works <Arrow /></Link>
             </div>
-            <div className={styles.boundaryDiagram}>
-              <div className={styles.hostBox}>
-                <small>YOUR HOST</small>
-                <strong>.NET / JS</strong>
-                <div><span>Database</span><span>HTTP</span><span>Events</span></div>
-              </div>
-              <div className={styles.bridge}>
-                <span>typed externs</span><i>→</i><span>explicit exports</span>
-              </div>
-              <div className={styles.languageBox}>
-                <small>EMBEDDED</small>
-                <strong>FScript</strong>
-                <div><span>Data</span><span>Rules</span><span>Exports</span></div>
-              </div>
-              <div className={styles.boundaryLabel}>CAPABILITY BOUNDARY</div>
+            <div className={styles.contract} aria-label="Example host contract">
+              <div className={styles.contractHeading}><span>Registered functions</span><span>pricing.fss</span></div>
+              <code>Customer.find : string -&gt; Customer option</code>
+              <code>Quote.save : Quote -&gt; bool</code>
+              <code>Audit.write : string -&gt; unit</code>
+              <p>The script sees these names and types. The host implements them.</p>
             </div>
           </div>
         </section>
 
-        <section className={styles.learningSection}>
-          <div className={`container ${styles.learningHeader}`}>
-            <div>
-              <p className={styles.sectionKicker}>Start with running code</p>
-              <Heading as="h2">Try one rule. Then<br />wire it into your host.</Heading>
+        <section className={styles.useSection}>
+          <div className="container">
+            <div className={styles.useRows}>
+              <article>
+                <div>
+                  <p className={styles.sectionLabel}>JavaScript support</p>
+                  <Heading as="h2">The whole interpreter fits in the browser.</Heading>
+                </div>
+                <div>
+                  <p>Fable compiles the FScript parser, type checker, and evaluator to JavaScript. The website sandbox uses that build in the browser. It interprets FScript source rather than generating JavaScript with <code>eval</code>.</p>
+                  <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Use FScript from JavaScript <Arrow /></Link>
+                </div>
+              </article>
+              <article>
+                <div>
+                  <p className={styles.sectionLabel}>Go support</p>
+                  <Heading as="h2">Types in. Native binary out.</Heading>
+                </div>
+                <div>
+                  <p>The Go backend specializes inferred types across the whole program. It emits concrete structs, slices, functions, and tagged unions. Imported FScript files become separate Go files in one package.</p>
+                  <Link className={styles.inlineLink} to="/manual/compiler/go">Compile to Go <Arrow /></Link>
+                </div>
+              </article>
             </div>
-            <p>The browser sandbox runs without an install. When the syntax makes sense, follow the host example for .NET or JavaScript.</p>
-          </div>
-          <div className={`container ${styles.learningGrid}`}>
-            <Link className={styles.learningCard} to="/sandbox">
-              <span className={styles.learningNumber}>01</span>
-              <div className={styles.learningIcon}>▶</div>
-              <Heading as="h3">Play</Heading>
-              <p>Edit an FScript example and run it in the browser. Nothing to install.</p>
-              <b>Open sandbox <Arrow /></b>
-            </Link>
-            <Link className={styles.learningCard} to="/manual/learn/language-tour">
-              <span className={styles.learningNumber}>02</span>
-              <div className={styles.learningIcon}>ƒ</div>
-              <Heading as="h3">Learn</Heading>
-              <p>Learn bindings, functions, data types, and pattern matching with working examples.</p>
-              <b>Take the tour <Arrow /></b>
-            </Link>
-            <Link className={styles.learningCard} to="/manual/embedding/real-world-embedding">
-              <span className={styles.learningNumber}>03</span>
-              <div className={styles.learningIcon}>{'{ }'}</div>
-              <Heading as="h3">Embed</Heading>
-              <p>Load a script, register externs, and call an exported function from your app.</p>
-              <b>Read the host example <Arrow /></b>
-            </Link>
           </div>
         </section>
 
-        <section className={styles.ctaSection}>
-          <div className={`container ${styles.ctaInner}`}>
-            <img src={useBaseUrl('/img/logo.svg')} alt="FScript mascot" width="150" height="150" />
-            <div>
-              <p className={styles.sectionKicker}>Run the first script</p>
-              <Heading as="h2">See if FScript fits<br />your host.</Heading>
-            </div>
-            <div className={styles.ctaActions}>
-              <Link className={styles.primaryAction} to="/manual/learn/quickstart">Get started <Arrow /></Link>
-              <a className={styles.secondaryAction} href="https://github.com/MagnusOpera/FScript">View on GitHub</a>
-            </div>
+        <section className={styles.finalLinks}>
+          <div className={`container ${styles.finalLinksInner}`}>
+            <p>FScript is open source.</p>
+            <nav aria-label="Start using FScript">
+              <Link to="/sandbox">Open the sandbox</Link>
+              <Link to="/manual/learn/quickstart">Install and run</Link>
+              <a href="https://github.com/MagnusOpera/FScript">GitHub <Arrow /></a>
+            </nav>
           </div>
         </section>
       </main>
