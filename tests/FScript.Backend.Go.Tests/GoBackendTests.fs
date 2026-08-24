@@ -145,6 +145,9 @@ type GoBackendTests() =
             Assert.That(generated, Does.Contain("[]int64"))
             Assert.That(Regex.IsMatch(generated, @"\bany\b|interface\s*\{"), Is.False)
             Assert.That(generated, Does.Not.Contain("fsruntime"))
+            Assert.That(generated, Does.Not.Contain("pipelineArgument"))
+            Assert.That(generated, Does.Not.Contain("pipelineFunction"))
+            Assert.That(generated, Does.Not.Contain("var value103 func(func(int64) bool)"))
             let directory = Path.Combine(Path.GetTempPath(), $"fscript-quicksort-{Guid.NewGuid():N}")
             try
                 for file in files do

@@ -454,7 +454,7 @@ module TypedGoEmitter =
                 | Some(TUnion(_, cases)) -> cases
                 | _ -> invalidOp $"Named type '{name}' is not a union."
             | value -> invalidOp $"Type '{Types.typeToString value}' is not a union."
-        let intrinsic (name: string) (intrinsicType: Type) =
+        let intrinsicSource appliedArguments (name: string) (intrinsicType: Type) =
             let rec curry index currentType arguments body =
                 match currentType with
                 | TFun(argumentType, resultType) ->
@@ -462,7 +462,19 @@ module TypedGoEmitter =
                     let inner = curry (index + 1) resultType (arguments @ [ argument ]) body
                     $"func({argument} {goType argumentType}) {goType resultType} {{\n\treturn {indent inner}\n}}"
                 | resultType -> body arguments resultType
-            let build body = curry 0 intrinsicType [] body
+            let rec signature currentType argumentTypes =
+                match currentType with
+                | TFun(argumentType, resultType) -> signature resultType (argumentTypes @ [ argumentType ])
+                | resultType -> argumentTypes, resultType
+            let build body =
+                match appliedArguments with
+                | None -> curry 0 intrinsicType [] body
+                | Some arguments ->
+                    let argumentTypes, resultType = signature intrinsicType []
+                    let names = argumentTypes |> List.mapi (fun index _ -> $"intrinsicArg{index}")
+                    let parameters = List.map2 (fun name argumentType -> $"{name} {goType argumentType}") names argumentTypes |> String.concat ", "
+                    let values = String.concat ", " arguments
+                    $"(func({parameters}) {goType resultType} {{\n\treturn {indent (body names resultType)}\n}})({values})"
             let iife resultType body = $"func() {goType resultType} {{\n\t{indent body}\n}}()"
             let sortedMap resultType setup =
                 iife resultType $"{setup}\nfor outer := 1; outer < len(result.Entries); outer++ {{\n\tfor inner := outer; inner > 0 && result.Entries[inner].Key < result.Entries[inner-1].Key; inner-- {{\n\t\tresult.Entries[inner], result.Entries[inner-1] = result.Entries[inner-1], result.Entries[inner]\n\t}}\n}}\nreturn result"
@@ -536,14 +548,14 @@ module TypedGoEmitter =
                 let entryType = $"entry_{suffix resultType}"
                 build (fun args _ -> iife resultType $"result := {goType resultType}{{Entries: make([]{entryType}, 0, len({args.[1]}.Entries))}}\nfor _, entry := range {args.[1]}.Entries {{\n\tif entry.Key != {args.[0]} {{\n\t\tresult.Entries = append(result.Entries, entry)\n\t}}\n}}\nreturn result")
             | "Console.writeLine", TFun(TString, TUnit) ->
-                "func(value string) struct{} {\n\t_, _ = os.Stdout.WriteString(value + \"\\n\")\n\treturn struct{}{}\n}"
+                build (fun args resultType -> iife resultType $"_, _ = os.Stdout.WriteString({args.[0]} + \"\\n\")\nreturn struct{{}}{{}}")
             | "Console.readLine", TFun(TUnit, TOption TString) ->
-                let resultType = goType (TOption TString)
-                $"func(_ struct{{}}) {resultType} {{\n\tif consoleScanner.Scan() {{\n\t\treturn {resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n\t}}\n\treturn {resultType}{{}}\n}}"
+                build (fun _ resultType -> iife resultType $"if consoleScanner.Scan() {{\n\treturn {goType resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n}}\nreturn {goType resultType}{{}}")
             | "Fs.readText", TFun(TString, TOption TString) ->
-                let resultType = goType (TOption TString)
-                $"func(path string) {resultType} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {resultType}{{}}\n\t}}\n\tcontent, err := os.ReadFile(full)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
+                build (fun args resultType -> iife resultType $"full, ok := fsResolve({args.[0]})\nif !ok {{\n\treturn {goType resultType}{{}}\n}}\ncontent, err := os.ReadFile(full)\nif err != nil {{\n\treturn {goType resultType}{{}}\n}}\nreturn {goType resultType}{{HasValue: true, Value: string(content)}}")
             | _ -> invalidOp $"Unsupported typed intrinsic '{name}' at {Types.typeToString intrinsicType}."
+        let intrinsic name intrinsicType = intrinsicSource None name intrinsicType
+        let appliedIntrinsic name intrinsicType arguments = intrinsicSource (Some arguments) name intrinsicType
         let hostExternal (name: string) (externalType: Type) =
             match name, externalType with
             | "Console.writeLine", TFun(TString, TUnit) ->
@@ -674,6 +686,26 @@ module TypedGoEmitter =
                     root, arguments @ [ argument ]
                 | _ -> value, []
             unwind expression
+        let rec functionArity = function TFun(_, resultType) -> 1 + functionArity resultType | _ -> 0
+        let tryAppliedIntrinsic (expression: Lir.Expression) =
+            let candidate =
+                match expression.Node with
+                | Lir.CallClosure _ -> Some(unwindApplications expression)
+                | Lir.TailCallClosure(fn, argument) ->
+                    let root, preceding = unwindApplications fn
+                    Some(root, preceding @ [ argument ])
+                | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                    let root, preceding = unwindApplications fn
+                    Some(root, preceding @ [ argument ])
+                | _ -> None
+            candidate
+            |> Option.bind (fun (root, arguments) ->
+                match root.Node with
+                | Lir.Load id when arguments.Length = (Map.tryFind id declarationTypes |> Option.map functionArity |> Option.defaultValue -1) ->
+                    match Map.tryFind id declarationValues |> Option.map _.Node with
+                    | Some(Lir.Intrinsic name) -> Some(name, declarationTypes.[id], arguments)
+                    | _ -> None
+                | _ -> None)
         let tryConsoleWrite (expression: Lir.Expression) =
             let candidate =
                 match expression.Node with
@@ -850,6 +882,10 @@ module TypedGoEmitter =
         let rec emit environment functionBindings (expression: Lir.Expression) =
             let emitChild = emit environment functionBindings
             match expression.Node with
+            | _ when tryAppliedIntrinsic expression |> Option.isSome ->
+                let name, intrinsicType, arguments = tryAppliedIntrinsic expression |> Option.get
+                let values = arguments |> List.map emitChild
+                appliedIntrinsic name intrinsicType values
             | Lir.Constant value -> constant value
             | Lir.Load id -> environment |> Map.tryFind id |> Option.orElseWith (fun () -> Map.tryFind id names) |> Option.defaultWith (fun () -> invalidOp $"Unknown specialized symbol {Lir.symbolNumber id}.")
             | Lir.MakeClosure(id, _) ->
@@ -1301,6 +1337,8 @@ module TypedGoEmitter =
                 + "\ncontinue"
             | None ->
                 match expression.Node with
+                | _ when tryAppliedIntrinsic expression |> Option.isSome ->
+                    $"return {coerce expression.Type resultType (emit environment functionBindings expression)}"
                 | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                     let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                     let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
@@ -1487,6 +1525,8 @@ module TypedGoEmitter =
                     let sourceName = freshStatementName "fusedSource"
                     let completed = if target = "_" then "" else "\n" + assign "struct{}{}"
                     $"var {sourceName} {goType source.Type}\n{emitAssign environment functionBindings sourceName source.Type source}\nfor _, {itemName} := range {sourceName} {{\n\t{indent body}\n}}{completed}"
+            | _ when tryAppliedIntrinsic expression |> Option.isSome ->
+                assign (emit environment functionBindings expression)
             | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
@@ -1574,6 +1614,9 @@ module TypedGoEmitter =
                 many ([ source; mapper ] @ (if consumerIsDirectConsole then [] else [ consumer ]))
             | None ->
                 match expression.Node with
+                | _ when tryAppliedIntrinsic expression |> Option.isSome ->
+                    let _, _, arguments = tryAppliedIntrinsic expression |> Option.get
+                    many arguments
                 | _ when tryConsoleWrite expression |> Option.isSome ->
                     tryConsoleWrite expression |> Option.map recurse |> Option.defaultValue Set.empty
                 | Lir.Load id -> Set.singleton id

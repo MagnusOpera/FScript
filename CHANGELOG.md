@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Emitted saturated Go intrinsics without curried declaration and pipeline carriers.
+
 - Removed unused pattern-binding locals and dummy reads from generated Go.
 
 - Removed synthetic constant-true map-pattern branches from generated Go.
