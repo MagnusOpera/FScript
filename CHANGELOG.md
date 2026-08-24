@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Split generated Go programs into deterministic source-owned module files within one package.
+
 - Lowered compatible mutually tail-recursive Go functions to typed state-machine loops.
 
 - Removed defensive pattern and local carriers from tail-position generated Go.

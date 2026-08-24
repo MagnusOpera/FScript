@@ -48,9 +48,12 @@ out/hello-go/
   internal/
     fscriptprogram/
       program.go
+      module_hello.go
 ```
 
-The project declares `go 1.25`; its generated program package contains the concrete types and specialized helpers it needs, with no separate erased runtime package.
+The project declares `go 1.25`; its generated program package contains the concrete types and specialized helpers it needs, with no separate erased runtime package. Programs containing file imports receive one `module_<normalized-path>.go` file per contributing FScript source. All generated files remain in the single `fscriptprogram` Go package, so this layout does not introduce cross-package ABIs or weaken whole-program specialization.
+
+Module filenames come from source paths relative to their shared source root, with path separators and punctuation normalized for Go filenames. If two paths normalize to the same name, a stable short hash of the relative path disambiguates them. Import aliases remain FScript namespaces and do not determine source identity.
 
 ## Inspect and run
 

@@ -67,7 +67,7 @@ Role:
 
 Responsibilities:
 - Select Go representations for LIR values.
-- Generate deterministic Go project files and the embedded FScript Go runtime.
+- Generate deterministic single-package Go projects, including normalized source-owned module files and the embedded FScript Go runtime.
 - Report target-specific `FSB4xxx` diagnostics without adding Go concepts to HIR or LIR.
 
 `FScript.Backend.Go` depends on `FScript.Compiler`; the core compiler has no dependency on the Go backend or a Go installation.

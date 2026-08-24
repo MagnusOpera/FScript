@@ -145,11 +145,16 @@ type CliTests() =
             Assert.That(File.Exists(Path.Combine(output, "go.mod")), Is.True)
             let programFile = Path.Combine(output, "internal", "fscriptprogram", "program.go")
             Assert.That(File.Exists(programFile), Is.True)
+            let moduleFile = Path.Combine(output, "internal", "fscriptprogram", "module_program.go")
+            Assert.That(File.Exists(moduleFile), Is.True)
             let expected = File.ReadAllText(programFile)
             File.WriteAllText(programFile, "stale")
+            let staleModule = Path.Combine(output, "internal", "fscriptprogram", "module_stale.go")
+            File.WriteAllText(staleModule, "package fscriptprogram")
             let secondCode, _, secondError = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
             Assert.That(secondCode, Is.EqualTo(0), secondError)
             Assert.That(File.ReadAllText(programFile), Is.EqualTo(expected), "Go compilation must deterministically replace generated files")
+            Assert.That(File.Exists(staleModule), Is.False, "Go compilation must remove stale generated module files")
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 

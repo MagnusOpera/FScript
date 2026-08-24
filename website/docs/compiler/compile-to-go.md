@@ -26,9 +26,10 @@ The generated project contains:
 go.mod
 main.go
 internal/fscriptprogram/program.go
+internal/fscriptprogram/module_hello.go
 ```
 
-It declares Go 1.25, uses no Go generics, and is already `gofmt`-compatible.
+It declares Go 1.25, uses no Go generics, and is already `gofmt`-compatible. Imported `.fss` sources are emitted as deterministic `module_<normalized-path>.go` files in the same `fscriptprogram` package. Path-derived hashes disambiguate the rare normalized-name collision without making import aliases part of module identity.
 
 ## Build and run
 

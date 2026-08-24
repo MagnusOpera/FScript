@@ -2,6 +2,7 @@ namespace FScript.Compiler
 
 open System
 open System.Collections.Generic
+open System.IO
 open System.Security.Cryptography
 open System.Text
 open FScript.Language
@@ -965,10 +966,10 @@ module TypedGoEmitter =
                         match piece with
                         | Choice1Of2 item ->
                             let name = freshStatementName "listItem"
-                            $"{name} := {coerce (emittedType item) itemType (emitChild item)}", "1", $"result = append(result, {name})"
+                            $"{name} := {indent (coerce (emittedType item) itemType (emitChild item))}", "1", $"result = append(result, {name})"
                         | Choice2Of2 segment ->
                             let name = freshStatementName "listSegment"
-                            $"{name} := {coerce (emittedType segment) listExpression.Type (emitChild segment)}", $"len({name})", $"result = append(result, {name}...)" )
+                            $"{name} := {indent (coerce (emittedType segment) listExpression.Type (emitChild segment))}", $"len({name})", $"result = append(result, {name}...)" )
                     |> List.fold (fun (setups, capacities, actions) (setup, itemCapacity, action) -> setups @ [ setup ], capacities @ [ itemCapacity ], actions @ [ action ]) ([], [], [])
                 let capacityCode = if capacity.IsEmpty then "0" else String.concat "+" capacity
                 let setupCode = if setup.IsEmpty then "" else String.concat "\n\t" setup + "\n\t"
@@ -1838,9 +1839,66 @@ module TypedGoEmitter =
             | _ -> None
         let runtimeEntry = if unitEntryId.IsSome then { entry with Node = Lir.Constant Lir.Unit } else entry
 
+        let normalizedSourcePaths: string list =
+            [ yield! program.Types |> List.choose (fun item -> item.Span.Start.File)
+              yield! program.Functions |> List.choose (fun item -> item.Span.Start.File)
+              yield! program.Declarations |> List.choose (fun item -> item.Span.Start.File) ]
+            |> List.map (fun path -> Path.GetFullPath(path).Replace('\\', '/'))
+            |> List.distinct
+            |> List.sort
+        let sourceRoot =
+            match normalizedSourcePaths with
+            | [] -> None
+            | first :: rest ->
+                let firstDirectory = Path.GetDirectoryName(first) |> Option.ofObj |> Option.defaultValue first
+                let rec commonDirectory (candidate: string) =
+                    if rest |> List.forall (fun path -> path.StartsWith(candidate.TrimEnd('/') + "/", StringComparison.Ordinal)) then candidate
+                    else
+                        match Path.GetDirectoryName(candidate) with
+                        | null -> candidate
+                        | parent when parent = candidate -> candidate
+                        | parent -> commonDirectory ((parent: string).Replace('\\', '/'))
+                Some(commonDirectory (firstDirectory.Replace('\\', '/')))
+        let relativeSourcePath (path: string) =
+            let normalized = Path.GetFullPath(path).Replace('\\', '/')
+            match sourceRoot with
+            | Some root -> Path.GetRelativePath(root, normalized).Replace('\\', '/')
+            | None -> Path.GetFileName(normalized) |> Option.ofObj |> Option.defaultValue normalized
+        let sourceFileNames =
+            let candidates =
+                normalizedSourcePaths
+                |> List.map (fun path ->
+                    let relative = relativeSourcePath path
+                    let withoutExtension =
+                        if relative.EndsWith(".fss", StringComparison.OrdinalIgnoreCase) then relative.Substring(0, relative.Length - 4)
+                        else relative
+                    let stem = identifier withoutExtension |> _.ToLowerInvariant()
+                    path, relative, $"module_{stem}.go")
+            let collisions = candidates |> List.countBy (fun (_, _, fileName) -> fileName) |> Map.ofList
+            candidates
+            |> List.map (fun (path, relative, fileName) ->
+                let allocated =
+                    if collisions.[fileName] = 1 then fileName
+                    else
+                        let hash = SHA256.HashData(Encoding.UTF8.GetBytes(relative)) |> Convert.ToHexString |> fun value -> value.Substring(0, 8).ToLowerInvariant()
+                        fileName.Substring(0, fileName.Length - 3) + "_" + hash + ".go"
+                path, allocated)
+            |> Map.ofList
+        let moduleBodies = Dictionary<string, StringBuilder>()
+        let sourceBuilder span =
+            span.Start.File
+            |> Option.bind (fun path -> Map.tryFind (Path.GetFullPath(path).Replace('\\', '/')) sourceFileNames)
+            |> Option.map (fun fileName ->
+                match moduleBodies.TryGetValue fileName with
+                | true, builder -> builder
+                | false, _ ->
+                    let builder = StringBuilder()
+                    moduleBodies.Add(fileName, builder)
+                    builder)
         let declarations = StringBuilder()
         for group, members in mutualTailGroups do
             let _, _, _, firstChain, firstDeepest = List.head members
+            let target = sourceBuilder firstDeepest.Span |> Option.defaultValue declarations
             let arguments =
                 firstChain
                 |> List.mapi (fun index (fn: Lir.Function) -> $"mutualArg{group}_{index}", fn.ParameterType)
@@ -1848,47 +1906,50 @@ module TypedGoEmitter =
                 ([$"mutualState{group} int"]
                  @ (arguments |> List.map (fun (name, valueType) -> $"{name} {goType valueType}")))
                 |> String.concat ", "
-            declarations.AppendLine($"func mutualTail{group}({signature}) {goType firstDeepest.ReturnType} {{") |> ignore
-            declarations.AppendLine("\tfor {") |> ignore
-            declarations.AppendLine($"\t\tswitch mutualState{group} {{") |> ignore
+            target.AppendLine($"func mutualTail{group}({signature}) {goType firstDeepest.ReturnType} {{") |> ignore
+            target.AppendLine("\tfor {") |> ignore
+            target.AppendLine($"\t\tswitch mutualState{group} {{") |> ignore
             for state, (functionId, _, _, chain, deepest) in members |> List.indexed do
                 let scoped =
                     chain
                     |> List.mapi (fun index fn -> fn.Parameter, $"mutualArg{group}_{index}")
                     |> List.fold (fun current (parameter, name) -> Map.add parameter name current) names
                 let body = emitTail scoped declarationFunctionTargets functionId deepest.ReturnType deepest.Body
-                declarations.AppendLine($"\t\tcase {state}:") |> ignore
-                declarations.AppendLine("\t\t\t" + indent (indent (indent body))) |> ignore
-            declarations.AppendLine("\t\tdefault:") |> ignore
-            declarations.AppendLine("\t\t\tpanic(\"Invalid mutual tail state.\")") |> ignore
-            declarations.AppendLine("\t\t}") |> ignore
-            declarations.AppendLine("\t}") |> ignore
-            declarations.AppendLine("}") |> ignore
-            declarations.AppendLine() |> ignore
+                target.AppendLine($"\t\tcase {state}:") |> ignore
+                target.AppendLine("\t\t\t" + indent (indent (indent body))) |> ignore
+            target.AppendLine("\t\tdefault:") |> ignore
+            target.AppendLine("\t\t\tpanic(\"Invalid mutual tail state.\")") |> ignore
+            target.AppendLine("\t\t}") |> ignore
+            target.AppendLine("\t}") |> ignore
+            target.AppendLine("}") |> ignore
+            target.AppendLine() |> ignore
             for state, (_, _, raisedName, chain, deepest) in members |> List.indexed do
                 let parameters = chain |> List.map (fun (fn: Lir.Function) -> symbolName "arg" fn.Parameter, fn.ParameterType)
                 let wrapperSignature = parameters |> List.map (fun (name, valueType) -> $"{name} {goType valueType}") |> String.concat ", "
                 let values = parameters |> List.map fst |> String.concat ", "
-                declarations.AppendLine($"func {raisedName}({wrapperSignature}) {goType deepest.ReturnType} {{") |> ignore
-                declarations.AppendLine($"\treturn mutualTail{group}({state}, {values})") |> ignore
-                declarations.AppendLine("}") |> ignore
-                declarations.AppendLine() |> ignore
+                target.AppendLine($"func {raisedName}({wrapperSignature}) {goType deepest.ReturnType} {{") |> ignore
+                target.AppendLine($"\treturn mutualTail{group}({state}, {values})") |> ignore
+                target.AppendLine("}") |> ignore
+                target.AppendLine() |> ignore
         for KeyValue(_, (raisedName, chain)) in raisedDeclarations do
             match List.tryLast chain with
             | None -> ()
             | Some deepest when Map.containsKey deepest.Id mutualTailMembership -> ()
             | Some deepest ->
+                let target = sourceBuilder deepest.Span |> Option.defaultValue declarations
                 let parameters = chain |> List.map (fun (fn: Lir.Function) -> symbolName "arg" fn.Parameter, fn.ParameterType)
                 let scoped = parameters |> List.fold2 (fun current (fn: Lir.Function) (name, _) -> Map.add fn.Parameter name current) names chain
                 let signature = parameters |> List.map (fun (name, valueType) -> $"{name} {goType valueType}") |> String.concat ", "
                 let body = emitTail scoped declarationFunctionTargets deepest.Id deepest.ReturnType deepest.Body
                 if hasSelfTail declarationFunctionTargets deepest.Id deepest.Body then
-                    declarations.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\tfor {{\n\t\t{indent (indent body)}\n\t}}\n}}") |> ignore
+                    target.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\tfor {{\n\t\t{indent (indent body)}\n\t}}\n}}") |> ignore
                 else
-                    declarations.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\t{indent body}\n}}") |> ignore
-                declarations.AppendLine() |> ignore
+                    target.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\t{indent body}\n}}") |> ignore
+                target.AppendLine() |> ignore
         for declaration in emittedDeclarations do
-            if unitEntryId <> Some declaration.Id then declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
+            if unitEntryId <> Some declaration.Id then
+                let target = sourceBuilder declaration.Span |> Option.defaultValue declarations
+                target.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
         if emittedDeclarations |> List.exists (fun declaration -> unitEntryId <> Some declaration.Id) then declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore
         for declaration in emittedDeclarations do
@@ -1904,7 +1965,12 @@ module TypedGoEmitter =
             |> Seq.sortBy _.Key
             |> Seq.map _.Value
         let helperSource = String.concat "\n\n" (Seq.concat [ equalityBodies :> seq<string>; formatterBodies :> seq<string>; representationHelpers ])
-        let emittedValues = declarations.ToString() + entryCode
+        let moduleValueSource =
+            moduleBodies
+            |> Seq.sortBy _.Key
+            |> Seq.map (fun entry -> entry.Value.ToString())
+            |> String.concat "\n"
+        let emittedValues = declarations.ToString() + moduleValueSource + entryCode
         let regexRuntimeSource =
             if emittedValues.Contains("fsRegexMatchGroups", StringComparison.Ordinal) then
                 """func fsRegexMatchGroups(pattern string, input string) ([]string, bool) {
@@ -2078,42 +2144,51 @@ func fsGlob(directory string, pattern string) ([]string, bool) {
             |> String.concat "\n"
             |> fun source -> if String.IsNullOrEmpty source then source else source + "\n"
         let consoleSource = if emittedValues.Contains("consoleScanner", StringComparison.Ordinal) then "var consoleScanner = bufio.NewScanner(os.Stdin)\n\n" else ""
-        let generatedBody = helperSource + portableRuntimeSource + consoleSource + emittedValues
-        let imports =
-            [ if generatedBody.Contains("bufio.", StringComparison.Ordinal) then
+        let importsFor (body: string) =
+            [ if body.Contains("bufio.", StringComparison.Ordinal) then
                   "\t\"bufio\""
-              if generatedBody.Contains("os.", StringComparison.Ordinal) then
+              if body.Contains("os.", StringComparison.Ordinal) then
                   "\t\"os\""
-              if generatedBody.Contains("filepath.", StringComparison.Ordinal) then
+              if body.Contains("filepath.", StringComparison.Ordinal) then
                   "\t\"path/filepath\""
-              if generatedBody.Contains("math.", StringComparison.Ordinal) then
+              if body.Contains("math.", StringComparison.Ordinal) then
                   "\t\"math\""
-              if generatedBody.Contains("regexp.", StringComparison.Ordinal) then
+              if body.Contains("regexp.", StringComparison.Ordinal) then
                   "\t\"regexp\""
-              if generatedBody.Contains("sort.", StringComparison.Ordinal) then
+              if body.Contains("sort.", StringComparison.Ordinal) then
                   "\t\"sort\""
-              if generatedBody.Contains("strconv.", StringComparison.Ordinal) then
+              if body.Contains("strconv.", StringComparison.Ordinal) then
                   "\t\"strconv\""
-              if generatedBody.Contains("strings.", StringComparison.Ordinal) then
+              if body.Contains("strings.", StringComparison.Ordinal) then
                   "\t\"strings\""
-              if generatedBody.Contains("utf8.", StringComparison.Ordinal) then
+              if body.Contains("utf8.", StringComparison.Ordinal) then
                   "\t\"unicode/utf8\"" ]
-        let targetStandardImports, targetExternalImports =
-            importModules
-            |> Map.toList
-            |> List.map (fun (path, alias) -> path, $"\t{alias} {Text.Json.JsonSerializer.Serialize(path)}")
-            |> List.partition (fun (path, _) -> not (path.Contains(".", StringComparison.Ordinal)))
-            |> fun (standard, external) -> List.map snd standard, List.map snd external
-        let importSource =
-            let standard = imports @ targetStandardImports |> List.sort
+        let importSourceFor (body: string) =
+            let targetStandardImports, targetExternalImports =
+                importModules
+                |> Map.toList
+                |> List.filter (fun (_, alias) -> body.Contains(alias + ".", StringComparison.Ordinal))
+                |> List.map (fun (path, alias) -> path, $"\t{alias} {Text.Json.JsonSerializer.Serialize(path)}")
+                |> List.partition (fun (path, _) -> not (path.Contains(".", StringComparison.Ordinal)))
+                |> fun (standard, external) -> List.map snd standard, List.map snd external
+            let standard = importsFor body @ targetStandardImports |> List.sort
             let groups = [ if not standard.IsEmpty then String.concat "\n" standard; if not targetExternalImports.IsEmpty then String.concat "\n" targetExternalImports ]
             match groups with
             | [] -> ""
             | values ->
                 let renderedGroups = String.concat "\n\n" values
                 $"import (\n{renderedGroups}\n)\n\n"
-        let programSource = $"package fscriptprogram\n\n{importSource}{typeDeclarations}\n{helperSource}\n\n{portableRuntimeSource}{consoleSource}{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
+        let programBody = $"{typeDeclarations}\n{helperSource}\n\n{portableRuntimeSource}{consoleSource}{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
+        let programSource = $"package fscriptprogram\n\n{importSourceFor programBody}{programBody}"
+        let moduleFiles =
+            moduleBodies
+            |> Seq.sortBy _.Key
+            |> Seq.map (fun entry ->
+                let body = entry.Value.ToString().TrimEnd() + "\n"
+                $"internal/fscriptprogram/{entry.Key}", $"package fscriptprogram\n\n{importSourceFor body}{body}")
+            |> Seq.toList
         let mainSource = $"package main\n\nimport (\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"os\"\n)\n\nfunc main() {{\n\tvalue := fscriptprogram.Run()\n\t_, _ = os.Stdout.WriteString(fscriptprogram.FormatResult(value) + \"\\n\")\n}}\n"
         [ "go.mod", $"module {moduleName}\n\ngo 1.25\n"
           "main.go", mainSource
-          "internal/fscriptprogram/program.go", programSource ]
+          "internal/fscriptprogram/program.go", programSource
+          yield! moduleFiles ]

@@ -121,6 +121,16 @@ type GoBackendTests() =
         | Ok files ->
             let generatedProgram = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
             Assert.That(generatedProgram, Does.Not.Contain("if true {"), generatedProgram)
+            let moduleFiles =
+                files
+                |> List.map _.RelativePath
+                |> List.filter (fun path -> path.Contains("/module_", StringComparison.Ordinal))
+            let expectedModuleFiles = [
+                "internal/fscriptprogram/module_ast.go"
+                "internal/fscriptprogram/module_basic.go"
+                "internal/fscriptprogram/module_parser.go"
+                "internal/fscriptprogram/module_runtime.go" ]
+            Assert.That((moduleFiles = expectedModuleFiles), Is.True)
             let directory = Path.Combine(Path.GetTempPath(), $"fscript-basic-{Guid.NewGuid():N}")
             try
                 for file in files do
@@ -145,6 +155,33 @@ type GoBackendTests() =
                 Assert.That(run [ "run"; "."; basicProgram ], Is.EqualTo("HELLO WORLD\n()\n"))
             finally
                 if Directory.Exists directory then Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``Normalized source paths allocate deterministic collision-safe Go module files`` () =
+        let root = Path.Combine(Path.GetTempPath(), "fscript-go-module-layout")
+        let entry = Path.Combine(root, "main.fss")
+        let source = "import \"lib/a-b.fss\" as Dash\nimport \"lib/a_b.fss\" as Under\nDash.value + Under.value"
+        let resolve (path: string) =
+            if path.EndsWith("a-b.fss", StringComparison.Ordinal) then Some "let value = 1"
+            elif path.EndsWith("a_b.fss", StringComparison.Ordinal) then Some "let value = 2"
+            else None
+        let program = IncludeResolver.parseProgramFromSourceWithIncludesResolver root entry source resolve
+        let compiled =
+            match Compiler.compile { Program = program; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let generate () =
+            match GoBackend.generate { ModuleName = "fscript.generated/module-layout" } compiled.Lir with
+            | Ok files -> files
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let first, second = generate (), generate ()
+        Assert.That((first = second), Is.True)
+        let collisionFiles =
+            first
+            |> List.map _.RelativePath
+            |> List.filter (fun path -> path.Contains("module_lib_a_b_", StringComparison.Ordinal))
+        Assert.That(collisionFiles.Length, Is.EqualTo(2))
+        Assert.That((collisionFiles |> List.distinct).Length, Is.EqualTo(2))
 
     [<Test>]
     member _.``Quicksort uses the zero-erasure Go path`` () =

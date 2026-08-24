@@ -14,6 +14,20 @@ let writeGeneratedFile (root: string) (file: FScript.Compiler.GeneratedFile) =
     | directory -> Directory.CreateDirectory(directory) |> ignore
     File.WriteAllText(path, file.Content)
 
+let removeStaleGoModuleFiles (root: string) (files: FScript.Compiler.GeneratedFile list) =
+    let moduleDirectory = Path.Combine(root, "internal", "fscriptprogram")
+    if Directory.Exists moduleDirectory then
+        let retained =
+            files
+            |> List.filter (fun file ->
+                let relative = file.RelativePath.Replace('\\', '/')
+                relative.StartsWith("internal/fscriptprogram/module_", StringComparison.Ordinal)
+                && relative.EndsWith(".go", StringComparison.Ordinal))
+            |> List.map (fun file -> Path.GetFullPath(Path.Combine(root, file.RelativePath)))
+            |> Set.ofList
+        for path in Directory.GetFiles(moduleDirectory, "module_*.go", SearchOption.TopDirectoryOnly) do
+            if not (Set.contains (Path.GetFullPath path) retained) then File.Delete(path)
+
 let runCompileCommand (argv: string array) =
     let usage () =
         Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go> --output <directory>")
@@ -53,7 +67,10 @@ let runCompileCommand (argv: string array) =
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
                                 4
-                            | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                            | Ok files ->
+                                removeStaleGoModuleFiles outputDirectory files
+                                files |> List.iter (writeGeneratedFile outputDirectory)
+                                0
                         | _ -> usage ()
                 with
                 | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1
