@@ -88,7 +88,8 @@ type GoBackendTests() =
             Assert.That(generated, Does.Not.Contain("any"))
 
     [<Test>]
-    member _.``Basic sample reaches its deferred Regex diagnostic after specialization`` () =
+    member _.``Basic sample compiles and runs as generated Go`` () =
+        requireGo ()
         let samplePath = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/basic/basic.fss"))
         let sampleDirectory =
             match Path.GetDirectoryName samplePath with
@@ -100,11 +101,32 @@ type GoBackendTests() =
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match GoBackend.generate { ModuleName = "fscript.generated/basic" } compiled.Lir with
-        | Ok _ -> Assert.Fail("Expected the deferred Regex capability diagnostic")
-        | Error diagnostics ->
-            Assert.That(diagnostics.Length, Is.EqualTo(1))
-            Assert.That(diagnostics.Head.Code, Is.EqualTo("FSB4006"))
-            Assert.That(diagnostics.Head.Message, Does.Contain("Regex.matchGroups"))
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let directory = Path.Combine(Path.GetTempPath(), $"fscript-basic-{Guid.NewGuid():N}")
+            try
+                for file in files do
+                    let path = Path.Combine(directory, file.RelativePath)
+                    match Path.GetDirectoryName(path) with
+                    | null -> ()
+                    | parent -> Directory.CreateDirectory(parent) |> ignore
+                    File.WriteAllText(path, file.Content)
+                let run arguments =
+                    let start = ProcessStartInfo("go", WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true)
+                    for argument in arguments do start.ArgumentList.Add(argument)
+                    use proc =
+                        match Process.Start(start) with
+                        | null -> failwith "Failed to start Go."
+                        | value -> value
+                    let output, error = proc.StandardOutput.ReadToEnd(), proc.StandardError.ReadToEnd()
+                    proc.WaitForExit()
+                    Assert.That(proc.ExitCode, Is.EqualTo(0), output + error)
+                    output
+                run [ "test"; "./..." ] |> ignore
+                let basicProgram = Path.Combine(sampleDirectory, "helloworld.bas")
+                Assert.That(run [ "run"; "."; basicProgram ], Is.EqualTo("HELLO WORLD\n()\n"))
+            finally
+                if Directory.Exists directory then Directory.Delete(directory, true)
 
     [<Test>]
     member _.``Quicksort uses the zero-erasure Go path`` () =
@@ -185,14 +207,18 @@ type GoBackendTests() =
             Assert.That(generated, Does.Not.Contain("reflect."))
 
     [<Test>]
-    member _.``Go backend reports reachable tasks explicitly`` () =
+    member _.``Go backend emits private typed task synchronization`` () =
         let compiled =
             match Compiler.compile { Program = Parser.parseProgram "Task.await (Task.spawn (fun _ -> 42))"; Externs = [] } with
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match GoBackend.generate { ModuleName = "fscript.generated/tasks" } compiled.Lir with
-        | Ok _ -> Assert.Fail("Expected unsupported task diagnostic")
-        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4004"))
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("<-chan struct{}"))
+            Assert.That(program, Does.Contain("go func()"))
+            Assert.That(program, Does.Not.Contain("any"))
 
     [<Test>]
     member _.``Go backend validates caller-provided LIR`` () =
@@ -220,7 +246,7 @@ type GoBackendTests() =
         | Ok _ -> ()
 
     [<Test>]
-    member _.``Go backend reports default host runtime externs only when reachable`` () =
+    member _.``Go backend emits default filesystem externs only when reachable`` () =
         let compile source =
             match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
             | Ok value -> value.Lir
@@ -231,8 +257,8 @@ type GoBackendTests() =
         | Ok _ -> ()
 
         match GoBackend.generate { ModuleName = "fscript.generated/runtimeexterns" } (compile "Fs.exists \"missing\"") with
-        | Ok _ -> Assert.Fail("Expected unsupported host-runtime diagnostic")
-        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSB4006"))
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files -> Assert.That(files |> List.exists (fun file -> file.Content.Contains("os.Stat")), Is.True)
 
     [<Test>]
     member _.``Go backend emits imported record boundary adapters`` () =
@@ -368,6 +394,11 @@ type GoBackendTests() =
     [<TestCase("Option.isSome Env.ScriptName", "true")>]
     [<TestCase("[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string\nupper \"hello\"", "\"HELLO\"")>]
     [<TestCase("Console.writeLine \"hello\"", "hello\n()")>]
+    [<TestCase("Regex.matchGroups \"^file:((?:[^:]+)):(.*)$\" \"file:name:value\"", "Some [\"name\";\"value\"]")>]
+    [<TestCase("Task.await (Task.spawn (fun _ -> 40 + 2))", "42")>]
+    [<TestCase("let first = Task.spawn (fun _ -> 40 + 1)\nlet second = Task.spawn (fun _ -> 40 + 2)\n(Task.await first, Task.await second)", "(41, 42)")>]
+    [<TestCase("(Fs.combinePath \"a\" \"b.txt\", Fs.parentDirectory \"a/b.txt\", Fs.extension \"a/b.txt\", Fs.fileNameWithoutExtension \"a/b.txt\")", "(\"a/b.txt\", Some \"a\", Some \".txt\", \"b\")")>]
+    [<TestCase("let created = Fs.createDirectory \"tmp/nested\"\nlet written = Fs.writeText \"tmp/nested/data.txt\" \"loaded\"\n(created, written, Fs.exists \"tmp/nested/data.txt\", Fs.kind \"tmp/nested/data.txt\", Fs.glob \"tmp/**/*.txt\", Fs.enumerateFiles \"tmp\" \"**/*.txt\")", "(true, true, true, File \"tmp/nested/data.txt\", Some [\"tmp/nested/data.txt\"], Some [\"tmp/nested/data.txt\"])")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name", "\"Ada\"")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nlet older = { person with Age = 43 }\nolder.Age", "43")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]

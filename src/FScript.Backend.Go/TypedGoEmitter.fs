@@ -34,7 +34,23 @@ module TypedGoEmitter =
     let private fieldName value = "Field_" + identifier value
     let private caseField value = "Case_" + identifier value
     let private goCondition (value: string) =
-        if value.Length >= 2 && value.[0] = '(' && value.[value.Length - 1] = ')' then value.Substring(1, value.Length - 2) else value
+        if value.Length < 2 || value.[0] <> '(' || value.[value.Length - 1] <> ')' then value
+        else
+            let mutable depth = 0
+            let mutable quoted = false
+            let mutable escaped = false
+            let mutable closesAtEnd = true
+            for index = 0 to value.Length - 1 do
+                let character = value.[index]
+                if escaped then escaped <- false
+                elif quoted && character = '\\' then escaped <- true
+                elif character = '"' then quoted <- not quoted
+                elif not quoted then
+                    if character = '(' then depth <- depth + 1
+                    elif character = ')' then
+                        depth <- depth - 1
+                        if depth = 0 && index <> value.Length - 1 then closesAtEnd <- false
+            if closesAtEnd && depth = 0 then value.Substring(1, value.Length - 2) else value
 
     let rec private goType = function
         | TUnit -> "struct{}"
@@ -46,6 +62,7 @@ module TypedGoEmitter =
         | TFun(argument, result) -> $"func({goType argument}) {goType result}"
         | TList item -> $"[]{goType item}"
         | TOption _ as value -> $"option_{suffix value}"
+        | TTask _ as value -> $"task_{suffix value}"
         | TTuple _ as value -> $"tuple_{suffix value}"
         | TRecord _ as value -> $"record_{suffix value}"
         | TMap _ as value -> $"map_{suffix value}"
@@ -71,12 +88,12 @@ module TypedGoEmitter =
     let rec private supportedType = function
         | TUnit | TInt | TFloat | TBool | TString | TTypeToken | TNamed _ -> true
         | TFun(argument, result) -> supportedType argument && supportedType result
-        | TList item | TOption item -> supportedType item
+        | TList item | TOption item | TTask item -> supportedType item
         | TTuple items -> List.forall supportedType items
         | TRecord fields -> fields |> Map.forall (fun _ value -> supportedType value)
         | TMap(keyType, valueType) -> supportedType keyType && supportedType valueType
         | TUnion(_, cases) -> cases |> Map.forall (fun _ value -> Option.forall supportedType value)
-        | TTask _ | TVar _ -> false
+        | TVar _ -> false
 
     let private typedIntrinsics =
         set [ "ignore"; "Int.tryParse"; "Float.tryParse"; "Bool.tryParse"; "Int.toString"; "Float.toString"; "Bool.toString"
@@ -87,7 +104,11 @@ module TypedGoEmitter =
               "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.fold"; "Map.count"; "Map.filter"; "Map.choose"; "Map.map"; "Map.iter"; "Map.remove"
               "Console.readLine"; "Console.writeLine"; "Fs.readText" ]
 
-    let private typedHostExternals = set [ "Console.readLine"; "Console.writeLine"; "Fs.readText" ]
+    let private typedHostExternals =
+        set [ "Console.readLine"; "Console.writeLine"; "Regex.matchGroups"
+              "Fs.readText"; "Fs.exists"; "Fs.kind"; "Fs.createDirectory"; "Fs.writeText"; "Fs.combinePath"
+              "Fs.parentDirectory"; "Fs.extension"; "Fs.fileNameWithoutExtension"; "Fs.glob"; "Fs.enumerateFiles"
+              "Task.spawn"; "Task.await" ]
 
     let isTypedIntrinsic name = Set.contains name typedIntrinsics
     let isTypedHostExternal name = Set.contains name typedHostExternals
@@ -180,7 +201,7 @@ module TypedGoEmitter =
             if types.Add value then
                 match value with
                 | TFun(argument, result) -> collectType argument; collectType result
-                | TList item | TOption item -> collectType item
+                | TList item | TOption item | TTask item -> collectType item
                 | TTuple items -> List.iter collectType items
                 | TRecord fields -> fields |> Map.iter (fun _ value -> collectType value)
                 | TMap(keyType, valueType) -> collectType keyType; collectType valueType
@@ -252,6 +273,11 @@ module TypedGoEmitter =
                 typeDeclarations.AppendLine("\tHasValue bool") |> ignore
                 typeDeclarations.AppendLine($"\tValue    {goType item}") |> ignore
                 typeDeclarations.AppendLine("}") |> ignore
+            | TTask item ->
+                typeDeclarations.AppendLine($"type {goType value} struct {{") |> ignore
+                typeDeclarations.AppendLine("\tDone   <-chan struct{}") |> ignore
+                typeDeclarations.AppendLine($"\tResult *{goType item}") |> ignore
+                typeDeclarations.AppendLine("}") |> ignore
             | TTuple items ->
                 typeDeclarations.AppendLine($"type {goType value} struct {{") |> ignore
                 items |> List.mapi (fun index item -> $"Item{index}", item) |> appendStructFields
@@ -290,6 +316,7 @@ module TypedGoEmitter =
                     | TString -> "return strconv.Quote(value)"
                     | TTypeToken -> "return \"<type \" + value.Value + \">\""
                     | TFun _ -> "return \"<function>\""
+                    | TTask _ -> "return \"<task>\""
                     | TList item ->
                         let itemFormatter = formatter item
                         $"result := \"[\"\n\tfor index, item := range value {{\n\t\tif index > 0 {{\n\t\t\tresult += \";\"\n\t\t}}\n\t\tresult += {itemFormatter}(item)\n\t}}\n\treturn result + \"]\""
@@ -359,6 +386,7 @@ module TypedGoEmitter =
                     | TInt | TFloat | TBool | TString -> "return left == right"
                     | TTypeToken -> "return left.Value == right.Value"
                     | TFun _ -> "return false"
+                    | TTask _ -> "return false"
                     | TList item ->
                         let itemEquality = equality item
                         $"if len(left) != len(right) {{\n\t\treturn false\n\t}}\n\tfor index := range left {{\n\t\tif !{itemEquality}(left[index], right[index]) {{\n\t\t\treturn false\n\t\t}}\n\t}}\n\treturn true"
@@ -402,6 +430,7 @@ module TypedGoEmitter =
                 name
 
         let names = program.Declarations |> List.map (fun item -> item.Id, symbolName "value" item.Id) |> Map.ofList
+        let declarationTypes = program.Declarations |> List.map (fun item -> item.Id, item.Type) |> Map.ofList
         let recordFields = function
             | TRecord fields -> fields
             | TNamed name ->
@@ -504,7 +533,7 @@ module TypedGoEmitter =
                 $"func(_ struct{{}}) {resultType} {{\n\tif consoleScanner.Scan() {{\n\t\treturn {resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n\t}}\n\treturn {resultType}{{}}\n}}"
             | "Fs.readText", TFun(TString, TOption TString) ->
                 let resultType = goType (TOption TString)
-                $"func(path string) {resultType} {{\n\tcontent, err := os.ReadFile(path)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
+                $"func(path string) {resultType} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {resultType}{{}}\n\t}}\n\tcontent, err := os.ReadFile(full)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
             | _ -> invalidOp $"Unsupported typed intrinsic '{name}' at {Types.typeToString intrinsicType}."
         let hostExternal (name: string) (externalType: Type) =
             match name, externalType with
@@ -515,7 +544,40 @@ module TypedGoEmitter =
                 $"func(_ struct{{}}) {resultType} {{\n\tif consoleScanner.Scan() {{\n\t\treturn {resultType}{{HasValue: true, Value: consoleScanner.Text()}}\n\t}}\n\treturn {resultType}{{}}\n}}"
             | "Fs.readText", TFun(TString, TOption TString) ->
                 let resultType = goType (TOption TString)
-                $"func(path string) {resultType} {{\n\tcontent, err := os.ReadFile(path)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
+                $"func(path string) {resultType} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {resultType}{{}}\n\t}}\n\tcontent, err := os.ReadFile(full)\n\tif err != nil {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: string(content)}}\n}}"
+            | "Regex.matchGroups", TFun(TString, TFun(TString, TOption(TList TString))) ->
+                let resultType = goType (TOption(TList TString))
+                $"func(pattern string) func(string) {resultType} {{\n\treturn func(input string) {resultType} {{\n\t\tgroups, ok := fsRegexMatchGroups(pattern, input)\n\t\tif !ok {{\n\t\t\treturn {resultType}{{}}\n\t\t}}\n\t\treturn {resultType}{{HasValue: true, Value: groups}}\n\t}}\n}}"
+            | "Fs.exists", TFun(TString, TBool) ->
+                "func(path string) bool {\n\tfull, ok := fsResolve(path)\n\tif !ok {\n\t\treturn false\n\t}\n\t_, err := os.Stat(full)\n\treturn err == nil\n}"
+            | "Fs.kind", TFun(TString, resultType) ->
+                let result = goType resultType
+                $"func(path string) {result} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {result}{{Tag: \"Missing\"}}\n\t}}\n\tinfo, err := os.Stat(full)\n\tif err != nil {{\n\t\treturn {result}{{Tag: \"Missing\"}}\n\t}}\n\trelative := fsRelative(full)\n\tif info.IsDir() {{\n\t\treturn {result}{{Tag: \"Directory\", Case_Directory: relative}}\n\t}}\n\treturn {result}{{Tag: \"File\", Case_File: relative}}\n}}"
+            | "Fs.createDirectory", TFun(TString, TBool) ->
+                "func(path string) bool {\n\tfull, ok := fsResolve(path)\n\tif !ok {\n\t\treturn false\n\t}\n\tif os.MkdirAll(full, 0755) != nil {\n\t\treturn false\n\t}\n\tinfo, err := os.Stat(full)\n\treturn err == nil && info.IsDir()\n}"
+            | "Fs.writeText", TFun(TString, TFun(TString, TBool)) ->
+                "func(path string) func(string) bool {\n\treturn func(content string) bool {\n\t\tfull, ok := fsResolve(path)\n\t\tif !ok {\n\t\t\treturn false\n\t\t}\n\t\tparent := filepath.Dir(full)\n\t\tif os.MkdirAll(parent, 0755) != nil {\n\t\t\treturn false\n\t\t}\n\t\treturn os.WriteFile(full, []byte(content), 0644) == nil\n\t}\n}"
+            | "Fs.combinePath", TFun(TString, TFun(TString, TString)) ->
+                "func(left string) func(string) string {\n\treturn func(right string) string { return filepath.ToSlash(filepath.Join(left, right)) }\n}"
+            | "Fs.parentDirectory", TFun(TString, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(path string) {resultType} {{\n\tcleaned := filepath.Clean(path)\n\tparent := filepath.Dir(cleaned)\n\tif parent == \".\" || parent == cleaned {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: filepath.ToSlash(parent)}}\n}}"
+            | "Fs.extension", TFun(TString, TOption TString) ->
+                let resultType = goType (TOption TString)
+                $"func(path string) {resultType} {{\n\textension := filepath.Ext(path)\n\tif extension == \"\" {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: extension}}\n}}"
+            | "Fs.fileNameWithoutExtension", TFun(TString, TString) ->
+                "func(path string) string {\n\tbase := filepath.Base(path)\n\treturn strings.TrimSuffix(base, filepath.Ext(base))\n}"
+            | "Fs.glob", TFun(TString, TOption(TList TString)) ->
+                let resultType = goType (TOption(TList TString))
+                $"func(pattern string) {resultType} {{\n\tvalues, ok := fsGlob(\".\", pattern)\n\tif !ok {{\n\t\treturn {resultType}{{}}\n\t}}\n\treturn {resultType}{{HasValue: true, Value: values}}\n}}"
+            | "Fs.enumerateFiles", TFun(TString, TFun(TString, TOption(TList TString))) ->
+                let resultType = goType (TOption(TList TString))
+                $"func(directory string) func(string) {resultType} {{\n\treturn func(pattern string) {resultType} {{\n\t\tvalues, ok := fsGlob(directory, pattern)\n\t\tif !ok {{\n\t\t\treturn {resultType}{{}}\n\t\t}}\n\t\treturn {resultType}{{HasValue: true, Value: values}}\n\t}}\n}}"
+            | "Task.spawn", TFun(TFun(TUnit, resultType), TTask taskResult) when resultType = taskResult ->
+                let taskType = goType (TTask taskResult)
+                $"func(thunk func(struct{{}}) {goType taskResult}) {taskType} {{\n\tdone := make(chan struct{{}})\n\tresult := new({goType taskResult})\n\tgo func() {{\n\t\tdefer close(done)\n\t\t*result = thunk(struct{{}}{{}})\n\t}}()\n\treturn {taskType}{{Done: done, Result: result}}\n}}"
+            | "Task.await", TFun(TTask taskResult, resultType) when resultType = taskResult ->
+                $"func(task {goType (TTask taskResult)}) {goType resultType} {{\n\t<-task.Done\n\treturn *task.Result\n}}"
             | _ -> invalidOp $"Unsupported typed host external '{name}' at {Types.typeToString externalType}."
         let targetImport modulePath memberName importType =
             let alias = importModules.[modulePath]
@@ -529,6 +591,44 @@ module TypedGoEmitter =
                     let renderedArguments = String.concat ", " arguments
                     $"{alias}.{memberName}({renderedArguments})"
             curry 0 importType []
+        let rec coerce sourceType targetType code =
+            if sourceType = targetType then code
+            else
+                match sourceType, targetType with
+                | TNamed _, TRecord _
+                | TRecord _, TNamed _ ->
+                    let sourceFields = recordFields sourceType
+                    let targetFields = recordFields targetType
+                    if sourceFields.Count <> targetFields.Count || (sourceFields |> Map.exists (fun name _ -> not (Map.containsKey name targetFields))) then code
+                    else
+                        let assignments =
+                            targetFields
+                            |> Map.toList
+                            |> List.map (fun (name, targetFieldType) ->
+                                let sourceFieldType = sourceFields.[name]
+                                let value = coerce sourceFieldType targetFieldType $"converted.{emittedField sourceType name}"
+                                $"{emittedField targetType name}: {value}")
+                            |> String.concat ", "
+                        $"func() {goType targetType} {{\n\tconverted := {indent code}\n\treturn {goType targetType}{{{assignments}}}\n}}()"
+                | TList sourceItem, TList targetItem when sourceItem <> targetItem ->
+                    let convertedItem = coerce sourceItem targetItem "item"
+                    $"func() {goType targetType} {{\n\tsource := {indent code}\n\tresult := make({goType targetType}, 0, len(source))\n\tfor _, item := range source {{\n\t\tresult = append(result, {indent (indent convertedItem)})\n\t}}\n\treturn result\n}}()"
+                | TFun(sourceArgument, sourceResult), TFun(targetArgument, targetResult) ->
+                    let argument = coerce targetArgument sourceArgument "argument"
+                    let result = coerce sourceResult targetResult $"source({argument})"
+                    $"func() {goType targetType} {{\n\tsource := {indent code}\n\treturn func(argument {goType targetArgument}) {goType targetResult} {{\n\t\treturn {indent (indent result)}\n\t}}\n}}()"
+                | _ -> code
+        let rec emittedType (expression: Lir.Expression) =
+            match expression.Node with
+            | Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue expression.Type
+            | Lir.MakeClosure(id, _) ->
+                let fn = functions.[id]
+                TFun(fn.ParameterType, fn.ReturnType)
+            | Lir.CallClosure(fn, _) | Lir.PipeClosure(_, fn) ->
+                match emittedType fn with
+                | TFun(_, resultType) -> resultType
+                | _ -> expression.Type
+            | _ -> expression.Type
         let rec emit environment (expression: Lir.Expression) =
             let emitChild = emit environment
             match expression.Node with
@@ -538,10 +638,16 @@ module TypedGoEmitter =
                 let fn = functions.[id]
                 let parameter = symbolName "arg" fn.Parameter
                 let body = emit (Map.add fn.Parameter parameter environment) fn.Body
-                $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\treturn {indent body}\n}}"
-            | Lir.CallClosure(fn, argument) -> $"({emitChild fn})({emitChild argument})"
-            | Lir.PipeClosure(argument, fn) -> $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (emitChild argument)}\n\tpipelineFunction := {indent (emitChild fn)}\n\treturn pipelineFunction(pipelineArgument)\n}}()"
-            | Lir.Branch(condition, whenTrue, whenFalse) -> $"func() {goType expression.Type} {{\n\tif {goCondition (emitChild condition)} {{\n\t\treturn {indent (indent (emitChild whenTrue))}\n\t}}\n\treturn {indent (emitChild whenFalse)}\n}}()"
+                $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\treturn {indent (coerce fn.Body.Type fn.ReturnType body)}\n}}"
+            | Lir.CallClosure(fn, argument) ->
+                let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
+                let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
+                $"({emitChild fn})({coerce (emittedType argument) parameterType (emitChild argument)})"
+            | Lir.PipeClosure(argument, fn) ->
+                let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
+                let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
+                $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (coerce (emittedType argument) parameterType (emitChild argument))}\n\tpipelineFunction := {indent (emitChild fn)}\n\treturn pipelineFunction(pipelineArgument)\n}}()"
+            | Lir.Branch(condition, whenTrue, whenFalse) -> $"func() {goType expression.Type} {{\n\tif {goCondition (emitChild condition)} {{\n\t\treturn {indent (indent (coerce whenTrue.Type expression.Type (emitChild whenTrue)))}\n\t}}\n\treturn {indent (coerce whenFalse.Type expression.Type (emitChild whenFalse))}\n}}()"
             | Lir.Operation(operation, [ left; right ]) ->
                 let leftCode, rightCode = emitChild left, emitChild right
                 match operation with
@@ -559,9 +665,9 @@ module TypedGoEmitter =
                 | Lir.IntSubtract | Lir.FloatSubtract -> $"({leftCode} - {rightCode})"
                 | Lir.IntMultiply | Lir.FloatMultiply -> $"({leftCode} * {rightCode})"
                 | Lir.IntDivide | Lir.FloatDivide ->
-                    $"func() {goType expression.Type} {{ left, right := {leftCode}, {rightCode}; return left / right }}()"
+                    $"func() {goType expression.Type} {{\n\tleft, right := {indent leftCode}, {indent rightCode}\n\treturn left / right\n}}()"
                 | Lir.IntRemainder ->
-                    $"func() int64 {{ left, right := {leftCode}, {rightCode}; return left %% right }}()"
+                    $"func() int64 {{\n\tleft, right := {indent leftCode}, {indent rightCode}\n\treturn left %% right\n}}()"
                 | Lir.NumericLessThan -> $"({leftCode} < {rightCode})"
                 | Lir.NumericGreaterThan -> $"({leftCode} > {rightCode})"
                 | Lir.NumericLessThanOrEqual -> $"({leftCode} <= {rightCode})"
@@ -587,14 +693,17 @@ module TypedGoEmitter =
                 $"({emitChild target}).{field}"
             | Lir.SomeValue item -> $"{goType expression.Type}{{HasValue: true, Value: {emitChild item}}}"
             | Lir.NoneValue -> $"{goType expression.Type}{{}}"
-            | Lir.Cons(head, tail) -> $"append({goType expression.Type}{{{emitChild head}}}, {emitChild tail}...)"
+            | Lir.Cons(head, tail) ->
+                let itemType = match expression.Type with TList item -> item | _ -> head.Type
+                $"append({goType expression.Type}{{{coerce head.Type itemType (emitChild head)}}}, {coerce tail.Type expression.Type (emitChild tail)}...)"
             | Lir.Append(left, right) -> $"append(append({goType expression.Type}{{}}, {emitChild left}...), {emitChild right}...)"
             | Lir.Let(id, _, recursive, binding, body) ->
                 let variable = symbolName "local" id
                 let scoped = Map.add id variable environment
                 let bindingCode = emit (if recursive then scoped else environment) binding
                 let bodyCode = emit scoped body
-                let declaration = if recursive then $"var {variable} {goType binding.Type}\n\t{variable} = {indent bindingCode}" else $"{variable} := {indent bindingCode}"
+                let coercedBinding = coerce (emittedType binding) binding.Type bindingCode
+                let declaration = $"var {variable} {goType binding.Type}\n\t{variable} = {indent coercedBinding}"
                 $"func() {goType expression.Type} {{\n\t{declaration}\n\t_ = {variable}\n\treturn {indent bodyCode}\n}}()"
             | Lir.LetRecursiveGroup(bindings, body) ->
                 let scoped = bindings |> List.fold (fun current (id, _, _, _) -> Map.add id (symbolName "localRec" id) current) environment
@@ -700,7 +809,7 @@ module TypedGoEmitter =
                         $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent terminal)}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
                     let condition, topAssignments = simplePlan case.Plan targetName target.Type
                     let mapChecks = case.Plan.Maps |> List.mapi emitMapPlan
-                    let bodyCode = emit scoped case.Body
+                    let bodyCode = coerce case.Body.Type expression.Type (emit scoped case.Body)
                     let guardedBody =
                         match case.Guard with
                         | None -> $"return {indent (indent bodyCode)}"
@@ -718,7 +827,8 @@ module TypedGoEmitter =
                 $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}\n\tpanic(\"Match failure.\")\n}}()"
             | Lir.RecordUpdate(target, fields) ->
                 let targetCode = emitChild target
-                let assignments = fields |> List.map (fun (name, value) -> $"updated.{emittedField expression.Type name} = {emitChild value}") |> String.concat "\n\t"
+                let expectedFields = recordFields expression.Type
+                let assignments = fields |> List.map (fun (name, value) -> $"updated.{emittedField expression.Type name} = {indent (coerce value.Type expectedFields.[name] (emitChild value))}") |> String.concat "\n\t"
                 match expression.Type with
                 | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := *original\n\t{assignments}\n\treturn &updated\n}}()"
                 | _ -> $"func() {goType expression.Type} {{\n\tupdated := {targetCode}\n\t{assignments}\n\treturn updated\n}}()"
@@ -727,8 +837,8 @@ module TypedGoEmitter =
                 let fields = recordFields targetType
                 let assignments = fields |> Map.toList |> List.map (fun (name, _) -> $"{emittedField targetType name}: converted.{emittedField target.Type name}") |> String.concat ", "
                 match targetType with
-                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType targetType} {{\n\tconverted := {targetCode}\n\treturn &named_{identifier name}{{{assignments}}}\n}}()"
-                | _ -> $"func() {goType targetType} {{\n\tconverted := {targetCode}\n\treturn {goType targetType}{{{assignments}}}\n}}()"
+                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType targetType} {{\n\tconverted := {indent targetCode}\n\treturn &named_{identifier name}{{{assignments}}}\n}}()"
+                | _ -> $"func() {goType targetType} {{\n\tconverted := {indent targetCode}\n\treturn {goType targetType}{{{assignments}}}\n}}()"
             | Lir.Range(first, last) -> $"func() []int64 {{\n\tfirst, last := {emitChild first}, {emitChild last}\n\tresult := []int64{{}}\n\tif first <= last {{\n\t\tfor value := first; value <= last; value++ {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}} else {{\n\t\tfor value := first; value >= last; value-- {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}}\n\treturn result\n}}()"
             | Lir.IndexGet(target, index) ->
                 match target.Type with
@@ -774,15 +884,187 @@ module TypedGoEmitter =
         for declaration in program.Declarations do declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
         declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore
-        for declaration in program.Declarations do declarations.AppendLine($"\t{names.[declaration.Id]} = {indent (emit names declaration.Value)}") |> ignore
+        for declaration in program.Declarations do declarations.AppendLine($"\t{names.[declaration.Id]} = {indent (coerce declaration.Value.Type declaration.Type (emit names declaration.Value))}") |> ignore
         declarations.AppendLine("}") |> ignore
         let entry = program.Entry |> Option.defaultValue { Type = TUnit; Span = { Start = { Line = 0; Column = 0; File = None }; End = { Line = 0; Column = 0; File = None } }; Node = Lir.Constant Lir.Unit }
         let entryCode = emit names entry
         let resultFormatter = formatter entry.Type
         let helperSource = String.concat "\n\n" (Seq.append equalityBodies formatterBodies)
         let emittedValues = declarations.ToString() + entryCode
+        let regexRuntimeSource =
+            if emittedValues.Contains("fsRegexMatchGroups", StringComparison.Ordinal) then
+                """func fsRegexMatchGroups(pattern string, input string) ([]string, bool) {
+	translated, captures, ok := fsTranslateRegex(pattern)
+	if !ok {
+		return nil, false
+	}
+	expression, err := regexp.Compile(translated)
+	if err != nil {
+		return nil, false
+	}
+	match := expression.FindStringSubmatch(input)
+	if match == nil {
+		return nil, false
+	}
+	groups := make([]string, 0, len(captures))
+	for index, include := range captures {
+		if include {
+			groups = append(groups, match[index+1])
+		}
+	}
+	return groups, true
+}
+
+func fsTranslateRegex(pattern string) (string, []bool, bool) {
+	var translated strings.Builder
+	captures := []bool{}
+	escaped := false
+	inClass := false
+	for index := 0; index < len(pattern); index++ {
+		character := pattern[index]
+		if escaped {
+			translated.WriteByte(character)
+			escaped = false
+			continue
+		}
+		if character == '\\' {
+			translated.WriteByte(character)
+			escaped = true
+			continue
+		}
+		if character == '[' {
+			inClass = true
+			translated.WriteByte(character)
+			continue
+		}
+		if character == ']' && inClass {
+			inClass = false
+			translated.WriteByte(character)
+			continue
+		}
+		if character == '(' && !inClass {
+			if index+2 < len(pattern) && pattern[index+1] == '?' && pattern[index+2] == ':' {
+				translated.WriteByte('(')
+				captures = append(captures, false)
+				index += 2
+				continue
+			}
+			if index+1 < len(pattern) && pattern[index+1] == '?' {
+				return "", nil, false
+			}
+			captures = append(captures, true)
+		}
+		translated.WriteByte(character)
+	}
+	if escaped || inClass {
+		return "", nil, false
+	}
+	return translated.String(), captures, true
+}
+"""
+            else ""
+        let filesystemRuntimeSource =
+            if emittedValues.Contains("fsResolve", StringComparison.Ordinal) || emittedValues.Contains("fsGlob(", StringComparison.Ordinal) then
+                """func fsRoot() (string, bool) {
+	root, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	root, err = filepath.Abs(root)
+	return root, err == nil
+}
+
+func fsResolve(candidate string) (string, bool) {
+	full, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", false
+	}
+	return full, true
+}
+
+func fsRelative(full string) string {
+	root, ok := fsRoot()
+	if !ok {
+		return filepath.ToSlash(full)
+	}
+	relative, err := filepath.Rel(root, full)
+	if err != nil {
+		return filepath.ToSlash(full)
+	}
+	return filepath.ToSlash(relative)
+}
+
+func fsGlobRegex(pattern string) (*regexp.Regexp, bool) {
+	escaped := regexp.QuoteMeta(filepath.ToSlash(pattern))
+	escaped = strings.ReplaceAll(escaped, `\*\*/`, "___DOUBLESTAR_SLASH___")
+	escaped = strings.ReplaceAll(escaped, `\*\*`, "___DOUBLESTAR___")
+	escaped = strings.ReplaceAll(escaped, `\*`, `[^/]*`)
+	escaped = strings.ReplaceAll(escaped, "___DOUBLESTAR_SLASH___", `(.*/)?`)
+	escaped = strings.ReplaceAll(escaped, "___DOUBLESTAR___", `.*`)
+	escaped = strings.ReplaceAll(escaped, `\?`, `.`)
+	expression, err := regexp.Compile("^" + escaped + "$")
+	return expression, err == nil
+}
+
+func fsGlob(directory string, pattern string) ([]string, bool) {
+	fullDirectory, ok := fsResolve(directory)
+	if !ok {
+		return nil, false
+	}
+	info, err := os.Stat(fullDirectory)
+	if err != nil || !info.IsDir() {
+		return nil, false
+	}
+	expression, ok := fsGlobRegex(pattern)
+	if !ok {
+		return nil, false
+	}
+	values := []string{}
+	consider := func(full string) {
+		relative, err := filepath.Rel(fullDirectory, full)
+		if err == nil && expression.MatchString(filepath.ToSlash(relative)) {
+			values = append(values, fsRelative(full))
+		}
+	}
+	if strings.Contains(filepath.ToSlash(pattern), "/") {
+		err = filepath.WalkDir(fullDirectory, func(path string, entry os.DirEntry, walkError error) error {
+			if walkError != nil {
+				if entry != nil && entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !entry.IsDir() {
+				consider(path)
+			}
+			return nil
+		})
+	} else {
+		var entries []os.DirEntry
+		entries, err = os.ReadDir(fullDirectory)
+		if err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					consider(filepath.Join(fullDirectory, entry.Name()))
+				}
+			}
+		}
+	}
+	if err != nil {
+		return nil, false
+	}
+	sort.Strings(values)
+	return values, true
+}
+"""
+            else ""
+        let portableRuntimeSource =
+            [ regexRuntimeSource; filesystemRuntimeSource ]
+            |> List.filter (String.IsNullOrWhiteSpace >> not)
+            |> String.concat "\n"
+            |> fun source -> if String.IsNullOrEmpty source then source else source + "\n"
         let consoleSource = if emittedValues.Contains("consoleScanner", StringComparison.Ordinal) then "var consoleScanner = bufio.NewScanner(os.Stdin)\n\n" else ""
-        let generatedBody = helperSource + consoleSource + emittedValues
+        let generatedBody = helperSource + portableRuntimeSource + consoleSource + emittedValues
         let imports =
             [ if generatedBody.Contains("bufio.", StringComparison.Ordinal) then
                   "\t\"bufio\""
@@ -792,6 +1074,10 @@ module TypedGoEmitter =
                   "\t\"path/filepath\""
               if generatedBody.Contains("math.", StringComparison.Ordinal) then
                   "\t\"math\""
+              if generatedBody.Contains("regexp.", StringComparison.Ordinal) then
+                  "\t\"regexp\""
+              if generatedBody.Contains("sort.", StringComparison.Ordinal) then
+                  "\t\"sort\""
               if generatedBody.Contains("strconv.", StringComparison.Ordinal) then
                   "\t\"strconv\""
               if generatedBody.Contains("strings.", StringComparison.Ordinal) then
@@ -812,7 +1098,7 @@ module TypedGoEmitter =
             | values ->
                 let renderedGroups = String.concat "\n\n" values
                 $"import (\n{renderedGroups}\n)\n\n"
-        let programSource = $"package fscriptprogram\n\n{importSource}{typeDeclarations}\n{helperSource}\n\n{consoleSource}{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
+        let programSource = $"package fscriptprogram\n\n{importSource}{typeDeclarations}\n{helperSource}\n\n{portableRuntimeSource}{consoleSource}{declarations}\nfunc Run() {goType entry.Type} {{\n\treturn {entryCode}\n}}\n\nfunc FormatResult(value {goType entry.Type}) string {{\n\treturn {resultFormatter}(value)\n}}\n"
         let mainSource = $"package main\n\nimport (\n\t\"{moduleName}/internal/fscriptprogram\"\n\t\"os\"\n)\n\nfunc main() {{\n\tvalue := fscriptprogram.Run()\n\t_, _ = os.Stdout.WriteString(fscriptprogram.FormatResult(value) + \"\\n\")\n}}\n"
         [ "go.mod", $"module {moduleName}\n\ngo 1.25\n"
           "main.go", mainSource

@@ -7,24 +7,12 @@ type GoOptions = { ModuleName: string }
 type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
-    let rec private containsTask = function
-        | TTask _ -> true
-        | TList item | TOption item -> containsTask item
-        | TTuple items -> List.exists containsTask items
-        | TRecord fields -> fields |> Map.exists (fun _ -> containsTask)
-        | TMap(keyType, valueType) | TFun(keyType, valueType) -> containsTask keyType || containsTask valueType
-        | TUnion(_, cases) -> cases |> Map.exists (fun _ -> Option.exists containsTask)
-        | _ -> false
-
     let private diagnostic code message span =
         { Code = code; Stage = GoGeneration; Message = message; Span = span }
 
     let rec private unsupportedExpression (expression: Lir.Expression) =
         let first values = values |> List.tryPick unsupportedExpression
-        if containsTask expression.Type then
-            Some(diagnostic "FSB4004" "Task values are not supported by the Go backend." (Some expression.Span))
-        else
-            match expression.Node with
+        match expression.Node with
             | Lir.HostExternal(name, _) when not (TypedGoEmitter.isTypedHostExternal name) ->
                 Some(diagnostic "FSB4006" $"Host external '{name}' is not supported by the Go backend." (Some expression.Span))
             | Lir.Intrinsic name when not (TypedGoEmitter.isTypedIntrinsic name) ->
@@ -58,9 +46,7 @@ module GoBackend =
         |> Option.map (fun record -> diagnostic "FSB4005" $"Imported Go record '{record.Name}' must have exported, exactly named primitive fields and cannot be a union." (Some record.Span))
         |> Option.orElseWith (fun () ->
             program.Declarations
-            |> List.tryPick (fun declaration ->
-                if containsTask declaration.Type then Some(diagnostic "FSB4004" "Task values are not supported by the Go backend." (Some declaration.Span))
-                else unsupportedExpression declaration.Value)
+            |> List.tryPick (fun declaration -> unsupportedExpression declaration.Value)
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind unsupportedExpression))
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =

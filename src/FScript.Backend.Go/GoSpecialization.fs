@@ -23,6 +23,7 @@ module GoSpecialization =
         | Tuple of Representation list
         | List of Representation
         | Option of Representation
+        | Task of Representation
         | OrderedMap of Representation * Representation
         | StructuralRecord of (string * Representation) list
         | Named of name: string * recursive: bool
@@ -94,7 +95,7 @@ module GoSpecialization =
             | TString -> Ok String
             | TTypeToken -> Ok TypeToken
             | TVar variable -> Error $"Open type variable '{variable}' has no Go representation."
-            | TTask _ -> Error "Task values have no Go representation."
+            | TTask item -> representation item |> Result.map Task
             | TFun(argument, result) -> map2 (fun a r -> Function(a, r)) (representation argument) (representation result)
             | TTuple items -> items |> List.map representation |> List.fold (fun state item -> map2 (fun values value -> values @ [ value ]) state item) (Ok []) |> Result.map Tuple
             | TList item -> representation item |> Result.map List

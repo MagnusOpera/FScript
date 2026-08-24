@@ -135,13 +135,22 @@ module GoMonomorphization =
             let resolveType = function
                 | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
                 | value -> value
-            let preserveNamedRepresentation template concrete =
-                match template with
-                | TNamed name ->
+            let rec preserveNamedRepresentation template concrete =
+                match template, concrete with
+                | TNamed name, _ ->
                     match typeDefinitions |> Map.tryFind name with
                     | Some definition when GoSpecialization.unifyInstantiation definition concrete |> Result.isOk -> template
                     | _ -> concrete
-                | _ -> concrete
+                | TFun(templateArgument, templateResult), TFun(concreteArgument, concreteResult) ->
+                    TFun(preserveNamedRepresentation templateArgument concreteArgument, preserveNamedRepresentation templateResult concreteResult)
+                | TList templateItem, TList concreteItem -> TList(preserveNamedRepresentation templateItem concreteItem)
+                | TOption templateItem, TOption concreteItem -> TOption(preserveNamedRepresentation templateItem concreteItem)
+                | TTask templateItem, TTask concreteItem -> TTask(preserveNamedRepresentation templateItem concreteItem)
+                | TTuple templateItems, TTuple concreteItems when templateItems.Length = concreteItems.Length ->
+                    TTuple(List.map2 preserveNamedRepresentation templateItems concreteItems)
+                | TMap(templateKey, templateValue), TMap(concreteKey, concreteValue) ->
+                    TMap(preserveNamedRepresentation templateKey concreteKey, preserveNamedRepresentation templateValue concreteValue)
+                | _, _ -> concrete
             let rec projectionType checks traversed current = function
                 | [] -> Some current
                 | step :: rest ->
@@ -254,6 +263,7 @@ module GoMonomorphization =
                          let defaults = Types.ftvType concrete |> Seq.map (fun variable -> variable, TUnit) |> Map.ofSeq
                          GoSpecialization.apply defaults concrete
                      else concrete)
+                    |> preserveNamedRepresentation source.Type
                     |> closedType span
                 let key = GoSpecialization.specializationKey (symbolNumber original) concrete
                 match state.DeclarationKeys.TryGetValue key with
@@ -450,6 +460,11 @@ module GoMonomorphization =
                 let resultType =
                     match node with
                     | Lir.Load id -> state.OutputDeclarations |> Seq.tryFind (fun declaration -> declaration.Id = id) |> Option.map _.Type |> Option.defaultValue concreteType
+                    | Lir.MakeClosure(id, _) ->
+                        state.OutputFunctions
+                        |> Seq.tryFind (fun fn -> fn.Id = id)
+                        |> Option.map (fun fn -> TFun(fn.ParameterType, fn.ReturnType))
+                        |> Option.defaultValue concreteType
                     | _ -> concreteType
                 { expression with Type = resultType; Node = node }
 

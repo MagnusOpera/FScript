@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added generated Go support for `Regex.matchGroups`, the complete `Fs.*` surface, and typed goroutine-backed `Task.spawn`/`Task.await`, including runnable BASIC output.
+
 - Fixed Go specialization for independently polymorphic curried parameters, bottom branches, named-record results, and ignored pattern fields.
 
 - Enforced zero-erasure Go conformance across generated-project builds, quicksort, specialization diagnostics, and the legacy/LIR/Go cross-runtime harness.

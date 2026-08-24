@@ -58,7 +58,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Cross-runtime tests compare the legacy evaluator with artifact-round-tripped LIR execution and generated Go for successful values and failure categories. Named records passed through typed function boundaries keep record field projection semantics; their nominal annotation must not select a union runtime representation.
 - Cross-runtime result formatting quotes strings at every nesting level, renders unit as `()`, renders ordered maps as `map { key => value }`, uses compact semicolon separators for lists, and retains comma-space separators for tuples.
 - HIR and LIR are accepted only when artifact-local references resolve, source spans are valid, declaration and expression types agree, calls and control-flow nodes have consistent signatures, aggregate representations match their semantic types, and referenced primitives/imports are available and complete.
-- Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert; fully applying `Task.spawn` or `Task.await` in LIR reports `FSI3021`, while a Go program whose reachable declaration graph requires a task reports `FSB4004`.
+- Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert. Fully applying `Task.spawn` or `Task.await` in the LIR interpreter reports `FSI3021`; generated Go executes a specialized task on a goroutine and awaits it through a private typed completion channel.
 - Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
 - Generated Go rejects a reachable arbitrary host extern with `FSB4006`; an unused host-extern descriptor remains inert and does not block generation.
 - `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
@@ -73,7 +73,7 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Scalar conversions, string helpers, `List`, `Option`, and `Map` functions are protected builtin symbols with explicit polymorphic schemes. They are initial compiler/runtime intrinsics even where a future implementation can compile their FScript source.
 - The LIR interpreter and Go runtime execute the complete pure builtin catalog, including higher-order list, option, and ordered-map functions. Callback invocation remains curried and follows source collection order.
 - Generated Go implements FScript string indexing and substring ranges in UTF-16 code units, matching the reference evaluator and Fable string model rather than Go byte offsets. Boolean parsing accepts only case-insensitive `true` and `false`, matching the reference runtime.
-- `Console.writeLine`, `Console.readLine`, `Fs.readText`, and the CLI `Env` value are portable runtime primitives. The remaining filesystem, regex, hashing, GUID, JSON, and XML functions remain host externs initially.
+- `Console.writeLine`, `Console.readLine`, the complete `Fs.*` surface, `Regex.matchGroups`, `Task.spawn`, `Task.await`, and the CLI `Env` value are implemented by generated Go. Hashing, GUID, JSON, and XML functions remain unsupported host externs.
 - Compiled `Env` is a runtime-context intrinsic. The LIR interpreter uses its explicit script name and arguments; generated Go uses the executable base name and `os.Args[1:]`.
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
@@ -86,10 +86,11 @@ The compiler-owned runtime catalog is declarative and contains no executable hos
 | --- | --- |
 | Compiler context intrinsic | `Env` |
 | Portable runtime intrinsic | `Console.writeLine`, `Console.readLine`, `Fs.readText` |
-| Host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles` |
-| Pure host candidates | `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension`, `Regex.matchGroups`, `Hash.md5` |
+| Go-capable host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension` |
+| Go-capable regex | `Regex.matchGroups` |
+| Pure host candidates | `Hash.md5` |
 | Host-only/deferred data services | `Guid.new`, `Json.deserialize`, `Json.serialize`, `Xml.queryValues` |
-| Deferred task runtime | `Task.spawn`, `Task.await` |
+| Go task runtime | `Task.spawn`, `Task.await` |
 
 All entries are type-checkable and retained as linkage in HIR/LIR. Except for the compiler context and portable intrinsic rows, reaching one produces an interpreter or backend unsupported diagnostic; unused linkage remains inert.
 

@@ -64,6 +64,8 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Regex
 - `Regex.matchGroups : string -> string -> string list option`
 
+Generated Go implements `Regex.matchGroups` using Go's regular-expression engine. FScript non-capturing groups `(?:...)` are translated while preserving the returned list of capturing groups; invalid or unsupported expressions return `None`.
+
 ### Hash and GUID
 - `Hash.md5 : string -> string option`
 - `Guid.new : 'a -> string option` (dummy argument to preserve call shape)
@@ -75,6 +77,8 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Task
 - `Task.spawn : (unit -> 'a) -> 'a task`
 - `Task.await : 'a task -> 'a`
+
+Generated Go specializes `'a` and represents the task with a private typed completion channel. Channels are not an FScript type and are not exposed by the generated program API.
 - These are part of the default runtime extern registry, so hosts may omit them.
 
 ### Collections and prelude

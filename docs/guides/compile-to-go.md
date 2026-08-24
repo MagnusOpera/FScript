@@ -85,7 +85,9 @@ The initial backend preserves:
 - pattern decision plans and guards;
 - scalar, string, list, option, map, and portable console intrinsics;
 - line-oriented stdin/stdout through `Console.readLine` and `Console.writeLine`;
-- read-only text input through `Fs.readText`;
+- the complete filesystem surface through `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, path helpers, `Fs.glob`, and `Fs.enumerateFiles`;
+- capture extraction through `Regex.matchGroups`;
+- typed concurrency through `Task.spawn` and `Task.await`;
 - short-circuit Boolean operations and left-to-right evaluation;
 - FScript-compatible result formatting, including IEEE floating results.
 
@@ -102,7 +104,15 @@ match Console.readLine () with
 | None -> "No input"
 ```
 
-`Console.readLine ()` returns `None` at EOF. A final line without a trailing newline is returned as `Some`. `Fs.readText path` is also portable and returns `None` when the file cannot be read; other filesystem functions remain unsupported by the Go backend.
+`Console.readLine ()` returns `None` at EOF. A final line without a trailing newline is returned as `Some`. Filesystem calls resolve relative paths from the generated process working directory and use its native operating-system permissions. `Task.spawn` starts a goroutine immediately; `Task.await` blocks on its private completion channel and returns the concretely typed result.
+
+The BASIC sample is an end-to-end acceptance program:
+
+```shell
+dotnet run --project src/FScript -- compile samples/basic/basic.fss --target go --output ./out/basic
+cd out/basic
+go run . ../../samples/basic/helloworld.bas
+```
 
 ## Go imports
 
