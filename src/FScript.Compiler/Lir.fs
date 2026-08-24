@@ -661,6 +661,207 @@ module LirValidation =
             if diagnostics.Count = 0 then Ok program else Error(List.ofSeq diagnostics)
 
 module LirOptimization =
-    /// The initial pipeline deliberately performs no optimization. Keeping this
-    /// pass explicit makes future transformations independently testable.
-    let optimize (program: Lir.Program) = program
+    type Effect =
+        | Pure
+        | Observable
+
+    let private combine effects =
+        if effects |> List.exists ((=) Observable) then Observable else Pure
+
+    let rec effect (expression: Lir.Expression) =
+        let child = effect
+        match expression.Node with
+        | Lir.Constant _ | Lir.Load _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _
+        | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
+        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.Fail _ | Lir.ForEach _ -> Observable
+        | Lir.Operation((Lir.IntDivide | Lir.IntRemainder), _) -> Observable
+        | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> combine
+        | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> combine
+        | Lir.Record fields -> fields |> List.map (snd >> child) |> combine
+        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.RecordConvert(target, _) -> child target
+        | Lir.Cons(head, tail) | Lir.Append(head, tail) | Lir.Range(head, tail) | Lir.IndexGet(head, tail) -> [ child head; child tail ] |> combine
+        | Lir.Let(_, _, _, binding, body) -> [ child binding; child body ] |> combine
+        | Lir.LetRecursiveGroup(bindings, body) -> child body :: (bindings |> List.map (fun (_, _, _, value) -> child value)) |> combine
+        | Lir.DecisionTree(target, cases) ->
+            child target
+            :: (cases |> List.collect (fun case -> [ yield! case.Guard |> Option.map child |> Option.toList; child case.Body ]))
+            |> combine
+        | Lir.RecordUpdate(target, fields) -> child target :: (fields |> List.map (snd >> child)) |> combine
+        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(child value)) |> combine
+        | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Pure
+        | Lir.Map entries ->
+            entries
+            |> List.collect (function Lir.KeyValue(key, value) -> [ child key; child value ] | Lir.Spread value -> [ child value ])
+            |> combine
+
+    let rec loadedSymbols (expression: Lir.Expression) =
+        let child = loadedSymbols
+        match expression.Node with
+        | Lir.Load id -> Set.singleton id
+        | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Cons(fn, argument)
+        | Lir.Append(fn, argument) | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> Set.union (child fn) (child argument)
+        | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> Set.unionMany
+        | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> Set.unionMany
+        | Lir.Record fields -> fields |> List.map (snd >> child) |> Set.unionMany
+        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> child target
+        | Lir.Let(_, _, _, binding, body) -> Set.union (child binding) (child body)
+        | Lir.LetRecursiveGroup(bindings, body) -> child body :: (bindings |> List.map (fun (_, _, _, value) -> child value)) |> Set.unionMany
+        | Lir.DecisionTree(target, cases) ->
+            child target
+            :: (cases |> List.collect (fun case -> [ yield! case.Guard |> Option.map child |> Option.toList; child case.Body ]))
+            |> Set.unionMany
+        | Lir.RecordUpdate(target, fields) -> child target :: (fields |> List.map (snd >> child)) |> Set.unionMany
+        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(child value)) |> Set.unionMany
+        | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Set.empty
+        | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, value) -> Set.union (child key) (child value) | Lir.Spread value -> child value) |> Set.unionMany
+        | Lir.ForEach(_, _, _, source, body) -> Set.union (child source) (child body)
+        | Lir.Constant _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _
+        | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Set.empty
+
+    let rec private simplify (expression: Lir.Expression) =
+        let recurse (value: Lir.Expression) : Lir.Expression = simplify value
+        let withNode node = { expression with Node = node }
+        match expression.Node with
+        | Lir.Branch(condition, whenTrue, whenFalse) ->
+            let condition = recurse condition
+            match condition.Node with
+            | Lir.Constant(Lir.Bool true) -> recurse whenTrue
+            | Lir.Constant(Lir.Bool false) -> recurse whenFalse
+            | _ -> withNode (Lir.Branch(condition, recurse whenTrue, recurse whenFalse))
+        | Lir.Operation(Lir.BooleanAnd, [ left; right ]) ->
+            let left = recurse left
+            match left.Node with
+            | Lir.Constant(Lir.Bool false) -> left
+            | Lir.Constant(Lir.Bool true) -> recurse right
+            | _ -> withNode (Lir.Operation(Lir.BooleanAnd, [ left; recurse right ]))
+        | Lir.Operation(Lir.BooleanOr, [ left; right ]) ->
+            let left = recurse left
+            match left.Node with
+            | Lir.Constant(Lir.Bool true) -> left
+            | Lir.Constant(Lir.Bool false) -> recurse right
+            | _ -> withNode (Lir.Operation(Lir.BooleanOr, [ left; recurse right ]))
+        | Lir.Let(id, name, recursive, binding, body) ->
+            let binding, body = recurse binding, recurse body
+            match body.Node with
+            | Lir.Load loaded when loaded = id && not recursive -> binding
+            | _ when not (Set.contains id (loadedSymbols body)) && effect binding = Pure -> body
+            | _ -> withNode (Lir.Let(id, name, recursive, binding, body))
+        | Lir.LetRecursiveGroup(bindings, body) ->
+            let bindings = bindings |> List.map (fun (id, name, valueType, value) -> id, name, valueType, recurse value)
+            let body = recurse body
+            let ids = bindings |> List.map (fun (id, _, _, _) -> id) |> Set.ofList
+            let used = Set.intersect ids (loadedSymbols body)
+            if used.IsEmpty && bindings |> List.forall (fun (_, _, _, value) -> effect value = Pure) then body
+            else withNode (Lir.LetRecursiveGroup(bindings, body))
+        | Lir.CallClosure(fn, argument) -> withNode (Lir.CallClosure(recurse fn, recurse argument))
+        | Lir.PipeClosure(argument, fn) -> withNode (Lir.PipeClosure(recurse argument, recurse fn))
+        | Lir.Operation(operation, arguments) -> withNode (Lir.Operation(operation, List.map recurse arguments))
+        | Lir.Tuple items -> withNode (Lir.Tuple(List.map recurse items))
+        | Lir.List items -> withNode (Lir.List(List.map recurse items))
+        | Lir.Record fields -> withNode (Lir.Record(fields |> List.map (fun (name, value) -> name, recurse value)))
+        | Lir.FieldGet(target, name) -> withNode (Lir.FieldGet(recurse target, name))
+        | Lir.SomeValue value -> withNode (Lir.SomeValue(recurse value))
+        | Lir.Cons(head, tail) -> withNode (Lir.Cons(recurse head, recurse tail))
+        | Lir.Append(left, right) -> withNode (Lir.Append(recurse left, recurse right))
+        | Lir.Fail value -> withNode (Lir.Fail(recurse value))
+        | Lir.DecisionTree(target, cases) ->
+            withNode (Lir.DecisionTree(recurse target, cases |> List.map (fun case -> { case with Guard = Option.map recurse case.Guard; Body = recurse case.Body })))
+        | Lir.Range(first, last) -> withNode (Lir.Range(recurse first, recurse last))
+        | Lir.RecordUpdate(target, fields) -> withNode (Lir.RecordUpdate(recurse target, fields |> List.map (fun (name, value) -> name, recurse value)))
+        | Lir.RecordConvert(target, targetType) -> withNode (Lir.RecordConvert(recurse target, targetType))
+        | Lir.IndexGet(target, index) -> withNode (Lir.IndexGet(recurse target, recurse index))
+        | Lir.Interpolate parts -> withNode (Lir.Interpolate(parts |> List.map (function Lir.TextPart text -> Lir.TextPart text | Lir.ValuePart value -> Lir.ValuePart(recurse value))))
+        | Lir.UnionCase(typeName, caseName, payload) -> withNode (Lir.UnionCase(typeName, caseName, Option.map recurse payload))
+        | Lir.Map entries -> withNode (Lir.Map(entries |> List.map (function Lir.KeyValue(key, value) -> Lir.KeyValue(recurse key, recurse value) | Lir.Spread value -> Lir.Spread(recurse value))))
+        | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, recurse source, recurse body))
+        | _ -> expression
+
+    let rec private rewriteClosures functionMap captureMap (expression: Lir.Expression) =
+        let recurse = rewriteClosures functionMap captureMap
+        let withNode node = { expression with Node = node }
+        match expression.Node with
+        | Lir.MakeClosure(id, captures) ->
+            let mapped = Map.tryFind id functionMap |> Option.defaultValue id
+            withNode (Lir.MakeClosure(mapped, Map.tryFind id captureMap |> Option.defaultValue captures))
+        | Lir.CallClosure(fn, argument) -> withNode (Lir.CallClosure(recurse fn, recurse argument))
+        | Lir.PipeClosure(argument, fn) -> withNode (Lir.PipeClosure(recurse argument, recurse fn))
+        | Lir.Branch(condition, whenTrue, whenFalse) -> withNode (Lir.Branch(recurse condition, recurse whenTrue, recurse whenFalse))
+        | Lir.Operation(operation, arguments) -> withNode (Lir.Operation(operation, List.map recurse arguments))
+        | Lir.Tuple items -> withNode (Lir.Tuple(List.map recurse items))
+        | Lir.List items -> withNode (Lir.List(List.map recurse items))
+        | Lir.Record fields -> withNode (Lir.Record(fields |> List.map (fun (name, value) -> name, recurse value)))
+        | Lir.FieldGet(target, name) -> withNode (Lir.FieldGet(recurse target, name))
+        | Lir.SomeValue value -> withNode (Lir.SomeValue(recurse value))
+        | Lir.Cons(head, tail) -> withNode (Lir.Cons(recurse head, recurse tail))
+        | Lir.Append(left, right) -> withNode (Lir.Append(recurse left, recurse right))
+        | Lir.Let(id, name, recursive, binding, body) -> withNode (Lir.Let(id, name, recursive, recurse binding, recurse body))
+        | Lir.LetRecursiveGroup(bindings, body) -> withNode (Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, valueType, value) -> id, name, valueType, recurse value), recurse body))
+        | Lir.Fail value -> withNode (Lir.Fail(recurse value))
+        | Lir.DecisionTree(target, cases) -> withNode (Lir.DecisionTree(recurse target, cases |> List.map (fun case -> { case with Guard = Option.map recurse case.Guard; Body = recurse case.Body })))
+        | Lir.Range(first, last) -> withNode (Lir.Range(recurse first, recurse last))
+        | Lir.RecordUpdate(target, fields) -> withNode (Lir.RecordUpdate(recurse target, fields |> List.map (fun (name, value) -> name, recurse value)))
+        | Lir.RecordConvert(target, targetType) -> withNode (Lir.RecordConvert(recurse target, targetType))
+        | Lir.IndexGet(target, index) -> withNode (Lir.IndexGet(recurse target, recurse index))
+        | Lir.Interpolate parts -> withNode (Lir.Interpolate(parts |> List.map (function Lir.TextPart text -> Lir.TextPart text | Lir.ValuePart value -> Lir.ValuePart(recurse value))))
+        | Lir.UnionCase(typeName, caseName, payload) -> withNode (Lir.UnionCase(typeName, caseName, Option.map recurse payload))
+        | Lir.Map entries -> withNode (Lir.Map(entries |> List.map (function Lir.KeyValue(key, value) -> Lir.KeyValue(recurse key, recurse value) | Lir.Spread value -> Lir.Spread(recurse value))))
+        | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, recurse source, recurse body))
+        | _ -> expression
+
+    let optimize (program: Lir.Program) =
+        let simplifiedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = simplify fn.Body })
+        let captureMap =
+            simplifiedFunctions
+            |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber))
+            |> Map.ofList
+        let identityFunctionMap = simplifiedFunctions |> List.map (fun fn -> fn.Id, fn.Id) |> Map.ofList
+        let functions = simplifiedFunctions |> List.map (fun fn -> { fn with Captures = captureMap.[fn.Id]; Body = rewriteClosures identityFunctionMap captureMap fn.Body })
+        let declarations = program.Declarations |> List.map (fun declaration -> { declaration with Value = declaration.Value |> simplify |> rewriteClosures identityFunctionMap captureMap })
+        let entry = program.Entry |> Option.map (simplify >> rewriteClosures identityFunctionMap captureMap)
+        let declarationMap = declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
+        let functionById = functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
+        let reachableDeclarations = System.Collections.Generic.HashSet<Lir.SymbolId>()
+        let reachableFunctions = System.Collections.Generic.HashSet<Lir.FunctionId>()
+        let rec visitExpression (expression: Lir.Expression) =
+            for id in loadedSymbols expression do
+                match Map.tryFind id declarationMap with
+                | Some declaration when reachableDeclarations.Add id -> visitExpression declaration.Value
+                | _ -> ()
+            let rec closures (value: Lir.Expression) =
+                match value.Node with
+                | Lir.MakeClosure(id, _) when reachableFunctions.Add id ->
+                    match Map.tryFind id functionById with Some fn -> visitExpression fn.Body | None -> ()
+                | _ ->
+                    let collect child = closures child
+                    match value.Node with
+                    | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn) | Lir.Cons(fn, argument)
+                    | Lir.Append(fn, argument) | Lir.Range(fn, argument) | Lir.IndexGet(fn, argument) -> collect fn; collect argument
+                    | Lir.Branch(condition, whenTrue, whenFalse) -> collect condition; collect whenTrue; collect whenFalse
+                    | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> List.iter collect arguments
+                    | Lir.Record fields -> fields |> List.iter (snd >> collect)
+                    | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> collect target
+                    | Lir.Let(_, _, _, binding, body) -> collect binding; collect body
+                    | Lir.LetRecursiveGroup(bindings, body) -> bindings |> List.iter (fun (_, _, _, binding) -> collect binding); collect body
+                    | Lir.DecisionTree(target, cases) -> collect target; cases |> List.iter (fun case -> Option.iter collect case.Guard; collect case.Body)
+                    | Lir.RecordUpdate(target, fields) -> collect target; fields |> List.iter (snd >> collect)
+                    | Lir.Interpolate parts -> parts |> List.iter (function Lir.TextPart _ -> () | Lir.ValuePart item -> collect item)
+                    | Lir.UnionCase(_, _, payload) -> Option.iter collect payload
+                    | Lir.Map entries -> entries |> List.iter (function Lir.KeyValue(key, item) -> collect key; collect item | Lir.Spread item -> collect item)
+                    | Lir.ForEach(_, _, _, source, body) -> collect source; collect body
+                    | _ -> ()
+            closures expression
+        declarations
+        |> List.iter (fun declaration ->
+            if declaration.IsExported || effect declaration.Value = Observable then
+                if reachableDeclarations.Add declaration.Id then visitExpression declaration.Value)
+        Option.iter visitExpression entry
+        let retainedFunctions = functions |> List.filter (fun fn -> reachableFunctions.Contains fn.Id)
+        let functionMap = retainedFunctions |> List.mapi (fun index fn -> fn.Id, Lir.FunctionId index) |> Map.ofList
+        let finalFunctions =
+            retainedFunctions
+            |> List.map (fun fn -> { fn with Id = functionMap.[fn.Id]; Body = rewriteClosures functionMap captureMap fn.Body })
+        let rewrite = rewriteClosures functionMap captureMap
+        { program with
+            Functions = finalFunctions
+            Declarations = declarations |> List.filter (fun declaration -> reachableDeclarations.Contains declaration.Id) |> List.map (fun declaration -> { declaration with Value = rewrite declaration.Value })
+            Entry = Option.map rewrite entry }

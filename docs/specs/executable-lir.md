@@ -14,7 +14,7 @@ Hir.Program
   -> Lir.Program
 ```
 
-The version-1 optimization pass is intentionally identity-only. LIR and the JSON DTO schema used by `.fsir` are internal versioned contracts, not stable public interchange standards.
+The optimization pass performs conservative effect analysis, constant Boolean control-flow simplification, unused pure-local elimination, and whole-program reachability pruning. Observable top-level initializers and exports remain ordered roots; calls, failures, loops, and potentially failing integer division/remainder are never discarded. Closure captures are recomputed and surviving function IDs are deterministically compacted before validation. LIR and the JSON DTO schema used by `.fsir` are internal versioned contracts, not stable public interchange standards.
 
 ## Program model
 

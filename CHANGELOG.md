@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added effect-safe LIR dead-code elimination, reachability pruning, and constant Boolean control-flow simplification.
+
 - Fixed generated Go structural-record updates that widen a record with new fields.
 
 - Documented the `Fs`, `Regex`, `Json`, and `Xml` standard-library modules and their backend availability on the website.

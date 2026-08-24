@@ -36,7 +36,7 @@ Reachable builtins are emitted at their specialized signatures. List, option, an
 
 Generated projects contain only the typed program package and its entry point. The former erased runtime templates, universal closure dispatch, dynamic aggregate casts, reflection-oriented carriers, and generic pattern matcher are not embedded or emitted.
 
-The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The optimization pass is intentionally identity-only in version 1; its explicit boundary prevents later transformations from being hidden inside lowering or a backend.
+The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The shared optimization pass performs conservative effect/use analysis, constant Boolean control-flow simplification, unused pure-binding elimination, and deterministic declaration/function reachability pruning. Observable top-level initializers and exports are ordered roots. Closure captures and compact function IDs are rebuilt before validation, keeping transformations out of lowering and individual backends.
 
 HIR and LIR expose canonical debug printers with stable artifact-local IDs and normalized type rendering. The arithmetic vertical slice is checked in as paired snapshots so changes to symbol allocation, function lifting, captures, or operation selection are reviewed explicitly.
 

@@ -14,7 +14,7 @@ validated HIR
   -> Lir.Program
 ```
 
-The version-1 optimization pass is deliberately identity-only.
+The optimization pass conservatively removes unreachable declarations, lifted functions, and unused pure locals. It also folds constant Boolean branches and short-circuit expressions. Observable top-level initializers and exports remain ordered roots; closure captures and function IDs are rebuilt deterministically before validation.
 
 ## Program and closures
 

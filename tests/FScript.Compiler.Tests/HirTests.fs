@@ -211,10 +211,34 @@ type HirTests() =
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSL2002"))
 
     [<Test>]
-    member _.``Initial LIR optimization pass is identity`` () =
-        let expression = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int 1L) }: Lir.Expression)
+    member _.``LIR optimization folds constant control flow and unused pure locals`` () =
+        let constant value = ({ Type = TInt; Span = span; Node = Lir.Constant(Lir.Int value) }: Lir.Expression)
+        let condition = ({ Type = TBool; Span = span; Node = Lir.Constant(Lir.Bool true) }: Lir.Expression)
+        let branch = ({ Type = TInt; Span = span; Node = Lir.Branch(condition, constant 1L, constant 2L) }: Lir.Expression)
+        let expression = ({ Type = TInt; Span = span; Node = Lir.Let(Lir.SymbolId 1, "unused", false, constant 0L, branch) }: Lir.Expression)
         let program: Lir.Program = { Types = []; ImportedRecords = []; Functions = []; Declarations = []; Entry = Some expression }
-        Assert.That(LirOptimization.optimize program = program, Is.True)
+        let optimized = LirOptimization.optimize program
+        Assert.That(optimized.Entry |> Option.map _.Node, Is.EqualTo(Some(Lir.Constant(Lir.Int 1L))))
+
+    [<Test>]
+    member _.``LIR optimization removes unreachable pure declarations and functions`` () =
+        let source = "let dead value = value + 1\nlet kept = 42\nkept"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> declaration.Name = "dead"), Is.False)
+        Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> declaration.Name = "kept"), Is.True)
+        Assert.That(compiled.Lir.Functions, Is.Empty)
+
+    [<Test>]
+    member _.``LIR optimization retains observable top-level initializers`` () =
+        let source = "let ignored = Console.writeLine \"kept\"\n42"
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> declaration.Name = "ignored"), Is.True)
 
     [<Test>]
     member _.``LIR lowers patterns into projection and check plans`` () =
