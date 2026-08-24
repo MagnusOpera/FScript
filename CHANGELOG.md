@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed the oversized specialization diagram from the homepage Go scene.
+
+- Removed the interpreted-embedding scene from the homepage.
+
 - Simplified the homepage language and embedding introductions by removing oversized supporting headlines and code.
 
 - Reframed the homepage JavaScript story around npm embedding and live application rules.

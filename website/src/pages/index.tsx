@@ -187,36 +187,6 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={styles.embeddingScene}>
-          <div className={`container ${styles.embeddingGrid}`}>
-            <div className={styles.embeddingCopy}>
-              <p className={styles.sectionLabel}>Interpreted embedding</p>
-              <p>
-                Your application already knows how to find a customer, price an order, or schedule a job. Expose
-                those operations as typed functions and FScript turns them into a vocabulary for changeable rules.
-              </p>
-              <p>
-                Scripts are loaded, checked, and called in-process. They compose the capabilities you provide and
-                export ordinary functions back to the host. Your infrastructure remains yours. The policy becomes
-                something people can read, test, and replace.
-              </p>
-              <Link className={styles.lightLink} to="/manual/embedding/overview">Build a language inside your application <Arrow /></Link>
-            </div>
-            <div className={styles.domainOrbit} aria-label="Host functions become a typed FScript vocabulary">
-              <div className={styles.orbitRing} aria-hidden="true" />
-              <div className={`${styles.orbitVerb} ${styles.verbOne}`}><code>Customer.find</code><span>host function</span></div>
-              <div className={`${styles.orbitVerb} ${styles.verbTwo}`}><code>Quote.save</code><span>host function</span></div>
-              <div className={`${styles.orbitVerb} ${styles.verbThree}`}><code>Audit.write</code><span>host function</span></div>
-              <div className={styles.scriptCore}>
-                <span>pricing.fss</span>
-                <strong>your rules</strong>
-                <code>Customer → Quote</code>
-              </div>
-              <div className={styles.exportBeam}><span>[&lt;export&gt;] quote</span><i aria-hidden="true">→</i><strong>YOUR APP</strong></div>
-            </div>
-          </div>
-        </section>
-
         <section className={styles.javascriptScene}>
           <div className={`container ${styles.javascriptGrid}`}>
             <div className={styles.browserStage} aria-label="FScript running in a browser">
@@ -266,27 +236,6 @@ export default function Home() {
               whole program, removes unreachable work, simplifies calls, and turns proven tail recursion into loops.
               What remains is direct, typed Go.
             </p>
-          </div>
-          <div className={`container ${styles.goWorkbench}`}>
-            <div className={styles.goSource}>
-              <span className={styles.workbenchLabel}>FScript knows</span>
-              <code>list&lt;int&gt;</code>
-              <code>option&lt;Customer&gt;</code>
-              <code>int → int</code>
-            </div>
-            <div className={styles.optimizerTrack} aria-label="Go compiler optimizations">
-              <span>specialize types</span>
-              <span>prune dead code</span>
-              <span>reduce calls</span>
-              <span>lower tail loops</span>
-            </div>
-            <div className={styles.goOutput}>
-              <span className={styles.workbenchLabel}>Go receives</span>
-              <code>[]int64</code>
-              <code>option_Customer</code>
-              <code>func(int64) int64</code>
-            </div>
-            <div className={styles.binaryStamp} aria-hidden="true"><span>GO</span><strong>01</strong><small>standalone</small></div>
           </div>
           <div className={`container ${styles.goFooter}`}>
             <p>Concrete slices. Concrete structs. Native functions. Separate source files, one optimized package.</p>

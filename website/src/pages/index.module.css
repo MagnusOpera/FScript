@@ -304,7 +304,6 @@
 }
 
 .inlineLink,
-.lightLink,
 .darkLink {
   display: inline-flex;
   gap: .55rem;
@@ -315,7 +314,6 @@
 }
 
 .inlineLink { color: #16533a; }
-.lightLink { color: var(--home-green); }
 .darkLink { color: #11150f; }
 
 /* The type system is drawn as a field of relationships, not a feature card. */
@@ -356,42 +354,6 @@
 .sceneSummary { max-width: 34rem; }
 .sceneLead { max-width: 34rem; margin: .65rem 0 0; color: #4f544e; font-size: 1.04rem; line-height: 1.78; }
 .sceneSummary .inlineLink { margin-top: 1.35rem; }
-.workbenchLabel { display: block; margin-bottom: 2.6rem; font: 760 .67rem/1.2 var(--ifm-font-family-monospace); letter-spacing: .13em; text-transform: uppercase; opacity: .66; }
-
-/* Embedding is a living boundary between host verbs and script policy. */
-.embeddingScene {
-  position: relative;
-  overflow: hidden;
-  padding: clamp(7rem, 11vw, 11rem) 0;
-  color: #f8f7f1;
-  background:
-    radial-gradient(circle at 72% 50%, rgba(185,255,69,.14), transparent 24rem),
-    radial-gradient(circle at 20% 110%, rgba(255,107,74,.18), transparent 31rem),
-    #101310;
-}
-.embeddingScene::before { position: absolute; inset: 0; opacity: .18; background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size: 64px 64px; content: ''; mask-image: linear-gradient(90deg, transparent, black 48%, black); }
-.embeddingGrid { position: relative; display: grid; grid-template-columns: .85fr 1.15fr; gap: clamp(3rem, 8vw, 9rem); align-items: center; }
-.embeddingCopy > p:not(.sectionLabel) { max-width: 38rem; margin: 2rem 0; color: #aeb6ae; font-size: 1.05rem; line-height: 1.78; }
-.embeddingCopy .sectionLabel { color: var(--home-mint); }
-.domainOrbit { position: relative; min-height: 590px; }
-.orbitRing { position: absolute; inset: 11% 8%; border: 1px solid rgba(185,255,69,.3); border-radius: 50%; transform: rotate(-10deg); box-shadow: inset 0 0 90px rgba(185,255,69,.035); }
-.orbitRing::before,
-.orbitRing::after { position: absolute; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; content: ''; }
-.orbitRing::before { inset: 13%; }
-.orbitRing::after { inset: 31%; border-color: rgba(255,107,74,.25); }
-.scriptCore { position: absolute; top: 50%; left: 50%; display: grid; width: 12rem; height: 12rem; place-content: center; border: 1px solid rgba(185,255,69,.6); border-radius: 50%; text-align: center; background: #182016; transform: translate(-50%, -50%); box-shadow: 0 0 70px rgba(185,255,69,.15); }
-.scriptCore span { color: #8c958d; font: 700 .63rem/1 var(--ifm-font-family-monospace); }
-.scriptCore strong { margin: .55rem 0; color: var(--home-green); font: 500 1.45rem/1 Georgia, serif; }
-.scriptCore code { padding: 0; border: 0; color: #b8bfb8; background: none; font-size: .64rem; }
-.orbitVerb { position: absolute; z-index: 2; display: grid; min-width: 11rem; padding: 1rem 1.15rem; border: 1px solid #394139; color: #e2e8e2; background: #171b17; box-shadow: 7px 7px 0 rgba(255,255,255,.035); }
-.orbitVerb code { padding: 0; border: 0; color: #d6ffd1; background: none; font-size: .75rem; }
-.orbitVerb span { margin-top: .45rem; color: #747e75; font: 650 .58rem/1 var(--ifm-font-family-monospace); text-transform: uppercase; }
-.verbOne { top: 6%; left: 33%; }
-.verbTwo { right: -1%; top: 45%; }
-.verbThree { bottom: 9%; left: 15%; }
-.exportBeam { position: absolute; right: 10%; bottom: 1%; display: flex; gap: .75rem; align-items: center; color: #929a92; font: 700 .62rem/1 var(--ifm-font-family-monospace); }
-.exportBeam i { color: var(--home-green); font-size: 1.4rem; font-style: normal; }
-.exportBeam strong { color: #eff2ed; letter-spacing: .08em; }
 
 /* JavaScript gets a bright browser-like studio of its own. */
 .javascriptScene { padding: clamp(7rem, 11vw, 11rem) 0; background: #d9ddff; background-image: radial-gradient(circle at 15% 90%, rgba(255,107,74,.28), transparent 25rem); }
@@ -428,22 +390,7 @@
 .goIntro h2 { max-width: 12ch; }
 .goIntro h2 em { color: #304b15; }
 .goIntro > p { max-width: 35rem; margin: 0 0 .7rem; color: #344326; font-size: 1.05rem; line-height: 1.78; }
-.goWorkbench { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr minmax(12rem, .55fr) 1fr; margin-top: clamp(4rem, 7vw, 7rem); border: 1px solid #192116; background: #111510; box-shadow: 15px 15px 0 rgba(0,0,0,.16); }
-.goSource,
-.goOutput { display: grid; gap: 1rem; padding: clamp(2rem, 4vw, 3.8rem); }
-.goSource { color: #c3cac1; }
-.goOutput { color: #11150f; background: #f1eee1; }
-.goSource code,
-.goOutput code { padding: .7rem 0; border: 0; border-bottom: 1px solid currentColor; border-radius: 0; color: inherit; background: none; font-size: clamp(.75rem, 1vw, .9rem); opacity: .92; }
-.optimizerTrack { display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #3a4137; border-left: 1px solid #3a4137; color: #aab0a7; }
-.optimizerTrack span { position: relative; padding: 1rem 1.15rem 1rem 2rem; border-bottom: 1px solid #30362e; font: 700 .61rem/1.25 var(--ifm-font-family-monospace); text-transform: uppercase; }
-.optimizerTrack span:last-child { border-bottom: 0; }
-.optimizerTrack span::before { position: absolute; left: .85rem; color: var(--home-green); content: '›'; }
-.binaryStamp { position: absolute; right: -2.3rem; bottom: -2.8rem; display: grid; width: 7.5rem; height: 7.5rem; place-content: center; border: 2px solid #11150f; border-radius: 50%; background: var(--home-coral); text-align: center; transform: rotate(8deg); }
-.binaryStamp span { font: 900 .65rem/1 var(--ifm-font-family-monospace); letter-spacing: .15em; }
-.binaryStamp strong { font: 400 2.5rem/.95 Georgia, serif; }
-.binaryStamp small { font: 800 .5rem/1 var(--ifm-font-family-monospace); text-transform: uppercase; }
-.goFooter { position: relative; z-index: 1; display: flex; gap: 2rem; align-items: center; justify-content: space-between; margin-top: 3.7rem; }
+.goFooter { position: relative; z-index: 1; display: flex; gap: 2rem; align-items: center; justify-content: space-between; margin-top: clamp(3rem, 6vw, 5.5rem); padding-top: 2rem; border-top: 1px solid rgba(16,19,15,.3); }
 .goFooter p { max-width: 43rem; margin: 0; color: #30421f; font-weight: 650; }
 
 .finalLinks { padding: 2.4rem 0; color: #d7ddd7; background: #101310; }
@@ -465,7 +412,7 @@
   .sceneIntro { grid-template-columns: 1fr; gap: 1.5rem; }
   .sceneIntro .sectionLabel { padding-top: 0; }
   .sceneLead { max-width: 43rem; }
-  .embeddingGrid, .javascriptGrid, .goIntro { grid-template-columns: 1fr; }
+  .javascriptGrid, .goIntro { grid-template-columns: 1fr; }
   .javascriptCopy h2 { max-width: 15ch; }
   .javascriptCopy { order: -1; }
   .goIntro > p { max-width: 44rem; }
@@ -487,15 +434,6 @@
   .heroTicker div { justify-content: flex-start; }
   .sceneIntro h2, .javascriptCopy h2, .goIntro h2 { font-size: 2.75rem; }
   .languageScene { background: #f5f0e4; }
-  .domainOrbit { min-height: 500px; margin-right: -1rem; margin-left: -1rem; }
-  .orbitRing { inset: 12% 0; }
-  .scriptCore { width: 9.5rem; height: 9.5rem; }
-  .orbitVerb { min-width: 9rem; padding: .8rem; }
-  .orbitVerb code { font-size: .64rem; }
-  .verbOne { top: 5%; left: 12%; }
-  .verbTwo { right: 0; top: 49%; }
-  .verbThree { bottom: 8%; left: 3%; }
-  .exportBeam { right: 0; bottom: 0; }
   .browserStage { margin-right: -.2rem; margin-left: -.2rem; box-shadow: 8px 9px 0 #6b62c9; transform: none; }
   .browserChrome span { padding: .5rem .8rem; }
   .browserBody { grid-template-columns: 1fr; }
@@ -503,10 +441,7 @@
   .browserResult { display: grid; grid-template-columns: auto 1fr; gap: .8rem 1rem; }
   .browserResult span, .browserResult span:nth-of-type(2) { margin: 0; }
   .browserResult strong { font-size: 2.6rem; }
-  .goWorkbench { grid-template-columns: 1fr; margin-right: calc(var(--ifm-spacing-horizontal) * -1); margin-left: calc(var(--ifm-spacing-horizontal) * -1); box-shadow: none; }
-  .optimizerTrack { border: 1px solid #3a4137; border-right: 0; border-left: 0; }
-  .binaryStamp { right: .8rem; bottom: -3.4rem; width: 6.4rem; height: 6.4rem; }
-  .goFooter { align-items: flex-start; flex-direction: column; margin-top: 5rem; }
+  .goFooter { align-items: flex-start; flex-direction: column; }
   .finalLinksInner { align-items: flex-start; flex-direction: column; }
   .finalLinks nav { flex-direction: column; }
 }
