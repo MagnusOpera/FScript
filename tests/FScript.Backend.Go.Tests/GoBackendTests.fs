@@ -172,6 +172,42 @@ type GoBackendTests() =
                 if Directory.Exists directory then Directory.Delete(directory, true)
 
     [<Test>]
+    member _.``Types showcase converts named records nested in options`` () =
+        requireGo ()
+        let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/types-showcase.fss"))
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let files =
+            match GoBackend.generate { ModuleName = "fscript.generated/showcase" } compiled.Lir with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let directory = Path.Combine(Path.GetTempPath(), $"fscript-showcase-{Guid.NewGuid():N}")
+        try
+            for file in files do
+                let path = Path.Combine(directory, file.RelativePath)
+                match Path.GetDirectoryName(path) with
+                | null -> ()
+                | parent -> Directory.CreateDirectory(parent) |> ignore
+                File.WriteAllText(path, file.Content)
+            let run arguments =
+                let start = ProcessStartInfo("go", WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true)
+                for argument in arguments do start.ArgumentList.Add(argument)
+                use proc =
+                    match Process.Start(start) with
+                    | null -> failwith "Failed to start Go."
+                    | value -> value
+                let output, error = proc.StandardOutput.ReadToEnd(), proc.StandardError.ReadToEnd()
+                proc.WaitForExit()
+                Assert.That(proc.ExitCode, Is.EqualTo(0), output + error)
+                output
+            run [ "test"; "./..." ] |> ignore
+            Assert.That(run [ "run"; "." ], Does.Contain("City: \"London\""))
+        finally
+            if Directory.Exists directory then Directory.Delete(directory, true)
+
+    [<Test>]
     member _.``Fibonacci emits statement oriented control flow`` () =
         let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/fibonacci.fss"))
         let compiled =

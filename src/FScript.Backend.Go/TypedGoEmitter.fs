@@ -622,6 +622,9 @@ module TypedGoEmitter =
                 | TList sourceItem, TList targetItem when sourceItem <> targetItem ->
                     let convertedItem = coerce sourceItem targetItem "item"
                     $"func() {goType targetType} {{\n\tsource := {indent code}\n\tresult := make({goType targetType}, 0, len(source))\n\tfor _, item := range source {{\n\t\tresult = append(result, {indent (indent convertedItem)})\n\t}}\n\treturn result\n}}()"
+                | TOption sourceItem, TOption targetItem when sourceItem <> targetItem ->
+                    let convertedItem = coerce sourceItem targetItem "source.Value"
+                    $"func() {goType targetType} {{\n\tsource := {indent code}\n\tif !source.HasValue {{\n\t\treturn {goType targetType}{{}}\n\t}}\n\treturn {goType targetType}{{HasValue: true, Value: {indent convertedItem}}}\n}}()"
                 | TFun(sourceArgument, sourceResult), TFun(targetArgument, targetResult) ->
                     let argument = coerce targetArgument sourceArgument "argument"
                     let result = coerce sourceResult targetResult $"source({argument})"
@@ -958,7 +961,13 @@ module TypedGoEmitter =
                 let values = items |> List.map emitChild |> String.concat ", "
                 $"{goType expression.Type}{{{values}}}"
             | Lir.Record fields ->
-                let values = fields |> List.map (fun (name, value) -> $"{emittedField expression.Type name}: {emitChild value}") |> String.concat ", "
+                let destinationFields = recordFields expression.Type
+                let values =
+                    fields
+                    |> List.map (fun (name, value) ->
+                        let converted = coerce (emittedType value) destinationFields.[name] (emitChild value)
+                        $"{emittedField expression.Type name}: {converted}")
+                    |> String.concat ", "
                 match expression.Type with
                 | TNamed name ->
                     match namedRepresentation name with
@@ -1134,7 +1143,7 @@ module TypedGoEmitter =
                 let assignments =
                     fields
                     |> List.map (fun (name, value) ->
-                        $"updated.{emittedField expression.Type name} = {indent (coerce value.Type destinationFields.[name] (emitChild value))}")
+                        $"updated.{emittedField expression.Type name} = {indent (coerce (emittedType value) destinationFields.[name] (emitChild value))}")
                     |> String.concat "\n\t"
                 if goType target.Type = goType expression.Type then
                     match expression.Type with

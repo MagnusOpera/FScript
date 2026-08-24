@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed generated Go option fields whose payload crosses a named and structural record boundary.
+
 - Specialized structural-record calls to concrete Go structs and emitted direct portable console writes.
 
 - Removed statically true pattern branches and unreachable following cases from generated Go.
