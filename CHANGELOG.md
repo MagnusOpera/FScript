@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Reframed the homepage JavaScript story around npm embedding and live application rules.
+
 - Redesigned the homepage with richer language, embedding, JavaScript, and optimized Go stories.
 
 - Reworked the homepage around FScript's language lineage, interpreters, JavaScript runtime, and Go backend.

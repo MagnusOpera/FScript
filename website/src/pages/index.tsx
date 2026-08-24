@@ -248,10 +248,10 @@ export default function Home() {
         <section className={styles.javascriptScene}>
           <div className={`container ${styles.javascriptGrid}`}>
             <div className={styles.browserStage} aria-label="FScript running in a browser">
-              <div className={styles.browserChrome}><i /><i /><i /><span>localhost / rules</span></div>
+              <div className={styles.browserChrome}><i /><i /><i /><span>app.example / live-pricing</span></div>
               <div className={styles.browserBody}>
                 <div className={styles.browserEditor}>
-                  <span>discount.fss</span>
+                  <span>rules/discount.fss · loaded</span>
                   <pre><code>{`let discount customer =
   match customer.Plan with
   | "scale" -> 20
@@ -263,22 +263,22 @@ export default function Home() {
                   <span>RESULT</span><strong>20</strong>
                 </div>
               </div>
-              <div className={styles.browserStatus}><span><i /> checked in this tab</span><span>Fable · ESM</span></div>
+              <div className={styles.browserStatus}><span><i /> checked in this tab</span><span>npm · ESM</span></div>
             </div>
             <div className={styles.javascriptCopy}>
               <p className={styles.sectionLabel}>JavaScript support</p>
-              <Heading as="h2">Put the language where the idea happens.</Heading>
+              <Heading as="h2">Ship the app. Change the rules while it runs.</Heading>
               <p>
-                Fable compiles the parser, type checker, and evaluator ahead of time to JavaScript modules. A browser,
-                Node application, or playground can load FScript source and get the same types and language semantics
-                without calling a server.
+                FScript is an npm package for browsers and Node. Keep pricing, eligibility, feature decisions, or
+                customer-specific policy outside the application bundle. Fetch a rule when you need it, check its
+                types, and call its exported functions from JavaScript.
               </p>
               <p>
-                The language engine ships as ordinary ESM, so production tooling can bundle and minify it alongside
-                the rest of the application. This website's sandbox is the proof: the editor and the language run
-                together in your tab.
+                The host supplies typed operations and decides where rule files come from. A new rule can take effect
+                without rebuilding the interface or restarting the process. The application keeps running; the part
+                you meant to make configurable is free to change.
               </p>
-              <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Take FScript to JavaScript <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Load rules from JavaScript <Arrow /></Link>
             </div>
           </div>
         </section>
