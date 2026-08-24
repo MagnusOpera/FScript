@@ -36,6 +36,8 @@ Empty and single-clause ordered-map patterns lower to direct typed length checks
 
 Pattern bindings are emitted only when referenced by the selected guard or body. Ordinary projections initialize their typed locals directly, while map-backtracking bindings are predeclared only when assignment across the recursive matcher boundary requires it. Dummy blank-identifier reads and unreferenced projections, declarations, and assignments are omitted.
 
+The tail-position decision-tree emitter follows the same binding liveness rules. Match scrutinees and effectful let bindings receive blank-identifier sinks only when their values are genuinely unused; used tail-pattern projections initialize locals directly.
+
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
 When a pattern plan has no representation or repeated-binding checks, Go emission treats its condition as statically true. The emitter writes its bindings and body directly, and an unguarded unconditional case terminates case emission, so generated decision trees contain neither `if true` wrappers nor later unreachable cases.

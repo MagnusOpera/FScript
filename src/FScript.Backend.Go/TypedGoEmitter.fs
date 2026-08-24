@@ -1441,7 +1441,12 @@ module TypedGoEmitter =
                     let scoped = Map.add id variable environment
                     let scopedFunctions =
                         match binding.Node with Lir.MakeClosure(functionId, _) -> Map.add id functionId functionBindings | _ -> functionBindings
-                    $"var {variable} {goType binding.Type}\n{emitAssign environment functionBindings variable binding.Type binding}\n_ = {variable}\n{emitTail scoped scopedFunctions currentFunction resultType body}"
+                    let bodyCode = emitTail scoped scopedFunctions currentFunction resultType body
+                    if bodyCode.Contains(variable, StringComparison.Ordinal) then
+                        $"var {variable} {goType binding.Type}\n{emitAssign environment functionBindings variable binding.Type binding}\n{bodyCode}"
+                    else
+                        let bindingCode = emitAssign environment functionBindings "_" binding.Type binding
+                        $"{bindingCode}\n{bodyCode}"
                 | Lir.DecisionTree(target, cases) when cases |> List.forall (fun case -> case.Plan.Maps.IsEmpty) ->
                     let targetName = "tailMatchValue"
                     let rec project (plan: Lir.PatternPlan) code valueType prefix steps =
@@ -1475,12 +1480,9 @@ module TypedGoEmitter =
                         | Lir.TupleArityCheck _ | Lir.RecordFieldCheck _ | Lir.TypeCheck _ -> "true"
                     let emitCase (case: Lir.DecisionCase) =
                         let grouped = case.Plan.Bindings |> List.groupBy _.Id
-                        let scoped, declarations =
+                        let scoped =
                             grouped
-                            |> List.fold (fun (current, lines) (id, bindings) ->
-                                let binding = List.head bindings
-                                let variable = symbolName "pattern" id
-                                Map.add id variable current, lines @ [ $"var {variable} {goType binding.Type}"; $"_ = {variable}" ]) (environment, [])
+                            |> List.fold (fun current (id, _) -> Map.add id (symbolName "pattern" id) current) environment
                         let checks = case.Plan.Checks |> List.map (emitCheck case.Plan targetName target.Type)
                         let repeated =
                             grouped
@@ -1491,19 +1493,23 @@ module TypedGoEmitter =
                                     let firstCode, _ = project case.Plan targetName target.Type [] first.Projection
                                     rest |> List.map (fun binding -> let code, _ = project case.Plan targetName target.Type [] binding.Projection in $"{equality binding.Type}({firstCode}, {code})"))
                         let condition = checks @ repeated |> List.filter ((<>) "true") |> function [] -> "true" | values -> String.concat " && " values
+                        let body = emitTail scoped functionBindings currentFunction resultType case.Body
+                        let guardCode = case.Guard |> Option.map (emit scoped functionBindings)
                         let assignments =
                             grouped
-                            |> List.map (fun (id, bindings) ->
-                                let binding = List.head bindings
-                                let code, _ = project case.Plan targetName target.Type [] binding.Projection
+                            |> List.choose (fun (id, bindings) ->
                                 let variable = symbolName "pattern" id
-                                $"{variable} = {code}")
-                        let setup = declarations @ assignments |> String.concat "\n"
-                        let body = emitTail scoped functionBindings currentFunction resultType case.Body
+                                let used = body.Contains(variable, StringComparison.Ordinal) || guardCode |> Option.exists (fun value -> value.Contains(variable, StringComparison.Ordinal))
+                                if not used then None
+                                else
+                                    let binding = List.head bindings
+                                    let code, _ = project case.Plan targetName target.Type [] binding.Projection
+                                    Some $"{variable} := {code}")
+                        let setup = assignments |> String.concat "\n"
                         let guarded =
-                            match case.Guard with
+                            match guardCode with
                             | None -> body
-                            | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\t{indent body}\n}}"
+                            | Some guard -> $"if {goCondition guard} {{\n\t{indent body}\n}}"
                         let contents = if String.IsNullOrEmpty setup then guarded else setup + "\n" + guarded
                         let rendered = if condition = "true" then $"{{\n\t{indent contents}\n}}" else $"if {condition} {{\n\t{indent contents}\n}}"
                         rendered, condition = "true" && case.Guard.IsNone
@@ -1519,7 +1525,8 @@ module TypedGoEmitter =
                     let emittedCases, exhaustive = emitCases cases
                     let caseCode = emittedCases |> String.concat "\n"
                     let failure = if exhaustive then "" else "\npanic(\"Match failure.\")"
-                    $"{targetName} := {emit environment functionBindings target}\n_ = {targetName}\n{caseCode}{failure}"
+                    let discard = if caseCode.Contains(targetName, StringComparison.Ordinal) then "" else $"\n_ = {targetName}"
+                    $"{targetName} := {emit environment functionBindings target}{discard}\n{caseCode}{failure}"
                 | _ -> $"return {coerce expression.Type resultType (emit environment functionBindings expression)}"
 
         and emitAssign environment functionBindings target targetType (expression: Lir.Expression) =
