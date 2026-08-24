@@ -176,41 +176,14 @@ export default function Home() {
           <div className={`container ${styles.sceneIntro}`}>
             <p className={styles.sectionLabel}>Language lineage</p>
             <Heading as="h2">Name the thing.<br /><em>Or just ask for its shape.</em></Heading>
-            <p className={styles.sceneLead}>
-              FScript keeps the part of the ML family that makes programs pleasant to reason about: inferred
-              types, immutable data, unions, curried functions, and pattern matching. Then it adds a useful choice.
-              A record can carry a domain name, or a function can accept any value with the fields it needs.
-            </p>
-          </div>
-          <div className={`container ${styles.typeCanvas}`}>
-            <div className={styles.namedType}>
-              <span className={styles.canvasKicker}>A name with meaning</span>
-              <pre><code>{`type Customer =
-  { Name: string
-    Plan: string
-    Seats: int }`}</code></pre>
-              <span className={styles.inferredType}>Customer</span>
+            <div className={styles.sceneSummary}>
+              <p className={styles.sceneLead}>
+                FScript keeps the part of the ML family that makes programs pleasant to reason about: inferred
+                types, immutable data, unions, curried functions, and pattern matching. Then it adds a useful choice.
+                A record can carry a domain name, or a function can accept any value with the fields it needs.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/learn/language-tour">Meet the language <Arrow /></Link>
             </div>
-            <div className={styles.typeFlow} aria-hidden="true">
-              <span>Name</span><i />
-              <span>Plan</span><i />
-              <span>Seats</span><i />
-            </div>
-            <div className={styles.structuralType}>
-              <span className={styles.canvasKicker}>A function with modest demands</span>
-              <pre><code>{`let quote
-  (buyer: {| Plan: string
-             Seats: int |}) =
-  price buyer.Plan * buyer.Seats`}</code></pre>
-              <span className={styles.inferredType}>{`{| Plan: string; Seats: int |} → int`}</span>
-            </div>
-            <p className={styles.typeCaption}>
-              <strong><code>quote customer</code> works.</strong> The function sees the shape it asked for. The rest of
-              <code> Customer</code> stays where it belongs.
-            </p>
-          </div>
-          <div className={`container ${styles.sceneLink}`}>
-            <Link className={styles.inlineLink} to="/manual/learn/language-tour">Meet the language <Arrow /></Link>
           </div>
         </section>
 
@@ -218,7 +191,6 @@ export default function Home() {
           <div className={`container ${styles.embeddingGrid}`}>
             <div className={styles.embeddingCopy}>
               <p className={styles.sectionLabel}>Interpreted embedding</p>
-              <Heading as="h2">Teach a small language the verbs of your application.</Heading>
               <p>
                 Your application already knows how to find a customer, price an order, or schedule a job. Expose
                 those operations as typed functions and FScript turns them into a vocabulary for changeable rules.

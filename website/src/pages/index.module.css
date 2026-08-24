@@ -342,7 +342,6 @@
 .sceneIntro { display: grid; grid-template-columns: .34fr 1.05fr .72fr; gap: clamp(2rem, 5vw, 5.5rem); align-items: start; }
 .sceneIntro .sectionLabel { padding-top: .85rem; }
 .sceneIntro h2,
-.embeddingCopy h2,
 .javascriptCopy h2,
 .goIntro h2 {
   margin: 0;
@@ -354,38 +353,10 @@
 .sceneIntro h2 em,
 .goIntro h2 em { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; }
 .sceneIntro h2 em { color: #5845aa; }
+.sceneSummary { max-width: 34rem; }
 .sceneLead { max-width: 34rem; margin: .65rem 0 0; color: #4f544e; font-size: 1.04rem; line-height: 1.78; }
-
-.typeCanvas {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(7rem, .25fr) minmax(0, 1.08fr);
-  margin-top: clamp(4rem, 8vw, 7rem);
-  border-top: 1px solid #ada9a0;
-  border-bottom: 1px solid #ada9a0;
-}
-
-.namedType,
-.structuralType { position: relative; min-height: 25rem; padding: clamp(2rem, 4vw, 3.7rem); }
-.namedType { color: #edf1eb; background: #111411; box-shadow: 14px 14px 0 #a995ff; }
-.structuralType { align-self: center; min-height: 21rem; margin: 2rem 0; color: #191d19; background: var(--home-green); transform: rotate(.7deg); box-shadow: 12px 12px 0 rgba(10,12,11,.12); }
-.canvasKicker,
+.sceneSummary .inlineLink { margin-top: 1.35rem; }
 .workbenchLabel { display: block; margin-bottom: 2.6rem; font: 760 .67rem/1.2 var(--ifm-font-family-monospace); letter-spacing: .13em; text-transform: uppercase; opacity: .66; }
-.namedType pre,
-.structuralType pre { margin: 0; padding: 0; border: 0; color: inherit; background: none; box-shadow: none; font: clamp(.8rem, 1.2vw, .98rem)/1.8 var(--ifm-font-family-monospace); }
-.namedType code,
-.structuralType code { padding: 0; border: 0; color: inherit; background: none; }
-.inferredType { position: absolute; right: 1.3rem; bottom: 1.2rem; padding: .48rem .65rem; border: 1px solid currentColor; font: 700 .64rem/1.1 var(--ifm-font-family-monospace); opacity: .65; }
-
-.typeFlow { display: flex; flex-direction: column; justify-content: center; gap: 1.15rem; padding: 1rem; }
-.typeFlow span { font: 740 .62rem/1 var(--ifm-font-family-monospace); text-align: center; text-transform: uppercase; }
-.typeFlow span:first-child { opacity: .26; text-decoration: line-through; }
-.typeFlow i { width: 100%; height: 1px; background: #89877f; }
-.typeFlow i::after { display: block; width: .45rem; height: .45rem; margin: -.2rem 0 0 auto; border-top: 1px solid #555; border-right: 1px solid #555; content: ''; transform: rotate(45deg); }
-.typeCaption { position: absolute; right: 2rem; bottom: -4.8rem; max-width: 37rem; margin: 0; color: #545951; font-size: .9rem; }
-.typeCaption strong { color: #171a17; }
-.typeCaption code { background: rgba(0,0,0,.06); }
-.sceneLink { margin-top: 6.5rem; }
 
 /* Embedding is a living boundary between host verbs and script policy. */
 .embeddingScene {
@@ -400,7 +371,6 @@
 }
 .embeddingScene::before { position: absolute; inset: 0; opacity: .18; background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size: 64px 64px; content: ''; mask-image: linear-gradient(90deg, transparent, black 48%, black); }
 .embeddingGrid { position: relative; display: grid; grid-template-columns: .85fr 1.15fr; gap: clamp(3rem, 8vw, 9rem); align-items: center; }
-.embeddingCopy h2 { max-width: 12ch; color: #fff; }
 .embeddingCopy > p:not(.sectionLabel) { max-width: 38rem; margin: 2rem 0; color: #aeb6ae; font-size: 1.05rem; line-height: 1.78; }
 .embeddingCopy .sectionLabel { color: var(--home-mint); }
 .domainOrbit { position: relative; min-height: 590px; }
@@ -496,7 +466,7 @@
   .sceneIntro .sectionLabel { padding-top: 0; }
   .sceneLead { max-width: 43rem; }
   .embeddingGrid, .javascriptGrid, .goIntro { grid-template-columns: 1fr; }
-  .embeddingCopy h2, .javascriptCopy h2 { max-width: 15ch; }
+  .javascriptCopy h2 { max-width: 15ch; }
   .javascriptCopy { order: -1; }
   .goIntro > p { max-width: 44rem; }
 }
@@ -515,15 +485,8 @@
   .codeArea { min-height: 350px; grid-template-columns: 2.3rem minmax(0,1fr); }
   .codeArea pre { font-size: .66rem; }
   .heroTicker div { justify-content: flex-start; }
-  .sceneIntro h2, .embeddingCopy h2, .javascriptCopy h2, .goIntro h2 { font-size: 2.75rem; }
+  .sceneIntro h2, .javascriptCopy h2, .goIntro h2 { font-size: 2.75rem; }
   .languageScene { background: #f5f0e4; }
-  .typeCanvas { grid-template-columns: 1fr; margin-right: calc(var(--ifm-spacing-horizontal) * -1); margin-left: calc(var(--ifm-spacing-horizontal) * -1); border: 0; }
-  .namedType, .structuralType { min-height: 20rem; }
-  .namedType { box-shadow: none; }
-  .structuralType { min-height: 18rem; margin: 0; transform: none; box-shadow: none; }
-  .typeFlow { display: none; }
-  .typeCaption { position: static; padding: 1.4rem var(--ifm-spacing-horizontal) 0; }
-  .sceneLink { margin-top: 3.5rem; }
   .domainOrbit { min-height: 500px; margin-right: -1rem; margin-left: -1rem; }
   .orbitRing { inset: 12% 0; }
   .scriptCore { width: 9.5rem; height: 9.5rem; }

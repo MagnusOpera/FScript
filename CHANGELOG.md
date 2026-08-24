@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Simplified the homepage language and embedding introductions by removing oversized supporting headlines and code.
+
 - Reframed the homepage JavaScript story around npm embedding and live application rules.
 
 - Redesigned the homepage with richer language, embedding, JavaScript, and optimized Go stories.
