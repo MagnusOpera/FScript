@@ -827,11 +827,33 @@ module TypedGoEmitter =
                 $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}\n\tpanic(\"Match failure.\")\n}}()"
             | Lir.RecordUpdate(target, fields) ->
                 let targetCode = emitChild target
-                let expectedFields = recordFields expression.Type
-                let assignments = fields |> List.map (fun (name, value) -> $"updated.{emittedField expression.Type name} = {indent (coerce value.Type expectedFields.[name] (emitChild value))}") |> String.concat "\n\t"
-                match expression.Type with
-                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := *original\n\t{assignments}\n\treturn &updated\n}}()"
-                | _ -> $"func() {goType expression.Type} {{\n\tupdated := {targetCode}\n\t{assignments}\n\treturn updated\n}}()"
+                let sourceFields = recordFields target.Type
+                let destinationFields = recordFields expression.Type
+                let assignments =
+                    fields
+                    |> List.map (fun (name, value) ->
+                        $"updated.{emittedField expression.Type name} = {indent (coerce value.Type destinationFields.[name] (emitChild value))}")
+                    |> String.concat "\n\t"
+                if goType target.Type = goType expression.Type then
+                    match expression.Type with
+                    | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := *original\n\t{assignments}\n\treturn &updated\n}}()"
+                    | _ -> $"func() {goType expression.Type} {{\n\tupdated := {targetCode}\n\t{assignments}\n\treturn updated\n}}()"
+                else
+                    let copiedFields =
+                        destinationFields
+                        |> Map.toList
+                        |> List.choose (fun (name, destinationFieldType) ->
+                            sourceFields
+                            |> Map.tryFind name
+                            |> Option.map (fun sourceFieldType ->
+                                let copied = coerce sourceFieldType destinationFieldType $"original.{emittedField target.Type name}"
+                                $"{emittedField expression.Type name}: {copied}"))
+                        |> String.concat ", "
+                    let initializer =
+                        match expression.Type with
+                        | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"&named_{identifier name}{{{copiedFields}}}"
+                        | _ -> $"{goType expression.Type}{{{copiedFields}}}"
+                    $"func() {goType expression.Type} {{\n\toriginal := {targetCode}\n\tupdated := {initializer}\n\t{assignments}\n\treturn updated\n}}()"
             | Lir.RecordConvert(target, targetType) ->
                 let targetCode = emitChild target
                 let fields = recordFields targetType

@@ -401,6 +401,7 @@ type GoBackendTests() =
     [<TestCase("let created = Fs.createDirectory \"tmp/nested\"\nlet written = Fs.writeText \"tmp/nested/data.txt\" \"loaded\"\n(created, written, Fs.exists \"tmp/nested/data.txt\", Fs.kind \"tmp/nested/data.txt\", Fs.glob \"tmp/**/*.txt\", Fs.enumerateFiles \"tmp\" \"**/*.txt\")", "(true, true, true, File \"tmp/nested/data.txt\", Some [\"tmp/nested/data.txt\"], Some [\"tmp/nested/data.txt\"])")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nperson.Name", "\"Ada\"")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\nlet older = { person with Age = 43 }\nolder.Age", "43")>]
+    [<TestCase("let home = {| City = \"Paris\"; Zip = 75000 |}\nlet wider = {| home with Name = \"Robert\" |}\n(wider.Name, wider.City, wider.Zip)", "(\"Robert\", \"Paris\", 75000)")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]
     [<TestCase("type Shape = | Point | Circle of int\nCircle 2 = Circle 2", "true")>]
     [<TestCase("type Person = { Name: string }\ntype Result = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }", "true")>]
