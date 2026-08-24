@@ -881,6 +881,30 @@ module TypedGoEmitter =
 
         let rec emit environment functionBindings (expression: Lir.Expression) =
             let emitChild = emit environment functionBindings
+            let emitListBuilder (listExpression: Lir.Expression) =
+                let itemType = match listExpression.Type with TList item -> item | _ -> invalidOp "List builder received a non-list expression."
+                let rec collect (value: Lir.Expression) =
+                    match value.Node with
+                    | Lir.Append(left, right) -> collect left @ collect right
+                    | Lir.Cons(head, tail) -> Choice1Of2 head :: collect tail
+                    | Lir.List items -> items |> List.map Choice1Of2
+                    | _ -> [ Choice2Of2 value ]
+                let pieces = collect listExpression
+                let setup, capacity, appends =
+                    pieces
+                    |> List.mapi (fun index piece ->
+                        match piece with
+                        | Choice1Of2 item ->
+                            let name = freshStatementName "listItem"
+                            $"{name} := {coerce (emittedType item) itemType (emitChild item)}", "1", $"result = append(result, {name})"
+                        | Choice2Of2 segment ->
+                            let name = freshStatementName "listSegment"
+                            $"{name} := {coerce (emittedType segment) listExpression.Type (emitChild segment)}", $"len({name})", $"result = append(result, {name}...)" )
+                    |> List.fold (fun (setups, capacities, actions) (setup, itemCapacity, action) -> setups @ [ setup ], capacities @ [ itemCapacity ], actions @ [ action ]) ([], [], [])
+                let capacityCode = if capacity.IsEmpty then "0" else String.concat "+" capacity
+                let setupCode = if setup.IsEmpty then "" else String.concat "\n\t" setup + "\n\t"
+                let appendCode = if appends.IsEmpty then "" else String.concat "\n\t" appends + "\n\t"
+                $"func() {goType listExpression.Type} {{\n\t{setupCode}result := make({goType listExpression.Type}, 0, {capacityCode})\n\t{appendCode}return result\n}}()"
             match expression.Node with
             | _ when tryAppliedIntrinsic expression |> Option.isSome ->
                 let name, intrinsicType, arguments = tryAppliedIntrinsic expression |> Option.get
@@ -1015,10 +1039,7 @@ module TypedGoEmitter =
                 $"({emitChild target}).{field}"
             | Lir.SomeValue item -> $"{goType expression.Type}{{HasValue: true, Value: {emitChild item}}}"
             | Lir.NoneValue -> $"{goType expression.Type}{{}}"
-            | Lir.Cons(head, tail) ->
-                let itemType = match expression.Type with TList item -> item | _ -> head.Type
-                $"append({goType expression.Type}{{{coerce head.Type itemType (emitChild head)}}}, {coerce tail.Type expression.Type (emitChild tail)}...)"
-            | Lir.Append(left, right) -> $"append(append({goType expression.Type}{{}}, {emitChild left}...), {emitChild right}...)"
+            | Lir.Cons _ | Lir.Append _ -> emitListBuilder expression
             | Lir.Let(id, _, recursive, binding, body) ->
                 let variable = symbolName "local" id
                 let scoped = Map.add id variable environment

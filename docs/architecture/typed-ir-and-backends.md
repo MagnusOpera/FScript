@@ -42,6 +42,8 @@ Reachable builtins are emitted at their specialized signatures. List, option, an
 
 Fully saturated intrinsic applications bypass their curried declaration carriers. The emitter preserves argument evaluation order with one typed multi-argument application and emits the specialized intrinsic body directly, leaving partially applied intrinsics as ordinary first-class functions.
 
+Immutable list append and cons trees are flattened into ordered builder pieces. Each source expression is evaluated exactly once from left to right, the final capacity is computed from the captured pieces, and one result slice is allocated before appending items and segments.
+
 Generated projects contain only the typed program package and its entry point. The former erased runtime templates, universal closure dispatch, dynamic aggregate casts, reflection-oriented carriers, and generic pattern matcher are not embedded or emitted.
 
 The pass pipeline is HIR lowering, HIR validation, LIR lowering, `LirOptimization.optimize`, then LIR validation. The shared optimization pass performs conservative effect/use analysis, constant Boolean control-flow simplification, unused pure-binding elimination, deterministic declaration/function reachability pruning, and explicit proper-tail-call marking. Observable top-level initializers and exports are ordered roots. Closure captures and compact function IDs are rebuilt before validation, keeping transformations out of lowering and individual backends. Normal and pipeline tail calls remain distinct so function-first and value-first evaluation order survive optimization; the LIR interpreter executes both through a stack-safe trampoline.

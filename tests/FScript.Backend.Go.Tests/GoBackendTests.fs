@@ -148,6 +148,8 @@ type GoBackendTests() =
             Assert.That(generated, Does.Not.Contain("pipelineArgument"))
             Assert.That(generated, Does.Not.Contain("pipelineFunction"))
             Assert.That(generated, Does.Not.Contain("var value103 func(func(int64) bool)"))
+            Assert.That(generated, Does.Not.Contain("append(append("))
+            Assert.That(generated, Does.Contain("result := make([]int64, 0, len(listSegment"))
             let directory = Path.Combine(Path.GetTempPath(), $"fscript-quicksort-{Guid.NewGuid():N}")
             try
                 for file in files do
