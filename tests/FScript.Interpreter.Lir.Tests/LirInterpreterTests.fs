@@ -50,6 +50,18 @@ type LirInterpreterTests() =
                 | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 42L))
 
     [<Test>]
+    member _.``Registered host runtime overrides portable intrinsic fallback`` () =
+        let hostExternal =
+            { Name = "Fs.readText"
+              Invoke = fun _ -> Ok(LirValue.VOption(Some(LirValue.VString "sandboxed"))) }
+        match Compiler.compile { Program = Parser.parseProgram "Fs.readText \"outside\""; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.executeWithHostExternals { ScriptName = None; Arguments = [] } [ hostExternal ] compiled.Lir with
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+            | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VOption(Some(LirValue.VString "sandboxed"))))
+
+    [<Test>]
     member _.``Trampolines deep tail recursion`` () =
         let source = "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 200000"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with

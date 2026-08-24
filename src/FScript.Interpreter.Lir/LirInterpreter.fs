@@ -527,7 +527,13 @@ module LirInterpreter =
             | VClosure(parameter, _, body, captured) -> tailEvaluate (captured.Value |> Map.add parameter currentValue) body
             | VIntrinsic(name, existing) ->
                 let arguments = existing @ [ currentValue ]
-                if arguments.Length = intrinsicArity name then invokeIntrinsic (applyValue span) span name arguments
+                if arguments.Length = intrinsicArity name then
+                    match currentHostExternals.Value |> Map.tryFind name with
+                    | Some external ->
+                        match external.Invoke arguments with
+                        | Ok result -> Ok result
+                        | Error message -> fail "FSI3021" span $"Host external '{name}' failed: {message}"
+                    | None -> invokeIntrinsic (applyValue span) span name arguments
                 else Ok(VIntrinsic(name, arguments))
             | VExternal(name, arity, existing) ->
                 let arguments = existing @ [ currentValue ]
