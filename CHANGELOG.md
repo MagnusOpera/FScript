@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Lowered compatible mutually tail-recursive Go functions to typed state-machine loops.
+
 - Removed defensive pattern and local carriers from tail-position generated Go.
 
 - Lowered empty and single-clause Go map patterns without recursive matcher closures.

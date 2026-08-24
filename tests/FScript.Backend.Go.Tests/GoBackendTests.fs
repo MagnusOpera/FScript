@@ -522,6 +522,19 @@ type GoBackendTests() =
             Assert.That(program, Does.Contain("tailNext"))
             Assert.That(Regex.IsMatch(program, @"arg\d+, arg\d+ = tailNext\d+, tailNext\d+"), Is.True)
 
+    [<Test>]
+    member _.``Go emitter lowers compatible mutual tail recursion to a state loop`` () =
+        let source = "let rec even n =\n    if n = 0 then true else odd (n - 1)\nand odd n =\n    if n = 0 then false else even (n - 1)\n\neven 100000"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/mutual-tailrec" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("switch mutualState0"))
+            Assert.That(program, Does.Contain("mutualState0 = 1"))
+            Assert.That(program, Does.Contain("mutualState0 = 0"))
+            Assert.That(program, Does.Not.Contain("return raised"))
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
@@ -535,7 +548,7 @@ type GoBackendTests() =
     [<TestCase("$\"value {1 + 2}\"", "\"value 3\"")>]
     [<TestCase("type Shape = | Point | Circle of int\nlet radius shape =\n    match shape with\n    | Point -> 0\n    | Circle r -> r\nradius (Circle 3)", "3")>]
     [<TestCase("let tail = { [\"a\"] = 2; [\"b\"] = 3 }\nlet values = { [\"a\"] = 1; ..tail }\nvalues[\"b\"]", "Some 3")>]
-    [<TestCase("let rec even n =\n    if n = 0 then true else odd (n - 1)\nand odd n =\n    if n = 0 then false else even (n - 1)\n\neven 10", "true")>]
+    [<TestCase("let rec even n =\n    if n = 0 then true else odd (n - 1)\nand odd n =\n    if n = 0 then false else even (n - 1)\n\neven 100000", "true")>]
     [<TestCase("String.toUpper \"hello\"", "\"HELLO\"")>]
     [<TestCase("List.length [1; 2; 3]", "3")>]
     [<TestCase("Option.defaultValue 9 None", "9")>]

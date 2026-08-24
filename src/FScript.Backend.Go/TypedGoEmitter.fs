@@ -841,7 +841,7 @@ module TypedGoEmitter =
                     | _ -> None
                 | _ -> None
             | _ -> None
-        let trySelfTail functionBindings currentFunction (expression: Lir.Expression) =
+        let tryTailCall functionBindings (expression: Lir.Expression) =
             let candidate =
                 match expression.Node with
                 | Lir.TailCallClosure(fn, argument) ->
@@ -861,10 +861,79 @@ module TypedGoEmitter =
                     |> Option.bind (fun rootFunction ->
                         let chain = functionChain rootFunction
                         match List.tryLast chain with
-                        | Some deepest when deepest.Id = currentFunction && chain.Length = arguments.Length ->
-                            Some(chain |> List.map (fun fn -> fn.Parameter, fn.ParameterType), arguments, evaluationOrder)
+                        | Some deepest when chain.Length = arguments.Length ->
+                            Some(deepest.Id, chain |> List.map (fun fn -> fn.Parameter, fn.ParameterType), arguments, evaluationOrder)
                         | _ -> None)
                 | _ -> None)
+        let trySelfTail functionBindings currentFunction expression =
+            tryTailCall functionBindings expression
+            |> Option.bind (fun (targetFunction, parameters, arguments, evaluationOrder) ->
+                if targetFunction = currentFunction then Some(parameters, arguments, evaluationOrder) else None)
+        let tailTargets functionBindings (expression: Lir.Expression) =
+            let rec collect expression =
+                match tryTailCall functionBindings expression with
+                | Some(target, _, _, _) -> Set.singleton target
+                | None ->
+                    match expression.Node with
+                    | Lir.Branch(_, whenTrue, whenFalse) -> Set.union (collect whenTrue) (collect whenFalse)
+                    | Lir.Let(_, _, false, _, body) -> collect body
+                    | Lir.DecisionTree(_, cases) when cases |> List.forall (fun case -> case.Plan.Maps.IsEmpty) ->
+                        cases |> List.map (fun case -> collect case.Body) |> Set.unionMany
+                    | _ -> Set.empty
+            collect expression
+        let raisedFunctions =
+            raisedDeclarations
+            |> Map.toList
+            |> List.choose (fun (symbolId, (raisedName, chain)) ->
+                List.tryLast chain |> Option.map (fun deepest -> deepest.Id, symbolId, raisedName, chain, deepest))
+            |> List.sortBy (fun (_, symbolId, _, _, _) -> Lir.symbolNumber symbolId)
+        let raisedFunctionIds = raisedFunctions |> List.map (fun (id, _, _, _, _) -> id) |> Set.ofList
+        let tailGraph =
+            raisedFunctions
+            |> List.map (fun (id, _, _, _, deepest) ->
+                id, Set.intersect raisedFunctionIds (tailTargets declarationFunctionTargets deepest.Body))
+            |> Map.ofList
+        let reachableFrom start =
+            let rec visit pending visited =
+                match pending with
+                | [] -> visited
+                | current :: rest when Set.contains current visited -> visit rest visited
+                | current :: rest ->
+                    let next = Map.tryFind current tailGraph |> Option.defaultValue Set.empty |> Set.toList
+                    visit (next @ rest) (Set.add current visited)
+            visit [ start ] Set.empty
+        let mutualTailGroups =
+            let mutable assigned = Set.empty
+            let mutable nextGroup = 0
+            [ for (functionId, _, _, chain, deepest) in raisedFunctions do
+                if not (Set.contains functionId assigned) then
+                    let reachable = reachableFrom functionId
+                    let members =
+                        raisedFunctions
+                        |> List.filter (fun (candidateId, _, _, _, _) ->
+                            candidateId <> functionId
+                            && Set.contains candidateId reachable
+                            && Set.contains functionId (reachableFrom candidateId))
+                    let current = raisedFunctions |> List.find (fun (id, _, _, _, _) -> id = functionId)
+                    let stronglyConnected = current :: members
+                    let parameterTypes = chain |> List.map _.ParameterType
+                    let compatible =
+                        stronglyConnected.Length > 1
+                        && stronglyConnected
+                           |> List.forall (fun (_, _, _, candidateChain, candidate) ->
+                               candidateChain.Length = chain.Length
+                               && (candidateChain |> List.map _.ParameterType) = parameterTypes
+                               && candidate.ReturnType = deepest.ReturnType)
+                    if compatible then
+                        let group = nextGroup
+                        nextGroup <- nextGroup + 1
+                        assigned <- Set.union assigned (stronglyConnected |> List.map (fun (id, _, _, _, _) -> id) |> Set.ofList)
+                        yield group, stronglyConnected ]
+        let mutualTailMembership =
+            mutualTailGroups
+            |> List.collect (fun (group, members) ->
+                members |> List.mapi (fun state (functionId, _, _, _, _) -> functionId, (group, state)))
+            |> Map.ofList
         let rec hasSelfTail functionBindings currentFunction (expression: Lir.Expression) =
             if trySelfTail functionBindings currentFunction expression |> Option.isSome then true
             else
@@ -1382,8 +1451,28 @@ module TypedGoEmitter =
             | node -> invalidOp $"Unsupported typed Go node {node}."
 
         and emitTail environment functionBindings currentFunction resultType (expression: Lir.Expression) =
-            match trySelfTail functionBindings currentFunction expression with
-            | Some(parameters, arguments, evaluationOrder) ->
+            let mutualTail =
+                tryTailCall functionBindings expression
+                |> Option.bind (fun (targetFunction, parameters, arguments, evaluationOrder) ->
+                    match Map.tryFind currentFunction mutualTailMembership, Map.tryFind targetFunction mutualTailMembership with
+                    | Some(currentGroup, _), Some(targetGroup, targetState) when currentGroup = targetGroup && targetFunction <> currentFunction ->
+                        Some(currentGroup, targetState, parameters, arguments, evaluationOrder)
+                    | _ -> None)
+            match mutualTail, trySelfTail functionBindings currentFunction expression with
+            | Some(group, targetState, parameters, arguments, evaluationOrder), _ ->
+                let temporaries =
+                    evaluationOrder
+                    |> List.map (fun index ->
+                        let _, parameterType = parameters.[index]
+                        let argument = arguments.[index]
+                        let temporary = freshStatementName "mutualTailNext"
+                        index, temporary, $"{temporary} := {coerce (emittedType argument) parameterType (emit environment functionBindings argument)}")
+                let values = temporaries |> List.sortBy (fun (index, _, _) -> index) |> List.map (fun (_, name, _) -> name)
+                String.concat "\n" (temporaries |> List.map (fun (_, _, source) -> source))
+                + "\n" + ([ for index in 0 .. parameters.Length - 1 -> $"mutualArg{group}_{index}" ] |> String.concat ", ")
+                + " = " + String.concat ", " values
+                + $"\nmutualState{group} = {targetState}\ncontinue"
+            | None, Some(parameters, arguments, evaluationOrder) ->
                 let temporaries =
                     evaluationOrder
                     |> List.map (fun index ->
@@ -1401,7 +1490,7 @@ module TypedGoEmitter =
                 String.concat "\n" (temporaries |> List.map snd)
                 + "\n" + String.concat ", " variables + " = " + String.concat ", " values
                 + "\ncontinue"
-            | None ->
+            | None, None ->
                 match expression.Node with
                 | _ when tryAppliedIntrinsic expression |> Option.isSome ->
                     $"return {coerce expression.Type resultType (emit environment functionBindings expression)}"
@@ -1750,9 +1839,44 @@ module TypedGoEmitter =
         let runtimeEntry = if unitEntryId.IsSome then { entry with Node = Lir.Constant Lir.Unit } else entry
 
         let declarations = StringBuilder()
+        for group, members in mutualTailGroups do
+            let _, _, _, firstChain, firstDeepest = List.head members
+            let arguments =
+                firstChain
+                |> List.mapi (fun index (fn: Lir.Function) -> $"mutualArg{group}_{index}", fn.ParameterType)
+            let signature =
+                ([$"mutualState{group} int"]
+                 @ (arguments |> List.map (fun (name, valueType) -> $"{name} {goType valueType}")))
+                |> String.concat ", "
+            declarations.AppendLine($"func mutualTail{group}({signature}) {goType firstDeepest.ReturnType} {{") |> ignore
+            declarations.AppendLine("\tfor {") |> ignore
+            declarations.AppendLine($"\t\tswitch mutualState{group} {{") |> ignore
+            for state, (functionId, _, _, chain, deepest) in members |> List.indexed do
+                let scoped =
+                    chain
+                    |> List.mapi (fun index fn -> fn.Parameter, $"mutualArg{group}_{index}")
+                    |> List.fold (fun current (parameter, name) -> Map.add parameter name current) names
+                let body = emitTail scoped declarationFunctionTargets functionId deepest.ReturnType deepest.Body
+                declarations.AppendLine($"\t\tcase {state}:") |> ignore
+                declarations.AppendLine("\t\t\t" + indent (indent (indent body))) |> ignore
+            declarations.AppendLine("\t\tdefault:") |> ignore
+            declarations.AppendLine("\t\t\tpanic(\"Invalid mutual tail state.\")") |> ignore
+            declarations.AppendLine("\t\t}") |> ignore
+            declarations.AppendLine("\t}") |> ignore
+            declarations.AppendLine("}") |> ignore
+            declarations.AppendLine() |> ignore
+            for state, (_, _, raisedName, chain, deepest) in members |> List.indexed do
+                let parameters = chain |> List.map (fun (fn: Lir.Function) -> symbolName "arg" fn.Parameter, fn.ParameterType)
+                let wrapperSignature = parameters |> List.map (fun (name, valueType) -> $"{name} {goType valueType}") |> String.concat ", "
+                let values = parameters |> List.map fst |> String.concat ", "
+                declarations.AppendLine($"func {raisedName}({wrapperSignature}) {goType deepest.ReturnType} {{") |> ignore
+                declarations.AppendLine($"\treturn mutualTail{group}({state}, {values})") |> ignore
+                declarations.AppendLine("}") |> ignore
+                declarations.AppendLine() |> ignore
         for KeyValue(_, (raisedName, chain)) in raisedDeclarations do
             match List.tryLast chain with
             | None -> ()
+            | Some deepest when Map.containsKey deepest.Id mutualTailMembership -> ()
             | Some deepest ->
                 let parameters = chain |> List.map (fun (fn: Lir.Function) -> symbolName "arg" fn.Parameter, fn.ParameterType)
                 let scoped = parameters |> List.fold2 (fun current (fn: Lir.Function) (name, _) -> Map.add fn.Parameter name current) names chain
