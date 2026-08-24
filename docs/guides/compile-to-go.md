@@ -93,6 +93,8 @@ The initial backend preserves:
 
 The backend deliberately does not use Go generics or dynamic value carriers. Reachable HM instantiations become concrete Go types and native typed functions.
 
+Generated function bodies and top-level initializers use direct Go statements for control flow, ranges, local bindings, and pipelines. Small typed temporaries may remain where they document FScript's value-first pipeline order; they do not allocate dynamic wrappers.
+
 ## Console input and text files
 
 Generated programs use their process stdin and stdout:

@@ -170,6 +170,22 @@ type GoBackendTests() =
                 if Directory.Exists directory then Directory.Delete(directory, true)
 
     [<Test>]
+    member _.``Fibonacci emits statement oriented control flow`` () =
+        let source = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../../samples/fibonacci.fss"))
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/fibonacci" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Not.Contain("value83 = func() struct{}"), program)
+            Assert.That(program, Does.Not.Contain("return func() int64"), program)
+            Assert.That(program, Does.Contain("for value := rangeFirst"), program)
+            Assert.That(program, Does.Contain("tailMatchValue := arg"), program)
+
+    [<Test>]
     member _.``Typed Go vertical slice emits no dynamic carriers`` () =
         let source = "let identity value = value\n(identity 42, identity \"ok\", [1; 2], Some 3)"
         let compiled =

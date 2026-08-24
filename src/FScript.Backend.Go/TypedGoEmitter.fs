@@ -695,6 +695,11 @@ module TypedGoEmitter =
                 | Lir.DecisionTree(_, cases) when cases |> List.forall (fun case -> case.Plan.Maps.IsEmpty) ->
                     cases |> List.exists (fun case -> hasSelfTail functionBindings currentFunction case.Body)
                 | _ -> false
+        let mutable statementTemporary = 0
+        let freshStatementName prefix =
+            statementTemporary <- statementTemporary + 1
+            $"{prefix}{statementTemporary}"
+
         let rec emit environment functionBindings (expression: Lir.Expression) =
             let emitChild = emit environment functionBindings
             match expression.Node with
@@ -704,12 +709,11 @@ module TypedGoEmitter =
                 let fn = functions.[id]
                 let parameter = symbolName "arg" fn.Parameter
                 let scoped = Map.add fn.Parameter parameter environment
+                let body = emitTail scoped functionBindings id fn.ReturnType fn.Body
                 if hasSelfTail functionBindings id fn.Body then
-                    let body = emitTail scoped functionBindings id fn.ReturnType fn.Body
                     $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\tfor {{\n\t\t{indent (indent body)}\n\t}}\n}}"
                 else
-                    let body = emit scoped functionBindings fn.Body
-                    $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\treturn {indent (coerce fn.Body.Type fn.ReturnType body)}\n}}"
+                    $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\t{indent body}\n}}"
             | Lir.CallClosure(fn, argument) | Lir.TailCallClosure(fn, argument) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
@@ -1003,6 +1007,13 @@ module TypedGoEmitter =
                 + "\ncontinue"
             | None ->
                 match expression.Node with
+                | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                    let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
+                    let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
+                    let argumentName = freshStatementName "pipelineArgument"
+                    let functionName = freshStatementName "pipelineFunction"
+                    let call = $"{functionName}({argumentName})"
+                    $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\nreturn {coerce expression.Type resultType call}"
                 | Lir.Branch(condition, whenTrue, whenFalse) ->
                     $"if {goCondition (emit environment functionBindings condition)} {{\n\t{indent (emitTail environment functionBindings currentFunction resultType whenTrue)}\n}}\n{emitTail environment functionBindings currentFunction resultType whenFalse}"
                 | Lir.Let(id, _, false, binding, body) ->
@@ -1080,11 +1091,54 @@ module TypedGoEmitter =
                     $"{targetName} := {emit environment functionBindings target}\n_ = {targetName}\n{caseCode}\npanic(\"Match failure.\")"
                 | _ -> $"return {coerce expression.Type resultType (emit environment functionBindings expression)}"
 
+        and emitAssign environment functionBindings target targetType (expression: Lir.Expression) =
+            let assign value = $"{target} = {coerce expression.Type targetType value}"
+            match expression.Node with
+            | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
+                let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
+                let argumentName = freshStatementName "pipelineArgument"
+                let functionName = freshStatementName "pipelineFunction"
+                let call = $"{functionName}({argumentName})"
+                $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\n{target} = {coerce expression.Type targetType call}"
+            | Lir.Branch(condition, whenTrue, whenFalse) ->
+                $"if {goCondition (emit environment functionBindings condition)} {{\n\t{indent (emitAssign environment functionBindings target targetType whenTrue)}\n}} else {{\n\t{indent (emitAssign environment functionBindings target targetType whenFalse)}\n}}"
+            | Lir.Let(id, _, recursive, binding, body) ->
+                let variable = symbolName "local" id
+                let scoped = Map.add id variable environment
+                let scopedFunctions =
+                    match binding.Node with
+                    | Lir.MakeClosure(functionId, _) -> Map.add id functionId functionBindings
+                    | _ -> functionBindings
+                let bindingEnvironment = if recursive then scoped else environment
+                let bindingFunctions = if recursive then scopedFunctions else functionBindings
+                $"var {variable} {goType binding.Type}\n{emitAssign bindingEnvironment bindingFunctions variable binding.Type binding}\n_ = {variable}\n{emitAssign scoped scopedFunctions target targetType body}"
+            | Lir.LetRecursiveGroup(bindings, body) ->
+                let scoped = bindings |> List.fold (fun current (id, _, _, _) -> Map.add id (symbolName "localRec" id) current) environment
+                let scopedFunctions =
+                    bindings
+                    |> List.fold (fun current (id, _, _, value) ->
+                        match value.Node with Lir.MakeClosure(functionId, _) -> Map.add id functionId current | _ -> current) functionBindings
+                let declarations = bindings |> List.map (fun (id, _, valueType, _) -> let name = symbolName "localRec" id in $"var {name} {goType valueType}")
+                let assignments = bindings |> List.map (fun (id, _, valueType, value) -> emitAssign scoped scopedFunctions (symbolName "localRec" id) valueType value)
+                String.concat "\n" (declarations @ assignments @ [ emitAssign scoped scopedFunctions target targetType body ])
+            | Lir.Range(first, last) ->
+                let firstName = freshStatementName "rangeFirst"
+                let lastName = freshStatementName "rangeLast"
+                $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\n{target} = []int64{{}}\nif {firstName} <= {lastName} {{\n\tfor value := {firstName}; value <= {lastName}; value++ {{\n\t\t{target} = append({target}, value)\n\t}}\n}} else {{\n\tfor value := {firstName}; value >= {lastName}; value-- {{\n\t\t{target} = append({target}, value)\n\t}}\n}}"
+            | Lir.ForEach(id, _, _, source, body) ->
+                let variable = symbolName "item" id
+                let bodyCode = emit (Map.add id variable environment) functionBindings body
+                let completed = assign "struct{}{}"
+                $"for _, {variable} := range {emit environment functionBindings source} {{\n\t_ = {indent bodyCode}\n}}\n{completed}"
+            | Lir.Fail message -> $"panic({emit environment functionBindings message})"
+            | _ -> assign (emit environment functionBindings expression)
+
         let declarations = StringBuilder()
         for declaration in program.Declarations do declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
         declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore
-        for declaration in program.Declarations do declarations.AppendLine($"\t{names.[declaration.Id]} = {indent (coerce declaration.Value.Type declaration.Type (emit names declarationFunctionTargets declaration.Value))}") |> ignore
+        for declaration in program.Declarations do declarations.AppendLine("\t" + indent (emitAssign names declarationFunctionTargets names.[declaration.Id] declaration.Type declaration.Value)) |> ignore
         declarations.AppendLine("}") |> ignore
         let entry = program.Entry |> Option.defaultValue { Type = TUnit; Span = { Start = { Line = 0; Column = 0; File = None }; End = { Line = 0; Column = 0; File = None } }; Node = Lir.Constant Lir.Unit }
         let entryCode = emit names declarationFunctionTargets entry
