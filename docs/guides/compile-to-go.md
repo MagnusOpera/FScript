@@ -97,6 +97,8 @@ Generated function bodies and top-level initializers use direct Go statements fo
 
 Curried FScript functions retain typed unary values when partial application is observable. Fully saturated calls use generated native multi-argument helpers, and immediately applied nonescaping lambdas are emitted as their typed bodies instead of closure calls.
 
+Pure, total `List.map` callbacks followed immediately by `List.iter` may become one typed Go loop. The compiler deliberately leaves the two phases separate when mapping can perform effects or fail, preserving the point at which iteration effects begin. Range/map/console pipelines such as the Fibonacci sample need no intermediate range or mapped slice.
+
 ## Console input and text files
 
 Generated programs use their process stdin and stdout:

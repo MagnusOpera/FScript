@@ -437,6 +437,8 @@ module TypedGoEmitter =
 
         let names = program.Declarations |> List.map (fun item -> item.Id, symbolName "value" item.Id) |> Map.ofList
         let declarationTypes = program.Declarations |> List.map (fun item -> item.Id, item.Type) |> Map.ofList
+        let declarationNames = program.Declarations |> List.map (fun item -> item.Id, item.Name) |> Map.ofList
+        let declarationValues = program.Declarations |> List.map (fun item -> item.Id, item.Value) |> Map.ofList
         let recordFields = function
             | TRecord fields -> fields
             | TNamed name ->
@@ -667,6 +669,90 @@ module TypedGoEmitter =
                     root, arguments @ [ argument ]
                 | _ -> value, []
             unwind expression
+        let rec pureTotalWith candidates (expression: Lir.Expression) =
+            let isPure = pureTotalWith candidates
+            let all = List.forall isPure
+            match expression.Node with
+            | Lir.Constant _ | Lir.Load _ | Lir.Intrinsic _ | Lir.TypeToken _ | Lir.RuntimeContext -> true
+            | Lir.HostExternal _ | Lir.TargetImport _ | Lir.Fail _ -> false
+            | Lir.MakeClosure _ -> true
+            | Lir.CallClosure _ | Lir.TailCallClosure _ ->
+                let root, arguments = unwindApplications expression
+                match root.Node with
+                | Lir.Load id -> Set.contains id candidates && all arguments
+                | Lir.MakeClosure(functionId, _) -> all arguments && isPure functions.[functionId].Body
+                | _ -> false
+            | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                let root, preceding = unwindApplications fn
+                let arguments = preceding @ [ argument ]
+                match root.Node with
+                | Lir.Load id -> Set.contains id candidates && all arguments
+                | Lir.MakeClosure(functionId, _) -> all arguments && isPure functions.[functionId].Body
+                | _ -> false
+            | Lir.Branch(condition, whenTrue, whenFalse) -> all [ condition; whenTrue; whenFalse ]
+            | Lir.Operation((Lir.IntDivide | Lir.IntRemainder), _) -> false
+            | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> all values
+            | Lir.Record fields -> fields |> List.map snd |> all
+            | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.RecordConvert(target, _) -> isPure target
+            | Lir.NoneValue -> true
+            | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> all [ left; right ]
+            | Lir.Let(_, _, _, binding, body) -> all [ binding; body ]
+            | Lir.LetRecursiveGroup(bindings, body) -> all (body :: (bindings |> List.map (fun (_, _, _, value) -> value)))
+            | Lir.DecisionTree(target, cases) ->
+                let exhaustive =
+                    cases
+                    |> List.tryLast
+                    |> Option.exists (fun case -> case.Guard.IsNone && case.Plan.Checks.IsEmpty && case.Plan.Maps.IsEmpty)
+                exhaustive && isPure target && (cases |> List.forall (fun case -> Option.forall isPure case.Guard && isPure case.Body))
+            | Lir.RecordUpdate(target, fields) -> isPure target && (fields |> List.map snd |> all)
+            | Lir.Interpolate parts -> parts |> List.forall (function Lir.TextPart _ -> true | Lir.ValuePart value -> isPure value)
+            | Lir.UnionCase(_, _, payload) -> Option.forall isPure payload
+            | Lir.Map entries -> entries |> List.forall (function Lir.KeyValue(key, value) -> all [ key; value ] | Lir.Spread value -> isPure value)
+            | Lir.ForEach(_, _, _, source, body) -> all [ source; body ]
+        let pureTotalDeclarations =
+            let isPureIntrinsic (name: string) =
+                not (name.StartsWith("Console.", StringComparison.Ordinal)
+                     || name.StartsWith("Fs.", StringComparison.Ordinal)
+                     || name.StartsWith("Task.", StringComparison.Ordinal))
+            let initial =
+                program.Declarations
+                |> List.choose (fun declaration ->
+                    match declaration.Value.Node with
+                    | Lir.Intrinsic name when isPureIntrinsic name -> Some declaration.Id
+                    | Lir.MakeClosure _ -> Some declaration.Id
+                    | _ -> None)
+                |> Set.ofList
+            let rec prune candidates =
+                let retained =
+                    candidates
+                    |> Set.filter (fun id ->
+                        match (program.Declarations |> List.find (fun declaration -> declaration.Id = id)).Value.Node with
+                        | Lir.Intrinsic name -> isPureIntrinsic name
+                        | Lir.MakeClosure(functionId, _) -> pureTotalWith candidates functions.[functionId].Body
+                        | _ -> false)
+                if retained = candidates then retained else prune retained
+            prune initial
+        let callbackIsPureTotal (expression: Lir.Expression) =
+            match expression.Node with
+            | Lir.MakeClosure(functionId, _) -> pureTotalWith pureTotalDeclarations functions.[functionId].Body
+            | Lir.Load id -> Set.contains id pureTotalDeclarations
+            | _ -> false
+        let tryMapIterFusion (expression: Lir.Expression) =
+            let tryPartial expectedName (value: Lir.Expression) =
+                match value.Node with
+                | Lir.CallClosure({ Node = Lir.Load id }, callback)
+                | Lir.TailCallClosure({ Node = Lir.Load id }, callback)
+                    when Map.tryFind id declarationNames = Some expectedName -> Some callback
+                | _ -> None
+            match expression.Node with
+            | Lir.PipeClosure(mapped, iterFunction) | Lir.TailPipeClosure(mapped, iterFunction) ->
+                match tryPartial "List.iter" iterFunction, mapped.Node with
+                | Some consumer, (Lir.PipeClosure(source, mapFunction) | Lir.TailPipeClosure(source, mapFunction)) ->
+                    match tryPartial "List.map" mapFunction with
+                    | Some mapper when callbackIsPureTotal mapper -> Some(source, mapper, consumer)
+                    | _ -> None
+                | _ -> None
+            | _ -> None
         let trySelfTail functionBindings currentFunction (expression: Lir.Expression) =
             let candidate =
                 match expression.Node with
@@ -737,7 +823,23 @@ module TypedGoEmitter =
             | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
-                $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (coerce (emittedType argument) parameterType (emitChild argument))}\n\tpipelineFunction := {indent (emitChild fn)}\n\treturn pipelineFunction(pipelineArgument)\n}}()"
+                let root, preceding = unwindApplications fn
+                match root.Node with
+                | Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = preceding.Length + 1 ->
+                    let raisedName, chain = raisedDeclarations.[id]
+                    let precedingSetup, precedingNames =
+                        preceding
+                        |> List.mapi (fun index value ->
+                            let parameter = chain.[index]
+                            let name = freshStatementName "pipelineCurriedArgument"
+                            $"{name} := {coerce (emittedType value) parameter.ParameterType (emitChild value)}", name)
+                        |> List.unzip
+                    let values = precedingNames @ [ "pipelineArgument" ] |> String.concat ", "
+                    let call = coerce (List.last chain).ReturnType expression.Type $"{raisedName}({values})"
+                    let setup = if precedingSetup.IsEmpty then "" else "\n\t" + (precedingSetup |> String.concat "\n\t" |> indent)
+                    $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (coerce (emittedType argument) parameterType (emitChild argument))}{setup}\n\treturn {call}\n}}()"
+                | _ ->
+                    $"func() {goType expression.Type} {{\n\tpipelineArgument := {indent (coerce (emittedType argument) parameterType (emitChild argument))}\n\tpipelineFunction := {indent (emitChild fn)}\n\treturn pipelineFunction(pipelineArgument)\n}}()"
             | Lir.Branch(condition, whenTrue, whenFalse) -> $"func() {goType expression.Type} {{\n\tif {goCondition (emitChild condition)} {{\n\t\treturn {indent (indent (coerce whenTrue.Type expression.Type (emitChild whenTrue)))}\n\t}}\n\treturn {indent (coerce whenFalse.Type expression.Type (emitChild whenFalse))}\n}}()"
             | Lir.Operation(operation, [ left; right ]) ->
                 let leftCode, rightCode = emitChild left, emitChild right
@@ -1131,6 +1233,68 @@ module TypedGoEmitter =
         and emitAssign environment functionBindings target targetType (expression: Lir.Expression) =
             let assign value = $"{target} = {coerce expression.Type targetType value}"
             match expression.Node with
+            | _ when tryMapIterFusion expression |> Option.isSome ->
+                let source, mapper, consumer = tryMapIterFusion expression |> Option.get
+                let itemType, mappedType =
+                    match source.Type, expression.Node with
+                    | TList itemType, (Lir.PipeClosure({ Type = TList mappedType }, _) | Lir.TailPipeClosure({ Type = TList mappedType }, _)) -> itemType, mappedType
+                    | _ -> invalidOp "List map/iter fusion has inconsistent specialized types."
+                let itemName = freshStatementName "fusedItem"
+                let mappedName = freshStatementName "fusedMapped"
+                let rec inlineExpression inlineEnvironment (value: Lir.Expression) =
+                    match value.Node with
+                    | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                        inlineExpression inlineEnvironment argument
+                        |> Option.bind (fun argumentCode ->
+                            let root, preceding = unwindApplications fn
+                            match fn.Node, root.Node with
+                            | Lir.MakeClosure(functionId, _), _ ->
+                                let applied = functions.[functionId]
+                                inlineExpression (Map.add applied.Parameter argumentCode inlineEnvironment) applied.Body
+                            | _, Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = preceding.Length + 1 ->
+                                let raisedName, chain = raisedDeclarations.[id]
+                                let values = preceding |> List.map (inlineExpression inlineEnvironment)
+                                if values |> List.forall Option.isSome then
+                                    values |> List.map Option.get |> fun values -> Some(
+                                    let arguments = values @ [ argumentCode ] |> String.concat ", "
+                                    let call = $"{raisedName}({arguments})"
+                                    coerce (List.last chain).ReturnType value.Type call)
+                                else None
+                            | _ -> None)
+                    | Lir.Constant _ | Lir.Load _ | Lir.CallClosure _ | Lir.TailCallClosure _
+                    | Lir.Operation _ | Lir.Tuple _ | Lir.List _ | Lir.Record _ | Lir.FieldGet _
+                    | Lir.SomeValue _ | Lir.NoneValue | Lir.Cons _ | Lir.Append _ | Lir.Interpolate _
+                    | Lir.TypeToken _ | Lir.UnionCase _ -> Some(emit inlineEnvironment functionBindings value)
+                    | _ -> None
+                let callbackAssignment (callback: Lir.Expression) argumentName resultName resultType =
+                    match callback.Node with
+                    | Lir.MakeClosure(functionId, _) ->
+                        let fn = functions.[functionId]
+                        let scoped = Map.add fn.Parameter argumentName environment
+                        match inlineExpression scoped fn.Body with
+                        | Some code -> $"{resultName} = {coerce fn.Body.Type resultType code}"
+                        | None -> emitAssign scoped functionBindings resultName resultType fn.Body
+                    | Lir.Load id when resultType = TUnit ->
+                        match Map.tryFind id declarationNames with
+                        | Some "Console.writeLine" ->
+                            let completed = if resultName = "_" then "" else $"\n{resultName} = struct{{}}{{}}"
+                            $"_, _ = os.Stdout.WriteString({argumentName} + \"\\n\"){completed}"
+                        | _ -> $"{resultName} = ({emit environment functionBindings callback})({argumentName})"
+                    | _ -> $"{resultName} = ({emit environment functionBindings callback})({argumentName})"
+                let body =
+                    let mapped = callbackAssignment mapper itemName mappedName mappedType
+                    let consumed = callbackAssignment consumer mappedName target TUnit
+                    $"var {mappedName} {goType mappedType}\n{mapped}\n{consumed}"
+                match source.Node with
+                | Lir.Range(first, last) ->
+                    let firstName = freshStatementName "fusedFirst"
+                    let lastName = freshStatementName "fusedLast"
+                    let completed = if target = "_" then "" else "\n" + assign "struct{}{}"
+                    $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\nif {firstName} <= {lastName} {{\n\tfor {itemName} := {firstName}; {itemName} <= {lastName}; {itemName}++ {{\n\t\t{indent (indent body)}\n\t}}\n}} else {{\n\tfor {itemName} := {firstName}; {itemName} >= {lastName}; {itemName}-- {{\n\t\t{indent (indent body)}\n\t}}\n}}{completed}"
+                | _ ->
+                    let sourceName = freshStatementName "fusedSource"
+                    let completed = if target = "_" then "" else "\n" + assign "struct{}{}"
+                    $"var {sourceName} {goType source.Type}\n{emitAssign environment functionBindings sourceName source.Type source}\nfor _, {itemName} := range {sourceName} {{\n\t{indent body}\n}}{completed}"
             | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
@@ -1193,6 +1357,88 @@ module TypedGoEmitter =
             | Lir.Fail message -> $"panic({emit environment functionBindings message})"
             | _ -> assign (emit environment functionBindings expression)
 
+        let defaultEntry: Lir.Expression = { Type = TUnit; Span = { Start = { Line = 0; Column = 0; File = None }; End = { Line = 0; Column = 0; File = None } }; Node = Lir.Constant Lir.Unit }
+        let declarationsById = program.Declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
+        let rec resolveEntryAlias omitted (expression: Lir.Expression) =
+            match expression.Node with
+            | Lir.Load id ->
+                match Map.tryFind id declarationsById with
+                | Some declaration when not declaration.IsExported && declaration.Name.StartsWith("$expression", StringComparison.Ordinal) ->
+                    match declaration.Value.Node with
+                    | Lir.Load _ -> resolveEntryAlias (Set.add id omitted) declaration.Value
+                    | _ -> expression, omitted
+                | _ -> expression, omitted
+            | _ -> expression, omitted
+        let entry, omittedAliases = resolveEntryAlias Set.empty (program.Entry |> Option.defaultValue defaultEntry)
+        let rec emittedReferences visitedFunctions (expression: Lir.Expression) =
+            let recurse = emittedReferences visitedFunctions
+            let many values = values |> List.map recurse |> Set.unionMany
+            match tryMapIterFusion expression with
+            | Some(source, mapper, consumer) ->
+                let consumerIsDirectConsole =
+                    match consumer.Node with
+                    | Lir.Load id -> Map.tryFind id declarationNames = Some "Console.writeLine"
+                    | _ -> false
+                many ([ source; mapper ] @ (if consumerIsDirectConsole then [] else [ consumer ]))
+            | None ->
+                match expression.Node with
+                | Lir.Load id -> Set.singleton id
+                | Lir.MakeClosure(functionId, _) ->
+                    if Set.contains functionId visitedFunctions then Set.empty
+                    else emittedReferences (Set.add functionId visitedFunctions) functions.[functionId].Body
+                | Lir.CallClosure _ | Lir.TailCallClosure _ ->
+                    let root, arguments =
+                        match expression.Node with
+                        | Lir.CallClosure _ -> unwindApplications expression
+                        | Lir.TailCallClosure(fn, argument) ->
+                            let root, preceding = unwindApplications fn
+                            root, preceding @ [ argument ]
+                        | _ -> invalidOp "Expected a closure call."
+                    match root.Node with
+                    | Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = arguments.Length -> many arguments
+                    | _ -> many (root :: arguments)
+                | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
+                    let root, preceding = unwindApplications fn
+                    match root.Node with
+                    | Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = preceding.Length + 1 -> many (argument :: preceding)
+                    | _ -> many [ argument; fn ]
+                | Lir.Branch(condition, whenTrue, whenFalse) -> many [ condition; whenTrue; whenFalse ]
+                | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> many values
+                | Lir.Record fields -> fields |> List.map snd |> many
+                | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> recurse target
+                | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> many [ left; right ]
+                | Lir.Let(_, _, _, binding, body) -> many [ binding; body ]
+                | Lir.LetRecursiveGroup(bindings, body) -> many (body :: (bindings |> List.map (fun (_, _, _, value) -> value)))
+                | Lir.DecisionTree(target, cases) -> recurse target :: (cases |> List.collect (fun case -> [ yield! Option.toList case.Guard; case.Body ] |> List.map recurse)) |> Set.unionMany
+                | Lir.RecordUpdate(target, fields) -> recurse target :: (fields |> List.map (snd >> recurse)) |> Set.unionMany
+                | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(recurse value)) |> Set.unionMany
+                | Lir.UnionCase(_, _, payload) -> payload |> Option.map recurse |> Option.defaultValue Set.empty
+                | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, value) -> many [ key; value ] | Lir.Spread value -> recurse value) |> Set.unionMany
+                | Lir.ForEach(_, _, _, source, body) -> many [ source; body ]
+                | _ -> Set.empty
+        let referencedSymbols =
+            entry :: (program.Declarations |> List.filter (fun declaration -> not (Set.contains declaration.Id omittedAliases)) |> List.map _.Value)
+            |> List.map (emittedReferences Set.empty)
+            |> Set.unionMany
+        let needsCarrier (declaration: Lir.Declaration) =
+            declaration.IsExported || Set.contains declaration.Id referencedSymbols || not (Map.containsKey declaration.Id raisedDeclarations)
+        let emittedDeclarations =
+            program.Declarations
+            |> List.filter (fun declaration ->
+                not (Set.contains declaration.Id omittedAliases)
+                && (match declaration.Value.Node with
+                    | Lir.Intrinsic _ -> declaration.IsExported || Set.contains declaration.Id referencedSymbols
+                    | Lir.MakeClosure _ -> needsCarrier declaration
+                    | _ -> true))
+        let unitEntryId =
+            match entry.Node with
+            | Lir.Load id ->
+                match Map.tryFind id declarationsById with
+                | Some declaration when declaration.Name = "main" && declaration.Type = TUnit && not declaration.IsExported -> Some id
+                | _ -> None
+            | _ -> None
+        let runtimeEntry = if unitEntryId.IsSome then { entry with Node = Lir.Constant Lir.Unit } else entry
+
         let declarations = StringBuilder()
         for KeyValue(_, (raisedName, chain)) in raisedDeclarations do
             match List.tryLast chain with
@@ -1207,14 +1453,18 @@ module TypedGoEmitter =
                 else
                     declarations.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\t{indent body}\n}}") |> ignore
                 declarations.AppendLine() |> ignore
-        for declaration in program.Declarations do declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
-        declarations.AppendLine() |> ignore
+        for declaration in emittedDeclarations do
+            if unitEntryId <> Some declaration.Id then declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
+        if emittedDeclarations |> List.exists (fun declaration -> unitEntryId <> Some declaration.Id) then declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore
-        for declaration in program.Declarations do declarations.AppendLine("\t" + indent (emitAssign names declarationFunctionTargets names.[declaration.Id] declaration.Type declaration.Value)) |> ignore
+        for declaration in emittedDeclarations do
+            if unitEntryId = Some declaration.Id then
+                declarations.AppendLine("\t" + indent (emitAssign names declarationFunctionTargets "_" declaration.Type declaration.Value)) |> ignore
+            else
+                declarations.AppendLine("\t" + indent (emitAssign names declarationFunctionTargets names.[declaration.Id] declaration.Type declaration.Value)) |> ignore
         declarations.AppendLine("}") |> ignore
-        let entry = program.Entry |> Option.defaultValue { Type = TUnit; Span = { Start = { Line = 0; Column = 0; File = None }; End = { Line = 0; Column = 0; File = None } }; Node = Lir.Constant Lir.Unit }
-        let entryCode = emit names declarationFunctionTargets entry
-        let resultFormatter = formatter entry.Type
+        let entryCode = emit names declarationFunctionTargets runtimeEntry
+        let resultFormatter = formatter runtimeEntry.Type
         let helperSource = String.concat "\n\n" (Seq.append equalityBodies formatterBodies)
         let emittedValues = declarations.ToString() + entryCode
         let regexRuntimeSource =

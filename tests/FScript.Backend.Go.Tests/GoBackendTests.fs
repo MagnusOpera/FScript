@@ -182,10 +182,30 @@ type GoBackendTests() =
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
             Assert.That(program, Does.Not.Contain("value83 = func() struct{}"), program)
             Assert.That(program, Does.Not.Contain("return func() int64"), program)
-            Assert.That(program, Does.Contain("for value := rangeFirst"), program)
+            Assert.That(program, Does.Contain("for fusedItem"), program)
             Assert.That(program, Does.Contain("tailMatchValue := arg"), program)
             Assert.That(program, Does.Contain("raised89("), program)
             Assert.That(program, Does.Not.Contain("pipelineFunction8"), program)
+            Assert.That(program, Does.Not.Contain("pipelineArgument"), program)
+            Assert.That(program, Does.Not.Contain("value84"), program)
+            Assert.That(program, Does.Not.Contain("value85"), program)
+            Assert.That(program, Does.Not.Contain("value86"), program)
+            Assert.That(program, Does.Contain("os.Stdout.WriteString(fusedMapped"), program)
+
+    [<Test>]
+    member _.``Collection fusion preserves effect and failure boundaries`` () =
+        let generate source =
+            let compiled =
+                match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+                | Ok value -> value
+                | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+            match GoBackend.generate { ModuleName = "fscript.generated/fusionboundaries" } compiled.Lir with
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok files -> files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+        let effectful = generate "[1; 2] |> List.map (fun value -> let _ = Console.writeLine (Int.toString value)\n    value) |> List.iter (fun _ -> ())"
+        Assert.That(effectful, Does.Not.Contain("fusedItem"), effectful)
+        let failing = generate "[1; 2] |> List.map (fun value -> if value = 2 then raise \"stop\" else value) |> List.iter (fun _ -> ())"
+        Assert.That(failing, Does.Not.Contain("fusedItem"), failing)
 
     [<Test>]
     member _.``Saturated curried functions use native multi argument calls`` () =
@@ -199,6 +219,18 @@ type GoBackendTests() =
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
             Assert.That(Regex.IsMatch(program, @"func raised\d+\(arg\d+ int64, arg\d+ int64\) int64"), Is.True, program)
             Assert.That(Regex.IsMatch(program, @"raised\d+\(int64\(1\), int64\(2\)\)"), Is.True, program)
+
+    [<Test>]
+    member _.``Partial application retains a typed unary carrier`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "let add left right = left + right\nlet increment = add 1\nincrement 2"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/partial" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(Regex.IsMatch(program, @"var value\d+ func\(int64\) func\(int64\) int64"), Is.True, program)
 
     [<Test>]
     member _.``Typed Go vertical slice emits no dynamic carriers`` () =
@@ -219,7 +251,7 @@ type GoBackendTests() =
             let generated = files |> List.map _.Content |> String.concat "\n"
             Assert.That(Regex.IsMatch(generated, @"\bany\b|interface\s*\{\s*\}"), Is.False, generated)
             Assert.That(generated, Does.Contain("[]int64"))
-            Assert.That(generated, Does.Contain("func("))
+            Assert.That(generated, Does.Contain("func raised"))
 
     [<Test>]
     member _.``Specialized Go builtins use concrete collection helpers`` () =
