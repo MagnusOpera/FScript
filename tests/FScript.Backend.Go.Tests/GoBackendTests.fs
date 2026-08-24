@@ -210,6 +210,7 @@ type GoBackendTests() =
         Assert.That(Regex.IsMatch(generatedProgram, @"_ = pattern\d+"), Is.False, generatedProgram)
         Assert.That(generatedProgram, Does.Contain("pattern178 := (matchValue).Field_Id"), generatedProgram)
         Assert.That(generatedProgram, Does.Not.Contain("_ = matchValue"), generatedProgram)
+        Assert.That(generatedProgram, Does.Not.Contain("matchClause"), generatedProgram)
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-showcase-{Guid.NewGuid():N}")
         try
             for file in files do

@@ -32,6 +32,8 @@ Specialization propagates each enclosing concrete function result, application a
 
 Pattern emission removes representation checks proven true by typing. A single remaining map-pattern decision is used directly as the branch condition; multiple decisions initialize their short-circuit accumulator from the first real check, never from a synthetic constant.
 
+Empty and single-clause ordered-map patterns lower to direct typed length checks or loops. The recursive backtracking matcher is reserved for genuinely multi-clause plans, and remainder allocation occurs only when a tail pattern consumes it.
+
 Pattern bindings are emitted only when referenced by the selected guard or body. Ordinary projections initialize their typed locals directly, while map-backtracking bindings are predeclared only when assignment across the recursive matcher boundary requires it. Dummy blank-identifier reads and unreferenced projections, declarations, and assignments are omitted.
 
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.

@@ -1183,6 +1183,50 @@ module TypedGoEmitter =
                         let mapCode, mapType = project case.Plan targetName target.Type [] mapPlan.Projection
                         let keyType, valueType = match mapType with TMap(keyType, valueType) -> keyType, valueType | _ -> invalidOp "Map pattern projection is not a map."
                         let entryType = $"entry_{suffix mapType}"
+                        let directPlan =
+                            match mapPlan.Clauses with
+                            | [] ->
+                                match mapPlan.Tail with
+                                | None when mapPlan.RequireEmptyRemainder -> Some $"len(({mapCode}).Entries) == 0"
+                                | None -> Some "true"
+                                | Some tail ->
+                                    let condition, assignments = simplePlan false tail "remaining" mapType
+                                    let success =
+                                        if condition = "true" then "return true"
+                                        else $"return {condition}"
+                                    let body = [ yield $"remaining := {mapCode}"; yield! assignments; yield success ] |> String.concat "\n"
+                                    Some $"func() bool {{\n\t{indent body}\n}}()"
+                            | [ clause ] ->
+                                let keyCondition, keyAssignments = simplePlan false clause.Key "entry.Key" keyType
+                                let valueCondition, valueAssignments = simplePlan false clause.Value "entry.Value" valueType
+                                let clauseCondition =
+                                    [ keyCondition; valueCondition ]
+                                    |> List.filter ((<>) "true")
+                                    |> function [] -> "true" | values -> String.concat " && " values
+                                let tailBody =
+                                    match mapPlan.Tail with
+                                    | None -> [ "return true" ]
+                                    | Some tail ->
+                                        let tailCondition, tailAssignments = simplePlan false tail "remaining" mapType
+                                        if tailAssignments.IsEmpty && tailCondition = "true" then [ "return true" ]
+                                        else
+                                            [ yield $"nextEntries := make([]{entryType}, 0, len(values.Entries)-1)"
+                                              yield "nextEntries = append(nextEntries, values.Entries[:entryIndex]...)"
+                                              yield "nextEntries = append(nextEntries, values.Entries[entryIndex+1:]...)"
+                                              yield $"remaining := {goType mapType}{{Entries: nextEntries}}"
+                                              yield! tailAssignments
+                                              if tailCondition = "true" then yield "return true"
+                                              else yield $"if {tailCondition} {{\n\treturn true\n}}" ]
+                                let attemptBody = [ yield! keyAssignments; yield! valueAssignments; yield! tailBody ] |> String.concat "\n"
+                                let attempt = if clauseCondition = "true" then attemptBody else $"if {clauseCondition} {{\n\t{indent attemptBody}\n}}"
+                                let iteration =
+                                    match attempt.Contains("entryIndex", StringComparison.Ordinal), attempt.Contains("entry.", StringComparison.Ordinal) with
+                                    | true, true -> "entryIndex, entry := range values.Entries"
+                                    | true, false -> "entryIndex := range values.Entries"
+                                    | false, true -> "_, entry := range values.Entries"
+                                    | false, false -> "range values.Entries"
+                                Some $"func() bool {{\n\tvalues := {indent mapCode}\n\tfor {iteration} {{\n\t\t{indent (indent attempt)}\n\t}}\n\treturn false\n}}()"
+                            | _ -> None
                         let clauseCases =
                             mapPlan.Clauses
                             |> List.mapi (fun clauseIndex clause ->
@@ -1217,14 +1261,15 @@ module TypedGoEmitter =
                                 if condition = "true" then success
                                 else $"if {condition} {{\n\t{indent success}\n}}\nreturn false"
                         let switchSource = if mapPlan.Clauses.IsEmpty then "" else $"\n\t\tswitch clauseIndex {{\n\t\t{indent clauseCases}\n\t\t}}"
-                        $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent (indent terminal))}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
+                        directPlan
+                        |> Option.defaultValue $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent (indent terminal))}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
                     let condition, topAssignments = simplePlan true case.Plan targetName target.Type
                     let mapChecks = case.Plan.Maps |> List.mapi emitMapPlan
                     let bodyCode = coerce case.Body.Type expression.Type (emit scoped functionBindings case.Body)
                     let guardedBody =
                         match case.Guard with
-                        | None -> $"return {indent bodyCode}"
-                        | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\treturn {indent (indent bodyCode)}\n}}"
+                        | None -> $"return {bodyCode}"
+                        | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\treturn {indent bodyCode}\n}}"
                     let selection =
                         match mapChecks with
                         | [] -> guardedBody

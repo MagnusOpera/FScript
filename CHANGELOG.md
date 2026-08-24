@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Lowered empty and single-clause Go map patterns without recursive matcher closures.
+
 - Added effect-guided Go beta reduction, copy propagation, and post-specialization reachability pruning.
 
 - Flattened generated Go list append and cons trees into single-allocation builders.
