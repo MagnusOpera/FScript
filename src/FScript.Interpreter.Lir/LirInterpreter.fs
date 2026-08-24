@@ -30,9 +30,26 @@ type ExecutionResult =
     { Value: LirValue
       Stdout: string list }
 
+type HostExternal =
+    { Name: string
+      Invoke: LirValue list -> Result<LirValue, string> }
+
+type LoadedProgram =
+    internal
+        { Program: Lir.Program
+          Environment: Map<Lir.SymbolId, LirValue>
+          Exports: Map<string, LirValue>
+          HostExternals: Map<string, HostExternal> }
+
+type LoadResult =
+    { Program: LoadedProgram
+      Value: LirValue
+      Stdout: string list }
+
 module LirInterpreter =
     let private currentOutput = AsyncLocal<ResizeArray<string>>()
     let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
+    let private currentHostExternals = AsyncLocal<Map<string, HostExternal>>()
     let private constantValue = function
         | Lir.Unit -> VUnit | Lir.Int value -> VInt value | Lir.Float value -> VFloat value
         | Lir.Bool value -> VBool value | Lir.String value -> VString value
@@ -514,7 +531,13 @@ module LirInterpreter =
                 else Ok(VIntrinsic(name, arguments))
             | VExternal(name, arity, existing) ->
                 let arguments = existing @ [ currentValue ]
-                if arguments.Length = arity then fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
+                if arguments.Length = arity then
+                    match currentHostExternals.Value |> Map.tryFind name with
+                    | Some external ->
+                        match external.Invoke arguments with
+                        | Ok result -> Ok result
+                        | Error message -> fail "FSI3021" span $"Host external '{name}' failed: {message}"
+                    | None -> fail "FSI3021" span $"Host external '{name}' is not executable from LIR."
                 else Ok(VExternal(name, arity, arguments))
             | VTargetImport(modulePath, memberName, arity, existing) ->
                 let arguments = existing @ [ currentValue ]
@@ -601,10 +624,11 @@ module LirInterpreter =
             evaluate environment item
             |> Result.bind (fun value -> evaluateInterpolation environment rest |> Result.map (fun values -> formatValue value :: values))
 
-    let private executeValidated (context: InterpreterContext) (program: Lir.Program) =
+    let private loadValidated (context: InterpreterContext) (hostExternals: HostExternal list) (program: Lir.Program) =
         let output = ResizeArray<string>()
         currentOutput.Value <- output
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
+        currentHostExternals.Value <- hostExternals |> List.map (fun external -> external.Name, external) |> Map.ofList
         let runtimeContext =
             VRecord(Map.ofList
                 [ "ScriptName", VOption(Option.map VString context.ScriptName)
@@ -634,12 +658,63 @@ module LirInterpreter =
                     environment.Value <- next
                     initialize remainder
         initialize program.Declarations
+        let finish value =
+            let exports =
+                program.Declarations
+                |> List.choose (fun declaration ->
+                    declaration.Export
+                    |> Option.bind (fun metadata -> environment.Value |> Map.tryFind declaration.Id |> Option.map (fun value -> metadata.Name, value)))
+                |> Map.ofList
+            { Program =
+                { Program = program
+                  Environment = environment.Value
+                  Exports = exports
+                  HostExternals = currentHostExternals.Value }
+              Value = value
+              Stdout = List.ofSeq output }
         match failure, program.Entry with
         | Some errors, _ -> Error errors
-        | None, Some entry -> evaluate environment.Value entry |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output })
-        | None, None -> Ok { Value = VUnit; Stdout = List.ofSeq output }
+        | None, Some entry -> evaluate environment.Value entry |> Result.map finish
+        | None, None -> Ok(finish VUnit)
 
-    let execute (context: InterpreterContext) (program: Lir.Program) : Result<ExecutionResult, CompilerDiagnostic> =
+    let load
+        (context: InterpreterContext)
+        (hostExternals: HostExternal list)
+        (program: Lir.Program)
+        : Result<LoadResult, CompilerDiagnostic> =
         match LirValidation.validate program with
         | Error diagnostics -> Error diagnostics.Head
-        | Ok validated -> executeValidated context validated
+        | Ok validated -> loadValidated context hostExternals validated
+
+    let invoke (loaded: LoadedProgram) (exportName: string) (arguments: LirValue list) : Result<ExecutionResult, CompilerDiagnostic> =
+        let output = ResizeArray<string>()
+        currentOutput.Value <- output
+        currentFunctions.Value <- loaded.Program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
+        currentHostExternals.Value <- loaded.HostExternals
+        match loaded.Exports |> Map.tryFind exportName with
+        | None ->
+            Error
+                { Code = "FSI3024"
+                  Stage = Interpreter
+                  Message = $"Unknown exported value '{exportName}'."
+                  Span = None }
+        | Some exported ->
+            let span =
+                loaded.Program.Declarations
+                |> List.tryFind (fun declaration -> declaration.Export |> Option.exists (fun metadata -> metadata.Name = exportName))
+                |> Option.map _.Span
+                |> Option.defaultValue (Span.mk (Span.pos 0 0) (Span.pos 0 0))
+            arguments
+            |> List.fold (fun state argument -> state |> Result.bind (fun fn -> applyValue span fn argument)) (Ok exported)
+            |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output })
+
+    let executeWithHostExternals
+        (context: InterpreterContext)
+        (hostExternals: HostExternal list)
+        (program: Lir.Program)
+        : Result<ExecutionResult, CompilerDiagnostic> =
+        load context hostExternals program
+        |> Result.map (fun result -> { Value = result.Value; Stdout = result.Stdout })
+
+    let execute (context: InterpreterContext) (program: Lir.Program) : Result<ExecutionResult, CompilerDiagnostic> =
+        executeWithHostExternals context [] program

@@ -14,6 +14,42 @@ type LirInterpreterTests() =
         | _ -> string value
 
     [<Test>]
+    member _.``Loads a program and invokes an exported function repeatedly`` () =
+        let source = "[<Export>] let add x y = x + y\n0"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.load { ScriptName = Some "host.fss"; Arguments = [] } [] compiled.Lir with
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+            | Ok loaded ->
+                match LirInterpreter.invoke loaded.Program "add" [ LirValue.VInt 20L; LirValue.VInt 22L ] with
+                | Error diagnostic -> Assert.Fail(errorText diagnostic)
+                | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 42L))
+
+    [<Test>]
+    member _.``Executes registered host externals from loaded programs`` () =
+        let external =
+            { Name = "Host.bump"
+              Scheme = Forall([], TFun(TInt, TInt))
+              Arity = 1
+              Kind = UnsupportedHostExtern }
+        let hostExternal =
+            { Name = "Host.bump"
+              Invoke = function
+                | [ LirValue.VInt value ] -> Ok(LirValue.VInt(value + 1L))
+                | _ -> Error "expected one integer" }
+        let source = "[<Export>] let bumpTwice value = Host.bump (Host.bump value)\n0"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [ external ] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.load { ScriptName = None; Arguments = [] } [ hostExternal ] compiled.Lir with
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+            | Ok loaded ->
+                match LirInterpreter.invoke loaded.Program "bumpTwice" [ LirValue.VInt 40L ] with
+                | Error diagnostic -> Assert.Fail(errorText diagnostic)
+                | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VInt 42L))
+
+    [<Test>]
     member _.``Trampolines deep tail recursion`` () =
         let source = "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 200000"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with

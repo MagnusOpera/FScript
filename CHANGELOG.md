@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added reusable LIR program loading, exported invocation, and registered host-external execution.
+
 - Removed the oversized specialization diagram from the homepage Go scene.
 
 - Removed the interpreted-embedding scene from the homepage.
