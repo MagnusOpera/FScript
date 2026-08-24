@@ -654,6 +654,11 @@ module TypedGoEmitter =
                         | _ -> []
                     fn :: rest
             collect Set.empty root
+        let raisedDeclarations =
+            declarationFunctionTargets
+            |> Map.map (fun symbolId functionId ->
+                let chain = functionChain functionId
+                $"raised{Lir.symbolNumber symbolId}", chain)
         let unwindApplications expression =
             let rec unwind (value: Lir.Expression) =
                 match value.Node with
@@ -715,9 +720,20 @@ module TypedGoEmitter =
                 else
                     $"func({parameter} {goType fn.ParameterType}) {goType fn.ReturnType} {{\n\t{indent body}\n}}"
             | Lir.CallClosure(fn, argument) | Lir.TailCallClosure(fn, argument) ->
-                let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
-                let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
-                $"({emitChild fn})({coerce (emittedType argument) parameterType (emitChild argument)})"
+                let root, preceding = unwindApplications fn
+                let arguments = preceding @ [ argument ]
+                match root.Node with
+                | Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = arguments.Length ->
+                    let raisedName, chain = raisedDeclarations.[id]
+                    let values =
+                        List.map2 (fun (parameter: Lir.Function) value -> coerce (emittedType value) parameter.ParameterType (emitChild value)) chain arguments
+                        |> String.concat ", "
+                    let call = $"{raisedName}({values})"
+                    coerce (List.last chain).ReturnType expression.Type call
+                | _ ->
+                    let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
+                    let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
+                    $"({emitChild fn})({coerce (emittedType argument) parameterType (emitChild argument)})"
             | Lir.PipeClosure(argument, fn) | Lir.TailPipeClosure(argument, fn) ->
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
@@ -1011,18 +1027,39 @@ module TypedGoEmitter =
                     let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                     let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
                     let argumentName = freshStatementName "pipelineArgument"
-                    let functionName = freshStatementName "pipelineFunction"
-                    let call = $"{functionName}({argumentName})"
-                    $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\nreturn {coerce expression.Type resultType call}"
+                    let root, preceding = unwindApplications fn
+                    match fn.Node, root.Node with
+                    | Lir.MakeClosure(functionId, _), _ ->
+                        let applied = functions.[functionId]
+                        let scoped = Map.add applied.Parameter argumentName environment
+                        $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\n{emitTail scoped functionBindings currentFunction resultType applied.Body}"
+                    | _, Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = preceding.Length + 1 ->
+                        let raisedName, chain = raisedDeclarations.[id]
+                        let precedingTemporaries =
+                            List.map2 (fun (parameter: Lir.Function) value ->
+                                let name = freshStatementName "pipelineCurriedArgument"
+                                name, parameter.ParameterType, value) (chain |> List.take preceding.Length) preceding
+                        let setup =
+                            precedingTemporaries
+                            |> List.map (fun (name, valueType, value) -> $"var {name} {goType valueType}\n{emitAssign environment functionBindings name valueType value}")
+                            |> String.concat "\n"
+                        let values = (precedingTemporaries |> List.map (fun (name, _, _) -> name)) @ [ argumentName ] |> String.concat ", "
+                        let setupSource = if String.IsNullOrEmpty setup then "" else "\n" + setup
+                        let call = $"{raisedName}({values})"
+                        let typedCall = coerce (List.last chain).ReturnType expression.Type call
+                        $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}{setupSource}\nreturn {coerce expression.Type resultType typedCall}"
+                    | _, _ ->
+                        let functionName = freshStatementName "pipelineFunction"
+                        let call = $"{functionName}({argumentName})"
+                        $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\nreturn {coerce expression.Type resultType call}"
                 | Lir.Branch(condition, whenTrue, whenFalse) ->
                     $"if {goCondition (emit environment functionBindings condition)} {{\n\t{indent (emitTail environment functionBindings currentFunction resultType whenTrue)}\n}}\n{emitTail environment functionBindings currentFunction resultType whenFalse}"
                 | Lir.Let(id, _, false, binding, body) ->
                     let variable = symbolName "local" id
-                    let bindingCode = emit environment functionBindings binding
                     let scoped = Map.add id variable environment
                     let scopedFunctions =
                         match binding.Node with Lir.MakeClosure(functionId, _) -> Map.add id functionId functionBindings | _ -> functionBindings
-                    $"var {variable} {goType binding.Type}\n{variable} = {indent (coerce (emittedType binding) binding.Type bindingCode)}\n_ = {variable}\n{emitTail scoped scopedFunctions currentFunction resultType body}"
+                    $"var {variable} {goType binding.Type}\n{emitAssign environment functionBindings variable binding.Type binding}\n_ = {variable}\n{emitTail scoped scopedFunctions currentFunction resultType body}"
                 | Lir.DecisionTree(target, cases) when cases |> List.forall (fun case -> case.Plan.Maps.IsEmpty) ->
                     let targetName = "tailMatchValue"
                     let rec project (plan: Lir.PatternPlan) code valueType prefix steps =
@@ -1098,9 +1135,31 @@ module TypedGoEmitter =
                 let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
                 let parameterType = match functionType with TFun(parameterType, _) -> parameterType | _ -> argument.Type
                 let argumentName = freshStatementName "pipelineArgument"
-                let functionName = freshStatementName "pipelineFunction"
-                let call = $"{functionName}({argumentName})"
-                $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\n{target} = {coerce expression.Type targetType call}"
+                let root, preceding = unwindApplications fn
+                match fn.Node, root.Node with
+                | Lir.MakeClosure(functionId, _), _ ->
+                    let applied = functions.[functionId]
+                    let scoped = Map.add applied.Parameter argumentName environment
+                    $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\n{emitAssign scoped functionBindings target targetType applied.Body}"
+                | _, Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = preceding.Length + 1 ->
+                    let raisedName, chain = raisedDeclarations.[id]
+                    let precedingTemporaries =
+                        List.map2 (fun (parameter: Lir.Function) value ->
+                            let name = freshStatementName "pipelineCurriedArgument"
+                            name, parameter.ParameterType, value) (chain |> List.take preceding.Length) preceding
+                    let setup =
+                        precedingTemporaries
+                        |> List.map (fun (name, valueType, value) -> $"var {name} {goType valueType}\n{emitAssign environment functionBindings name valueType value}")
+                        |> String.concat "\n"
+                    let values = (precedingTemporaries |> List.map (fun (name, _, _) -> name)) @ [ argumentName ] |> String.concat ", "
+                    let setupSource = if String.IsNullOrEmpty setup then "" else "\n" + setup
+                    let call = $"{raisedName}({values})"
+                    let typedCall = coerce (List.last chain).ReturnType expression.Type call
+                    $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}{setupSource}\n{target} = {coerce expression.Type targetType typedCall}"
+                | _, _ ->
+                    let functionName = freshStatementName "pipelineFunction"
+                    let call = $"{functionName}({argumentName})"
+                    $"var {argumentName} {goType parameterType}\n{emitAssign environment functionBindings argumentName parameterType argument}\nvar {functionName} {goType fn.Type}\n{emitAssign environment functionBindings functionName fn.Type fn}\n{target} = {coerce expression.Type targetType call}"
             | Lir.Branch(condition, whenTrue, whenFalse) ->
                 $"if {goCondition (emit environment functionBindings condition)} {{\n\t{indent (emitAssign environment functionBindings target targetType whenTrue)}\n}} else {{\n\t{indent (emitAssign environment functionBindings target targetType whenFalse)}\n}}"
             | Lir.Let(id, _, recursive, binding, body) ->
@@ -1135,6 +1194,19 @@ module TypedGoEmitter =
             | _ -> assign (emit environment functionBindings expression)
 
         let declarations = StringBuilder()
+        for KeyValue(_, (raisedName, chain)) in raisedDeclarations do
+            match List.tryLast chain with
+            | None -> ()
+            | Some deepest ->
+                let parameters = chain |> List.map (fun (fn: Lir.Function) -> symbolName "arg" fn.Parameter, fn.ParameterType)
+                let scoped = parameters |> List.fold2 (fun current (fn: Lir.Function) (name, _) -> Map.add fn.Parameter name current) names chain
+                let signature = parameters |> List.map (fun (name, valueType) -> $"{name} {goType valueType}") |> String.concat ", "
+                let body = emitTail scoped declarationFunctionTargets deepest.Id deepest.ReturnType deepest.Body
+                if hasSelfTail declarationFunctionTargets deepest.Id deepest.Body then
+                    declarations.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\tfor {{\n\t\t{indent (indent body)}\n\t}}\n}}") |> ignore
+                else
+                    declarations.AppendLine($"func {raisedName}({signature}) {goType deepest.ReturnType} {{\n\t{indent body}\n}}") |> ignore
+                declarations.AppendLine() |> ignore
         for declaration in program.Declarations do declarations.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
         declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore

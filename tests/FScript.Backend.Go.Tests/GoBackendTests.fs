@@ -184,6 +184,21 @@ type GoBackendTests() =
             Assert.That(program, Does.Not.Contain("return func() int64"), program)
             Assert.That(program, Does.Contain("for value := rangeFirst"), program)
             Assert.That(program, Does.Contain("tailMatchValue := arg"), program)
+            Assert.That(program, Does.Contain("raised89("), program)
+            Assert.That(program, Does.Not.Contain("pipelineFunction8"), program)
+
+    [<Test>]
+    member _.``Saturated curried functions use native multi argument calls`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "let add left right = left + right\nadd 1 2"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/arity" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(Regex.IsMatch(program, @"func raised\d+\(arg\d+ int64, arg\d+ int64\) int64"), Is.True, program)
+            Assert.That(Regex.IsMatch(program, @"raised\d+\(int64\(1\), int64\(2\)\)"), Is.True, program)
 
     [<Test>]
     member _.``Typed Go vertical slice emits no dynamic carriers`` () =

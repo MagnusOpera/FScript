@@ -95,6 +95,8 @@ The backend deliberately does not use Go generics or dynamic value carriers. Rea
 
 Generated function bodies and top-level initializers use direct Go statements for control flow, ranges, local bindings, and pipelines. Small typed temporaries may remain where they document FScript's value-first pipeline order; they do not allocate dynamic wrappers.
 
+Curried FScript functions retain typed unary values when partial application is observable. Fully saturated calls use generated native multi-argument helpers, and immediately applied nonescaping lambdas are emitted as their typed bodies instead of closure calls.
+
 ## Console input and text files
 
 Generated programs use their process stdin and stdout:

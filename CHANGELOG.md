@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Emitted saturated curried calls through native Go arities and simplified immediately applied lambdas.
+
 - Simplified generated Go functions and initializers with direct statement-oriented control flow.
 
 - Lowered proven direct proper-tail recursion to native typed loops in generated Go.
