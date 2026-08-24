@@ -64,6 +64,8 @@ The LIR interpreter implements the pure builtin catalog, including callbacks for
 
 Generated Go represents every reachable FScript function instantiation as a native typed unary function. Currying becomes nested function types; partial application, recursion, captures, and higher-order calls retain concrete signatures without Go generics or universal closure values.
 
+After specialization, a proper-tail call whose application chain resolves to the currently emitted lifted function becomes a native `for` loop. All next arguments are evaluated into typed temporaries in FScript order before captured/innermost parameters are reassigned together and execution continues. This covers unary and curried top-level functions, local recursive functions, branches, lexical tails, pipeline calls, and non-map pattern decisions. Non-tail calls and unproven cross-function tail calls remain ordinary typed Go calls; mutual-tail-recursion state machines are deferred.
+
 The Go runtime is stored as formatted `.go` resources embedded in `FScript.Backend.Go`. Program emission uses multiline structured constructs for closures, local control flow, decision trees, recursive groups, loops, and imports. Generation never invokes Go tooling; the backend tests run `gofmt -d`, `go test ./...`, and `go run` over generated projects.
 
 Host externs are copied into IR as name, signature, and arity only; their executable .NET delegates never cross the compiler boundary. Constructing or retaining an unused extern handle is inert. Fully applying one in the LIR interpreter produces `FSI3021`, preserving the rule that unreachable unsupported linkage does not block execution.

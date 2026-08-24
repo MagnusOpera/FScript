@@ -346,6 +346,19 @@ type GoBackendTests() =
             Assert.That(program, Does.Not.Contain("MatchPatternPlan"))
             Assert.That(program, Does.Not.Contain("any"))
 
+    [<Test>]
+    member _.``Go emitter lowers direct self tail recursion to a native loop`` () =
+        let source = "let rec loop total n = if n <= 0 then total else loop (total + n) (n - 1)\nloop 0 10"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/tailrec" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("for {"))
+            Assert.That(program, Does.Contain("continue"))
+            Assert.That(program, Does.Contain("tailNext"))
+            Assert.That(Regex.IsMatch(program, @"arg\d+, arg\d+ = tailNext\d+, tailNext\d+"), Is.True)
+
     [<TestCase("let add x y = x + y\nadd 1 2", "3")>]
     [<TestCase("[1] @ [2; 3]", "[1;2;3]")>]
     [<TestCase("[1; 2] = [1; 2]", "true")>]
@@ -407,6 +420,10 @@ type GoBackendTests() =
     [<TestCase("type Person = { Name: string }\ntype Result = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }", "true")>]
     [<TestCase("(1.0, [2.0], 1.0 / 0.0, 0.0 / 0.0)", "(1, [2], Infinity, NaN)")>]
     [<TestCase("let ordered left middle right = left < middle && middle <= right && right > left && right >= middle\nordered 1 2 3", "true")>]
+    [<TestCase("let rec loop total n = if n <= 0 then total else loop (total + n) (n - 1)\nloop 0 1000000", "500000500000")>]
+    [<TestCase("let tap label value = let _ = Console.writeLine label\n    value\nlet rec loop total n = if n <= 0 then total else (tap \"last\" (n - 1)) |> loop (tap \"first\" (total + n))\nloop 0 1", "last\nfirst\n1")>]
+    [<TestCase("let run start = (let rec loop n = if n <= 0 then n else loop (n - 1)\n    loop start\n)\nrun 1000000", "0")>]
+    [<TestCase("let rec length total values =\n    match values with\n    | [] -> total\n    | _::tail -> length (total + 1) tail\nlength 0 [1..100000]", "100000")>]
     member _.``Generated projects run with Go`` (source: string, expected: string) =
         requireGo ()
         let input = { Program = Parser.parseProgram source; Externs = [] }

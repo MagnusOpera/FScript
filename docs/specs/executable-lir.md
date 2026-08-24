@@ -44,7 +44,7 @@ Every source lambda is lifted into a `Lir.Function` containing:
 
 `LetRecursiveGroup` establishes all recursive values before their bodies run. Lifted functions validate their capture list against the ordered free-symbol set of their body.
 
-Tail position propagates through selected branch and decision-tree bodies and through the body of lexical binding nodes, but never through operands, guards, aggregate construction, or a call whose result is subsequently consumed. The LIR interpreter trampolines explicit tail calls across closures, so deep proper-tail recursion does not consume the host stack.
+Tail position propagates through selected branch and decision-tree bodies and through the body of lexical binding nodes, but never through operands, guards, aggregate construction, or a call whose result is subsequently consumed. The LIR interpreter trampolines explicit tail calls across closures, so deep proper-tail recursion does not consume the host stack. After concrete specialization, the Go backend converts proven direct self-tail application chains into native loops with simultaneous typed parameter reassignment; calls that cannot be proven self-recursive retain ordinary call semantics.
 
 ## Operations and control flow
 

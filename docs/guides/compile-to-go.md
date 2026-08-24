@@ -75,7 +75,7 @@ The backend consumes validated LIR; it does not type-check source or implement p
 
 The initial backend preserves:
 
-- closures, currying, partial application, and recursive groups;
+- closures, currying, partial application, recursive groups, and native loops for proven direct proper-tail recursion;
 - tuples and concrete structs for declared records;
 - concrete tagged structures for declared unions;
 - structural/named record conversions;

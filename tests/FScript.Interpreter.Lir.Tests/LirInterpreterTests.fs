@@ -24,6 +24,18 @@ type LirInterpreterTests() =
             | Error diagnostic -> Assert.Fail(errorText diagnostic)
 
     [<Test>]
+    member _.``Tail pipeline trampolining preserves value-first evaluation`` () =
+        let source = "let tap label value = let _ = Console.writeLine label\n    value\nlet rec loop total n = if n <= 0 then total else (tap \"last\" (n - 1)) |> loop (tap \"first\" (total + n))\nloop 0 1"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Ok result ->
+                Assert.That(result.Value, Is.EqualTo(LirValue.VInt 1L))
+                Assert.That(result.Stdout = [ "last"; "first" ], Is.True)
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+
+    [<Test>]
     member _.``Captures portable console output`` () =
         match Compiler.compile { Program = Parser.parseProgram "Console.writeLine \"hello\""; Externs = [] } with
         | Error diagnostics -> Assert.Fail(errorText diagnostics)

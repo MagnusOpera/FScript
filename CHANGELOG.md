@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Lowered proven direct proper-tail recursion to native typed loops in generated Go.
+
 - Added explicit LIR proper-tail calls and stack-safe trampolining in the LIR interpreter.
 
 - Added effect-safe LIR dead-code elimination, reachability pruning, and constant Boolean control-flow simplification.

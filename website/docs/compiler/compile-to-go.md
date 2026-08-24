@@ -49,7 +49,7 @@ Source generation itself does not require or invoke Go. The caller decides wheth
 
 ## Supported semantics
 
-The backend preserves closures, currying, recursion, concrete declared records and unions, structural conversions, patterns and guards, ordered maps, structural equality, specialized polymorphic containers, portable builtins, console I/O, all `Fs.*` functions, `Regex.matchGroups`, typed `Task.spawn`/`Task.await`, and `Env`.
+The backend preserves closures, currying, recursion, concrete declared records and unions, structural conversions, patterns and guards, ordered maps, structural equality, specialized polymorphic containers, portable builtins, console I/O, all `Fs.*` functions, `Regex.matchGroups`, typed `Task.spawn`/`Task.await`, and `Env`. Proven direct proper-tail recursion becomes a native Go `for` loop after specialization, including curried arguments and local recursive functions.
 
 Tasks use goroutines and private typed completion channels. Filesystem paths are resolved relative to the generated process working directory. The BASIC sample can be compiled and run directly with `go run . ../../samples/basic/helloworld.bas` from its generated output directory.
 
