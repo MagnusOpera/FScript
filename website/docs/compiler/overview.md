@@ -41,8 +41,8 @@ The compiler does not reference either consumer. This keeps LIR reusable for fut
 
 ## Initial support boundary
 
-The compiler covers the core language, closures, recursion, pattern matching, records and unions, collections, structural equality, the portable pure builtin catalog, console input/output, read-only `Fs.readText`, and `Env`.
+The compiler covers the core language, closures, recursion, pattern matching, records and unions, collections, structural equality, the portable pure builtin catalog, console input/output, and `Env`. Generated Go additionally supports the complete `Fs` surface, `Regex.matchGroups`, and typed tasks.
 
-Reachable Tasks and arbitrary host externs receive explicit diagnostics in the LIR interpreter and Go backend. Existing .NET and JavaScript execution paths remain available for host-oriented scripts.
+Reachable tasks and arbitrary host externs receive explicit diagnostics in the LIR interpreter. The Go backend executes tasks with goroutines and rejects only host externs outside its supported catalog. Existing .NET and JavaScript execution paths remain available for other host-oriented scripts.
 
 The compiler APIs and version-1 artifact schema are currently internal and are not published as stable standalone packages.

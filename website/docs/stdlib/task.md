@@ -47,6 +47,8 @@ let answer = Task.await pending
 - Task failures are fatal runtime errors.
 - A script cannot finish with unawaited tasks.
 
+When compiling to Go, each reachable task result is specialized to a concrete type. `Task.spawn` starts a goroutine and `Task.await` waits on a private typed completion channel. Channels are an implementation detail and are not exposed as FScript values.
+
 ## Example
 
 ```fsharp

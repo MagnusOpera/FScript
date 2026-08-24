@@ -10,6 +10,10 @@ This is the quick lookup page for the built-in FScript surface and the default r
 
 - [`Console`](../stdlib/console)
 - [`Task`](../stdlib/task)
+- [`Fs`](../stdlib/fs)
+- [`Regex`](../stdlib/regex)
+- [`Json`](../stdlib/json)
+- [`Xml`](../stdlib/xml)
 - [`List`](../stdlib/list)
 - [`Option`](../stdlib/option)
 - [`Map`](../stdlib/map)
@@ -46,12 +50,12 @@ This is the quick lookup page for the built-in FScript surface and the default r
 
 ## Runtime extern families
 
-- `Fs.*` filesystem utilities
+- [`Fs.*` filesystem utilities](../stdlib/fs)
 - `Task.*`
 - `Console.*`
-- `Json.*`
-- `Xml.*`
-- `Regex.*`
+- [`Json.*`](../stdlib/json)
+- [`Xml.*`](../stdlib/xml)
+- [`Regex.*`](../stdlib/regex)
 - hashing and GUID helpers
 
 Use the Stdlib pages for complete module-by-module function reference, and the native types page for language-level access forms such as `list[index]` and `map["key"]`.

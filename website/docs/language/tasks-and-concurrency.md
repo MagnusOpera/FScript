@@ -85,3 +85,5 @@ Console.writeLine $"{result}"
 ```
 
 For a larger example, see [`samples/parallel-quicksort.fss`](https://github.com/MagnusOpera/FScript/blob/main/samples/parallel-quicksort.fss).
+
+When compiling to Go, each reachable task result is specialized to a concrete type. `Task.spawn` starts a goroutine and `Task.await` waits on a private typed completion channel; channels are not exposed as FScript values.

@@ -6,7 +6,7 @@ slug: /stdlib/overview
 
 FScript ships with a built-in standard library, a default runtime extern registry, and a small set of always-available top-level built-ins.
 
-Everything in this section is available in every script without imports.
+Everything in this section needs no FScript import. Core modules are always known to the language; host modules are available when the embedding host installs the default runtime extern registry. The CLI and .NET runtime install that registry by default.
 
 ## Modules
 
@@ -19,6 +19,13 @@ Everything in this section is available in every script without imports.
 - `Int`
 - `Float`
 - `Bool`
+
+Default host modules:
+
+- `Fs`
+- `Regex`
+- `Json`
+- `Xml`
 
 ## Top-level built-ins
 
@@ -45,6 +52,10 @@ Everything in this section is available in every script without imports.
 - [Console Module](./console)
 - [Native Types Reference](/manual/reference/native-types) for list/map indexers and native type access forms
 - [Task Module](./task)
+- [Fs Module](./fs)
+- [Regex Module](./regex)
+- [Json Module](./json)
+- [Xml Module](./xml)
 - [List Module](./list)
 - [Option Module](./option)
 - [Map Module](./map)
