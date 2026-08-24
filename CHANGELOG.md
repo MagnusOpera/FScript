@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed statically true pattern branches and unreachable following cases from generated Go.
+
 - Fused safe typed Go map/iteration pipelines and removed unused closure and result carriers.
 
 - Emitted saturated curried calls through native Go arities and simplified immediately applied lambdas.

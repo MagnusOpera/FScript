@@ -103,6 +103,8 @@ type GoBackendTests() =
         match GoBackend.generate { ModuleName = "fscript.generated/basic" } compiled.Lir with
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok files ->
+            let generatedProgram = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(generatedProgram, Does.Not.Contain("if true {"), generatedProgram)
             let directory = Path.Combine(Path.GetTempPath(), $"fscript-basic-{Guid.NewGuid():N}")
             try
                 for file in files do

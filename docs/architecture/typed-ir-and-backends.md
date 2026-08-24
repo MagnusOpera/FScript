@@ -32,6 +32,8 @@ Specialization propagates each enclosing concrete function result, application a
 
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
+When a pattern plan has no representation or repeated-binding checks, Go emission treats its condition as statically true. The emitter writes its bindings and body directly, and an unguarded unconditional case terminates case emission, so generated decision trees contain neither `if true` wrappers nor later unreachable cases.
+
 Reachable builtins are emitted at their specialized signatures. List, option, and ordered-map loops call native typed function values, while structural equality and display formatting are generated recursively for each reachable closed representation.
 
 Generated projects contain only the typed program package and its entry point. The former erased runtime templates, universal closure dispatch, dynamic aggregate casts, reflection-oriented carriers, and generic pattern matcher are not embedded or emitted.

@@ -1013,19 +1013,36 @@ module TypedGoEmitter =
                     let bodyCode = coerce case.Body.Type expression.Type (emit scoped functionBindings case.Body)
                     let guardedBody =
                         match case.Guard with
-                        | None -> $"return {indent (indent bodyCode)}"
-                        | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\t\t\treturn {indent (indent bodyCode)}\n\t\t}}"
-                    let declarationCode = if declarations.IsEmpty then "" else String.concat "\n\t\t" declarations + "\n\t\t"
-                    let assignmentCode = if topAssignments.IsEmpty then "" else String.concat "\n\t\t" topAssignments + "\n\t\t"
+                        | None -> $"return {indent bodyCode}"
+                        | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\treturn {indent (indent bodyCode)}\n}}"
                     let mapEvaluation =
                         mapChecks
-                        |> List.map (fun check -> $"if patternsMatch {{\n\t\t\tpatternsMatch = {indent (indent (indent check))}\n\t\t}}")
-                        |> String.concat "\n\t\t"
-                    let mapEvaluationSource = if mapChecks.IsEmpty then "" else $"patternsMatch := true\n\t\t{mapEvaluation}\n\t\t"
-                    let mapCondition = if mapChecks.IsEmpty then "true" else "patternsMatch"
-                    $"if {condition} {{\n\t\t{declarationCode}{assignmentCode}{mapEvaluationSource}if {mapCondition} {{\n\t\t\t{indent guardedBody}\n\t\t}}\n\t}}"
-                let caseCode = cases |> List.map emitCase |> String.concat "\n\t"
-                $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}\n\tpanic(\"Match failure.\")\n}}()"
+                        |> List.map (fun check -> $"if patternsMatch {{\n\tpatternsMatch = {indent check}\n}}")
+                    let selection = if mapChecks.IsEmpty then guardedBody else $"if patternsMatch {{\n\t{indent guardedBody}\n}}"
+                    let contents =
+                        [ yield! declarations
+                          yield! topAssignments
+                          if not mapChecks.IsEmpty then
+                              yield "patternsMatch := true"
+                              yield! mapEvaluation
+                          yield selection ]
+                        |> String.concat "\n"
+                    let nestedContents = indent (indent contents)
+                    let rendered = if condition = "true" then $"{{\n\t\t{nestedContents}\n\t}}" else $"if {condition} {{\n\t\t{nestedContents}\n\t}}"
+                    rendered, condition = "true" && mapChecks.IsEmpty && case.Guard.IsNone
+                let rec emitCases values =
+                    match values with
+                    | [] -> [], false
+                    | case :: rest ->
+                        let rendered, terminal = emitCase case
+                        if terminal then [ rendered ], true
+                        else
+                            let remaining, exhaustive = emitCases rest
+                            rendered :: remaining, exhaustive
+                let emittedCases, exhaustive = emitCases cases
+                let caseCode = emittedCases |> String.concat "\n\t"
+                let failure = if exhaustive then "" else "\n\tpanic(\"Match failure.\")"
+                $"func() {goType expression.Type} {{\n\t{targetName} := {indent (emitChild target)}\n\t_ = {targetName}\n\t{caseCode}{failure}\n}}()"
             | Lir.RecordUpdate(target, fields) ->
                 let targetCode = emitChild target
                 let sourceFields = recordFields target.Type
@@ -1224,10 +1241,22 @@ module TypedGoEmitter =
                             match case.Guard with
                             | None -> body
                             | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\t{indent body}\n}}"
-                        let setupSource = if String.IsNullOrEmpty setup then "" else indent setup + "\n\t"
-                        $"if {condition} {{\n\t{setupSource}{indent guarded}\n}}"
-                    let caseCode = cases |> List.map emitCase |> String.concat "\n"
-                    $"{targetName} := {emit environment functionBindings target}\n_ = {targetName}\n{caseCode}\npanic(\"Match failure.\")"
+                        let contents = if String.IsNullOrEmpty setup then guarded else setup + "\n" + guarded
+                        let rendered = if condition = "true" then $"{{\n\t{indent contents}\n}}" else $"if {condition} {{\n\t{indent contents}\n}}"
+                        rendered, condition = "true" && case.Guard.IsNone
+                    let rec emitCases values =
+                        match values with
+                        | [] -> [], false
+                        | case :: rest ->
+                            let rendered, terminal = emitCase case
+                            if terminal then [ rendered ], true
+                            else
+                                let remaining, exhaustive = emitCases rest
+                                rendered :: remaining, exhaustive
+                    let emittedCases, exhaustive = emitCases cases
+                    let caseCode = emittedCases |> String.concat "\n"
+                    let failure = if exhaustive then "" else "\npanic(\"Match failure.\")"
+                    $"{targetName} := {emit environment functionBindings target}\n_ = {targetName}\n{caseCode}{failure}"
                 | _ -> $"return {coerce expression.Type resultType (emit environment functionBindings expression)}"
 
         and emitAssign environment functionBindings target targetType (expression: Lir.Expression) =
