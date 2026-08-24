@@ -99,6 +99,8 @@ Curried FScript functions retain typed unary values when partial application is 
 
 Pure, total `List.map` callbacks followed immediately by `List.iter` may become one typed Go loop. The compiler deliberately leaves the two phases separate when mapping can perform effects or fail, preserving the point at which iteration effects begin. Range/map/console pipelines such as the Fibonacci sample need no intermediate range or mapped slice.
 
+When a structural-record function only reads fields, calls from named or wider records are specialized to that concrete representation. Generated Go passes the original struct directly instead of copying shared fields into a narrower temporary. If the function returns or stores the structural value itself, the backend retains the required explicit conversion.
+
 ## Console input and text files
 
 Generated programs use their process stdin and stdout:

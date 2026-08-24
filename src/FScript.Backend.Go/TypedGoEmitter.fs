@@ -439,6 +439,7 @@ module TypedGoEmitter =
         let declarationTypes = program.Declarations |> List.map (fun item -> item.Id, item.Type) |> Map.ofList
         let declarationNames = program.Declarations |> List.map (fun item -> item.Id, item.Name) |> Map.ofList
         let declarationValues = program.Declarations |> List.map (fun item -> item.Id, item.Value) |> Map.ofList
+        let declarationDefinitions = program.Declarations |> List.map (fun item -> item.Id, item) |> Map.ofList
         let recordFields = function
             | TRecord fields -> fields
             | TNamed name ->
@@ -661,6 +662,7 @@ module TypedGoEmitter =
             |> Map.map (fun symbolId functionId ->
                 let chain = functionChain functionId
                 $"raised{Lir.symbolNumber symbolId}", chain)
+        let representationHelperBodies = Dictionary<string, string>()
         let unwindApplications expression =
             let rec unwind (value: Lir.Expression) =
                 match value.Node with
@@ -669,6 +671,57 @@ module TypedGoEmitter =
                     root, arguments @ [ argument ]
                 | _ -> value, []
             unwind expression
+        let tryConsoleWrite (expression: Lir.Expression) =
+            let candidate =
+                match expression.Node with
+                | Lir.CallClosure _ -> Some(unwindApplications expression)
+                | Lir.TailCallClosure(fn, argument) ->
+                    let root, preceding = unwindApplications fn
+                    Some(root, preceding @ [ argument ])
+                | _ -> None
+            candidate
+            |> Option.bind (fun (root, arguments) ->
+                match root.Node, arguments with
+                | Lir.Load id, [ argument ] when Map.tryFind id declarationNames = Some "Console.writeLine" -> Some argument
+                | _ -> None)
+        let parameterIsProjectionOnly parameterId expression =
+            let rec visit visitedFunctions (value: Lir.Expression) =
+                let recurse = visit visitedFunctions
+                let all values = List.forall recurse values
+                match value.Node with
+                | Lir.Load id -> id <> parameterId
+                | Lir.FieldGet({ Node = Lir.Load id }, _) when id = parameterId -> true
+                | Lir.MakeClosure(functionId, _) ->
+                    Set.contains functionId visitedFunctions
+                    || visit (Set.add functionId visitedFunctions) functions.[functionId].Body
+                | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
+                | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
+                | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> all [ left; right ]
+                | Lir.Branch(condition, whenTrue, whenFalse) -> all [ condition; whenTrue; whenFalse ]
+                | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> all values
+                | Lir.Record fields -> fields |> List.map snd |> all
+                | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.Fail target | Lir.RecordConvert(target, _) -> recurse target
+                | Lir.Let(_, _, _, binding, body) -> all [ binding; body ]
+                | Lir.LetRecursiveGroup(bindings, body) -> all (body :: (bindings |> List.map (fun (_, _, _, item) -> item)))
+                | Lir.DecisionTree(target, cases) ->
+                    let targetIsCompatibleRecordPlan =
+                        match target.Node with
+                        | Lir.Load id when id = parameterId ->
+                            cases
+                            |> List.forall (fun case ->
+                                case.Plan.Maps.IsEmpty
+                                && case.Plan.Checks
+                                   |> List.forall (function Lir.RecordFieldCheck _ | Lir.TypeCheck _ -> true | _ -> false))
+                        | _ -> recurse target
+                    targetIsCompatibleRecordPlan
+                    && (cases |> List.forall (fun case -> Option.forall recurse case.Guard && recurse case.Body))
+                | Lir.RecordUpdate(target, fields) -> recurse target && (fields |> List.map snd |> all)
+                | Lir.Interpolate parts -> parts |> List.forall (function Lir.TextPart _ -> true | Lir.ValuePart item -> recurse item)
+                | Lir.UnionCase(_, _, payload) -> Option.forall recurse payload
+                | Lir.Map entries -> entries |> List.forall (function Lir.KeyValue(key, item) -> all [ key; item ] | Lir.Spread item -> recurse item)
+                | Lir.ForEach(_, _, _, source, body) -> all [ source; body ]
+                | _ -> true
+            visit Set.empty expression
         let rec pureTotalWith candidates (expression: Lir.Expression) =
             let isPure = pureTotalWith candidates
             let all = List.forall isPure
@@ -811,10 +864,41 @@ module TypedGoEmitter =
                 match root.Node with
                 | Lir.Load id when Map.containsKey id raisedDeclarations && (snd raisedDeclarations.[id]).Length = arguments.Length ->
                     let raisedName, chain = raisedDeclarations.[id]
+                    let deepest = List.last chain
+                    let canSpecializeRepresentation =
+                        declarationDefinitions
+                        |> Map.tryFind id
+                        |> Option.exists (fun declaration ->
+                            not declaration.IsRecursive
+                            && deepest.Captures |> List.forall (fun capture -> Map.containsKey capture names))
+                    let representedArguments =
+                        List.map2 (fun (parameter: Lir.Function) (value: Lir.Expression) ->
+                            match value.Node with
+                            | Lir.RecordConvert(source, targetType)
+                                when canSpecializeRepresentation
+                                     && targetType = parameter.ParameterType
+                                     && goType source.Type <> goType parameter.ParameterType
+                                     && parameterIsProjectionOnly parameter.Parameter deepest.Body ->
+                                source, source.Type, true
+                            | _ -> value, parameter.ParameterType, false) chain arguments
+                    let hasRepresentationSpecialization = representedArguments |> List.exists (fun (_, _, changed) -> changed)
+                    let callName =
+                        if not hasRepresentationSpecialization then raisedName
+                        else
+                            let representationTypes = representedArguments |> List.map (fun (_, valueType, _) -> valueType)
+                            let specializedName = $"{raisedName}_repr_{suffix (TTuple representationTypes)}"
+                            if not (representationHelperBodies.ContainsKey specializedName) then
+                                let parameters = List.map2 (fun (fn: Lir.Function) valueType -> symbolName "arg" fn.Parameter, valueType) chain representationTypes
+                                let scoped = parameters |> List.fold2 (fun current (fn: Lir.Function) (name, _) -> Map.add fn.Parameter name current) names chain
+                                let signature = parameters |> List.map (fun (name, valueType) -> $"{name} {goType valueType}") |> String.concat ", "
+                                let body = emitTail scoped functionBindings deepest.Id deepest.ReturnType deepest.Body
+                                representationHelperBodies.Add(specializedName, $"func {specializedName}({signature}) {goType deepest.ReturnType} {{\n\t{indent body}\n}}")
+                            specializedName
                     let values =
-                        List.map2 (fun (parameter: Lir.Function) value -> coerce (emittedType value) parameter.ParameterType (emitChild value)) chain arguments
+                        representedArguments
+                        |> List.map (fun (value, valueType, _) -> coerce (emittedType value) valueType (emitChild value))
                         |> String.concat ", "
-                    let call = $"{raisedName}({values})"
+                    let call = $"{callName}({values})"
                     coerce (List.last chain).ReturnType expression.Type call
                 | _ ->
                     let functionType = match fn.Node with Lir.Load id -> Map.tryFind id declarationTypes |> Option.defaultValue fn.Type | _ -> fn.Type
@@ -1262,6 +1346,10 @@ module TypedGoEmitter =
         and emitAssign environment functionBindings target targetType (expression: Lir.Expression) =
             let assign value = $"{target} = {coerce expression.Type targetType value}"
             match expression.Node with
+            | _ when tryConsoleWrite expression |> Option.isSome ->
+                let argument = tryConsoleWrite expression |> Option.get
+                let completed = if target = "_" then "" else $"\n{target} = struct{{}}{{}}"
+                $"_, _ = os.Stdout.WriteString({emit environment functionBindings argument} + \"\\n\"){completed}"
             | _ when tryMapIterFusion expression |> Option.isSome ->
                 let source, mapper, consumer = tryMapIterFusion expression |> Option.get
                 let itemType, mappedType =
@@ -1411,6 +1499,8 @@ module TypedGoEmitter =
                 many ([ source; mapper ] @ (if consumerIsDirectConsole then [] else [ consumer ]))
             | None ->
                 match expression.Node with
+                | _ when tryConsoleWrite expression |> Option.isSome ->
+                    tryConsoleWrite expression |> Option.map recurse |> Option.defaultValue Set.empty
                 | Lir.Load id -> Set.singleton id
                 | Lir.MakeClosure(functionId, _) ->
                     if Set.contains functionId visitedFunctions then Set.empty
@@ -1494,7 +1584,11 @@ module TypedGoEmitter =
         declarations.AppendLine("}") |> ignore
         let entryCode = emit names declarationFunctionTargets runtimeEntry
         let resultFormatter = formatter runtimeEntry.Type
-        let helperSource = String.concat "\n\n" (Seq.append equalityBodies formatterBodies)
+        let representationHelpers =
+            representationHelperBodies
+            |> Seq.sortBy _.Key
+            |> Seq.map _.Value
+        let helperSource = String.concat "\n\n" (Seq.concat [ equalityBodies :> seq<string>; formatterBodies :> seq<string>; representationHelpers ])
         let emittedValues = declarations.ToString() + entryCode
         let regexRuntimeSource =
             if emittedValues.Contains("fsRegexMatchGroups", StringComparison.Ordinal) then

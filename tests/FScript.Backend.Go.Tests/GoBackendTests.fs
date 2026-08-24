@@ -195,6 +195,38 @@ type GoBackendTests() =
             Assert.That(program, Does.Contain("os.Stdout.WriteString(fusedMapped"), program)
 
     [<Test>]
+    member _.``Structural record consumers specialize to the source representation`` () =
+        let generate source =
+            let compiled =
+                match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+                | Ok value -> value
+                | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+            match GoBackend.generate { ModuleName = "fscript.generated/recordrepresentation" } compiled.Lir with
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok files -> files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+        let projected =
+            generate "type Contact = { City: string; Zip: int; Country: string }\nlet describe (value: {| City: string; Zip: int |}) = value.City\nlet contact = { City = \"Paris\"; Zip = 75000; Country = \"FR\" }\ndescribe contact"
+        Assert.That(Regex.IsMatch(projected, @"func raised\d+_repr_[a-f0-9]+\(arg\d+ named_Contact\) string"), Is.True, projected)
+        Assert.That(Regex.IsMatch(projected, @"raised\d+_repr_[a-f0-9]+\(value\d+\)"), Is.True, projected)
+        Assert.That(projected, Does.Not.Contain("converted :="), projected)
+        let retainedConversion =
+            generate "type Contact = { City: string; Zip: int; Country: string }\nlet keep (value: {| City: string; Zip: int |}) = value\nlet contact = { City = \"Paris\"; Zip = 75000; Country = \"FR\" }\nkeep contact"
+        Assert.That(retainedConversion, Does.Contain("converted :="), retainedConversion)
+
+    [<Test>]
+    member _.``Portable console writes use direct Go calls`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "Console.writeLine \"hello\""; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/directconsole" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("os.Stdout.WriteString(\"hello\" + \"\\n\")"), program)
+            Assert.That(Regex.IsMatch(program, @"var value\d+ func\(string\) struct\{\}"), Is.False, program)
+
+    [<Test>]
     member _.``Collection fusion preserves effect and failure boundaries`` () =
         let generate source =
             let compiled =
