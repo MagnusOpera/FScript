@@ -30,6 +30,8 @@ The Go backend specializes every reachable HM instantiation before selecting rep
 
 Specialization propagates each enclosing concrete function result, application argument, branch result, and pattern-scrutinee representation into its children. This contextual propagation is required because resolved expression types normalize locally quantified variables independently; unrelated curried parameters must not alias merely because both are locally numbered `0`. Pattern bindings derive their closed representation from their projection of the concrete scrutinee, including ignored tuple fields and collection tails.
 
+Pattern emission removes representation checks proven true by typing. A single remaining map-pattern decision is used directly as the branch condition; multiple decisions initialize their short-circuit accumulator from the first real check, never from a synthetic constant.
+
 Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
 When a pattern plan has no representation or repeated-binding checks, Go emission treats its condition as statically true. The emitter writes its bindings and body directly, and an unguarded unconditional case terminates case emission, so generated decision trees contain neither `if true` wrappers nor later unreachable cases.

@@ -1088,19 +1088,29 @@ module TypedGoEmitter =
                                     [ keyCondition; valueCondition ]
                                     |> List.filter ((<>) "true")
                                     |> function [] -> "true" | values -> String.concat " && " values
-                                let assignments = String.concat "\n\t\t\t\t" (keyAssignments @ valueAssignments)
-                                let assignmentSource = if String.IsNullOrEmpty assignments then "" else assignments + "\n\t\t\t\t"
-                                $"case {clauseIndex}:\n\t\tfor entryIndex, entry := range remaining.Entries {{\n\t\t\tif {clauseCondition} {{\n\t\t\t\t{assignmentSource}nextEntries := make([]{entryType}, 0, len(remaining.Entries)-1)\n\t\t\t\tnextEntries = append(nextEntries, remaining.Entries[:entryIndex]...)\n\t\t\t\tnextEntries = append(nextEntries, remaining.Entries[entryIndex+1:]...)\n\t\t\t\tif matchClause(clauseIndex+1, {goType mapType}{{Entries: nextEntries}}) {{\n\t\t\t\t\treturn true\n\t\t\t\t}}\n\t\t\t}}\n\t\t}}\n\t\treturn false")
+                                let attemptBody =
+                                    [ yield! keyAssignments
+                                      yield! valueAssignments
+                                      yield $"nextEntries := make([]{entryType}, 0, len(remaining.Entries)-1)"
+                                      yield "nextEntries = append(nextEntries, remaining.Entries[:entryIndex]...)"
+                                      yield "nextEntries = append(nextEntries, remaining.Entries[entryIndex+1:]...)"
+                                      yield $"if matchClause(clauseIndex+1, {goType mapType}{{Entries: nextEntries}}) {{\n\treturn true\n}}" ]
+                                    |> String.concat "\n"
+                                let attempt =
+                                    if clauseCondition = "true" then attemptBody
+                                    else $"if {clauseCondition} {{\n\t{indent attemptBody}\n}}"
+                                $"case {clauseIndex}:\n\t\tfor entryIndex, entry := range remaining.Entries {{\n\t\t\t{indent (indent (indent attempt))}\n\t\t}}\n\t\treturn false")
                             |> String.concat "\n\t"
                         let terminal =
                             match mapPlan.Tail with
                             | None -> if mapPlan.RequireEmptyRemainder then "return len(remaining.Entries) == 0" else "return true"
                             | Some tail ->
                                 let condition, assignments = simplePlan tail "remaining" mapType
-                                let assignmentSource = if assignments.IsEmpty then "" else String.concat "\n\t\t" assignments + "\n\t\t"
-                                $"if {condition} {{\n\t\t{assignmentSource}return true\n\t}}\n\treturn false"
+                                let success = [ yield! assignments; yield "return true" ] |> String.concat "\n"
+                                if condition = "true" then success
+                                else $"if {condition} {{\n\t{indent success}\n}}\nreturn false"
                         let switchSource = if mapPlan.Clauses.IsEmpty then "" else $"\n\t\tswitch clauseIndex {{\n\t\t{indent clauseCases}\n\t\t}}"
-                        $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent terminal)}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
+                        $"func() bool {{\n\tvar matchClause func(int, {goType mapType}) bool\n\tmatchClause = func(clauseIndex int, remaining {goType mapType}) bool {{\n\t\tif clauseIndex == {mapPlan.Clauses.Length} {{\n\t\t\t{indent (indent (indent terminal))}\n\t\t}}{switchSource}\n\t\treturn false\n\t}}\n\treturn matchClause(0, {mapCode})\n}}()"
                     let condition, topAssignments = simplePlan case.Plan targetName target.Type
                     let mapChecks = case.Plan.Maps |> List.mapi emitMapPlan
                     let bodyCode = coerce case.Body.Type expression.Type (emit scoped functionBindings case.Body)
@@ -1108,16 +1118,21 @@ module TypedGoEmitter =
                         match case.Guard with
                         | None -> $"return {indent bodyCode}"
                         | Some guard -> $"if {goCondition (emit scoped functionBindings guard)} {{\n\treturn {indent (indent bodyCode)}\n}}"
-                    let mapEvaluation =
-                        mapChecks
-                        |> List.map (fun check -> $"if patternsMatch {{\n\tpatternsMatch = {indent check}\n}}")
-                    let selection = if mapChecks.IsEmpty then guardedBody else $"if patternsMatch {{\n\t{indent guardedBody}\n}}"
+                    let selection =
+                        match mapChecks with
+                        | [] -> guardedBody
+                        | [ check ] -> $"if {check} {{\n\t{indent guardedBody}\n}}"
+                        | first :: remaining ->
+                            let mapEvaluation =
+                                remaining
+                                |> List.map (fun check -> $"if patternsMatch {{\n\tpatternsMatch = {indent check}\n}}")
+                            [ yield $"patternsMatch := {first}"
+                              yield! mapEvaluation
+                              yield $"if patternsMatch {{\n\t{indent guardedBody}\n}}" ]
+                            |> String.concat "\n"
                     let contents =
                         [ yield! declarations
                           yield! topAssignments
-                          if not mapChecks.IsEmpty then
-                              yield "patternsMatch := true"
-                              yield! mapEvaluation
                           yield selection ]
                         |> String.concat "\n"
                     let nestedContents = indent (indent contents)

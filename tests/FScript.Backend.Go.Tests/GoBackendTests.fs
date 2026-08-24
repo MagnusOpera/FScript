@@ -183,6 +183,9 @@ type GoBackendTests() =
             match GoBackend.generate { ModuleName = "fscript.generated/showcase" } compiled.Lir with
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        let generatedProgram = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+        Assert.That(generatedProgram, Does.Not.Contain("patternsMatch := true"), generatedProgram)
+        Assert.That(generatedProgram, Does.Not.Contain("if true {"), generatedProgram)
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-showcase-{Guid.NewGuid():N}")
         try
             for file in files do
