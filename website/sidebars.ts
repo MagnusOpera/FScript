@@ -34,11 +34,8 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Compiler',
       items: [
-        'compiler/compiler-overview',
         'compiler/compile-to-go',
         'compiler/interpret-ir',
-        'compiler/compiler-hir',
-        'compiler/compiler-lir',
       ],
     },
     {

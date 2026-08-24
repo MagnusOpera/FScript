@@ -59,4 +59,4 @@ Reachable target imports, Tasks, and arbitrary host externs are rejected explici
 
 Version-1 `.fsir` is internal and does not promise backward compatibility. Use matching compiler and interpreter builds.
 
-See the [LIR specification](./lir.md) and the repository's [complete interpreter guide](https://github.com/MagnusOpera/FScript/blob/main/docs/guides/interpret-ir.md).
+See the repository's [complete interpreter guide](https://github.com/MagnusOpera/FScript/blob/main/docs/guides/interpret-ir.md).

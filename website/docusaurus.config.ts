@@ -87,8 +87,8 @@ const config: Config = {
           position: 'left',
         },
         {
-          to: '/manual/compiler/overview',
-          label: 'Compiler',
+          to: '/manual/compiler/go',
+          label: 'Compile to Go',
           position: 'left',
         },
         {

@@ -271,37 +271,6 @@ export default function Home() {
           </div>
         </section>
 
-        <section className={styles.compilerSection}>
-          <div className={`container ${styles.compilerHeader}`}>
-            <div>
-              <p className={styles.sectionKicker}>One typed pipeline, two executable targets</p>
-              <Heading as="h2">Inspect the IR.<br /><em>Ship the program.</em></Heading>
-            </div>
-            <p>
-              FScript lowers resolved types and language semantics into validated LIR. Execute that LIR
-              directly from .NET or generate a complete Go 1.25 project with no Go generics.
-            </p>
-          </div>
-          <div className={`container ${styles.compilerPipeline}`} aria-label="FScript compiler pipeline">
-            <span>FScript source</span><i>→</i><span>Typed HIR</span><i>→</i><span>Executable LIR</span>
-            <i>→</i><b>IR interpreter</b><i className={styles.pipelineOr}>or</i><b>Go project</b>
-          </div>
-          <div className={`container ${styles.compilerCards}`}>
-            <Link className={styles.compilerCard} to="/manual/compiler/interpret-ir">
-              <small>.FSIR / .NET</small>
-              <Heading as="h3">Interpret validated LIR</Heading>
-              <p>Serialize one whole program, validate it on load, provide explicit arguments, and execute without returning to the parser AST.</p>
-              <b>Open the IR guide <Arrow /></b>
-            </Link>
-            <Link className={styles.compilerCard} to="/manual/compiler/go">
-              <small>GO 1.25</small>
-              <Heading as="h3">Generate inspectable Go</Heading>
-              <p>Emit concrete records and unions, closures, ordered collections, pattern plans, and a self-contained FScript runtime.</p>
-              <b>Open the Go guide <Arrow /></b>
-            </Link>
-          </div>
-        </section>
-
         <section className={styles.learningSection}>
           <div className={`container ${styles.learningHeader}`}>
             <div>
