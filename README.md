@@ -192,7 +192,7 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 
 ## Documentation
 
-- Documentation website: `https://magnusopera.github.io/FScript/`
+- Documentation website: `https://fscript.magnusopera.io/`
 - Documentation portal: [`docs/README.md`](docs/README.md)
 - Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
