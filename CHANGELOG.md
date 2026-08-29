@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restored CI builds on current GitHub runners by removing the obsolete F# parallel-compilation switch.
 - Fixed documentation assets and links for hosting the website at `fscript.magnusopera.io`.
 - Rewrote the website around concrete FScript behavior and removed vague product slogans.
 - Fixed oversized homepage headings to wrap in balanced lines across desktop widths.
