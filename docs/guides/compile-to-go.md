@@ -80,7 +80,7 @@ The initial backend preserves:
 
 - closures, currying, partial application, recursive groups, and native loops for proven direct proper-tail recursion;
 - tuples and concrete structs for declared records;
-- concrete tagged structures for declared unions;
+- compact typed enums for payload-free unions and sealed typed case interfaces for payload-bearing unions;
 - structural/named record conversions;
 - whole-program specialization of polymorphic lists, options, maps, and closures;
 - typed record, union, option, list, tuple, and ordered-map pattern checks, including deterministic map-clause backtracking;

@@ -10,6 +10,7 @@ open FScript.Language
 module TypedGoEmitter =
     type private NamedRepresentation =
         | LocalNamed of recursive: bool
+        | LocalUnion of hasPayload: bool
         | ImportedNamed of alias: string * memberName: string
 
     let private namedRepresentations = Threading.AsyncLocal<Map<string, NamedRepresentation>>()
@@ -33,7 +34,6 @@ module TypedGoEmitter =
         else rendered
 
     let private fieldName value = "Field_" + identifier value
-    let private caseField value = "Case_" + identifier value
     let private goCondition (value: string) =
         if value.Length < 2 || value.[0] <> '(' || value.[value.Length - 1] <> ')' then value
         else
@@ -190,12 +190,26 @@ module TypedGoEmitter =
                 let representation =
                     match declaration.Import with
                     | Some imported -> ImportedNamed(importModules.[imported.ModulePath], imported.MemberName)
-                    | None -> LocalNamed declaration.IsRecursive
+                    | None ->
+                        match declaration.Definition with
+                        | TUnion(_, cases) -> LocalUnion(cases |> Map.exists (fun _ payload -> payload.IsSome))
+                        | _ -> LocalNamed declaration.IsRecursive
                 declaration.Name, representation)
             |> Map.ofList
         let functions = program.Functions |> List.map (fun item -> item.Id, item) |> Map.ofList
         let namedDefinitions = program.Types |> List.map (fun item -> item.Name, item.Definition) |> Map.ofList
         let namedRepresentation name = tryNamedRepresentation name
+        let unionCases = function
+            | TUnion(_, cases) -> cases
+            | TNamed name ->
+                match Map.tryFind name namedDefinitions with
+                | Some(TUnion(_, cases)) -> cases
+                | _ -> invalidOp $"Named type '{name}' is not a union."
+            | value -> invalidOp $"Type '{Types.typeToString value}' is not a union."
+        let unionHasPayload unionType = unionCases unionType |> Map.exists (fun _ payload -> payload.IsSome)
+        let unionCaseType unionType caseName = $"case_{identifier (goType unionType)}_{identifier caseName}"
+        let unionMarker unionType = $"is_{identifier (goType unionType)}"
+        let unionConstant unionType caseName = $"{identifier (goType unionType)}_{identifier caseName}"
         let emittedField ownerType name =
             match ownerType with
             | TNamed typeName -> match namedRepresentation typeName with Some(ImportedNamed _) -> identifier name | _ -> fieldName name
@@ -256,9 +270,40 @@ module TypedGoEmitter =
                 let padding = String(' ', width - name.Length + 1)
                 typeDeclarations.AppendLine($"\t{name}{padding}{goType fieldType}") |> ignore)
         let appendFields fields = fields |> Map.toList |> List.map (fun (name, fieldType) -> fieldName name, fieldType) |> appendStructFields
-        let appendUnionCases cases =
-            ("Tag", TString) :: (cases |> Map.toList |> List.choose (fun (caseName, payload) -> payload |> Option.map (fun payloadType -> caseField caseName, payloadType)))
-            |> appendStructFields
+        let appendUnionDeclaration unionType cases =
+            let typeName = goType unionType
+            if unionHasPayload unionType then
+                typeDeclarations.AppendLine($"type {typeName} interface {{") |> ignore
+                typeDeclarations.AppendLine($"\t{unionMarker unionType}()") |> ignore
+                typeDeclarations.AppendLine("}") |> ignore
+                typeDeclarations.AppendLine() |> ignore
+                cases
+                |> Map.iter (fun caseName payload ->
+                    let caseType = unionCaseType unionType caseName
+                    match payload with
+                    | None ->
+                        typeDeclarations.AppendLine($"type {caseType} struct{{}}") |> ignore
+                        typeDeclarations.AppendLine() |> ignore
+                    | Some payloadType ->
+                        typeDeclarations.AppendLine($"type {caseType} struct {{") |> ignore
+                        appendStructFields [ "Value", payloadType ]
+                        typeDeclarations.AppendLine("}") |> ignore
+                        typeDeclarations.AppendLine() |> ignore
+                    typeDeclarations.AppendLine($"func ({caseType}) {unionMarker unionType}() {{}}") |> ignore
+                    typeDeclarations.AppendLine() |> ignore)
+            else
+                typeDeclarations.AppendLine($"type {typeName} uint8") |> ignore
+                typeDeclarations.AppendLine() |> ignore
+                typeDeclarations.AppendLine("const (") |> ignore
+                cases
+                |> Map.toList
+                |> List.iteri (fun index (caseName, _) ->
+                    let declaration =
+                        if index = 0 then $"{unionConstant unionType caseName} {typeName} = iota"
+                        else unionConstant unionType caseName
+                    typeDeclarations.AppendLine($"\t{declaration}") |> ignore)
+                typeDeclarations.AppendLine(")") |> ignore
+                typeDeclarations.AppendLine() |> ignore
         program.Types
         |> List.filter (fun declaration -> declaration.Name <> "Environment" && declaration.Import.IsNone && types.Contains(TNamed declaration.Name))
         |> List.sortBy _.Name
@@ -269,9 +314,7 @@ module TypedGoEmitter =
                 appendFields fields
                 typeDeclarations.AppendLine("}") |> ignore
             | TUnion(_, cases) ->
-                typeDeclarations.AppendLine($"type named_{identifier declaration.Name} struct {{") |> ignore
-                appendUnionCases cases
-                typeDeclarations.AppendLine("}") |> ignore
+                appendUnionDeclaration (TNamed declaration.Name) cases
             | _ -> ())
         for value in types |> Seq.sortBy key do
             match value with
@@ -301,9 +344,7 @@ module TypedGoEmitter =
                 typeDeclarations.AppendLine($"\tEntries []entry_{suffix value}") |> ignore
                 typeDeclarations.AppendLine("}") |> ignore
             | TUnion(_, cases) ->
-                typeDeclarations.AppendLine($"type {goType value} struct {{") |> ignore
-                appendUnionCases cases
-                typeDeclarations.AppendLine("}") |> ignore
+                appendUnionDeclaration value cases
             | _ -> ()
 
         let formatterNames = Dictionary<Type, string>()
@@ -346,13 +387,17 @@ module TypedGoEmitter =
                     | TUnion(_, cases) ->
                         let clauses =
                             cases |> Map.toList |> List.map (fun (caseName, payload) ->
-                                match payload with
-                                | None -> $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}"
-                                | Some payloadType ->
-                                    let label = Text.Json.JsonSerializer.Serialize(caseName + " ")
-                                    $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {label} + {formatter payloadType}(value.{caseField caseName})")
+                                if unionHasPayload value then
+                                    match payload with
+                                    | None -> $"case {unionCaseType value caseName}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}"
+                                    | Some payloadType ->
+                                        let label = Text.Json.JsonSerializer.Serialize(caseName + " ")
+                                        $"case {unionCaseType value caseName}:\n\t\treturn {label} + {formatter payloadType}(caseValue.Value)"
+                                else
+                                    $"case {unionConstant value caseName}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}")
                         let renderedClauses = String.concat "\n\t" clauses
-                        $"switch value.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
+                        let target = if unionHasPayload value then "caseValue := value.(type)" else "value"
+                        $"switch {target} {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
                     | TNamed "Environment" -> "return \"<environment>\""
                     | TNamed name ->
                         match Map.tryFind name namedDefinitions with
@@ -364,16 +409,17 @@ module TypedGoEmitter =
                             | _ -> $"return {rendered}"
                         | Some(TUnion(_, cases)) ->
                             let clauses = cases |> Map.toList |> List.map (fun (caseName, payload) ->
-                                match payload with
-                                | None -> $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}"
-                                | Some payloadType ->
-                                    let label = Text.Json.JsonSerializer.Serialize(caseName + " ")
-                                    $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {label} + {formatter payloadType}(value.{caseField caseName})")
+                                if unionHasPayload value then
+                                    match payload with
+                                    | None -> $"case {unionCaseType value caseName}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}"
+                                    | Some payloadType ->
+                                        let label = Text.Json.JsonSerializer.Serialize(caseName + " ")
+                                        $"case {unionCaseType value caseName}:\n\t\treturn {label} + {formatter payloadType}(caseValue.Value)"
+                                else
+                                    $"case {unionConstant value caseName}:\n\t\treturn {Text.Json.JsonSerializer.Serialize(caseName)}")
                             let renderedClauses = String.concat "\n\t" clauses
-                            let switchBody = $"switch value.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
-                            match namedRepresentation name with
-                            | Some(LocalNamed true) -> $"if value == nil {{\n\t\treturn \"<nil>\"\n\t}}\n\t{switchBody}"
-                            | _ -> switchBody
+                            let target = if unionHasPayload value then "caseValue := value.(type)" else "value"
+                            $"switch {target} {{\n\t{renderedClauses}\n\t}}\n\treturn \"<invalid union>\""
                         | _ -> "return \"<value>\""
                     | other -> invalidArg "value" $"No typed formatter for {Types.typeToString other}."
                 formatterBodies.Add($"func {name}(value {goType value}) string {{\n\t{body}\n}}")
@@ -412,9 +458,17 @@ module TypedGoEmitter =
                         let keyEquality, valueEquality = equality keyType, equality valueType
                         $"if len(left.Entries) != len(right.Entries) {{\n\t\treturn false\n\t}}\n\tfor index := range left.Entries {{\n\t\tif !{keyEquality}(left.Entries[index].Key, right.Entries[index].Key) || !{valueEquality}(left.Entries[index].Value, right.Entries[index].Value) {{\n\t\t\treturn false\n\t\t}}\n\t}}\n\treturn true"
                     | TUnion(_, cases) ->
-                        let clauses = cases |> Map.toList |> List.choose (fun (caseName, payload) -> payload |> Option.map (fun payloadType -> $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {equality payloadType}(left.{caseField caseName}, right.{caseField caseName})"))
-                        let renderedClauses = String.concat "\n\t" clauses
-                        $"if left.Tag != right.Tag {{\n\t\treturn false\n\t}}\n\tswitch left.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn true"
+                        if not (unionHasPayload value) then
+                            "return left == right"
+                        else
+                            let clauses =
+                                cases |> Map.toList |> List.map (fun (caseName, payload) ->
+                                    let caseType = unionCaseType value caseName
+                                    match payload with
+                                    | None -> $"case {caseType}:\n\t\t_, ok := right.({caseType})\n\t\treturn ok"
+                                    | Some payloadType -> $"case {caseType}:\n\t\trightValue, ok := right.({caseType})\n\t\treturn ok && {equality payloadType}(leftValue.Value, rightValue.Value)")
+                            let renderedClauses = String.concat "\n\t" clauses
+                            $"switch leftValue := left.(type) {{\n\t{renderedClauses}\n\t}}\n\treturn false"
                     | TNamed "Environment" -> "return left.ScriptName.HasValue == right.ScriptName.HasValue && left.ScriptName.Value == right.ScriptName.Value"
                     | TNamed name ->
                         match Map.tryFind name namedDefinitions with
@@ -425,12 +479,17 @@ module TypedGoEmitter =
                             | Some(LocalNamed true) -> $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\treturn {result}"
                             | _ -> $"return {result}"
                         | Some(TUnion(_, cases)) ->
-                            let clauses = cases |> Map.toList |> List.choose (fun (caseName, payload) -> payload |> Option.map (fun payloadType -> $"case {Text.Json.JsonSerializer.Serialize(caseName)}:\n\t\treturn {equality payloadType}(left.{caseField caseName}, right.{caseField caseName})"))
-                            let renderedClauses = String.concat "\n\t" clauses
-                            let comparison = $"if left.Tag != right.Tag {{\n\t\treturn false\n\t}}\n\tswitch left.Tag {{\n\t{renderedClauses}\n\t}}\n\treturn true"
-                            match namedRepresentation name with
-                            | Some(LocalNamed true) -> $"if left == nil || right == nil {{\n\t\treturn left == right\n\t}}\n\t{comparison}"
-                            | _ -> comparison
+                            if not (unionHasPayload value) then
+                                "return left == right"
+                            else
+                                let clauses =
+                                    cases |> Map.toList |> List.map (fun (caseName, payload) ->
+                                        let caseType = unionCaseType value caseName
+                                        match payload with
+                                        | None -> $"case {caseType}:\n\t\t_, ok := right.({caseType})\n\t\treturn ok"
+                                        | Some payloadType -> $"case {caseType}:\n\t\trightValue, ok := right.({caseType})\n\t\treturn ok && {equality payloadType}(leftValue.Value, rightValue.Value)")
+                                let renderedClauses = String.concat "\n\t" clauses
+                                $"switch leftValue := left.(type) {{\n\t{renderedClauses}\n\t}}\n\treturn false"
                         | _ -> "return left == right"
                     | other -> invalidArg "value" $"No typed equality for {Types.typeToString other}."
                 equalityBodies.Add($"func {name}(left {goType value}, right {goType value}) bool {{\n\t{body}\n}}")
@@ -448,13 +507,6 @@ module TypedGoEmitter =
                 | Some(TRecord fields) -> fields
                 | _ -> invalidOp $"Named type '{name}' is not a record."
             | value -> invalidOp $"Type '{Types.typeToString value}' is not a record."
-        let unionCases = function
-            | TUnion(_, cases) -> cases
-            | TNamed name ->
-                match Map.tryFind name namedDefinitions with
-                | Some(TUnion(_, cases)) -> cases
-                | _ -> invalidOp $"Named type '{name}' is not a union."
-            | value -> invalidOp $"Type '{Types.typeToString value}' is not a union."
         let intrinsicSource appliedArguments (name: string) (intrinsicType: Type) =
             let rec curry index currentType arguments body =
                 match currentType with
@@ -574,7 +626,10 @@ module TypedGoEmitter =
                 "func(path string) bool {\n\tfull, ok := fsResolve(path)\n\tif !ok {\n\t\treturn false\n\t}\n\t_, err := os.Stat(full)\n\treturn err == nil\n}"
             | "Fs.kind", TFun(TString, resultType) ->
                 let result = goType resultType
-                $"func(path string) {result} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {result}{{Tag: \"Missing\"}}\n\t}}\n\tinfo, err := os.Stat(full)\n\tif err != nil {{\n\t\treturn {result}{{Tag: \"Missing\"}}\n\t}}\n\trelative := fsRelative(full)\n\tif info.IsDir() {{\n\t\treturn {result}{{Tag: \"Directory\", Case_Directory: relative}}\n\t}}\n\treturn {result}{{Tag: \"File\", Case_File: relative}}\n}}"
+                let missing = unionCaseType resultType "Missing"
+                let directory = unionCaseType resultType "Directory"
+                let file = unionCaseType resultType "File"
+                $"func(path string) {result} {{\n\tfull, ok := fsResolve(path)\n\tif !ok {{\n\t\treturn {missing}{{}}\n\t}}\n\tinfo, err := os.Stat(full)\n\tif err != nil {{\n\t\treturn {missing}{{}}\n\t}}\n\trelative := fsRelative(full)\n\tif info.IsDir() {{\n\t\treturn {directory}{{Value: relative}}\n\t}}\n\treturn {file}{{Value: relative}}\n}}"
             | "Fs.createDirectory", TFun(TString, TBool) ->
                 "func(path string) bool {\n\tfull, ok := fsResolve(path)\n\tif !ok {\n\t\treturn false\n\t}\n\tif os.MkdirAll(full, 0755) != nil {\n\t\treturn false\n\t}\n\tinfo, err := os.Stat(full)\n\treturn err == nil && info.IsDir()\n}"
             | "Fs.writeText", TFun(TString, TFun(TString, TBool)) ->
@@ -1153,7 +1208,10 @@ module TypedGoEmitter =
                                     |> List.tryPick (function Lir.UnionCaseCheck(projection, _, caseName, true) when projection = prefix -> Some caseName | _ -> None)
                                     |> Option.defaultWith (fun () -> invalidOp "Union payload projection has no corresponding case check.")
                                 let payloadType = (unionCases unionType).[caseName] |> Option.defaultWith (fun () -> invalidOp "Union case has no payload.")
-                                $"({code}).{caseField caseName}", payloadType
+                                if unionHasPayload unionType then
+                                    $"({code}).({unionCaseType unionType caseName}).Value", payloadType
+                                else
+                                    invalidOp "Payload-free union has no payload projection."
                             | _ -> invalidOp $"Invalid typed pattern projection {step} from {Types.typeToString valueType}."
                         project plan nextCode nextType (prefix @ [ step ]) rest
                 let emitPlanCheck plan root rootType = function
@@ -1166,9 +1224,11 @@ module TypedGoEmitter =
                     | Lir.SomeCheck projection -> let code, _ = project plan root rootType [] projection in $"({code}).HasValue"
                     | Lir.NoneCheck projection -> let code, _ = project plan root rootType [] projection in $"!({code}).HasValue"
                     | Lir.UnionCaseCheck(projection, _, caseName, _) ->
-                        let code, _ = project plan root rootType [] projection
-                        let tag = Text.Json.JsonSerializer.Serialize(caseName)
-                        $"({code}).Tag == {tag}"
+                        let code, unionType = project plan root rootType [] projection
+                        if unionHasPayload unionType then
+                            $"func() bool {{ _, ok := ({code}).({unionCaseType unionType caseName}); return ok }}()"
+                        else
+                            $"({code}) == {unionConstant unionType caseName}"
                 let emitCase (case: Lir.DecisionCase) =
                     let rec referencedSymbols (value: Lir.Expression) =
                         let recurse = referencedSymbols
@@ -1429,11 +1489,13 @@ module TypedGoEmitter =
                 $"func() struct{{}} {{\n\tfor _, {variable} := range {emitChild source} {{\n\t\t_ = {indent (indent bodyCode)}\n\t}}\n\treturn struct{{}}{{}}\n}}()"
             | Lir.TypeToken valueType -> $"typeToken{{Value: {Text.Json.JsonSerializer.Serialize(Types.typeToString valueType)}}}"
             | Lir.UnionCase(_, caseName, payload) ->
-                let payloadField = payload |> Option.map (fun value -> $", {caseField caseName}: {emitChild value}") |> Option.defaultValue ""
-                let tag = Text.Json.JsonSerializer.Serialize(caseName)
-                match expression.Type with
-                | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"&named_{identifier name}{{Tag: {tag}{payloadField}}}"
-                | _ -> $"{goType expression.Type}{{Tag: {tag}{payloadField}}}"
+                if unionHasPayload expression.Type then
+                    let caseType = unionCaseType expression.Type caseName
+                    match payload with
+                    | None -> $"{caseType}{{}}"
+                    | Some value -> $"{caseType}{{Value: {emitChild value}}}"
+                else
+                    unionConstant expression.Type caseName
             | Lir.Map entries ->
                 let keyType, valueType = match expression.Type with TMap(k, v) -> k, v | _ -> invalidOp "Map expression has non-map type."
                 let resultType, entryType = goType expression.Type, $"entry_{suffix expression.Type}"
@@ -1555,7 +1617,10 @@ module TypedGoEmitter =
                                         plan.Checks
                                         |> List.tryPick (function Lir.UnionCaseCheck(projection, _, caseName, true) when projection = prefix -> Some caseName | _ -> None)
                                         |> Option.defaultWith (fun () -> invalidOp "Union payload projection has no corresponding case check.")
-                                    $"({code}).{caseField caseName}", (unionCases unionType).[caseName].Value
+                                    if unionHasPayload unionType then
+                                        $"({code}).({unionCaseType unionType caseName}).Value", (unionCases unionType).[caseName].Value
+                                    else
+                                        invalidOp "Payload-free union has no payload projection."
                                 | _ -> invalidOp $"Invalid typed tail-pattern projection {step} from {Types.typeToString valueType}."
                             project plan nextCode nextType (prefix @ [ step ]) rest
                     let emitCheck plan root rootType = function
@@ -1566,7 +1631,12 @@ module TypedGoEmitter =
                         | Lir.NonEmptyListCheck projection -> let code, _ = project plan root rootType [] projection in $"len({code}) > 0"
                         | Lir.SomeCheck projection -> let code, _ = project plan root rootType [] projection in $"({code}).HasValue"
                         | Lir.NoneCheck projection -> let code, _ = project plan root rootType [] projection in $"!({code}).HasValue"
-                        | Lir.UnionCaseCheck(projection, _, caseName, _) -> let code, _ = project plan root rootType [] projection in $"({code}).Tag == {Text.Json.JsonSerializer.Serialize(caseName)}"
+                        | Lir.UnionCaseCheck(projection, _, caseName, _) ->
+                            let code, unionType = project plan root rootType [] projection
+                            if unionHasPayload unionType then
+                                $"func() bool {{ _, ok := ({code}).({unionCaseType unionType caseName}); return ok }}()"
+                            else
+                                $"({code}) == {unionConstant unionType caseName}"
                         | Lir.TupleArityCheck _ | Lir.RecordFieldCheck _ | Lir.TypeCheck _ -> "true"
                     let emitCase (case: Lir.DecisionCase) =
                         let grouped = case.Plan.Bindings |> List.groupBy _.Id
@@ -1950,7 +2020,7 @@ module TypedGoEmitter =
             if unitEntryId <> Some declaration.Id then
                 let target = sourceBuilder declaration.Span |> Option.defaultValue declarations
                 target.AppendLine($"var {names.[declaration.Id]} {goType declaration.Type}") |> ignore
-        if emittedDeclarations |> List.exists (fun declaration -> unitEntryId <> Some declaration.Id) then declarations.AppendLine() |> ignore
+        if declarations.Length > 0 then declarations.AppendLine() |> ignore
         declarations.AppendLine("func init() {") |> ignore
         for declaration in emittedDeclarations do
             if unitEntryId = Some declaration.Id then

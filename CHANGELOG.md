@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Represented payload-free Go unions as compact enums and payload-bearing unions as sealed typed case interfaces.
+
 - Reused compiler frontend results for exported signatures, avoiding duplicate inference in embedded LIR hosts.
 
 - Preserved host sandbox policies by letting registered runtime functions override portable LIR fallbacks.

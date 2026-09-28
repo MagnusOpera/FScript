@@ -502,17 +502,32 @@ type GoBackendTests() =
             Assert.That(program, Does.Not.Contain("any"))
 
     [<Test>]
-    member _.``Go backend emits tagged ordinary union types`` () =
+    member _.``Go backend emits sealed interfaces for unions with payloads`` () =
         let source = "type Shape = | Point | Circle of int\nCircle 3"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         match GoBackend.generate { ModuleName = "fscript.generated/unions" } compiled.Lir with
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok files ->
             let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
-            Assert.That(program, Does.Contain("type named_Shape struct"))
-            Assert.That(program, Does.Contain("Tag"))
-            Assert.That(program, Does.Contain("Case_Circle int64"))
+            Assert.That(program, Does.Contain("type named_Shape interface"))
+            Assert.That(program, Does.Contain("is_named_Shape()"))
+            Assert.That(program, Does.Contain("type case_named_Shape_Point struct{}"))
+            Assert.That(program, Does.Contain("type case_named_Shape_Circle struct"))
+            Assert.That(program, Does.Contain("Value int64"))
             Assert.That(program, Does.Not.Contain("interface{}"))
+
+    [<Test>]
+    member _.``Go backend emits payload-free unions as typed enums`` () =
+        let source = "type Color = | Red | Green | Blue\nGreen"
+        let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/enums" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Contain("type named_Color uint8"))
+            Assert.That(program, Does.Contain("named_Color_Blue named_Color = iota"))
+            Assert.That(program, Does.Contain("named_Color_Green"))
+            Assert.That(program, Does.Not.Contain("type named_Color interface"))
 
     [<Test>]
     member _.``Go generation is deterministic targets Go 1.25 and emits no generic declarations`` () =
@@ -630,6 +645,8 @@ type GoBackendTests() =
     [<TestCase("let home = {| City = \"Paris\"; Zip = 75000 |}\nlet wider = {| home with Name = \"Robert\" |}\n(wider.Name, wider.City, wider.Zip)", "(\"Robert\", \"Paris\", 75000)")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}", "42")>]
     [<TestCase("type Shape = | Point | Circle of int\nCircle 2 = Circle 2", "true")>]
+    [<TestCase("type Color = | Red | Green | Blue\nlet name color = match color with | Red -> \"red\" | Green -> \"green\" | Blue -> \"blue\"\n(name Green, Green = Green, Green = Red)", "(\"green\", true, false)")>]
+    [<TestCase("type rec Tree = | Leaf of int | Branch of (Tree * Tree)\nlet rec total tree = match tree with | Leaf value -> value | Branch (left, right) -> total left + total right\ntotal (Branch (Leaf 1, Branch (Leaf 2, Leaf 3)))", "6")>]
     [<TestCase("type Person = { Name: string }\ntype Result = | Missing | Found of Person\nFound { Name = \"Ada\" } = Found { Name = \"Ada\" }", "true")>]
     [<TestCase("(1.0, [2.0], 1.0 / 0.0, 0.0 / 0.0)", "(1, [2], Infinity, NaN)")>]
     [<TestCase("let ordered left middle right = left < middle && middle <= right && right > left && right >= middle\nordered 1 2 3", "true")>]
@@ -649,7 +666,7 @@ type GoBackendTests() =
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         for file in files |> List.filter (fun file -> file.RelativePath.EndsWith(".go", StringComparison.Ordinal)) do
-            Assert.That(Regex.IsMatch(file.Content, @"\bany\b|interface\s*\{"), Is.False, file.RelativePath)
+            Assert.That(Regex.IsMatch(file.Content, @"\bany\b|interface\s*\{\s*\}"), Is.False, file.RelativePath)
             Assert.That(file.Content, Does.Not.Contain("reflect."), file.RelativePath)
             Assert.That(file.Content, Does.Not.Contain("IntrinsicClosure"), file.RelativePath)
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-go-{Guid.NewGuid():N}")
@@ -665,13 +682,15 @@ type GoBackendTests() =
             formatStart.ArgumentList.Add("-d")
             formatStart.ArgumentList.Add(directory)
             formatStart.RedirectStandardOutput <- true
+            formatStart.RedirectStandardError <- true
             use formatProcess =
                 match Process.Start(formatStart) with
                 | null -> failwith "Failed to start gofmt"
                 | value -> value
             let formatDiff = formatProcess.StandardOutput.ReadToEnd()
+            let formatError = formatProcess.StandardError.ReadToEnd()
             formatProcess.WaitForExit()
-            Assert.That(formatProcess.ExitCode, Is.EqualTo(0))
+            Assert.That(formatProcess.ExitCode, Is.EqualTo(0), formatError)
             Assert.That(formatDiff, Is.Empty, "Generated Go sources must already be gofmt-compatible")
             let testStart = ProcessStartInfo("go")
             testStart.WorkingDirectory <- directory

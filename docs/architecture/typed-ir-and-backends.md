@@ -113,8 +113,8 @@ Artifact metadata records the actual compiler and language assembly versions, no
 ## Representation policy
 
 - Validated LIR remains semantically typed and backend-neutral. A private Go representation pass specializes reachable declarations, local bindings, functions, captures, intrinsics, and imports by normalized concrete instantiation.
-- Generated program and runtime source never use `any`, `interface{}` value carriers, reflection, a universal closure ABI, or Go generics.
-- Lists use `[]T`; options, tuples, ordered maps, structural records, named records, and unions use deterministic concrete generated types. Recursive named types use pointer indirection.
+- Generated program and runtime source never use `any`, empty `interface{}` value carriers, reflection, a universal closure ABI, or Go generics. A payload-bearing discriminated union uses its own sealed interface with an unexported marker method and one concrete typed case struct per alternative; this is not a universal erased carrier.
+- Lists use `[]T`; options, tuples, ordered maps, structural records, and named records use deterministic concrete generated types. Payload-free discriminated unions use compact typed integer enums. Recursive named records use pointer indirection, while recursive payload unions recurse through their sealed interface representation.
 - Functions use native typed unary function values. Structural equality, formatting, pattern projection, record conversion, and builtins are generated for their concrete representations.
 - A reachable residual open representation produces `FSB4007`. An effectful generalized initializer that cannot be cloned without repeating observable evaluation produces `FSB4008`.
 - LIR remains structured and non-SSA until a concrete optimization requirement justifies a control-flow IR.
