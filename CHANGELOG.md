@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a `go-smoke-tests` Make target that transpiles and verifies every sample under `out/`.
+
 - Represented payload-free Go unions as compact enums and payload-bearing unions as sealed typed case interfaces.
 
 - Reused compiler frontend results for exported signatures, avoiding duplicate inference in embedded LIR hosts.

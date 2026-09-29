@@ -39,6 +39,14 @@ dotnet run --project src/FScript -- \
   compile hello.fss --target go --output ./out/hello-go
 ```
 
+To transpile every repository smoke-test sample and verify each generated project with `go test ./...`, run:
+
+```bash
+make go-smoke-tests
+```
+
+Ordinary samples are written to `out/<sample-name>` and the multi-file BASIC sample is written to `out/basic`.
+
 The output is a complete project:
 
 ```text
