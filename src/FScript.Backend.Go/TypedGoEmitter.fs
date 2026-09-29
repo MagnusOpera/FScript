@@ -34,6 +34,11 @@ module TypedGoEmitter =
         else rendered
 
     let private fieldName value = "Field_" + identifier value
+    let private tryStaticRangeDirection (first: Lir.Expression) (last: Lir.Expression) =
+        match first.Node, last.Node with
+        | Lir.Constant(Lir.Int firstValue), Lir.Constant(Lir.Int lastValue) -> Some(firstValue <= lastValue)
+        | _ -> None
+
     let private goCondition (value: string) =
         if value.Length < 2 || value.[0] <> '(' || value.[value.Length - 1] <> ')' then value
         else
@@ -1470,7 +1475,16 @@ module TypedGoEmitter =
                 match targetType with
                 | TNamed name when namedRepresentation name = Some(LocalNamed true) -> $"func() {goType targetType} {{\n\tconverted := {indent targetCode}\n\treturn &named_{identifier name}{{{assignments}}}\n}}()"
                 | _ -> $"func() {goType targetType} {{\n\tconverted := {indent targetCode}\n\treturn {goType targetType}{{{assignments}}}\n}}()"
-            | Lir.Range(first, last) -> $"func() []int64 {{\n\tfirst, last := {emitChild first}, {emitChild last}\n\tresult := []int64{{}}\n\tif first <= last {{\n\t\tfor value := first; value <= last; value++ {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}} else {{\n\t\tfor value := first; value >= last; value-- {{\n\t\t\tresult = append(result, value)\n\t\t}}\n\t}}\n\treturn result\n}}()"
+            | Lir.Range(first, last) ->
+                let prefix = $"func() []int64 {{\n\tfirst, last := {emitChild first}, {emitChild last}\n\tresult := []int64{{}}\n"
+                let ascending = "\tfor value := first; value <= last; value++ {\n\t\tresult = append(result, value)\n\t}"
+                let descending = "\tfor value := first; value >= last; value-- {\n\t\tresult = append(result, value)\n\t}"
+                let loop =
+                    match tryStaticRangeDirection first last with
+                    | Some true -> ascending
+                    | Some false -> descending
+                    | None -> $"\tif first <= last {{\n\t{indent ascending}\n\t}} else {{\n\t{indent descending}\n\t}}"
+                $"{prefix}{loop}\n\treturn result\n}}()"
             | Lir.IndexGet(target, index) ->
                 match target.Type with
                 | TList _ -> $"func() {goType expression.Type} {{\n\tvalues, index := {emitChild target}, {emitChild index}\n\tif index < 0 || index >= int64(len(values)) {{\n\t\treturn {goType expression.Type}{{}}\n\t}}\n\treturn {goType expression.Type}{{HasValue: true, Value: values[index]}}\n}}()"
@@ -1753,7 +1767,14 @@ module TypedGoEmitter =
                     let firstName = freshStatementName "fusedFirst"
                     let lastName = freshStatementName "fusedLast"
                     let completed = if target = "_" then "" else "\n" + assign "struct{}{}"
-                    $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\nif {firstName} <= {lastName} {{\n\tfor {itemName} := {firstName}; {itemName} <= {lastName}; {itemName}++ {{\n\t\t{indent (indent body)}\n\t}}\n}} else {{\n\tfor {itemName} := {firstName}; {itemName} >= {lastName}; {itemName}-- {{\n\t\t{indent (indent body)}\n\t}}\n}}{completed}"
+                    let ascending = $"for {itemName} := {firstName}; {itemName} <= {lastName}; {itemName}++ {{\n\t{indent body}\n}}"
+                    let descending = $"for {itemName} := {firstName}; {itemName} >= {lastName}; {itemName}-- {{\n\t{indent body}\n}}"
+                    let loop =
+                        match tryStaticRangeDirection first last with
+                        | Some true -> ascending
+                        | Some false -> descending
+                        | None -> $"if {firstName} <= {lastName} {{\n\t{indent ascending}\n}} else {{\n\t{indent descending}\n}}"
+                    $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\n{loop}{completed}"
                 | _ ->
                     let sourceName = freshStatementName "fusedSource"
                     let completed = if target = "_" then "" else "\n" + assign "struct{}{}"
@@ -1813,7 +1834,14 @@ module TypedGoEmitter =
             | Lir.Range(first, last) ->
                 let firstName = freshStatementName "rangeFirst"
                 let lastName = freshStatementName "rangeLast"
-                $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\n{target} = []int64{{}}\nif {firstName} <= {lastName} {{\n\tfor value := {firstName}; value <= {lastName}; value++ {{\n\t\t{target} = append({target}, value)\n\t}}\n}} else {{\n\tfor value := {firstName}; value >= {lastName}; value-- {{\n\t\t{target} = append({target}, value)\n\t}}\n}}"
+                let ascending = $"for value := {firstName}; value <= {lastName}; value++ {{\n\t{target} = append({target}, value)\n}}"
+                let descending = $"for value := {firstName}; value >= {lastName}; value-- {{\n\t{target} = append({target}, value)\n}}"
+                let loop =
+                    match tryStaticRangeDirection first last with
+                    | Some true -> ascending
+                    | Some false -> descending
+                    | None -> $"if {firstName} <= {lastName} {{\n\t{indent ascending}\n}} else {{\n\t{indent descending}\n}}"
+                $"{firstName}, {lastName} := {emit environment functionBindings first}, {emit environment functionBindings last}\n{target} = []int64{{}}\n{loop}"
             | Lir.ForEach(id, _, _, source, body) ->
                 let variable = symbolName "item" id
                 let bodyCode = emit (Map.add id variable environment) functionBindings body

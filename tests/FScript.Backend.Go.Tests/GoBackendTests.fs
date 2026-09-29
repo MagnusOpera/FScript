@@ -296,6 +296,23 @@ type GoBackendTests() =
             Assert.That(program, Does.Not.Contain("value85"), program)
             Assert.That(program, Does.Not.Contain("value86"), program)
             Assert.That(program, Does.Contain("os.Stdout.WriteString(fusedMapped"), program)
+            Assert.That(program, Does.Not.Contain("if fusedFirst"), program)
+            Assert.That(Regex.IsMatch(program, @"for fusedItem\d+ := fusedFirst\d+; fusedItem\d+ <= fusedLast\d+; fusedItem\d+\+\+"), Is.True, program)
+            Assert.That(Regex.IsMatch(program, @"fusedItem\d+ >= fusedLast\d+"), Is.False, program)
+
+    [<Test>]
+    member _.``Constant descending ranges omit the unreachable ascending loop`` () =
+        let compiled =
+            match Compiler.compile { Program = Parser.parseProgram "[3..1] |> List.map Int.toString |> List.iter Console.writeLine"; Externs = [] } with
+            | Ok value -> value
+            | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
+        match GoBackend.generate { ModuleName = "fscript.generated/descendingrange" } compiled.Lir with
+        | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok files ->
+            let program = files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
+            Assert.That(program, Does.Not.Contain("if fusedFirst"), program)
+            Assert.That(Regex.IsMatch(program, @"for fusedItem\d+ := fusedFirst\d+; fusedItem\d+ >= fusedLast\d+; fusedItem\d+--"), Is.True, program)
+            Assert.That(Regex.IsMatch(program, @"fusedItem\d+ <= fusedLast\d+"), Is.False, program)
 
     [<Test>]
     member _.``Structural record consumers specialize to the source representation`` () =
