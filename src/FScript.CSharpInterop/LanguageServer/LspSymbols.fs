@@ -300,6 +300,19 @@ let queryValues : string -> string -> string list option
         stdlibVirtualSources |> Map.tryFind (normalizeStdlibUri uri)
 
     let private lspTypeToString (t: Type) =
+        // Keep variable identities visible across a complete function signature.
+        let showTypeVariables = match t with | TFun _ -> true | _ -> false
+        let variableNames = Dictionary<int, string>()
+        let variableName id =
+            match variableNames.TryGetValue(id) with
+            | true, name -> name
+            | _ ->
+                let index = variableNames.Count
+                let letter = char (int 'a' + index % 26)
+                let suffix = if index < 26 then "" else string (index / 26)
+                let name = $"'{letter}{suffix}"
+                variableNames[id] <- name
+                name
         let rec go t =
             match t with
             | TUnit -> "unit"
@@ -323,7 +336,8 @@ let queryValues : string -> string -> string list option
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
-            | TVar _ -> "unknown"
+            | TNumeric _ -> "numeric"
+            | TVar id -> if showTypeVariables then variableName id else "unknown"
         and postfixArg t =
             match t with
             | TFun _ | TTuple _ | TRecord _ -> sprintf "(%s)" (go t)

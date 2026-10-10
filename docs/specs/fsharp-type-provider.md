@@ -60,7 +60,7 @@ Rejected:
 - unions
 - named/custom types
 - function values in argument/return positions
-- unresolved type variables
+- unresolved type variables, including `numeric` meta-types (exported .NET signatures must specialize them to `int` or `float`)
 - non-string map keys
 
 ## Runtime compatibility policy

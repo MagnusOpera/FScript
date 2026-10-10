@@ -20,6 +20,7 @@ type Type =
     | TUnion of string * Map<string, Type option>
     | TTypeToken
     | TVar of int
+    | TNumeric of int
 
 [<StructuralEquality; StructuralComparison>]
 type Scheme = Forall of int list * Type
@@ -36,6 +37,11 @@ module Types =
 #endif
         TVar id
 
+    let freshNumeric () =
+        match freshVar () with
+        | TVar id -> TNumeric id
+        | _ -> failwith "Expected fresh type variable"
+
     let rec ftvType t =
         match t with
         | TUnit | TInt | TFloat | TBool | TString -> Set.empty
@@ -47,7 +53,7 @@ module Types =
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
         | TNamed _ | TUnion _ | TTypeToken -> Set.empty
-        | TVar v -> Set.singleton v
+        | TVar v | TNumeric v -> Set.singleton v
 
     let ftvScheme (Forall (vars, t)) =
         Set.difference (ftvType t) (Set.ofList vars)
@@ -89,6 +95,7 @@ module Types =
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
+            | TNumeric _ -> "numeric"
             | TVar v ->
                 let letter = char (int 'a' + (v % 26))
                 let suffix = v / 26

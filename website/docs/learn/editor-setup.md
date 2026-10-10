@@ -43,3 +43,9 @@ The extension uses .NET runtime acquisition via `.NET Install Tool` when needed 
 
 - Continue with [Language Tour](./language-tour).
 - Go deeper in [Language chapters](/manual/language/values-and-bindings).
+
+## Numeric signatures
+
+The extension highlights `numeric` annotations and shows inferred arithmetic signatures such as `(x: numeric) -> (y: numeric) -> numeric`. An `int` or `float` annotation specializes a shared arithmetic type. Mixed numeric types and nonnumeric calls are reported as errors.
+
+See [Type System](../language/type-system) for examples and the type hierarchy.

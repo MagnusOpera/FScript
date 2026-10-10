@@ -70,6 +70,20 @@ test("session submissions retain declarations", () => {
   });
 });
 
+test("numeric constraints persist across session applications", () => {
+  const session = createSession();
+  submit(session, "let add x y = x + y");
+  assert.equal(submit(session, "add 1 2").value.value, 3n);
+  assert.equal(submit(session, "add 1.5 2.6").value.value, 4.1);
+  for (const call of ['add "toto" "titi"', "add true false", "add 1 2.6"]) {
+    assert.throws(() => submit(session, call), error => {
+      assert.equal(error.phase, "type");
+      return true;
+    });
+  }
+  assert.equal(submit(session, "add 3 4").value.value, 7n);
+});
+
 test("errors are structured and span-aware", () => {
   assert.throws(
     () => run("let = 1"),

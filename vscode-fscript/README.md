@@ -3,9 +3,25 @@
 This extension provides:
 
 - `.fss` language registration
-- TextMate syntax highlighting
+- TextMate syntax highlighting, including `numeric` type annotations
 - LSP client wiring to `FScript.LanguageServer`
 - Configurable inlay hints and server settings
+
+## Numeric Types
+
+Hover and inlay hints display unresolved arithmetic types as `numeric`:
+
+```fsharp
+let add x y = x + y
+// add: (x: numeric) -> (y: numeric) -> numeric
+
+let addInt x (y: int) = x + y
+// addInt: (x: int) -> (y: int) -> int
+```
+
+Each `add` call accepts either two integers or two floats. Mixed numeric types and nonnumeric operands produce diagnostics; no implicit conversion is performed. `numeric` is also supported in explicit annotations and syntax highlighting. Remainder (`%`) accepts integers only.
+
+See the [type-system guide](../website/docs/language/type-system.md) for the type hierarchy.
 
 ## Development
 

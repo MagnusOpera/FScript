@@ -46,7 +46,9 @@ match firstEven with
 ## Type label formatting
 
 Formatting follows LSP-friendly type rendering rules:
-- unknown inferred variable: `unknown`
+- unresolved variables in complete inferred function signatures use stable names (`'a`, `'b`, etc.) assigned in first-occurrence order; repeated variables share the same name across parameters and the result. For example, `let apply f x = f x` preserves distinct argument and result variables.
+- unresolved numeric variables: `numeric` in hover, signatures, and inlay hints; `let add x y = x + y` displays `add: (x: numeric) -> (y: numeric) -> numeric`, specializing to `int` or `float` when constrained.
+- unknown inferred variable outside a complete function signature: `unknown`
 - map value type when key domain is unresolved: `unknown map`
 
 Examples:
@@ -102,3 +104,7 @@ Behavior:
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)
 - Supported types: [`supported-types.md`](./supported-types.md)
 - Map matching: [`map-matching-reference.md`](./map-matching-reference.md)
+
+## VS Code Syntax Highlighting
+
+The language server classifies `numeric` as a type in semantic tokens. The extension also recognizes `numeric` annotations as `storage.type.fscript`, alongside built-in types, even when the language server is inactive. Identifier substrings such as `numericValue` do not receive this type scope.

@@ -120,6 +120,11 @@ This document specifies the value and type system used by the interpreter.
 - Hindley–Milner style inference.
 - Independent inference calls may run concurrently; fresh type-variable identities remain isolated from races between callers.
 - Let-polymorphism.
+- `numeric` is a constrained inference meta-type that can specialize to `int` or `float`; it is not a distinct runtime value type and introduces no implicit conversion.
+- Arithmetic operators (`+`, `-`, `*`, `/`) unify both operand types and preserve that type as the result. Unresolved operands carry a shared numeric constraint: `let add x y = x + y` displays `numeric -> numeric -> numeric`. Each application specializes independently, returning `int` for integer operands or `float` for float operands.
+- Arithmetic rejects mixed `int`/`float` operands and nonnumeric operands during inference, including calls through polymorphic functions, aliases, and higher-order functions. A concrete annotation specializes the whole arithmetic relationship: `let add x (y: int) = x + y` infers `int -> int -> int`.
+- Numeric comparisons (`<`, `>`, `<=`, `>=`) apply the same operand constraint and return `bool`. Remainder (`%`) accepts integers only and infers `int -> int -> int`, matching runtime support.
+- Numeric variables retain separate identities internally. Identical `numeric` labels do not imply that unrelated numeric expressions or parameters are tied; operators and ordinary unification establish the relationship.
 - Structural typing for record values.
 - Field access is typed when the target expression is inferred as a record.
 

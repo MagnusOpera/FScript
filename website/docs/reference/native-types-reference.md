@@ -111,3 +111,17 @@ Primitive built-in types:
 - `unit`
 
 These do not use indexers. For parsing and formatting helpers, see [Int, Float, Bool Modules](../stdlib/scalars) and [String Module](../stdlib/string).
+
+## Numeric meta-type
+
+`numeric` constrains inference to `int` or `float`. It is available in function annotations and inferred editor signatures, with no additional runtime value shape.
+
+| Operation | Operand types | Result |
+| --- | --- | --- |
+| `+`, `-`, `*`, `/` | Two `int` values or two `float` values | Same concrete type as the operands |
+| `<`, `>`, `<=`, `>=` | Two `int` values or two `float` values | `bool` |
+| `%` | Two `int` values | `int` |
+
+Mixed numeric types and nonnumeric operands are rejected. `+` does not concatenate strings, lists, or maps. Use `String.concat` for strings and `@` for lists.
+
+See [Type System](../language/type-system) for the type hierarchy and specialization examples.

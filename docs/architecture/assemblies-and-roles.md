@@ -28,7 +28,7 @@ Role:
 Responsibilities:
 - Core language model and AST.
 - Lexer and parser.
-- Type system and Hindley-Milner inference.
+- Type system and Hindley-Milner inference, including identity-bearing `TNumeric` variables restricted to `int` or `float`; substitution, generalization, and instantiation preserve their constraints, while renderers display unresolved variables as `numeric`.
 - Optional per-inference local-variable type capture for editor features; ordinary script inference does not allocate this telemetry.
 - Evaluator and value model.
 - Incremental inference and evaluation state for REPL-like hosts.

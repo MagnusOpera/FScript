@@ -75,7 +75,7 @@
       "patterns": [
         {
           "name": "storage.type.fscript",
-          "match": "\\b(int|float|string|bool|unit|list|option|map)\\b"
+          "match": "\\b(int|float|numeric|string|bool|unit|list|option|map)\\b"
         }
       ]
     },

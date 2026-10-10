@@ -113,7 +113,7 @@ module LspHandlers =
         |> Set.ofList
 
     let private builtinTypeTokenSet =
-        [ "unit"; "int"; "float"; "bool"; "string"
+        [ "unit"; "int"; "float"; "numeric"; "bool"; "string"
           "list"; "option"; "map"; "task"
           "Environment"; "FsKind" ]
         |> Set.ofList

@@ -12,9 +12,11 @@ module TypeInfer =
         else
             let rec apply current =
                 match current with
-                | TVar v ->
+                | TVar v
+                | TNumeric v ->
                     match s |> Map.tryFind v with
-                    | Some mapped -> apply mapped
+                    | Some mapped when mapped <> current -> apply mapped
+                    | Some _ -> current
                     | None -> current
                 | TList t1 -> TList (apply t1)
                 | TTask t1 -> TTask (apply t1)
@@ -50,7 +52,7 @@ module TypeInfer =
     let private occurs (v: int) (t: Type) =
         let rec loop current =
             match current with
-            | TVar currentVar -> currentVar = v
+            | TVar currentVar | TNumeric currentVar -> currentVar = v
             | TList item
             | TTask item
             | TOption item -> loop item
@@ -118,6 +120,7 @@ module TypeInfer =
                 | TVar v, t
                 | t, TVar v ->
                     if t = TVar v then emptySubst
+                    elif t = TNumeric v then Map.ofList [ v, t ]
                     elif occurs v t then raise (TypeException { Message = "Occurs check failed"; Span = span })
                     else Map.ofList [ v, t ]
                 | TNamed name, t ->
@@ -134,6 +137,12 @@ module TypeInfer =
                         match t with
                         | TNamed other when other = name -> emptySubst
                         | _ -> raise (TypeException { Message = sprintf "Type mismatch: %s vs %s" (Types.typeToString a) (Types.typeToString b); Span = span })
+                | TNumeric v, TNumeric w ->
+                    if v = w then emptySubst else Map.ofList [ v, TNumeric w ]
+                | TNumeric v, (TInt | TFloat as concrete)
+                | (TInt | TFloat as concrete), TNumeric v -> Map.ofList [ v, concrete ]
+                | TNumeric _, other | other, TNumeric _ ->
+                    raise (TypeException { Message = sprintf "Expected numeric type, got %s" (Types.typeToString other); Span = span })
                 | _ ->
                     raise (TypeException { Message = sprintf "Type mismatch: %s vs %s" (Types.typeToString a) (Types.typeToString b); Span = span })
         uni Set.empty t1 t2
@@ -143,6 +152,10 @@ module TypeInfer =
         let rec subst t =
             match t with
             | TVar v -> freshMap |> Map.tryFind v |> Option.defaultValue t
+            | TNumeric v ->
+                match freshMap |> Map.tryFind v with
+                | Some (TVar fresh) -> TNumeric fresh
+                | _ -> t
             | TList a -> TList (subst a)
             | TTask a -> TTask (subst a)
             | TTuple ts -> TTuple (ts |> List.map subst)
@@ -259,6 +272,7 @@ module TypeInfer =
         | "unit" -> Some TUnit
         | "int" -> Some TInt
         | "float" -> Some TFloat
+        | "numeric" -> Some (Types.freshNumeric())
         | "bool" -> Some TBool
         | "string" -> Some TString
         | _ -> None
@@ -334,6 +348,7 @@ module TypeInfer =
         | TRName "unit" -> TUnit
         | TRName "int" -> TInt
         | TRName "float" -> TFloat
+        | TRName "numeric" -> Types.freshNumeric()
         | TRName "bool" -> TBool
         | TRName "string" -> TString
         | TRName name ->
@@ -530,11 +545,13 @@ module TypeInfer =
         | PTypeRef (tref, span) ->
             Map.empty, annotationTypeFromRef typeDefs span tref
 
-    let private numericResult (t: Type) (span: Span) =
+    let private constrainNumeric (typeDefs: Map<string, Type>) (t: Type) (span: Span) =
         match t with
-        | TInt | TFloat -> t
-        | TVar _ -> TInt
-        | _ -> raise (TypeException { Message = "Expected numeric type"; Span = span })
+        | TInt | TFloat | TNumeric _ -> emptySubst, t
+        | _ ->
+            let numeric = Types.freshNumeric()
+            let subst = unify typeDefs t numeric span
+            subst, applyType subst numeric
 
     let private validateMapKeyTypes (span: Span) (t: Type) : unit =
         let rec loop t =
@@ -1079,18 +1096,18 @@ module TypeInfer =
                 let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 b
                 let s3 = unify typeDefs (applyType s2 t1) t2 span
                 let t = applyType s3 t2
-                let resultType =
+                let sOp, resultType =
                     match op with
-                    | "+" | "-" | "*" | "/" | "%" -> numericResult t span
-                    | "=" -> TBool
+                    | "+" | "-" | "*" | "/" ->
+                        constrainNumeric typeDefs t span
+                    | "%" -> unify typeDefs t TInt span, TInt
+                    | "=" -> emptySubst, TBool
                     | "<" | ">" | "<=" | ">=" ->
-                        let _ = numericResult t span
-                        TBool
-                    | "&&" | "||" ->
-                        let _ = unify typeDefs t TBool span
-                        TBool
+                        let constraintSubst, _ = constrainNumeric typeDefs t span
+                        constraintSubst, TBool
+                    | "&&" | "||" -> unify typeDefs t TBool span, TBool
                     | _ -> raise (TypeException { Message = sprintf "Unknown operator %s" op; Span = span })
-                let s = compose s3 (compose s2 s1)
+                let s = compose sOp (compose s3 (compose s2 s1))
                 s, resultType, asTyped expr resultType
         | ESome (value, _) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env value

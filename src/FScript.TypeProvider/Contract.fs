@@ -214,6 +214,8 @@ module Contract =
             Error $"{typePath}: type tokens are not supported in exported signatures."
         | TFun _ ->
             Error $"{typePath}: function values are not supported in exported signatures."
+        | TNumeric _ ->
+            Error $"{typePath}: unresolved numeric type is not supported in exported signatures."
         | TVar id ->
             Error $"{typePath}: unresolved generic type variable '{id}' is not supported in exported signatures."
 

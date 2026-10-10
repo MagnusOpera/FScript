@@ -80,7 +80,8 @@ module internal HostDecode =
         | TTypeToken
         | TTask _
         | TFun _
-        | TVar _ -> None
+        | TVar _
+        | TNumeric _ -> None
         | _ -> None
 
     let rec decodeXmlValue (target: Type) (el: XElement) : Value option =
@@ -140,7 +141,8 @@ module internal HostDecode =
         | TTypeToken
         | TTask _
         | TFun _
-        | TVar _ -> None
+        | TVar _
+        | TNumeric _ -> None
 
 module internal HostEncode =
     let private quoted (value: string) = JsonSerializer.Serialize(value)

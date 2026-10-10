@@ -68,6 +68,112 @@ type TypeInferenceTests () =
             | _ -> Assert.Fail("Expected a -> a")
         | _ -> Assert.Fail("Expected let")
 
+    [<TestCase("+")>]
+    [<TestCase("-")>]
+    [<TestCase("*")>]
+    [<TestCase("/")>]
+    member _.``Arithmetic functions preserve a shared numeric operand and result type`` (op: string) =
+        let typed = Helpers.infer $"let calculate x y = x {op} y\n(calculate 1 2, calculate 1.5 2.6)"
+        match typed.[0] with
+        | TypeInfer.TSLet (_, _, TFun (TNumeric a, TFun (TNumeric b, TNumeric result)), _, _, _) ->
+            a |> should equal b
+            a |> should equal result
+        | _ -> Assert.Fail("Expected numeric -> numeric -> numeric")
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TFloat ])
+        | _ -> Assert.Fail("Expected tuple expression")
+
+    [<Test>]
+    member _.``Numeric constraints reject unsupported polymorphic applications`` () =
+        for argument in [ "true"; "\"text\""; "[1]"; "Some 1"; "{ Value = 1 }"; "fun x -> x" ] do
+            let source = $"let add x y = x + y\nadd ({argument}) ({argument})"
+            (fun () -> Helpers.infer source |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Numeric constraints survive aliases higher order functions and nested lets`` () =
+        for binding in [ "let sum = add"; "let sum = (fun f -> f) add"; "let sum x y =\n    let inner a b = a + b\n    inner x y" ] do
+            let prefix = $"let add x y = x + y\n{binding}\n"
+            match Helpers.infer (prefix + "(sum 1 2, sum 1.5 2.6)") |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TFloat ])
+            | _ -> Assert.Fail("Expected tuple expression")
+            (fun () -> Helpers.infer (prefix + "sum true false") |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Numeric variables remain independent unless unified`` () =
+        let typed = Helpers.infer "let calculate x y = (x + x, y + y)\ncalculate 1 2.6"
+        match typed |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TFloat ])
+        | _ -> Assert.Fail("Expected tuple expression")
+
+    [<Test>]
+    member _.``Numeric constraints on captured parameters are not generalized`` () =
+        let source = "let calculate x =\n    let addY y = x + y\n    (addY 1, addY 1.5)"
+        (fun () -> Helpers.infer source |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Recursive functions preserve numeric constraints`` () =
+        let prefix = "let rec sum stop x y = if stop then x + y else sum true x y\n"
+        match Helpers.infer (prefix + "(sum true 1 2, sum false 1.5 2.6)") |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TFloat ])
+        | _ -> Assert.Fail("Expected tuple expression")
+        (fun () -> Helpers.infer (prefix + "sum true true false") |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Logical and numeric constraints cannot share an operand`` () =
+        (fun () -> Helpers.infer "let incompatible x = (x && x, x + x)" |> ignore)
+        |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Concrete numeric annotations specialize all addition parameters`` () =
+        let typed = Helpers.infer "let add x (y: int) = x + y\nadd 1 2"
+        match typed.[0] with
+        | TypeInfer.TSLet (_, _, t, _, _, _) -> t |> should equal (TFun (TInt, TFun (TInt, TInt)))
+        | _ -> Assert.Fail("Expected function binding")
+        (fun () -> Helpers.infer "let add x (y: int) = x + y\nadd 1.5 2" |> ignore)
+        |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Numeric annotations specialize independently on each application`` () =
+        let source = "let add (x: numeric) (y: numeric): numeric = x + y\n(add 1 2, add 1.5 2.6)"
+        match Helpers.infer source |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TInt; TFloat ])
+        | _ -> Assert.Fail("Expected tuple expression")
+        (fun () -> Helpers.infer "let id (x: numeric) = x\nid true" |> ignore)
+        |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Numeric comparison functions reject nonnumeric applications`` () =
+        let prefix = "let less x y = x < y\n"
+        match Helpers.infer (prefix + "(less 1 2, less 1.5 2.6)") |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TTuple [ TBool; TBool ])
+        | _ -> Assert.Fail("Expected tuple expression")
+        (fun () -> Helpers.infer (prefix + "less true false") |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Remainder specializes to integers matching runtime support`` () =
+        let typed = Helpers.infer "let remainder x y = x % y\nremainder 5 2"
+        match typed.[0] with
+        | TypeInfer.TSLet (_, _, t, _, _, _) -> t |> should equal (TFun (TInt, TFun (TInt, TInt)))
+        | _ -> Assert.Fail("Expected function binding")
+        (fun () -> Helpers.infer "1.5 % 2.6" |> ignore) |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Polymorphic addition evaluates integer and float applications`` () =
+        Helpers.evalToString "let add x y = x + y\n(add 1 2, add 1.5 2.6)"
+        |> should equal "(3, 4.1)"
+
+    [<Test>]
+    member _.``Arithmetic with a concrete operand specializes the function`` () =
+        let typed = Helpers.infer "let increment x = x + 1.5\nincrement 2.6"
+        match typed.[0] with
+        | TypeInfer.TSLet (_, _, t, _, _, _) -> t |> should equal (TFun (TFloat, TFloat))
+        | _ -> Assert.Fail("Expected function binding")
+
+    [<Test>]
+    member _.``Arithmetic still rejects mixed operands and concrete nonnumeric operands`` () =
+        for source in [ "let add x y = x + y\nadd 1 2.6"; "true + false"; "\"a\" + \"b\"" ] do
+            (fun () -> Helpers.infer source |> ignore) |> should throw typeof<TypeException>
+
     [<Test>]
     member _.``Uses annotated record parameter for field access`` () =
         let typed =
