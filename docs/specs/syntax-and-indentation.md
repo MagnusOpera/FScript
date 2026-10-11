@@ -64,7 +64,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - map entries always use bracketed keys (`[expr] = value`)
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
-  - keys are bracketed expressions (`[expr]`) and must infer to `string`
+  - keys are bracketed expressions (`[expr]`) and must infer to `string`, `int`, `bool`, or a payload-free union
   - multiline map literals keep `{` on the same line as the first entry and `}` on the same line as the last entry
   - multiline example:
   ```fsharp
@@ -205,6 +205,7 @@ let ops =
 ```
 
 ## Type declaration forms
+- Map key annotations use `value map[key]` (for example `string map[int]` or `int map[Priority]`); `value map` remains the string-keyed shorthand.
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`
 - Explicit recursive:

@@ -9,6 +9,28 @@ open FScript.Runtime.Tests.HostTestHelpers
 [<TestFixture>]
 type JsonExternsTests () =
     [<Test>]
+    member _.``json maps support bool keys`` () =
+        let target = TMap(TBool, TInt)
+        match invoke JsonExterns.deserialize [ VTypeToken target; VString "{\"true\":1,\"false\":2}" ] with
+        | VOption(Some(VMap values)) ->
+            Assert.That(values.ContainsKey(MKBool true), Is.True)
+            Assert.That(values.ContainsKey(MKBool false), Is.True)
+            match invoke JsonExterns.serialize [ VMap values ] with
+            | VOption(Some(VString json)) ->
+                use doc = JsonDocument.Parse(json)
+                Assert.That(doc.RootElement.GetProperty("true").GetInt32(), Is.EqualTo(1))
+                Assert.That(doc.RootElement.GetProperty("false").GetInt32(), Is.EqualTo(2))
+            | _ -> Assert.Fail("Expected serialized bool-keyed map")
+        | _ -> Assert.Fail("Expected bool-keyed map")
+
+    [<Test>]
+    member _.``json rejects union map keys`` () =
+        let value = VMap(Map.ofList [ MKUnionCase("Color", "Red"), VInt 1L ])
+        match invoke JsonExterns.serialize [ value ] with
+        | VOption None -> ()
+        | _ -> Assert.Fail("Expected unsupported union map keys to return None")
+
+    [<Test>]
     member _.``json_deserialize returns None for type mismatch`` () =
         let target = TRecord (Map.ofList [ "Age", TInt ])
         match invoke JsonExterns.deserialize [ VTypeToken target; VString "{\"Age\":\"x\"}" ] with

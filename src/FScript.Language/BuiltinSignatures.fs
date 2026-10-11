@@ -40,18 +40,18 @@ module BuiltinSignatures =
           "Option.isNone", Forall([ 0 ], TFun(TOption(TVar 0), TBool))
           "Option.isSome", Forall([ 0 ], TFun(TOption(TVar 0), TBool))
           "Option.map", Forall([ 0; 1 ], TFun(TFun(TVar 0, TVar 1), TFun(TOption(TVar 0), TOption(TVar 1))))
-          "Map.empty", Forall([ 0 ], TMap(TString, TVar 0))
-          "Map.tryGet", Forall([ 0 ], TFun(TString, TFun(TMap(TString, TVar 0), TOption(TVar 0))))
-          "Map.containsKey", Forall([ 0 ], TFun(TString, TFun(TMap(TString, TVar 0), TBool)))
-          "Map.add", Forall([ 0 ], TFun(TString, TFun(TVar 0, TFun(TMap(TString, TVar 0), TMap(TString, TVar 0)))))
-          "Map.ofList", Forall([ 0 ], TFun(TList(TTuple [ TString; TVar 0 ]), TMap(TString, TVar 0)))
-          "Map.fold", Forall([ 0; 1 ], TFun(TFun(TVar 1, TFun(TString, TFun(TVar 0, TVar 1))), TFun(TVar 1, TFun(TMap(TString, TVar 0), TVar 1))))
-          "Map.count", Forall([ 0 ], TFun(TMap(TString, TVar 0), TInt))
-          "Map.filter", Forall([ 0 ], TFun(TFun(TString, TFun(TVar 0, TBool)), TFun(TMap(TString, TVar 0), TMap(TString, TVar 0))))
-          "Map.choose", Forall([ 0; 1 ], TFun(TFun(TString, TFun(TVar 0, TOption(TVar 1))), TFun(TMap(TString, TVar 0), TMap(TString, TVar 1))))
-          "Map.map", Forall([ 0; 1 ], TFun(TFun(TVar 0, TVar 1), TFun(TMap(TString, TVar 0), TMap(TString, TVar 1))))
-          "Map.iter", Forall([ 0 ], TFun(TFun(TString, TFun(TVar 0, TUnit)), TFun(TMap(TString, TVar 0), TUnit)))
-          "Map.remove", Forall([ 0 ], TFun(TString, TFun(TMap(TString, TVar 0), TMap(TString, TVar 0)))) ]
+          "Map.empty", Forall([ 0; 1 ], TMap(TVar 1, TVar 0))
+          "Map.tryGet", Forall([ 0; 1 ], TFun(TVar 1, TFun(TMap(TVar 1, TVar 0), TOption(TVar 0))))
+          "Map.containsKey", Forall([ 0; 1 ], TFun(TVar 1, TFun(TMap(TVar 1, TVar 0), TBool)))
+          "Map.add", Forall([ 0; 1 ], TFun(TVar 1, TFun(TVar 0, TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 0)))))
+          "Map.ofList", Forall([ 0; 1 ], TFun(TList(TTuple [ TVar 1; TVar 0 ]), TMap(TVar 1, TVar 0)))
+          "Map.fold", Forall([ 0; 1; 2 ], TFun(TFun(TVar 2, TFun(TVar 1, TFun(TVar 0, TVar 2))), TFun(TVar 2, TFun(TMap(TVar 1, TVar 0), TVar 2))))
+          "Map.count", Forall([ 0; 1 ], TFun(TMap(TVar 1, TVar 0), TInt))
+          "Map.filter", Forall([ 0; 1 ], TFun(TFun(TVar 1, TFun(TVar 0, TBool)), TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 0))))
+          "Map.choose", Forall([ 0; 1; 2 ], TFun(TFun(TVar 1, TFun(TVar 0, TOption(TVar 2))), TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 2))))
+          "Map.map", Forall([ 0; 1; 2 ], TFun(TFun(TVar 0, TVar 2), TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 2))))
+          "Map.iter", Forall([ 0; 1 ], TFun(TFun(TVar 1, TFun(TVar 0, TUnit)), TFun(TMap(TVar 1, TVar 0), TUnit)))
+          "Map.remove", Forall([ 0; 1 ], TFun(TVar 1, TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 0)))) ]
         |> Map.ofList
 
     let builtinReservedNames : Set<string> =

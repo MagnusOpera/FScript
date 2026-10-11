@@ -155,6 +155,10 @@ let private mapKeyToTagged key =
         createObj [ "kind" ==> "string"; "value" ==> value ]
     | MKInt value ->
         createObj [ "kind" ==> "int"; "value" ==> value ]
+    | MKBool value ->
+        createObj [ "kind" ==> "bool"; "value" ==> value ]
+    | MKUnionCase (typeName, caseName) ->
+        createObj [ "kind" ==> "union"; "typeName" ==> typeName; "caseName" ==> caseName; "value" ==> nullObj ]
 
 let rec private valueToTagged value : obj =
     match value with
@@ -275,7 +279,9 @@ let rec private valueFromJs value : Value =
                             match keyValue with
                             | VString text -> MKString text
                             | VInt number -> MKInt number
-                            | _ -> failwith "Map key must be string or int"
+                            | VBool flag -> MKBool flag
+                            | VUnionCase (typeName, caseName, None) -> MKUnionCase(typeName, caseName)
+                            | _ -> failwith "Map key must be string, int, bool, or a payload-free union case"
                         key, getRequiredProperty "value" entry |> valueFromJs)
                     |> Map.ofList
                     |> VMap

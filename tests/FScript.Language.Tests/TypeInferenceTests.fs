@@ -781,14 +781,43 @@ type TypeInferenceTests () =
         | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
-    member _.``Reports type error for int map literal keys`` () =
-        let act () = Helpers.infer "{ [1] = 2; [3] = 4 }" |> ignore
-        act |> should throw typeof<TypeException>
+    member _.``Infers int bool and payload-free union map keys`` () =
+        let cases =
+            [ "{ [1] = 2; [3] = 4 }", TInt
+              "{ [true] = 2; [false] = 4 }", TBool
+              "type Color = | Red | Blue\n{ [Red] = 2; [Blue] = 4 }", TNamed "Color" ]
+        for source, keyType in cases do
+            match Helpers.infer source |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal (TMap(keyType, TInt))
+            | _ -> Assert.Fail("Expected map expression")
 
     [<Test>]
     member _.``Reports type error for unsupported map key type`` () =
-        let act () = Helpers.infer "{ [true] = 2 }" |> ignore
+        let act () = Helpers.infer "{ [1.5] = 2 }" |> ignore
         act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Rejects payload-bearing union map keys`` () =
+        let act () = Helpers.infer "type Color = | Red | Blue of int\n{ [Red] = 1 }" |> ignore
+        act |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Infers explicitly annotated non-string maps`` () =
+        let source = "type Color = | Red | Blue\nlet get (m: int map[Color]) = m[Red]\nget { [Red] = 5 }"
+        match Helpers.infer source |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TOption TInt)
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Infers unannotated map function arguments from keys`` () =
+        let cases =
+            [ "type Color = | Red | Blue\nlet get m = m[Red]\nget { [Red] = 5 }"
+              "let get m = m[true]\nget { [true] = 5 }"
+              "let get m = Map.tryGet 1 m\nget { [1] = 5 }" ]
+        for source in cases do
+            match Helpers.infer source |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal (TOption TInt)
+            | _ -> Assert.Fail("Expected expression")
 
     [<Test>]
     member _.``Infers map literal with string key expression`` () =
@@ -868,3 +897,46 @@ type TypeInferenceTests () =
         match typed |> List.last with
         | TypeInfer.TSExpr te -> te.Type |> should equal TString
         | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Postfix map key annotations compose with containers`` () =
+        let sources =
+            [ "let f (m: string map[int]) = m[0]\nf { [0] = \"ok\" }", TOption TString
+              "let f (m: int list map[bool]) = m[true]\nf { [true] = [1] }", TOption(TList TInt)
+              "let f (m: int map[int] list) = m\nf [{ [0] = 1 }]", TList(TMap(TInt, TInt))
+              "let f (m: string map[string]) = m\nf { [\"a\"] = \"ok\" }", TMap(TString, TString)
+              "let f (m: string map[numeric]) = m\nf { [0] = \"ok\" }", TMap(TInt, TString) ]
+        for source, expected in sources do
+            match Helpers.infer source |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal expected
+            | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``Rejects angle bracket map type syntax`` () =
+        let act () = Helpers.parse "let f (m: map<int, string>) = m" |> ignore
+        act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Numeric map keys constrain function arguments to int`` () =
+        let sources =
+            [ "let make k = { [k + k] = \"value\" }\nmake 2", TMap(TInt, TString)
+              "let has k m = Map.containsKey (k + k) m\nhas 2 { [4] = \"value\" }", TBool
+              "let has k m = m |> Map.containsKey (k + k)\nhas 2 { [4] = \"value\" }", TBool ]
+        for source, expected in sources do
+            match Helpers.infer source |> List.last with
+            | TypeInfer.TSExpr te -> te.Type |> should equal expected
+            | _ -> Assert.Fail("Expected expression")
+        let reject () = Helpers.infer "let make k = { [k + k] = 1 }\nmake 2.5" |> ignore
+        reject |> should throw typeof<TypeException>
+
+    [<Test>]
+    member _.``Map value numeric inference still permits floats`` () =
+        match Helpers.infer "let make v = { [true] = v + v }\nmake 2.5" |> List.last with
+        | TypeInfer.TSExpr te -> te.Type |> should equal (TMap(TBool, TFloat))
+        | _ -> Assert.Fail("Expected expression")
+
+    [<Test>]
+    member _.``String keyed maps format with legacy shorthand`` () =
+        Types.typeToString (TMap(TString, TInt)) |> should equal "int map"
+        Types.typeToString (TMap(TInt, TString)) |> should equal "string map[int]"
+        Types.typeToString (TMap(TBool, TList TInt)) |> should equal "int list map[bool]"

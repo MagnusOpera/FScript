@@ -19,6 +19,10 @@ module internal HostDecode =
             match Int64.TryParse(raw) with
             | true, value -> Some (MKInt value)
             | _ -> None
+        | TBool ->
+            match Boolean.TryParse(raw) with
+            | true, value -> Some (MKBool value)
+            | _ -> None
         | _ -> None
 
     let rec decodeJson (target: Type) (el: JsonElement) : Value option =
@@ -151,6 +155,8 @@ module internal HostEncode =
         match key with
         | MKString value -> Some value
         | MKInt value -> Some (string value)
+        | MKBool value -> Some (if value then "true" else "false")
+        | MKUnionCase _ -> None
 
     let rec private encodeJsonValue (value: Value) : string option =
         match value with

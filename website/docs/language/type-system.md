@@ -39,7 +39,7 @@ This tree shows how inference variables can specialize. It describes inference a
 ├── Containers
 │   ├── 't list
 │   ├── 't option
-│   ├── 't map (string keys)
+│   ├── 't map (string keys), 't map[key] (explicit key type)
 │   └── 't task
 ├── Structured values
 │   ├── tuples: (t1 * t2 * ...)

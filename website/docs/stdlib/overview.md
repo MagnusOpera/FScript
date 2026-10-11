@@ -31,7 +31,7 @@ Everything in this section is available in every script without imports.
 - Pipe-friendly usage is preferred.
 - Task values use the native `'a task` type form.
 - `Task.spawn` starts concurrent work and `Task.await` synchronizes on the result when the embedding host includes the default task externs.
-- Map keys are always `string` (map indexer type is fixed to string).
+- Map keys may be `string`, `int`, `bool`, or unions whose cases all have no payload. Use `value map[key]` for explicit key annotations; plain `value map` means string keys.
 - Many parsing/indexing operations return `option` instead of throwing.
 
 ## Built-in types

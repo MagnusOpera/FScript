@@ -68,6 +68,8 @@ module Eval =
                 match key with
                 | MKString s -> $"\"{s}\""
                 | MKInt i -> string i
+                | MKBool b -> if b then "true" else "false"
+                | MKUnionCase (typeName, caseName) -> $"{typeName}.{caseName}"
             fields
             |> Map.toList
             |> List.map (fun (key, value) -> sprintf "%s => %s" (mapKeyToString key) (valueToInterpolationString value))
@@ -118,12 +120,16 @@ module Eval =
         match key with
         | MKString s -> VString s
         | MKInt i -> VInt i
+        | MKBool b -> VBool b
+        | MKUnionCase (typeName, caseName) -> VUnionCase(typeName, caseName, None)
 
     let private valueToMapKey (span: Span) (value: Value) : MapKey =
         match value with
         | VString s -> MKString s
         | VInt i -> MKInt i
-        | _ -> raise (EvalException { Message = "Map key must be string or int"; Span = span })
+        | VBool b -> MKBool b
+        | VUnionCase (typeName, caseName, None) -> MKUnionCase(typeName, caseName)
+        | _ -> raise (EvalException { Message = "Map key must be string, int, bool, or a payload-free union case"; Span = span })
 
     let rec private valueMatchesTypeRef (typeDefs: Map<string, Type>) (tref: TypeRef) (value: Value) : bool =
         let rec resolve (tref: TypeRef) : Type option =
@@ -142,6 +148,10 @@ module Eval =
             | TRPostfix (inner, "task") -> resolve inner |> Option.map TTask
             | TRPostfix (inner, "option") -> resolve inner |> Option.map TOption
             | TRPostfix (inner, "map") -> resolve inner |> Option.map (fun t -> TMap (TString, t))
+            | TRMap (keyType, valueType) ->
+                match (if keyType = TRName "numeric" then Some TInt else resolve keyType), resolve valueType with
+                | Some key, Some value -> Some (TMap(key, value))
+                | _ -> None
             | TRPostfix _ -> None
             | TRRecord fields ->
                 let shape = resolveFieldList fields |> Option.map Map.ofList
@@ -260,11 +270,7 @@ module Eval =
                 | PVar (name, _) ->
                     match envAcc.TryFind name with
                     | Some targetKeyValue ->
-                        let targetKey =
-                            match targetKeyValue with
-                            | VString s -> MKString s
-                            | VInt i -> MKInt i
-                            | _ -> raise (EvalException { Message = "Map key must be string or int"; Span = Ast.spanOfPattern keyPattern })
+                        let targetKey = valueToMapKey (Ast.spanOfPattern keyPattern) targetKeyValue
                         if not (remaining.ContainsKey targetKey) then
                             None
                         else
@@ -564,13 +570,14 @@ module Eval =
                         let keyValue = evalExpr runtime typeDefs env keyExpr
                         match keyValue with
                         | VString _
-                        | VInt _ ->
+                        | VInt _
+                        | VBool _
+                        | VUnionCase (_, _, None) ->
                             let key = valueToMapKey (Ast.spanOfExpr keyExpr) keyValue
                             let value = evalExpr runtime typeDefs env valueExpr
                             acc.Add(key, value)
                         | _ ->
-                            // Type checker guarantees string/int keys for map literals.
-                            raise (EvalException { Message = "Map literal keys must be string or int"; Span = Ast.spanOfExpr keyExpr })
+                            raise (EvalException { Message = "Unsupported map literal key"; Span = Ast.spanOfExpr keyExpr })
                     | MESpread spreadExpr ->
                         match evalExpr runtime typeDefs env spreadExpr with
                         | VMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
@@ -632,11 +639,11 @@ module Eval =
                         if current = index then Some head else loop tail (current + 1L)
 
                 if index < 0L then VOption None else loop values 0L |> VOption
-            | VMap mapValue, (VString _ | VInt _) ->
+            | VMap mapValue, (VString _ | VInt _ | VBool _ | VUnionCase (_, _, None)) ->
                 let key = valueToMapKey span keyValue
                 VOption (mapValue.TryFind key)
             | VMap _, _ ->
-                raise (EvalException { Message = "Map index key must be string or int"; Span = span })
+                raise (EvalException { Message = "Map index key must be string, int, bool, or a payload-free union case"; Span = span })
             | VList _, _ ->
                 raise (EvalException { Message = "List index must be int"; Span = span })
             | _ ->
@@ -918,6 +925,7 @@ module Eval =
             | TRPostfix (inner, "task") -> TTask (fromRef stack inner)
             | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
             | TRPostfix (inner, "map") -> TMap (TString, fromRef stack inner)
+            | TRMap (keyType, valueType) -> TMap((if keyType = TRName "numeric" then TInt else fromRef stack keyType), fromRef stack valueType)
             | TRPostfix (_, suffix) ->
                 raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
             | TRRecord fields ->

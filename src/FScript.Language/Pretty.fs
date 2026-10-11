@@ -40,6 +40,8 @@ module Pretty =
                 match key with
                 | MKString s -> $"\"{escapeStringLiteral s}\""
                 | MKInt i -> string i
+                | MKBool b -> if b then "true" else "false"
+                | MKUnionCase (typeName, caseName) -> $"{typeName}.{caseName}"
             fields
             |> Map.toList
             |> List.map (fun (key, value) -> sprintf "%s => %s" (mapKeyToString key) (valueToString value))

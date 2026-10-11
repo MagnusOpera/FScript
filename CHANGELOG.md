@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added int, bool, and payload-free union map keys.
+
 ## [0.79.0]
 
 

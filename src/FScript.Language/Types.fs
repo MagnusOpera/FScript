@@ -89,7 +89,7 @@ module Types =
             | TMap (tk, tv) ->
                 match tk with
                 | TString -> sprintf "%s map" (postfixArg tv)
-                | _ -> sprintf "map<%s, %s>" (go tk) (go tv)
+                | _ -> sprintf "%s map[%s]" (postfixArg tv) (go tk)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n

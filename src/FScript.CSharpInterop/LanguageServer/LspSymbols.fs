@@ -80,18 +80,18 @@ let map : ('a -> 'b) -> 'a option -> 'b option
     let private mapStdlibDoc =
         stdlibDoc "Map.fss" """module Map
 
-let empty : 'v map
-let tryGet : string -> 'v map -> 'v option
-let containsKey : string -> 'v map -> bool
-let add : string -> 'v -> 'v map -> 'v map
-let ofList : (string * 'v) list -> 'v map
-let fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state
-let count : 'v map -> int
-let filter : (string -> 'v -> bool) -> 'v map -> 'v map
-let choose : (string -> 'v -> 'u option) -> 'v map -> 'u map
-let map : ('v -> 'u) -> 'v map -> 'u map
-let iter : (string -> 'v -> unit) -> 'v map -> unit
-let remove : string -> 'v map -> 'v map
+let empty : 'v map['key]
+let tryGet : 'key -> 'v map['key] -> 'v option
+let containsKey : 'key -> 'v map['key] -> bool
+let add : 'key -> 'v -> 'v map['key] -> 'v map['key]
+let ofList : ('key * 'v) list -> 'v map['key]
+let fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state
+let count : 'v map['key] -> int
+let filter : ('key -> 'v -> bool) -> 'v map['key] -> 'v map['key]
+let choose : ('key -> 'v -> 'u option) -> 'v map['key] -> 'u map['key]
+let map : ('v -> 'u) -> 'v map['key] -> 'u map['key]
+let iter : ('key -> 'v -> unit) -> 'v map['key] -> unit
+let remove : 'key -> 'v map['key] -> 'v map['key]
 """
 
     let private stringStdlibDoc =
@@ -329,8 +329,10 @@ let queryValues : string -> string -> string list option
                 |> List.map (fun (name, fieldType) -> sprintf "%s: %s" name (go fieldType))
                 |> String.concat "; "
                 |> sprintf "{ %s }"
-            | TMap (_, tv) ->
-                sprintf "%s map" (postfixArg tv)
+            | TMap (tk, tv) ->
+                match tk with
+                | TString -> sprintf "%s map" (postfixArg tv)
+                | _ -> sprintf "%s map[%s]" (postfixArg tv) (go tk)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
@@ -477,6 +479,14 @@ let queryValues : string -> string -> string list option
         | TRTuple parts -> parts |> List.map typeRefToString |> String.concat " * " |> sprintf "(%s)"
         | TRFun (a, b) -> sprintf "%s -> %s" (typeRefToString a) (typeRefToString b)
         | TRPostfix (inner, suffix) -> sprintf "%s %s" (typeRefToString inner) suffix
+        | TRMap (keyType, valueType) ->
+            let valueText =
+                match valueType with
+                | TRFun _ -> sprintf "(%s)" (typeRefToString valueType)
+                | _ -> typeRefToString valueType
+            match keyType with
+            | TRName "string" -> sprintf "%s map" valueText
+            | _ -> sprintf "%s map[%s]" valueText (typeRefToString keyType)
         | TRRecord fields ->
             fields
             |> List.map (fun (name, t) -> sprintf "%s: %s" name (typeRefToString t))

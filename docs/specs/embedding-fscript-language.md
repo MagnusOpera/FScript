@@ -117,6 +117,7 @@ JavaScript values crossing the host boundary use tagged objects:
 - `{ kind: "tuple", values: [...] }`
 - `{ kind: "record", fields: { ... } }`
 - `{ kind: "map", entries: [{ key, value }] }`
+- Map entry keys may be tagged strings, ints, bools, or payload-free union cases.
 - `{ kind: "option", value: null | taggedValue }`
 - `{ kind: "union", typeName, caseName, value: null | taggedValue }`
 - `{ kind: "type", name }`
@@ -258,6 +259,7 @@ Host-visible static types are represented by `Type`:
 
 Use `Types.typeToString` for display/diagnostics.
 The postfix script type syntax `'a map` corresponds to `TMap(TString, 'a)`.
+The explicit `Value map[Key]` syntax corresponds to `TMap(Key, Value)`; supported key types are `string`, `int`, `bool`, and unions with no payload-bearing cases. `Json.serialize` encodes string, integer, and boolean map keys as JSON object property names; maps containing union keys return `None`. The F# type provider currently projects string-keyed maps only.
 
 ## Runtime values
 

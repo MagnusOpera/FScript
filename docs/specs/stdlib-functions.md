@@ -52,11 +52,11 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 
 ### Maps
 - Indexer: `values[key] : 'v option`
-- Signature: `'v map -> string -> 'v option`
+- Signature: `'v map['key] -> 'key -> 'v option`
 - Description:
-  - optional lookup by string key
+  - optional lookup by a key matching the map's key type
   - missing keys return `None`
-  - map keys are string-only
+  - map keys may be `string`, `int`, `bool`, or a union whose cases all have no payload
 
 ### Options
 - Constructors:
@@ -115,21 +115,20 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Task.await : 'a task -> 'a`
 
 ## Map
-- `Map.empty : 'v map`  
-  Alias of `{}`.
-- `Map.tryGet : string -> 'v map -> 'v option`
-- `Map.containsKey : string -> 'v map -> bool`
-- `Map.add : string -> 'v -> 'v map -> 'v map`
-- `Map.ofList : (string * 'v) list -> 'v map`
-- `Map.fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state`
-- `Map.count : 'v map -> int`
-- `Map.filter : (string -> 'v -> bool) -> 'v map -> 'v map`
-- `Map.choose : (string -> 'v -> 'u option) -> 'v map -> 'u map`
-- `Map.map : ('v -> 'u) -> 'v map -> 'u map`
-- `Map.iter : (string -> 'v -> unit) -> 'v map -> unit`
-- `Map.remove : string -> 'v map -> 'v map`
+- `Map.empty : 'v map['key]` (alias of `{}`).
+- `Map.tryGet : 'key -> 'v map['key] -> 'v option`
+- `Map.containsKey : 'key -> 'v map['key] -> bool`
+- `Map.add : 'key -> 'v -> 'v map['key] -> 'v map['key]`
+- `Map.ofList : ('key * 'v) list -> 'v map['key]`
+- `Map.fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state`
+- `Map.count : 'v map['key] -> int`
+- `Map.filter : ('key -> 'v -> bool) -> 'v map['key] -> 'v map['key]`
+- `Map.choose : ('key -> 'v -> 'u option) -> 'v map['key] -> 'u map['key]`
+- `Map.map : ('v -> 'u) -> 'v map['key] -> 'u map['key]`
+- `Map.iter : ('key -> 'v -> unit) -> 'v map['key] -> unit`
+- `Map.remove : 'key -> 'v map['key] -> 'v map['key]`
 
-Map keys in FScript are string-only.
+Map keys may be `string`, `int`, `bool`, or a union whose cases all have no payload.
 
 ## Int
 - `Int.tryParse : string -> int option`

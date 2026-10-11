@@ -74,6 +74,20 @@
     "types": {
       "patterns": [
         {
+          "name": "meta.type.map.fscript",
+          "begin": "\\b(map)(\\s*\\[)",
+          "beginCaptures": {
+            "1": { "name": "storage.type.fscript" },
+            "2": { "name": "punctuation.definition.map.begin.fscript" }
+          },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.map.end.fscript" } },
+          "patterns": [
+            { "include": "#types" },
+            { "name": "entity.name.type.fscript", "match": "\\b[A-Z][A-Za-z0-9_.]*\\b" }
+          ]
+        },
+        {
           "name": "storage.type.fscript",
           "match": "\\b(int|float|numeric|string|bool|unit|list|option|map)\\b"
         }

@@ -360,6 +360,10 @@ module TypeInfer =
         | TRPostfix (inner, "task") -> TTask (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "option") -> TOption (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "map") -> TMap (TString, annotationTypeFromRef typeDefs span inner)
+        | TRMap (keyType, valueType) ->
+            let key = annotationTypeFromRef typeDefs span keyType
+            let resolvedKey = match key with | TNumeric _ -> TInt | _ -> key
+            TMap(resolvedKey, annotationTypeFromRef typeDefs span valueType)
         | TRPostfix (_, suffix) ->
             raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = span })
         | TRRecord fields ->
@@ -417,6 +421,10 @@ module TypeInfer =
             | "option" -> TOption resolved
             | "map" -> TMap (TString, resolved)
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
+        | TRMap (keyType, valueType) ->
+            let key = typeFromRef decls stack keyType
+            let resolvedKey = match key with | TNumeric _ -> TInt | _ -> key
+            TMap(resolvedKey, typeFromRef decls stack valueType)
         | TRRecord fields ->
             fields
             |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
@@ -427,6 +435,32 @@ module TypeInfer =
             |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
             |> Map.ofList
             |> TRecord
+
+    let private ensureSupportedMapKeyType (typeDefs: Map<string, Type>) (span: Span) (t: Type) =
+        match t with
+        | TString | TInt | TBool | TVar _ | TNumeric _ -> ()
+        | TNamed name ->
+            match typeDefs.TryFind name with
+            | Some (TUnion (_, cases)) when cases |> Map.forall (fun _ payload -> payload.IsNone) -> ()
+            | _ -> raise (TypeException { Message = $"Map key type must be string, int, bool, or a payload-free union, got {Types.typeToString t}"; Span = span })
+        | _ -> raise (TypeException { Message = $"Map key type must be string, int, bool, or a payload-free union, got {Types.typeToString t}"; Span = span })
+
+    let private constrainMapKeyTypes typeDefs span t =
+        let mutable subst = emptySubst
+        let rec loop current =
+            match applyType subst current with
+            | TMap (keyType, valueType) ->
+                match keyType with
+                | TNumeric _ -> subst <- compose (unify typeDefs keyType TInt span) subst
+                | _ -> ensureSupportedMapKeyType typeDefs span keyType
+                loop valueType
+            | TList inner | TTask inner | TOption inner -> loop inner
+            | TTuple items -> List.iter loop items
+            | TRecord fields -> fields |> Map.values |> Seq.iter loop
+            | TFun (arg, result) -> loop arg; loop result
+            | _ -> ()
+        loop t
+        subst
 
     let rec private inferPattern (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (pat: Pattern) : Map<string, Type> * Type =
         match pat with
@@ -472,12 +506,7 @@ module TypeInfer =
             env, TRecord fieldTypes
         | PMap (clauses, tailPattern, span) ->
             let startIndex = currentTelemetryCaptureCount telemetry
-            let ensureSupportedMapKeyType (t: Type) =
-                match t with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+            let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
 
             let mapKeyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -553,17 +582,13 @@ module TypeInfer =
             let subst = unify typeDefs t numeric span
             subst, applyType subst numeric
 
-    let private validateMapKeyTypes (span: Span) (t: Type) : unit =
+    let private validateMapKeyTypes (typeDefs: Map<string, Type>) (span: Span) (t: Type) : unit =
         let rec loop t =
             match t with
             | TMap (keyType, valueType) ->
                 loop keyType
                 loop valueType
-                match keyType with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString keyType}"; Span = span })
+                ensureSupportedMapKeyType typeDefs span keyType
             | TList inner -> loop inner
             | TTask inner -> loop inner
             | TTuple items -> items |> List.iter loop
@@ -574,6 +599,13 @@ module TypeInfer =
         loop t
 
     let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+        let subst, inferred, _ = inferExprRaw telemetry typeDefs constructors env expr
+        let keySubst = constrainMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType subst inferred)
+        let combined = compose keySubst subst
+        let resolved = applyType combined inferred
+        combined, resolved, asTyped expr resolved
+
+    and private inferExprRaw (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
         match expr with
         | EUnit _ ->
             emptySubst, TUnit, asTyped expr TUnit
@@ -633,7 +665,9 @@ module TypeInfer =
             let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 arg
             let tv = Types.freshVar()
             let s3 = unify typeDefs (applyType s2 t1) (TFun (t2, tv)) span
-            let s = compose s3 (compose s2 s1)
+            let combined = compose s3 (compose s2 s1)
+            let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(t2, tv)))
+            let s = compose keySubst combined
             let tRes = applyType s tv
             s, tRes, asTyped expr tRes
         | EIf (cond, tExpr, fExpr, span) ->
@@ -897,12 +931,7 @@ module TypeInfer =
             let tRes = TRecord inferred
             sAcc, tRes, asTyped expr tRes
         | EMap (entries, span) ->
-            let ensureSupportedMapKeyType (t: Type) =
-                match t with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+            let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
 
             let keyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -1032,11 +1061,7 @@ module TypeInfer =
             | TMap (mapKeyType, valueType), _ ->
                 let s3 = unify typeDefs keyType mapKeyType span
                 let s = compose s3 (compose s2 s1)
-                match applyType s mapKeyType with
-                | TString
-                | TVar _ -> ()
-                | t ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+                ensureSupportedMapKeyType typeDefs span (applyType s mapKeyType)
                 let tRes = TOption (applyType s valueType)
                 s, tRes, asTyped expr tRes
             | TVar _, TInt ->
@@ -1045,14 +1070,15 @@ module TypeInfer =
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s itemType)
                 s, tRes, asTyped expr tRes
-            | TVar _, TString ->
+            | TVar _, (TString | TBool | TNamed _) ->
                 let valueType = Types.freshVar()
-                let s3 = unify typeDefs targetType (TMap (TString, valueType)) span
+                ensureSupportedMapKeyType typeDefs span keyType
+                let s3 = unify typeDefs targetType (TMap (keyType, valueType)) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s valueType)
                 s, tRes, asTyped expr tRes
             | TVar _, TVar _ ->
-                raise (TypeException { Message = "Ambiguous index access: use a list with int index or a map with string key"; Span = span })
+                raise (TypeException { Message = "Ambiguous index access: annotate the list or map target"; Span = span })
             | _ ->
                 let expectedKind =
                     match keyType with
@@ -1069,7 +1095,9 @@ module TypeInfer =
                 let s2, tRight, _ = inferExpr telemetry typeDefs constructors env2 b
                 let tv = Types.freshVar()
                 let s3 = unify typeDefs (applyType s2 tRight) (TFun (applyType s2 tLeft, tv)) span
-                let s = compose s3 (compose s2 s1)
+                let combined = compose s3 (compose s2 s1)
+                let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(tLeft, tv)))
+                let s = compose keySubst combined
                 let tRes = applyType s tv
                 s, tRes, asTyped expr tRes
             | "::" ->
@@ -1255,7 +1283,7 @@ module TypeInfer =
                         applySubstToCapturedLocals telemetry startIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
-                        validateMapKeyTypes span inferred
+                        validateMapKeyTypes typeDefs span inferred
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
@@ -1272,7 +1300,7 @@ module TypeInfer =
                         applySubstToCapturedLocals telemetry startIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
-                        validateMapKeyTypes span inferred
+                        validateMapKeyTypes typeDefs span inferred
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
@@ -1290,7 +1318,7 @@ module TypeInfer =
                     let envBase = applyEnv s env
                     let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
                     typedBindings
-                    |> Map.iter (fun _ ty -> validateMapKeyTypes span ty)
+                    |> Map.iter (fun _ ty -> validateMapKeyTypes typeDefs span ty)
                     env <-
                         typedBindings
                         |> Map.fold (fun state name bindingType ->
@@ -1344,7 +1372,7 @@ module TypeInfer =
                         foldedBindings
                         |> List.map (fun (name, _, _, _) ->
                             let inferred = applyType sRec freshByName.[name]
-                            validateMapKeyTypes span inferred
+                            validateMapKeyTypes typeDefs span inferred
                             name, Types.generalize envGeneralize inferred)
 
                     let typedBindings =
@@ -1370,7 +1398,7 @@ module TypeInfer =
                             emptySubst
                     let s = compose sDiscard s1
                     applySubstToCapturedLocals telemetry startIndex s
-                    validateMapKeyTypes (Ast.spanOfExpr expr) (applyType s t1)
+                    validateMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType s t1)
                     env <- applyEnv s env
                     typed.Add(TSExpr typedExpr)
 

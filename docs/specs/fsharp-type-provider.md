@@ -53,7 +53,7 @@ Supported:
 - `list<T>`
 - `option<T>`
 - tuples (arity `2..8`)
-- `map<string, T>` -> `Map<string, T>`
+- `T map` -> `Map<string, T>`
 
 Rejected:
 - records

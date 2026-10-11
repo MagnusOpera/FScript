@@ -8,6 +8,8 @@ open System.Threading.Tasks
 type MapKey =
     | MKString of string
     | MKInt of int64
+    | MKBool of bool
+    | MKUnionCase of string * string
 
 type Value =
     | VUnit

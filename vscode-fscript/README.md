@@ -81,3 +81,5 @@ The extension starts the language server with one of these strategies:
 1. Custom path from `fscript.server.path` (if configured)
 2. Packaged server: `server/FScript.LanguageServer.dll`
 3. Local development fallback: builds `../src/FScript.LanguageServer/FScript.LanguageServer.csproj` and runs `bin/Debug/net10.0/FScript.LanguageServer.dll`
+
+Map annotations use postfix forms such as `string map[int]` and `string map[Priority]`. String-keyed maps appear as `string map`, including when annotated with `map[string]`. Hover and inlay hints preserve inferred key types.

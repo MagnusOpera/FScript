@@ -93,6 +93,36 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected map value")
 
     [<Test>]
+    member _.``Evaluates int bool and union map lookup`` () =
+        let cases =
+            [ "{ [1] = 2 }[1]", 2L
+              "{ [true] = 3 }[true]", 3L
+              "type Color = | Red | Blue\n{ [Red] = 4 }[Red]", 4L ]
+        for source, expected in cases do
+            match Helpers.eval source with
+            | VOption(Some(VInt actual)) -> actual |> should equal expected
+            | _ -> Assert.Fail("Expected matching map value")
+
+    [<Test>]
+    member _.``Matches bool and union map keys`` () =
+        let cases =
+            [ "match { [true] = 7 } with | { [true] = value } -> value | _ -> 0", 7L
+              "type Color = | Red | Blue\nmatch { [Red] = 8 } with | { [Red] = value } -> value | _ -> 0", 8L ]
+        for source, expected in cases do
+            match Helpers.eval source with
+            | VInt actual -> actual |> should equal expected
+            | _ -> Assert.Fail("Expected matched map value")
+
+    [<Test>]
+    member _.``Union map keys retain their type identity`` () =
+        let source = "type First = | Shared\ntype Second = | Shared\n{ [First.Shared] = 1 }"
+        match Helpers.eval source with
+        | VMap entries ->
+            entries.ContainsKey(MKUnionCase("First", "Shared")) |> should equal true
+            entries.ContainsKey(MKUnionCase("Second", "Shared")) |> should equal false
+        | _ -> Assert.Fail("Expected union-keyed map")
+
+    [<Test>]
     member _.``Evaluates map literals with duplicate keys as last-wins`` () =
         match Helpers.eval "{ [\"a\"] = 1; [\"a\"] = 2 }" with
         | VMap m ->
@@ -150,9 +180,10 @@ type EvalTests () =
         | _ -> Assert.Fail("Expected None for negative list index")
 
     [<Test>]
-    member _.``Rejects int keyed map indexer lookup`` () =
-        let act () = Helpers.eval "let m = { [1] = 42 }\nm[1]" |> ignore
-        act |> should throw typeof<TypeException>
+    member _.``Accepts int keyed map indexer lookup`` () =
+        match Helpers.eval "let m = { [1] = 42 }\nm[1]" with
+        | VOption(Some(VInt 42L)) -> ()
+        | _ -> Assert.Fail("Expected int-keyed lookup")
 
     [<Test>]
     member _.``Rejects non-int list indexer lookup`` () =

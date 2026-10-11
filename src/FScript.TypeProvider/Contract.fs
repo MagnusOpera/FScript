@@ -203,7 +203,7 @@ module Contract =
             recurse $"{typePath} map value" valueType
             |> Result.map SupportedType.StringMap
         | TMap _ ->
-            Error $"{typePath}: only map<string, T> is supported."
+            Error $"{typePath}: only string-keyed maps (T map) are supported."
         | TNamed name ->
             Error $"{typePath}: named type '{name}' is not supported in exported signatures."
         | TRecord _ ->

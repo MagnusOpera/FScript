@@ -54,4 +54,4 @@ This is the quick lookup page for the built-in FScript surface and the default r
 - `Regex.*`
 - hashing and GUID helpers
 
-Use the Stdlib pages for complete module-by-module function reference, and the native types page for language-level access forms such as `list[index]` and `map["key"]`.
+Use the Stdlib pages for complete module-by-module function reference, and the native types page for language-level access forms such as `list[index]` and `values[key]`.

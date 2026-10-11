@@ -49,10 +49,11 @@ Formatting follows LSP-friendly type rendering rules:
 - unresolved variables in complete inferred function signatures use stable names (`'a`, `'b`, etc.) assigned in first-occurrence order; repeated variables share the same name across parameters and the result. For example, `let apply f x = f x` preserves distinct argument and result variables.
 - unresolved numeric variables: `numeric` in hover, signatures, and inlay hints; `let add x y = x + y` displays `add: (x: numeric) -> (y: numeric) -> numeric`, specializing to `int` or `float` when constrained.
 - unknown inferred variable outside a complete function signature: `unknown`
-- map value type when key domain is unresolved: `unknown map`
+- unresolved map key and value types remain distinct: `unknown map[unknown]` outside a function signature, or named variables such as `'a map['b]` within a signature
+- maps with a known non-string key type: `Value map[Key]` (for example `int map[bool]` or `string map[Priority]`)
 
 Examples:
-- `: unknown map`
+- `: unknown map[unknown]`
 
 ## Configuration
 
@@ -67,7 +68,7 @@ Behavior:
 
 - Hints are inference-driven; if inference is incomplete or blocked by errors, hints may be missing.
 - When whole-document inference fails, each recoverable top-level declaration is inferred once against previously accepted binding schemes so hints remain available without repeatedly inferring the entire valid prefix.
-- Labels are concise and intentionally avoid full generic-style displays beyond FScript surface semantics.
+- Labels use the FScript map type spelling for inferred key types.
 
 ## Injected Function Signature and Definition Behavior
 

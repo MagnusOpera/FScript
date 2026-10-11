@@ -41,7 +41,9 @@ let x =
 - Use postfix type syntax:
   - `string list`
   - `int option`
-  - `string map`
+  - `string map` (string keys)
+  - `string map[int]` (int keys)
+  - `string map[Priority]` (payload-free union keys)
 
 ## Type-system differences
 

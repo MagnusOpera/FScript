@@ -41,16 +41,16 @@ let maybeSecond = xs[1]
 
 ## Maps
 
-Type form: `'v map`
+Type forms: `'v map` for string keys, or `'v map['key]` for explicit key types.
 
-Map keys are always `string`.
+Map keys may be `string`, `int`, `bool`, or a union whose cases all have no payload. Use `value map[key]` for explicit key annotations; `value map` remains the string-keyed shorthand.
 
 | Form | Signature | Description |
 | --- | --- | --- |
-| `{}` | `'v map` | Empty map literal. |
-| `{ ["key"] = value }` | `string -> 'v -> 'v map` | Map literal entry syntax. |
-| `values[key]` | `'v map -> string -> 'v option` | Optional key lookup. Missing keys return `None`. |
-| `{ ..tail }` | `'v map -> 'v map` | Spread syntax used when building or updating a map. |
+| `{}` | `'v map['key]` | Empty map literal. |
+| `{ [key] = value }` | `'key -> 'v -> 'v map['key]` | Map literal entry syntax. |
+| `values[key]` | `'v map['key] -> 'key -> 'v option` | Optional key lookup. Missing keys return `None`. |
+| `{ ..tail }` | `'v map['key] -> 'v map['key]` | Spread syntax used when building or updating a map. |
 
 ```fsharp
 let scores = { ["math"] = 18; ["english"] = 16 }

@@ -50,7 +50,7 @@ let format r =
 
 ## Matching maps
 
-Map patterns use string keys in indexer form.
+Map patterns use bracketed keys with the same types as map literals: string, int, bool, or payload-free union cases.
 
 ```fsharp
 let remove key m =
@@ -59,4 +59,17 @@ let remove key m =
   | _ -> m
 ```
 
-`k` is always a `string` key because map indexers in FScript are string-only.
+`k` has the map's inferred key type. It can be a string, int, bool, or payload-free union value.
+
+A pattern can also select a specific union key:
+
+```fsharp
+type Priority = | Low | High
+let describe m =
+  match m with
+  | { [High] = value } -> value
+  | _ -> "missing"
+let message = describe { [Low] = "later"; [High] = "now" }
+```
+
+This infers `describe` as `string map[Priority] -> string`. Extra entries are permitted in a map match.

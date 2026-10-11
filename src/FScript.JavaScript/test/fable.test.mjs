@@ -13,6 +13,8 @@ import {
   infer,
   evaluate,
   formatValue,
+  fromJs,
+  toJs,
   createSession,
   resetSession,
   submit
@@ -22,6 +24,15 @@ test("run returns tagged primitive values", () => {
   const result = run("let x = 41\nx + 1");
   assert.equal(result.kind, "int");
   assert.equal(result.value, 42n);
+});
+
+test("map keys round-trip through tagged JavaScript values", () => {
+  const value = run("type Color = | Red | Blue\n{ [Red] = 1; [Blue] = 2 }");
+  assert.equal(value.kind, "map");
+  assert.deepEqual(value.entries.map(entry => entry.key.caseName).sort(), ["Blue", "Red"]);
+  assert.deepEqual(toJs(fromJs(value)), value);
+  const boolMap = run("{ [true] = 3 }");
+  assert.deepEqual(toJs(fromJs(boolMap)), boolMap);
 });
 
 test("load and invoke exported functions repeatedly", () => {
@@ -109,4 +120,12 @@ test("JavaScript externs round-trip typed arguments and results", () => {
   });
   const result = run("Host.shout \"fable\"", { externs: [shout] });
   assert.deepEqual(result, { kind: "string", value: "fable!" });
+});
+
+
+test("postfix map annotations preserve numeric key inference", () => {
+  assert.equal(run('let get (m: string map[int]) = m[0]\nget { [0] = "ok" }').value.value, "ok");
+  const result = run('let make k = { [k + k] = "ok" }\nmake 2');
+  assert.deepEqual(result.entries[0].key, { kind: "int", value: 4n });
+  assert.throws(() => run('let make k = { [k + k] = "ok" }\nmake 2.5'), error => error.phase === "type");
 });

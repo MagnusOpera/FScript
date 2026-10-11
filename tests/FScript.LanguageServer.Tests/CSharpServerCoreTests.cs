@@ -8,6 +8,45 @@ namespace FScript.LanguageServer.Tests;
 public sealed class CSharpServerCoreTests
 {
     [Test]
+    public void CSharp_server_inlay_hints_show_non_string_map_key_types()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-map-key-inlay-test.fss";
+            var source = "type Color = | Red | Blue\nlet byColor = { [Red] = 1 }\nlet byId = { [1] = 2 }\nlet byFlag = { [true] = 3 }\nlet byName = { [\"name\"] = 4 }\n";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            LspClient.SendRequest(client, 902, "textDocument/inlayHint", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 0, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 5, ["character"] = 0 }
+                }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue id && id.TryGetValue<int>(out var value) && value == 902);
+            var labels = (response["result"] as JsonArray ?? new JsonArray())
+                .OfType<JsonObject>().Select(item => item["label"]?.GetValue<string>() ?? string.Empty).ToList();
+            Assert.That(labels, Does.Contain(": int map[Color]"));
+            Assert.That(labels, Does.Contain(": int map[int]"));
+            Assert.That(labels, Does.Contain(": int map[bool]"));
+            Assert.That(labels, Does.Contain(": int map"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_keeps_inlay_hints_after_a_type_error()
     {
         var client = LspClient.StartCSharp();

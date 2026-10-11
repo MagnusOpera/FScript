@@ -26,4 +26,22 @@ public sealed class ExtensionGrammarTests
         Assert.That(regex.IsMatch("numericValue numeric_value nonnumeric"), Is.False);
         Assert.That(regex.Matches("int float string bool unit list option map").Count, Is.EqualTo(8));
     }
+
+    [Test]
+    public void TextMate_grammar_uses_postfix_map_keys()
+    {
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "FScript.sln")))
+            root = root.Parent;
+        Assert.That(root, Is.Not.Null);
+        var grammar = JsonNode.Parse(File.ReadAllText(Path.Combine(root!.FullName,
+            "vscode-fscript", "syntaxes", "fscript.tmLanguage.json")))!;
+        var mapPattern = grammar["repository"]!["types"]!["patterns"]!.AsArray()
+            .Single(p => p?["name"]?.GetValue<string>() == "meta.type.map.fscript")!;
+        var begin = new Regex(mapPattern["begin"]!.GetValue<string>());
+        Assert.That(begin.IsMatch("string map[int]"), Is.True);
+        Assert.That(begin.IsMatch("int map[Priority]"), Is.True);
+        Assert.That(begin.IsMatch("map<int, string>"), Is.False);
+        Assert.That(mapPattern["end"]!.GetValue<string>(), Is.EqualTo(@"\]"));
+    }
 }

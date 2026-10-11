@@ -332,6 +332,8 @@ module IncludeResolver =
             TRFun(rewriteTypeRef aliases selfPrefix selfTypeNames a, rewriteTypeRef aliases selfPrefix selfTypeNames b)
         | TRPostfix (inner, suffix) ->
             TRPostfix(rewriteTypeRef aliases selfPrefix selfTypeNames inner, suffix)
+        | TRMap (keyType, valueType) ->
+            TRMap(rewriteTypeRef aliases selfPrefix selfTypeNames keyType, rewriteTypeRef aliases selfPrefix selfTypeNames valueType)
         | TRRecord fields ->
             TRRecord (fields |> List.map (fun (name, t) -> name, rewriteTypeRef aliases selfPrefix selfTypeNames t))
         | TRStructuralRecord fields ->

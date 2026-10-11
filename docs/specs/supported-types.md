@@ -15,9 +15,14 @@ This document specifies the value and type system used by the interpreter.
 - Task: `'a task`
 - Tuple: `(t1 * t2 * ...)`
 - Option: `'a option`
-- Map (string-keyed alias): `'a map`
+- Map: `'a map` for string keys, or `value map[key]` for other supported keys
 - Record: structural record types
 - Discriminated union: named union types with cases
+
+Map key annotations use postfix syntax: `string map[int]`, `int map[bool]`, or `string map[Priority]`.
+Explicit `map[string]` is accepted and displayed as the legacy `map` suffix.
+Unresolved `numeric` keys specialize to `int`; concrete `float` keys are rejected. Map values retain normal numeric inference.
+Angle-bracket map type syntax is not supported.
 
 ## Map literals
 - Native map literal syntax:
@@ -25,17 +30,20 @@ This document specifies the value and type system used by the interpreter.
   - populated: `{ ["a"] = 1; ["b"] = 2 }`
   - spread update: `{ ["a"] = 1; ..tail }`
   - multiline entries are supported in an indented block.
-- Keys are bracketed expressions and must have type `string` (for example `{ [keyExpr] = value }`).
+- Keys are bracketed expressions of type `string`, `int`, `bool`, or a union whose cases all have no payload (for example `{ [keyExpr] = value }`).
 - Record literals and map literals share `{ ... }` braces:
   - map entries use `[expr] = value`
   - record entries use `Field = value`
   - `{}` denotes an empty map.
 - Values are inferred and unified to a single value type.
+- Keys are inferred and unified to a single supported key type; empty maps acquire their key and value types from use.
+- Map operations contribute key constraints to Hindley–Milner inference. For example, `let getZero m = m |> Map.tryGet 0` infers `'v map[int] -> 'v option` without an argument annotation.
+- Indexing an otherwise unknown collection with an integer still infers a list. Use `Map.tryGet 0` to establish an integer-keyed map without an annotation.
 - See `./map-matching-reference.md` for focused map-pattern examples.
 
 ## Index access
 - Lists support optional zero-based index access with integer keys (for example `values[0]`).
-- Maps support optional key lookup with string keys (for example `scores["math"]`).
+- Maps support optional key lookup with their declared key type (for example `scores["math"]` or `byId[1]`).
 - Negative or out-of-range list indices return `None`.
 
 ## Native access summary
@@ -48,11 +56,11 @@ This document specifies the value and type system used by the interpreter.
   - negative or out-of-range indices return `None`
 
 ### Maps
-- Type form: `'a map`
-- Indexer signature: `'a map -> string -> 'a option`
+- Type forms: `'a map` (string keys) and `'value map['key]`
+- Indexer signature: `'value map['key] -> 'key -> 'value option`
 - Notes:
   - `values[key]` performs optional lookup
-  - keys must be `string`
+  - key type must be `string`, `int`, `bool`, or a union with no payload-bearing cases
 
 ### Records
 - Field access signature: `{ Field: 'a; ... } -> 'a`

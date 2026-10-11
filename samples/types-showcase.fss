@@ -14,12 +14,34 @@ type Subscription =
     | Free
     | Premium of int
 
+type Priority =
+    | Low
+    | Medium
+    | High
+
+type MapShowcase =
+    { ById: string map[int]
+      ByFlag: string map[bool]
+      ByPriority: string map[Priority] }
+
 
 let scores =
     { ["math"] = 20; ["science"] = 18 }
 
 let statusByCode =
     { ["200"] = "ok"; ["404"] = "not-found" }
+
+let mapShowcase =
+    { ById = { [1] = "first"; [2] = "second" }
+      ByFlag = Map.ofList [(true, "enabled"); (false, "disabled")]
+      ByPriority = Map.empty |> Map.add Low "later" |> Map.add High "now" }
+
+let lookup_priority values = values[High]
+let lookup_id values = Map.tryGet 1 values
+let lookup_flag values = values[true]
+let topPriority = lookup_priority mapShowcase.ByPriority |> Option.defaultValue "unknown"
+let firstId = lookup_id mapShowcase.ById |> Option.defaultValue "unknown"
+let enabled = lookup_flag mapShowcase.ByFlag |> Option.defaultValue "unknown"
 
 
 let user = { Id = 1; Name = "Ada"; Tags = ["engineer"; "writer"]; Address = Some { City = "London"; Zip = 12345 }; Scores = scores; Pair = (7, "seven") }
@@ -92,6 +114,7 @@ Console.writeLine $"Structural address from literal: {format_address parisAddres
 Console.writeLine $"Structural address from OfficeAddress: {format_address officeAddress}"
 Console.writeLine $"Capability for format_address: {Map.tryGet formatAddressKey capabilities |> Option.defaultValue missing}"
 Console.writeLine $"HTTP 200: {statusByCode[okCode] |> Option.defaultValue unknown}"
+Console.writeLine $"Map keys: id={firstId}, bool={enabled}, union={topPriority}"
 
 
 updated.Tags |> List.iter Console.writeLine

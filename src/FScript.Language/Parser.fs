@@ -282,7 +282,12 @@ module Parser =
                     t <- TRPostfix(t, "option")
                 | Ident "map" ->
                     stream.Next() |> ignore
-                    t <- TRPostfix(t, "map")
+                    if stream.Match(LBracket) then
+                        let keyType = parseTypeRef()
+                        stream.Expect(RBracket, "Expected ']' after map key type") |> ignore
+                        t <- TRMap(keyType, t)
+                    else
+                        t <- TRPostfix(t, "map")
                 | Ident "task" ->
                     stream.Next() |> ignore
                     t <- TRPostfix(t, "task")

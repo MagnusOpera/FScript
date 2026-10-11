@@ -20,6 +20,41 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some 1")
 
     [<Test>]
+    member _.``Map functions support int bool and union keys`` () =
+        let scripts =
+            [ "Map.empty |> Map.add 1 10 |> Map.tryGet 1", 10L
+              "Map.ofList [(true, 20)] |> Map.tryGet true", 20L
+              "type Color = | Red | Blue\nMap.empty |> Map.add Red 30 |> Map.tryGet Red", 30L
+              "type Color = | Red | Blue\nMap.ofList [(Red, 40)] |> Map.tryGet Red", 40L ]
+        for source, expected in scripts do
+            match Helpers.evalWithExterns externs source with
+            | VOption(Some(VInt actual)) -> actual |> should equal expected
+            | _ -> Assert.Fail("Expected map lookup")
+
+    [<Test>]
+    member _.``Unannotated function infers int keyed map through pipeline`` () =
+        let source = "let getZero m = m |> Map.tryGet 0\nlet mymap = { [0] = \"toto\"; [1] = \"titi\" }\nmymap |> getZero"
+        match Helpers.evalWithExterns externs source with
+        | VOption(Some(VString "toto")) -> ()
+        | _ -> Assert.Fail("Expected Some toto from inferred map function")
+
+    [<Test>]
+    member _.``Map callbacks receive union keys`` () =
+        let source = "type Color = | Red | Blue\nMap.ofList [(Red, 1); (Blue, 2)] |> Map.fold (fun total -> fun key -> fun value -> match key with | Red -> total + value | Blue -> total) 0"
+        match Helpers.evalWithExterns externs source with
+        | VInt 1L -> ()
+        | _ -> Assert.Fail("Expected union key in fold callback")
+
+    [<Test>]
+    member _.``Map functions reject unsupported keys`` () =
+        let sources =
+            [ "Map.empty |> Map.add 1.5 10"
+              "type Color = | Red | Blue of int\nMap.empty |> Map.add Red 10" ]
+        for source in sources do
+            let act () = Helpers.inferWithExterns externs source |> ignore
+            act |> should throw typeof<TypeException>
+
+    [<Test>]
     member _.``Map indexer is the primitive and Map.tryGet matches it`` () =
         let script = "let m = { [\"a\"] = 1 }\n(m[\"a\"], Map.tryGet \"a\" m)"
         match Helpers.evalWithExterns externs script with

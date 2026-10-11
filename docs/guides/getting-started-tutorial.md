@@ -220,11 +220,18 @@ let maybeMath = scores |> Map.tryGet "math"
 Console.writeLine $"{maybeMath}"
 ```
 
-Map keys are `string`:
+Map keys can be `string`, `int`, `bool`, or a union whose cases all have no payload:
 
 ```fsharp
-let status = { ["200"] = "ok"; ["404"] = "not-found" }
+type Priority = | Low | High
+let status = { [200] = "ok"; [404] = "not-found" }
+let flags = { [true] = "enabled"; [false] = "disabled" }
+let messages = { [Low] = "later"; [High] = "now" }
+let getOk m = m |> Map.tryGet 200
+let ok = status |> getOk |> Option.defaultValue "unknown"
 ```
+
+No annotation is needed for `getOk`: its key argument fixes the map key type to `int`. Each map uses one key type and one value type. Optional annotations use `value map[key]`, such as `string map[int]` or `string map[Priority]`. The legacy `int map` means `int map[string]`, and is the preferred spelling for string keys.
 
 Lists also support optional zero-based indexing:
 

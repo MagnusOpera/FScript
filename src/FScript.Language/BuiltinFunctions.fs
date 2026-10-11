@@ -78,6 +78,16 @@ module BuiltinFunctions =
         match key with
         | MKString value -> VString value
         | MKInt value -> VInt value
+        | MKBool value -> VBool value
+        | MKUnionCase (typeName, caseName) -> VUnionCase(typeName, caseName, None)
+
+    let private valueToMapKey functionName value =
+        match value with
+        | VString key -> MKString key
+        | VInt key -> MKInt key
+        | VBool key -> MKBool key
+        | VUnionCase (typeName, caseName, None) -> MKUnionCase(typeName, caseName)
+        | _ -> fail $"{functionName} expects a string, int, bool, or payload-free union key"
 
     let rec private valueEquals a b =
         match a, b with
@@ -554,7 +564,7 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString key; VMap values ] -> values.TryFind(MKString key) |> VOption
+                | [ key; VMap values ] -> values.TryFind(valueToMapKey "Map.tryGet" key) |> VOption
                 | _ -> fail "Map.tryGet expects (key, values)") }
 
     let private builtinMapContainsKey : ExternalFunction =
@@ -564,7 +574,7 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString key; VMap values ] -> VBool (values.ContainsKey(MKString key))
+                | [ key; VMap values ] -> VBool (values.ContainsKey(valueToMapKey "Map.containsKey" key))
                 | _ -> fail "Map.containsKey expects (key, values)") }
 
     let private builtinMapAdd : ExternalFunction =
@@ -574,7 +584,7 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString key; value; VMap values ] -> values.Add(MKString key, value) |> VMap
+                | [ key; value; VMap values ] -> values.Add(valueToMapKey "Map.add" key, value) |> VMap
                 | _ -> fail "Map.add expects (key, value, values)") }
 
     let private builtinMapOfList : ExternalFunction =
@@ -587,8 +597,8 @@ module BuiltinFunctions =
                 | [ VList pairs ] ->
                     let folder state entry =
                         match entry with
-                        | VTuple [ VString key; value ] -> state |> Map.add (MKString key) value
-                        | _ -> fail "Map.ofList expects [(string * value)]"
+                        | VTuple [ key; value ] -> state |> Map.add (valueToMapKey "Map.ofList" key) value
+                        | _ -> fail "Map.ofList expects [(key * value)]"
                     pairs |> List.fold folder Map.empty |> VMap
                 | _ -> fail "Map.ofList expects (pairs)") }
 
@@ -681,7 +691,7 @@ module BuiltinFunctions =
           Impl =
             (fun _ args ->
                 match args with
-                | [ VString key; VMap values ] -> values.Remove(MKString key) |> VMap
+                | [ key; VMap values ] -> values.Remove(valueToMapKey "Map.remove" key) |> VMap
                 | _ -> fail "Map.remove expects (key, values)") }
 
     let builtinExterns : ExternalFunction list =
