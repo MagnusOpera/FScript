@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Updated website and VS Code extension dependencies; the extension now requires VS Code 1.91 or later.
+
 - Restored build and test compatibility after dependency upgrades by keeping NUnit compatible with FsUnit.
 - Added int, bool, and payload-free union map keys.
 

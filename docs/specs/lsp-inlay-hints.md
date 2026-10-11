@@ -108,4 +108,6 @@ Behavior:
 
 ## VS Code Syntax Highlighting
 
+The VS Code extension requires VS Code 1.91 or later, matching its language client dependency.
+
 The language server classifies `numeric` as a type in semantic tokens. The extension also recognizes `numeric` annotations as `storage.type.fscript`, alongside built-in types, even when the language server is inactive. Identifier substrings such as `numericValue` do not receive this type scope.

@@ -100,7 +100,7 @@ jobs:
           fileName: '*.vsix'
 
       - name: Install VS Code publishing tool
-        run: npm install -g @vscode/vsce@3.5
+        run: npm install -g @vscode/vsce@4.0.0
 
       - name: Publish to VS Code Marketplace
         shell: bash

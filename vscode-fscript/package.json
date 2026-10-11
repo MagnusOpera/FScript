@@ -11,7 +11,7 @@
     "url": "https://github.com/MagnusOpera/FScript.git"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages"
@@ -151,10 +151,10 @@
     "postinstall": "npm run compile"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.2.2",
-    "esbuild": "^0.25.9"
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2"
   }
 }

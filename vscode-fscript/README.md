@@ -1,5 +1,7 @@
 # VS Code FScript Extension
 
+Requires VS Code 1.91 or later. Extension development and packaging require Node.js 22 or later.
+
 This extension provides:
 
 - `.fss` language registration
