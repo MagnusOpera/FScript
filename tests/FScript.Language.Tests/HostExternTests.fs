@@ -214,8 +214,8 @@ type HostExternTests () =
 
             let readAct () = Helpers.evalWithExterns localExterns "Fs.readText \".git/config\"" |> ignore
             let writeAct () = Helpers.evalWithExterns localExterns "Fs.writeText \".git/config\" \"y\"" |> ignore
-            Assert.Throws<EvalException>(TestDelegate readAct) |> ignore
-            Assert.Throws<EvalException>(TestDelegate writeAct) |> ignore
+            Assert.Throws<EvalException>(System.Action readAct) |> ignore
+            Assert.Throws<EvalException>(System.Action writeAct) |> ignore
         finally
             if Directory.Exists(root) then
                 Directory.Delete(root, true)

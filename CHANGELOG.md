@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restored build and test compatibility after dependency upgrades by keeping NUnit compatible with FsUnit.
 - Added int, bool, and payload-free union map keys.
 
 ## [0.79.0]

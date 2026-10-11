@@ -42,7 +42,7 @@ type ScriptHostTests () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let loaded = ScriptHost.loadSource externs "[<export>] let version = \"1.0\""
         let act () = ScriptHost.invoke loaded "version" [ VUnit ] |> ignore
-        Assert.Throws<EvalException>(TestDelegate act) |> ignore
+        Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
     member _.``script_host hides non-exported functions`` () =
@@ -51,7 +51,7 @@ type ScriptHostTests () =
 
         Assert.That(ScriptHost.listFunctions loaded, Is.Empty)
         let hidden () = ScriptHost.invoke loaded "private_fn" [ VInt 1L ] |> ignore
-        Assert.Throws<EvalException>(TestDelegate hidden) |> ignore
+        Assert.Throws<EvalException>(System.Action hidden) |> ignore
 
     [<Test>]
     member _.``script_host exports recursive groups when marked exported`` () =
@@ -86,7 +86,7 @@ type ScriptHostTests () =
     member _.``script_host loadSource rejects import directives`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSource externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
-        Assert.Throws<EvalException>(TestDelegate act) |> ignore
+        Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
     member _.``script_host loadSourceWithIncludes resolves imports from resolver`` () =
@@ -139,4 +139,4 @@ type ScriptHostTests () =
         let source = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.increment x"
         let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSourceWithIncludes externs root entryFile source (fun _ -> None) |> ignore
-        Assert.Throws<ParseException>(TestDelegate act) |> ignore
+        Assert.Throws<ParseException>(System.Action act) |> ignore

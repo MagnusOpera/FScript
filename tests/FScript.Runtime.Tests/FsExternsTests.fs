@@ -198,9 +198,9 @@ type FsExternsTests () =
             let writeAct () = invoke writeText [ VString ".git/config"; VString "y" ] |> ignore
             let createAct () = invoke createDirectory [ VString ".git/new" ] |> ignore
 
-            Assert.Throws<EvalException>(TestDelegate readAct) |> ignore
-            Assert.Throws<EvalException>(TestDelegate writeAct) |> ignore
-            Assert.Throws<EvalException>(TestDelegate createAct) |> ignore)
+            Assert.Throws<EvalException>(System.Action readAct) |> ignore
+            Assert.Throws<EvalException>(System.Action writeAct) |> ignore
+            Assert.Throws<EvalException>(System.Action createAct) |> ignore)
 
     [<Test>]
     member _.``denied glob entries are hidden from probes and enumeration`` () =
@@ -279,8 +279,8 @@ type FsExternsTests () =
 
             let readRootAct () = invoke readText [ VString "node_modules/a.txt" ] |> ignore
             let readNestedAct () = invoke readText [ VString "src/node_modules/b.txt" ] |> ignore
-            Assert.Throws<EvalException>(TestDelegate readRootAct) |> ignore
-            Assert.Throws<EvalException>(TestDelegate readNestedAct) |> ignore)
+            Assert.Throws<EvalException>(System.Action readRootAct) |> ignore
+            Assert.Throws<EvalException>(System.Action readNestedAct) |> ignore)
 
     [<Test>]
     member _.``glob and enumerate files do not traverse symlink directories`` () =
