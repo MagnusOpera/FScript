@@ -34,6 +34,10 @@ jobs:
         working-directory: vscode-fscript
         run: npm ci
 
+      - name: Test VS Code extension
+        working-directory: vscode-fscript
+        run: npm test
+
       - name: Sync extension version to tag
         shell: bash
         working-directory: vscode-fscript

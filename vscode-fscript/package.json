@@ -144,6 +144,7 @@
     }
   },
   "scripts": {
+    "test": "node --test ../tests/FScript.LanguageServer.Tests/ExtensionStartupTests.js",
     "lint": "echo \"No lint configured\"",
     "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
     "vscode:prepublish": "npm run compile",

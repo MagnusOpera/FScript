@@ -45,6 +45,12 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
+      - name: Test VS Code extension
+        working-directory: vscode-fscript
+        run: |
+          npm ci
+          npm test
+
       - name: Run Fable JS tests
         run: make fable-test
 

@@ -35,6 +35,8 @@ npm install
 
 Then run the extension in VS Code (`F5`) from this repository.
 
+Run `npm test` to check extension activation, logging-channel compatibility, startup failures, and shutdown. These JavaScript regression tests live in `tests/FScript.LanguageServer.Tests/` and run alongside the .NET language-server tests in CI.
+
 The extension depends on a .NET runtime for `FScript.LanguageServer`. It requests runtime acquisition through the VS Code `.NET Install Tool` integration (`ms-dotnettools.vscode-dotnet-runtime`) and falls back to `dotnet` from `PATH` when needed.
 
 ## Release

@@ -400,7 +400,7 @@ async function runAstCommand(methodName, tempPrefix) {
 
 function ensureUi(context) {
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel('FScript Language Server');
+    outputChannel = vscode.window.createOutputChannel('FScript Language Server', { log: true });
     context.subscriptions.push(outputChannel);
   }
   if (!statusItem) {
@@ -557,8 +557,7 @@ async function startClient(context) {
 
     const LanguageClient = languageClientModule.LanguageClient;
     client = new LanguageClient('fscriptLanguageServer', 'FScript Language Server', serverOptions, clientOptions);
-    const startDisposable = client.start();
-    context.subscriptions.push(startDisposable);
+    await client.start();
     setStatusReady();
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -567,7 +566,7 @@ async function startClient(context) {
   }
 }
 
-function activate(context) {
+async function activate(context) {
   ensureUi(context);
   registerStdlibContentProvider(context);
   showOutputCommandSubscription = vscode.commands.registerCommand('fscript.showLanguageServerOutput', () => {
@@ -657,7 +656,7 @@ function activate(context) {
   });
   context.subscriptions.push(textOpenSubscription);
 
-  startClient(context);
+  await startClient(context);
 
   configSubscription = vscode.workspace.onDidChangeConfiguration(async (event) => {
     if (

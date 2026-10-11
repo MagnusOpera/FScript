@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed VS Code language-server startup failing with an output-channel error after the language-client upgrade.
+
 ## [0.80.0]
 
 
