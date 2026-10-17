@@ -36,7 +36,7 @@ test("map keys round-trip through tagged JavaScript values", () => {
 });
 
 test("load and invoke exported functions repeatedly", () => {
-  const script = "[<export>] let add x y = x + y\n[<export>] let answer = 42";
+  const script = "export let add x y = x + y\nexport let answer = 42";
   const loaded = load(script);
   assert.deepEqual(listFunctions(loaded), ["add"]);
   assert.deepEqual(listValues(loaded), ["answer"]);
@@ -46,7 +46,7 @@ test("load and invoke exported functions repeatedly", () => {
 });
 
 test("virtual imports resolve from an in-memory source map", () => {
-  const loaded = load("import \"shared.fss\" as Shared\n[<export>] let value = Shared.inc 41", {
+  const loaded = load("import \"shared.fss\" as Shared\nexport let value = Shared.inc 41", {
     rootDirectory: "/",
     entryFile: "/main.fss",
     sources: {
@@ -128,4 +128,12 @@ test("postfix map annotations preserve numeric key inference", () => {
   const result = run('let make k = { [k + k] = "ok" }\nmake 2');
   assert.deepEqual(result.entries[0].key, { kind: "int", value: 4n });
   assert.throws(() => run('let make k = { [k + k] = "ok" }\nmake 2.5'), error => error.phase === "type");
+});
+
+
+test("export is a contextual declaration prefix rather than a reserved identifier", () => {
+  const loaded = load("let export = 40\nexport let answer = export + 2\nexport let export export = export");
+  assert.equal(getValue(loaded, "answer").value, 42n);
+  assert.equal(invoke(loaded, "export", [7]).value, 7n);
+  assert.throws(() => run("[<export>] let answer = 42"), error => error.phase === "parse");
 });

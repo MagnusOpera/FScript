@@ -2,6 +2,7 @@ namespace FScript.LanguageServer
 
 open System
 open System.IO
+open System.Text.RegularExpressions
 open System.Text.Json.Nodes
 open FScript.Language
 open FScript.CSharpInterop
@@ -111,7 +112,7 @@ module LspHandlers =
     let private keywordSet =
         [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
           "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some"
-          "fun"; "raise"; "import"; "export"; "qualified" ]
+          "fun"; "raise"; "import"; "qualified" ]
         |> Set.ofList
 
     let private builtinTypeTokenSet =
@@ -127,7 +128,11 @@ module LspHandlers =
                 i <- i + 1
             i < line.Length && line[i] = '('
 
-        if keywordSet.Contains(token) then 0
+        let isExportPrefix =
+            token = "export"
+            && Regex.IsMatch(line.Substring(startIndex + token.Length), @"^\s+let\b", RegexOptions.CultureInvariant)
+
+        if isExportPrefix || keywordSet.Contains(token) then 0
         elif builtinTypeTokenSet.Contains(token) then 4
         elif token.Length > 1 && token.StartsWith("\"") && token.EndsWith("\"") then 1
         elif token |> Seq.forall Char.IsDigit then 2

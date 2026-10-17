@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Replaced script export attributes with contextual `export let` declarations while keeping `export` available as an identifier.
 - Removed the F# TypeProvider package and its compile-time script projection support.
 - Added script-constructible CLR record projections with complete visible-field validation and typed conversion from script-created records.
 - Added opt-in CLR attributes and helpers to derive host-managed descriptors and snapshot visible properties from real host types.

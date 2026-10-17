@@ -18,7 +18,7 @@ const demos: Record<DemoKey, {label: string; filename: string; language: string;
     Plan: string
     Seats: int }
 
-[<export>] let quote (customer: Customer) =
+export let quote (customer: Customer) =
   let basePrice =
     match customer.Plan with
     | "scale" -> 29
@@ -85,7 +85,7 @@ const examples = [
     number: '03',
     title: 'Call exports from your app',
     description: 'Load a script, find its exported functions, and invoke them by name from .NET or JavaScript.',
-    code: `type Event = { Kind: string }\n\n[<export>] let route (event: Event) =\n  match event.Kind with\n  | "signup" -> "onboarding"\n  | "payment.failed" -> "billing"\n  | "churn.risk" -> "success"\n  | _ -> "archive"`,
+    code: `type Event = { Kind: string }\n\nexport let route (event: Event) =\n  match event.Kind with\n  | "signup" -> "onboarding"\n  | "payment.failed" -> "billing"\n  | "churn.risk" -> "success"\n  | _ -> "archive"`,
   },
 ];
 

@@ -722,6 +722,8 @@ module Parser =
             | InterpString raw ->
                 let t = stream.Next()
                 parseInterpolatedString raw t.Span
+            | Ident "export" when stream.PeekAt(1).Kind = Let ->
+                raise (ParseException { Message = "'export let' is only supported at top level"; Span = t.Span })
             | Ident name ->
                 let t = stream.Next()
                 match name with
@@ -1438,7 +1440,7 @@ module Parser =
                 | Module ->
                     raise (ParseException { Message = "'module' declarations were removed; module names are derived from imported filenames"; Span = stream.Peek().Span })
                 | LBracket when stream.PeekAt(1).Kind = Less ->
-                    raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "Attributes are not supported in scripts"; Span = stream.Peek().Span })
                 | _ ->
                     if blockStatementColumn.IsNone then
                         blockStatementColumn <- Some ((stream.Peek()).Span.Start.Column)
@@ -1559,46 +1561,16 @@ module Parser =
                 | None ->
                     SLet(bindingName, args |> Seq.toList, returnAnnotation, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
 
-        and parseAttributeName () =
-            stream.Expect(LBracket, "Expected '[' in attribute") |> ignore
-            stream.Expect(Less, "Expected '<' in attribute") |> ignore
-            let nameTok = stream.ExpectIdent("Expected attribute name")
-            let name =
-                match nameTok.Kind with
-                | Ident n -> n
-                | _ -> ""
-            stream.Expect(Greater, "Expected '>' in attribute") |> ignore
-            stream.Expect(RBracket, "Expected ']' in attribute") |> ignore
-            name, nameTok.Span
-
         and parseStmt () : Stmt =
             stream.SkipNewlines()
 
-            if stream.Peek().Kind = Ident "export" && stream.PeekAt(1).Kind = Let then
-                raise (ParseException { Message = "'export let' is no longer supported; use '[<export>] let ...'"; Span = stream.Peek().Span })
-
-            let mutable isExported = false
-            let mutable hasAttributes = false
-            let mutable parsingAttributes = true
-            while parsingAttributes do
-                if stream.Peek().Kind = LBracket && stream.PeekAt(1).Kind = Less then
-                    hasAttributes <- true
-                    let name, span = parseAttributeName()
-                    match name with
-                    | "export" ->
-                        if isExported then
-                            raise (ParseException { Message = "Duplicate attribute 'export'"; Span = span })
-                        isExported <- true
-                    | _ ->
-                        raise (ParseException { Message = $"Unknown attribute '{name}'"; Span = span })
-                    stream.SkipNewlines()
-                else
-                    parsingAttributes <- false
-
             match stream.Peek().Kind with
+            | Ident "export" when stream.PeekAt(1).Kind = Let ->
+                stream.Next() |> ignore
+                parseLetStmt true
+            | LBracket when stream.PeekAt(1).Kind = Less ->
+                raise (ParseException { Message = "Attributes are not supported in scripts; use 'export let' for exported bindings"; Span = stream.Peek().Span })
             | Hash ->
-                if hasAttributes || isExported then
-                    raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
                 let hashTok = stream.Next()
                 match stream.Next().Kind with
                 | Include ->
@@ -1608,8 +1580,6 @@ module Parser =
                 | _ ->
                     raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
             | Import ->
-                if hasAttributes || isExported then
-                    raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
                 let importTok = stream.Next()
                 let pathTok = stream.Next()
                 match pathTok.Kind with
@@ -1628,13 +1598,9 @@ module Parser =
             | Module ->
                 raise (ParseException { Message = "'module' declarations are not supported in scripts"; Span = stream.Peek().Span })
             | Type ->
-                if isExported then
-                    raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
                 parseTypeDecl()
             | Let ->
-                parseLetStmt isExported
-            | _ when hasAttributes ->
-                raise (ParseException { Message = "'[<export>]' must be followed by a top-level let binding"; Span = stream.Peek().Span })
+                parseLetStmt false
             | _ ->
                 let expr = parseExpr()
                 SExpr expr

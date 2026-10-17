@@ -19,7 +19,7 @@ type HostManagedTests() =
 
     [<Test>]
     member _.``Task and exported function calls preserve opaque values`` () =
-        let loaded = load "[<export>]\nlet pass (n: Node) = Task.await (Task.spawn (fun () -> n))"
+        let loaded = load "export let pass (n: Node) = Task.await (Task.spawn (fun () -> n))"
         let result = ScriptHost.invoke loaded "pass" [node]
         Assert.That((HostInterop.unwrap "Node" result).Payload, Is.EqualTo(payload))
         Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.invoke loaded "pass" [VRecord (Map.ofList ["Value", VInt 42L])] |> ignore)) |> ignore
@@ -57,7 +57,7 @@ type HostManagedTests() =
     member _.``Runtime updates reject host values through structural annotations`` () =
         for expression in ["{ n with Value = 0 }"; "{| n with Value = 0 |}"] do
             let ordinaryRegistration = HostInterop.ofExterns []
-            let program = FScript.parse ($"[<export>]\nlet update (n: {{| Value: int |}}) = {expression}")
+            let program = FScript.parse ($"export let update (n: {{| Value: int |}}) = {expression}")
             let typed = TypeInfer.inferProgramWithRegistration ordinaryRegistration program
             let state = Eval.evalProgramWithRegistrationState ordinaryRegistration typed
             Assert.Throws<EvalException>(System.Action(fun () -> Eval.invokeValue state.TypeDefs state.Env.["update"] [node] |> ignore)) |> ignore

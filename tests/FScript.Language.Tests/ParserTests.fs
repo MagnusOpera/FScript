@@ -39,7 +39,7 @@ type ParserTests () =
 
     [<Test>]
     member _.``Rejects exported tuple let binding`` () =
-        let act () = Helpers.parse "[<export>] let (a, b) = (1, 2)" |> ignore
+        let act () = Helpers.parse "export let (a, b) = (1, 2)" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
@@ -699,15 +699,15 @@ type ParserTests () =
             Assert.That(err.Message, Does.StartWith("Indentation error"))
 
     [<Test>]
-    member _.``Parses exported top-level let binding with attribute`` () =
-        let p = Helpers.parse "[<export>] let cosine x = x"
+    member _.``Parses exported top-level let binding with export prefix`` () =
+        let p = Helpers.parse "export let cosine x = x"
         match p.[0] with
         | SLet ("cosine", [_], _, _, false, true, _) -> ()
         | _ -> Assert.Fail("Expected exported top-level let binding")
 
     [<Test>]
-    member _.``Parses exported top-level recursive let group with attribute`` () =
-        let p = Helpers.parse "[<export>] let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
+    member _.``Parses exported top-level recursive let group with export prefix`` () =
+        let p = Helpers.parse "export let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
         match p.[0] with
         | SLetRecGroup (bindings, true, _) -> bindings.Length |> should equal 2
         | _ -> Assert.Fail("Expected exported recursive let group")
@@ -796,8 +796,8 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects export let syntax`` () =
-        let act () = Helpers.parse "export let y = 1" |> ignore
+    member _.``Rejects attribute export syntax`` () =
+        let act () = Helpers.parse "[<export>] let y = 1" |> ignore
         act |> should throw typeof<ParseException>
 
     [<Test>]
@@ -806,6 +806,40 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects export attribute in nested expression block`` () =
-        let act () = Helpers.parse "(let x =\n    [<export>] let y = 1\n    y\n)" |> ignore
+    member _.``Rejects export prefix in nested expression block`` () =
+        let act () = Helpers.parse "(let x =\n    export let y = 1\n    y\n)" |> ignore
         act |> should throw typeof<ParseException>
+
+
+    [<Test>]
+    member _.``Parses exported value`` () =
+        match Helpers.parse "export let answer = 42" with
+        | [ SLet("answer", [], None, _, false, true, _) ] -> ()
+        | _ -> Assert.Fail("Expected exported value")
+
+    [<Test>]
+    member _.``Export remains an ordinary binding and parameter name`` () =
+        match Helpers.parse "let export = 42\nlet identity export = export\nexport\nidentity export" with
+        | [ SLet("export", [], _, _, false, false, _)
+            SLet("identity", [param], _, EVar("export", _), false, false, _)
+            SExpr(EVar("export", _))
+            SExpr(EApply(EVar("identity", _), EVar("export", _), _)) ] ->
+            Assert.That(param.Name, Is.EqualTo("export"))
+        | _ -> Assert.Fail("Expected ordinary export identifiers")
+
+    [<Test>]
+    member _.``An exported binding may itself be named export`` () =
+        match Helpers.parse "export let export export = export" with
+        | [ SLet("export", [param], _, EVar("export", _), false, true, _) ] ->
+            Assert.That(param.Name, Is.EqualTo("export"))
+        | _ -> Assert.Fail("Expected exported function named export")
+
+    [<TestCase("let x = export let y = 1\n    y")>]
+    [<TestCase("let x =\n  export let y = 1\n  y")>]
+    [<TestCase("(export let y = 1\n y)")>]
+    member _.``Rejects exported local bindings`` (source: string) =
+        try
+            Helpers.parse source |> ignore
+            Assert.Fail("Expected parse error")
+        with
+        | ParseException detail -> Assert.That(detail.Message, Does.Contain("top level"))

@@ -116,7 +116,7 @@ type HostTypesTests() =
         let registered = nodeRegistration ()
         let source = node ()
         let wrapped = HostTypes.wrap registered source
-        let loaded = ScriptHost.loadSourceWithRegistration registered "[<export>]\nlet keep x =\n    let visible = x.Value\n    [Some x]\n[<export>]\nlet accept (node: Node) = node.Value\n"
+        let loaded = ScriptHost.loadSourceWithRegistration registered "export let keep x =\n    let visible = x.Value\n    [Some x]\nexport let accept (node: Node) = node.Value\n"
         match ScriptHost.invoke loaded "keep" [wrapped] with
         | VList [VOption(Some retained)] ->
             Assert.That((HostTypes.unwrap<ReflectedNode> retained).Token, Is.EqualTo(source.Token))

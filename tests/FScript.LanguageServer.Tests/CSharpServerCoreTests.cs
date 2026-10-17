@@ -791,6 +791,47 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_semantic_tokens_classify_export_contextually()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-contextual-export.fss";
+            var source = "let export = 42\nexport let run export = export\nlet read (value: {| export: int |}) = value.export\nrun export";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source
+                }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            Assert.That((diagnostics["params"]?["diagnostics"] as JsonArray)?.Count, Is.EqualTo(0));
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var tokens = DecodeSemanticTokens((response["result"]?["data"] as JsonArray) ?? new JsonArray());
+            var lines = source.Split('\n');
+            var exportTokens = tokens.Where(token => lines[token.line].Substring(token.start, token.length) == "export").ToList();
+            Assert.That(exportTokens.Count, Is.EqualTo(6));
+            foreach (var token in exportTokens)
+            {
+                Assert.That(token.tokenType, Is.EqualTo(token.line == 1 && token.start == 0 ? 0 : 5));
+            }
+            var field = tokens.Single(token => lines[token.line].Substring(token.start, token.length) == "value.export");
+            Assert.That(field.tokenType, Is.Not.EqualTo(0), "Field access must not become a keyword.");
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_semantic_tokens_classify_numeric_annotations_as_types()
     {
         var client = LspClient.StartCSharp();
@@ -979,7 +1020,7 @@ let mapPreview =
             var source = """
 import "common.fss" as Common
 
-[<export>] let summary (project: Common.ProjectInfo) =
+export let summary (project: Common.ProjectInfo) =
     project.Name
 """;
             File.WriteAllText(mainPath, source);
@@ -1522,7 +1563,7 @@ first + second
 
             var mainPath = Path.Combine(tempDir, "main.fss");
             var source = """
-[<export>] let restore (context: Protocol.ActionContext) (locked: bool option) (evaluate: bool option) (args: string option) =
+export let restore (context: Protocol.ActionContext) (locked: bool option) (evaluate: bool option) (args: string option) =
   let locked = locked |> Helpers.map_true_default true "--locked-mode"
   let force_evaluate = evaluate |> Helpers.map_true "--force-evaluate"
   let args = args |> Helpers.with_args
@@ -1666,7 +1707,7 @@ let with_batch_projects context create_command =
   | Some _ -> [create_command ""]
   | _ -> [create_command ""]
 
-[<export>] let restore context =
+export let restore context =
   let create_command project_file =
     project_file
 
@@ -1744,7 +1785,7 @@ let with_batch_projects context create_command =
 let with_batch_projects context create_command =
   [create_command ""]
 
-[<export>] let restore context (locked: bool option) (evaluate: bool option) (args: string option) =
+export let restore context (locked: bool option) (evaluate: bool option) (args: string option) =
   let locked = locked
   let force_evaluate = evaluate
   let args = args
@@ -1827,7 +1868,7 @@ let with_batch_projects context create_command =
 
             var mainPath = Path.Combine(tempDir, "main.fss");
             var source = """
-[<export>] let defaults (context: Protocol.ActionContext) =
+export let defaults (context: Protocol.ActionContext) =
   let dependencies =
     context.Directory
     |> first_project_file
