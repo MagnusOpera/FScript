@@ -59,14 +59,8 @@ let resolveImportedSource (fullPath: string) : string option =
 
 // 3) Inject host function(s) as externs.
 let normalizeNameExtern =
-    { Name = "Host.normalizeName"
-      Scheme = Forall([], TFun(TString, TString))
-      Arity = 1
-      Impl =
-        fun _ args ->
-            match args with
-            | [ VString s ] -> VString (s.Trim().ToUpperInvariant())
-            | _ -> failwith "Host.normalizeName expects one string argument" }
+    HostFunctions.create HostInterop.empty "Host.normalizeName"
+        (fun (name: string) -> name.Trim().ToUpperInvariant())
 
 let hostContext =
     { HostContext.RootDirectory = root
@@ -104,7 +98,7 @@ In that example, `run` is declared with `export let` because the host needs to f
 ## Why this pattern works well in production
 
 - **Load once, invoke many times**: keep parsed/inferred/evaluated script state in memory.
-- **Extern injection is explicit**: only functions you register are callable.
+- **Extern injection is explicit**: only functions you register are callable; `HostFunctions.create` derives the scheme and conversions from a concrete handler.
 - **Resolver is host-owned**: imports can come from DB, cache, or controlled virtual FS.
 - **Type resolution before invoke**: host can validate contracts before calling exports.
 

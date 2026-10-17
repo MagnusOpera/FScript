@@ -69,7 +69,7 @@ The JavaScript tagged-value facade does not expose host-managed payloads; attemp
 
 Mappings are `Int32`/`Int64` to script `int`, `Double` to `float`, `Boolean`, `String`, F# `unit`, F# lists and one-dimensional arrays to lists, F# options, F# tuples/struct tuples, string-keyed F# maps, and nested attributed types to named host types. Container conversion copies visible values. Null roots/fields fail except F# option `None` and boxed unit. Unsupported types fail at description time with the CLR property path; there is no string/object fallback or numeric narrowing. Annotated static properties, private/nonexistent getters, indexers, invalid names, duplicate visible names, colliding CLR projections, and recursive visible type graphs fail clearly. Missing nested registrations fail even when a container has no actual nested values.
 
-These helpers live entirely in Runtime; Language stays reflection-free and independent of Runtime. The JavaScript facade does not support authoring or exporting host-managed payloads. Automatic function schemes, method invocation adapters, native layouts, and resource lifetime management remain outside the helper API.
+These helpers live entirely in Runtime; Language stays reflection-free and independent of Runtime. The JavaScript facade does not support authoring or exporting host-managed payloads. `HostFunctions.create` reuses the same conversion path to derive closed function schemes and synchronous handler invocation. Arbitrary CLR method discovery, native layouts, and resource lifetime management remain outside these helpers. See [typed host functions](./host-functions.md).
 
 ## Script-constructible provided types
 

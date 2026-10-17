@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added typed F# host function declarations that derive signatures, arity, and value conversions from handlers.
+- Explained host type and function descriptors alongside the embedding helpers.
+
 ## [0.81.0]
 
 

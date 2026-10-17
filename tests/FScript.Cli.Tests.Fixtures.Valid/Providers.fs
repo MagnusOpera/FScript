@@ -39,21 +39,8 @@ type HostManagedProvider =
         let registration = { HostInterop.empty with Types = [descriptor; HostTypes.describe<ProviderPoint>()] }
         { registration with
             Functions =
-                [ { Name = "Ext.node"
-                    Scheme = Forall([], TFun(TInt, TNamed "Node"))
-                    Arity = 1
-                    Impl = fun _ args ->
-                        match args with
-                        | [VInt n] -> HostTypes.wrap registration { Value = n; Context = ctx }
-                        | _ -> failwith "Expected integer" }
-                  { Name = "Ext.acceptNode"
-                    Scheme = Forall([], TFun(TNamed "Node", TInt))
-                    Arity = 1
-                    Impl = fun _ args ->
-                        let node = HostTypes.unwrap<ProviderNode> args.Head
-                        if node.Context = ctx then VInt node.Value
-                        else failwith "Host state was lost" }
-                  { Name = "Ext.acceptPoint"
-                    Scheme = Forall([], TFun(TNamed "Point", TInt))
-                    Arity = 1
-                    Impl = fun _ args -> VInt((HostTypes.unwrap<ProviderPoint> args.Head).X) } ] }
+                [ HostFunctions.create registration "Ext.node" (fun (n: int64) -> { Value = n; Context = ctx })
+                  HostFunctions.create registration "Ext.acceptNode" (fun (node: ProviderNode) ->
+                      if node.Context = ctx then node.Value
+                      else failwith "Host state was lost")
+                  HostFunctions.create registration "Ext.acceptPoint" (fun (point: ProviderPoint) -> point.X) ] }

@@ -188,6 +188,6 @@ Try the browser runtime in the [FScript sandbox](/sandbox).
 
 ## .NET host-managed values and assembly environments
 
-Host-managed opaque payloads and `[<FScriptExternProvider>]` assembly discovery belong to the .NET bridge. The JavaScript facade does not support authoring host-managed values; attempts to export them fail rather than discard state or metadata. `fscript.toml` does not load CLR assemblies into the JavaScript host or browser playground.
+Host-managed opaque payloads, `HostFunctions.create` typed F# handlers, and `[<FScriptExternProvider>]` assembly discovery belong to the .NET bridge. The JavaScript facade does not support authoring host-managed values; attempts to export them fail rather than discard state or metadata. `fscript.toml` does not load CLR assemblies into the JavaScript host or browser playground.
 
 See [Host-Managed Types](./host-managed-types) and [Environment Configuration](../reference/environment-configuration) for .NET embedding and CLI/editor usage. Existing JavaScript extern APIs remain unchanged.

@@ -20,6 +20,7 @@
     <Compile Include="ScriptHostTests.fs" />
     <Compile Include="HostManagedTests.fs" />
     <Compile Include="HostTypesTests.fs" />
+    <Compile Include="HostFunctionsTests.fs" />
     <Compile Include="EnvironmentConfigurationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

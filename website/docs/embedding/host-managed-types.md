@@ -10,7 +10,7 @@ Opaque projection is the default and can retain hidden resource state. Set `Scri
 
 ## Register a type and a factory
 
-A descriptor names the script type and its visible field types. An `ExtensionRegistration` groups descriptors with ordinary `ExternalFunction` records. This complete F# example registers a `Node` factory and calls script exports:
+A descriptor names the script type and its visible field types. The typed function helper handles argument decoding and result snapshots, including retention of opaque CLR payloads. An `ExtensionRegistration` groups descriptors with ordinary `ExternalFunction` records. This complete F# example registers a `Node` factory and calls script exports:
 
 ```fsharp
 open System
@@ -29,15 +29,9 @@ let typeRegistration =
     { HostInterop.empty with Types = [ nodeDescriptor ] }
 
 let makeNode =
-    { Name = "Host.makeNode"
-      Scheme = Forall([], TFun(TInt, TNamed "Node"))
-      Arity = 1
-      Impl = fun _ args ->
-          match args with
-          | [ VInt value ] ->
-              HostTypes.wrap typeRegistration
-                  { Value = value; Token = Guid.NewGuid() }
-          | _ -> failwith "Host.makeNode expects an int" }
+    HostFunctions.create typeRegistration "Host.makeNode"
+        (fun (value: int64) ->
+            { Value = value; Token = Guid.NewGuid() })
 
 let registration =
     { typeRegistration with Functions = [ makeNode ] }
@@ -77,11 +71,36 @@ Register a descriptor for every referenced host type, including types inside emp
 
 Only public readable instance properties are supported; annotated static members, private getters, and indexers are errors. Unsupported visible types (such as `Guid`, enums, arbitrary objects, and unannotated records) are rejected with the CLR member path. They can still be used as hidden state. Null objects/fields are rejected; use F# options to represent absence. Recursive visible type graphs are rejected, so keep cyclic links hidden. Two distinct CLR types in one projected graph cannot share a script type name.
 
+### The type descriptor behind the helper
+
+`HostTypes.describe<Node>()` builds this ordinary `FScript.Language.HostTypeDescriptor` record:
+
+```fsharp
+let nodeDescriptor : HostTypeDescriptor =
+    { Name = "Node"
+      Fields = Map.ofList [ ("Value", TInt) ]
+      HostManaged = true }
+```
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `Name` | `string` | Script-visible type name, referenced by `TNamed "Node"` in function schemes. |
+| `Fields` | `Map<string, Type>` | Visible field names and their script types. |
+| `HostManaged` | `bool` | `true` requires host-created opaque values; `false` allows ordinary record construction and updates in scripts. |
+
+The descriptor describes the script surface. It contains no CLR type, constructor, field getter, or hidden payload: `Token` is absent. The attributed CLR type supplies the conversion rules used by `HostTypes` and `HostFunctions`; the descriptor alone does not define how to reconstruct a CLR object.
+
+For the `Point` example below, `HostTypes.describe<Point>()` produces the same visible `Value: int` field with `Name = "Point"` and `HostManaged = false`, matching `ScriptConstructible = true`.
+
+A function descriptor connects these types to a callable script API. For `makeNode` above, its `Scheme` is `Forall([], TFun(TInt, TNamed "Node"))` and its `Arity` is `1`; its `Impl` adapts interpreter arguments, calls the typed handler, and wraps the result. See [the function descriptor behind the helper](./register-externs.md#the-function-descriptor-behind-the-helper).
+
 ### Explicit descriptors remain available
+
+You can write descriptors directly and place them in `ExtensionRegistration.Types`. This is useful when the visible snapshot or payload does not directly correspond to one CLR type.
 
 Use `HostInterop.create registration typeName fields payload` when the visible snapshot or payload does not directly correspond to one CLR type. `HostInterop.unwrap typeName value` exposes its descriptor, fields, and arbitrary payload to trusted host code. These lower-level helpers do not use reflection. `HostTypes.unwrap<Node>` requires a compatible `Node` payload, so it cannot retrieve an unrelated custom payload.
 
-Descriptors and registrations belong to the host/session; duplicate type names and collisions with built-in or script type declarations are rejected. Reflection helpers do not automatically register host methods or derive their function schemes.
+Descriptors and registrations belong to the host/session; duplicate type names and collisions with built-in or script type declarations are rejected. `HostFunctions.create` derives a function scheme, arity, and argument/result conversion from a concrete F# handler using these same mappings. It validates all referenced type registrations when the function is declared. No handler or getter runs at declaration time. See [Declare typed host functions](./register-externs.md#declare-a-typed-handler).
 
 ## Allow scripts to construct a provided record
 

@@ -13,6 +13,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 
 - Stdlib functions: [`stdlib-functions.md`](./stdlib-functions.md)
 - Host-managed types: [`host-managed-types.md`](./host-managed-types.md)
+- Typed F# host function adapters: [`host-functions.md`](./host-functions.md)
 - External functions and extensibility: [`external-functions.md`](./external-functions.md)
 - Shared CLI/editor environments: [`environment-configuration.md`](./environment-configuration.md)
 

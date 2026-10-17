@@ -34,6 +34,10 @@ LSP integration:
 - Injected stdlib functions use named-argument signatures when parameter names are available.
 - Go-to-definition for stdlib injected functions resolves to readonly virtual stdlib sources (`fscript-stdlib:///...`) for namespaced stdlib and runtime surfaces such as `Console.*`, `Task.*`, `Map.*`, and `List.*`.
 
+## Typed F# handlers
+
+`FScript.Runtime.HostFunctions.create registration name handler` returns the same `ExternalFunction` record with a generated closed scheme, curried arity, and conversions shared with `HostTypes`. Concrete synchronous F# handlers do not need to repeat `Scheme`, `Arity`, or `Value` pattern matches. Registered host descriptors remain explicit. Manual records remain available for capabilities outside this adapter. See [Host function adapters](./host-functions.md) for signature validation and invocation semantics.
+
 ## Higher-order extern execution
 Higher-order externs are implemented in runtime extern modules and receive an `ExternalCallContext`.
 

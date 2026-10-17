@@ -10,7 +10,7 @@ FScript is designed for host applications that embed a scripting language safely
 
 1. Reference language/runtime packages.
 2. Build a host context.
-3. Register extern functions and, when needed, host-managed types your scripts can use.
+3. Register [typed extern handlers](./register-externs.md) and, when needed, [host-provided types](./host-managed-types.md) your scripts can use.
 4. Load scripts (with include resolution if needed).
 5. Resolve exported function signatures.
 6. Execute exported functions and handle results/errors.

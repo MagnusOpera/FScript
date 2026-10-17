@@ -90,8 +90,8 @@ module HostTypes =
             |> Map.ofArray
         { Name = name; Fields = fields; HostManaged = not attribute.ScriptConstructible }
 
-    let private projection (clrType: System.Type) =
-        let root = describeType [] clrType.FullName clrType
+    let private valueProjection path (clrType: System.Type) =
+        let scriptType = fieldType [] path clrType
         let rec collect path (current: System.Type) = seq {
             if current.IsDefined(typeof<FScriptHostTypeAttribute>, false) then
                 yield current, describeType [] path current
@@ -103,9 +103,14 @@ module HostTypes =
             elif current.IsGenericType then
                 for item in current.GetGenericArguments() do yield! collect path item
         }
-        let descriptors = collect clrType.FullName clrType |> Seq.distinctBy fst |> Seq.toList
+        let descriptors = collect path clrType |> Seq.distinctBy fst |> Seq.toList
         descriptors |> List.groupBy (fun (_, d) -> d.Name) |> List.iter (fun (name, types) ->
             if types.Length > 1 then fail clrType.FullName $"Multiple CLR types project to the script type name '{name}'.")
+        scriptType, descriptors
+
+    let private projection (clrType: System.Type) =
+        let root = describeType [] clrType.FullName clrType
+        let _, descriptors = valueProjection clrType.FullName clrType
         root, descriptors |> List.map snd
 
     /// Derive a descriptor without constructing a value or invoking any property getter.
@@ -274,3 +279,25 @@ module HostTypes =
             if host.Descriptor <> descriptor then fail typeof<'T>.FullName "Host descriptor does not match the CLR projection."
         HostInterop.validate typeDefs (TNamed descriptor.Name) value
         restore typeof<'T>.FullName typeof<'T> value |> unbox<'T>
+
+
+    // Function adapters use this same mapping and conversion path as type projections.
+    type internal ValueCodec =
+        { ScriptType: FScript.Language.Type
+          Projections: (System.Type * HostTypeDescriptor) list
+          Encode: objnull -> Value
+          Decode: Value -> objnull }
+
+    let internal valueCodec registration path clrType =
+        let scriptType, projections = valueProjection path clrType
+        for _, descriptor in projections do ensureRegistered registration descriptor path
+        let definitions = HostInterop.typeDefinitions registration []
+        { ScriptType = scriptType
+          Projections = projections
+          Encode = fun value ->
+              let encoded = snapshot registration path clrType value
+              HostInterop.validate definitions scriptType encoded
+              encoded
+          Decode = fun value ->
+              HostInterop.validate definitions scriptType value
+              restore path clrType value }

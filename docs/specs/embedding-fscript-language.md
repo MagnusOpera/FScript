@@ -417,3 +417,8 @@ Use `ExtensionRegistration` and the registration-aware inference/evaluation, `Sc
 For host-managed values backed by real CLR types, use Runtime's `[<FScriptHostType("Name")>]` and `[<FScriptVisible>]` attributes with `HostTypes.describe<'T>()`, `wrap registration value`, and `unwrap<'T> value`. The same mapping derives field types and snapshots property values; hidden state remains the original CLR payload. Descriptor creation does not execute getters. See [host-managed types](./host-managed-types.md#optional-clr-projection-helpers) for mappings, registration requirements, and failures. The lower-level Language helpers remain available for custom descriptors/payloads.
 
 Set `ScriptConstructible = true` on fully visible F# record types to accept ordinary script-created records. Descriptor initialization rejects hidden constructor fields. `HostTypes.wrap` then emits `VRecord`, and `unwrap<'T>` constructs a CLR record from the fields instead of retrieving an opaque payload. The default opaque mode remains available for hidden host state. See [provided record construction](./host-managed-types.md#script-constructible-provided-types).
+
+
+## Typed host function declaration
+
+Use `HostFunctions.create registration name handler` for concrete synchronous F# handlers. It returns an `ExternalFunction` accepted by existing extern-list and registration-aware entry points, deriving the monomorphic scheme, arity, and conversions from the handler signature. Register all referenced host types explicitly; use the manual record API for script callbacks, polymorphic schemes, or runtime call-context access. See [host function adapters](./host-functions.md).

@@ -169,3 +169,8 @@ The reflection attribute's `ScriptConstructible` option selects the existing ord
 ## Export declarations
 
 The lexer keeps `export` as an identifier. At a top-level statement boundary, the parser recognizes `Ident "export"` followed by `Let` and marks the existing `SLet`/`SLetRecGroup` export flag. Nested uses of that declaration prefix are rejected; ordinary identifiers named `export` remain valid. No attribute model or extra AST statement kind is introduced. TextMate and LSP semantic classification highlight only the contextual prefix. Export discovery and invocation continue to consume the existing flags.
+
+
+## Typed host function adapters
+
+`FScript.Runtime.HostFunctions` inspects the declared F# function type once to prepare its curried invocation steps, scheme, arity, and argument/result codecs. `HostTypes` owns the shared CLR-to-script type projection and snapshot/restoration logic for both object fields and function boundaries. The adapter validates explicit registrations during construction and validates values before handler execution and after result conversion. It returns the existing `ExternalFunction`; no new invocation mechanism, global registry, Language dependency, assembly discovery protocol, or JavaScript authoring API is introduced.
