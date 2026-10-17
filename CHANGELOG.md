@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added shared FFI environment configuration for CLI execution and trusted, workspace-specific VS Code completion and diagnostics.
 - Added host-managed extension types with visible fields, opaque host state, and safe structural reading and transport.
 
 ## [0.80.1]

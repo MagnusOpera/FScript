@@ -33,7 +33,7 @@ From `vscode-fscript/`:
 npm install
 ```
 
-Then run the extension in VS Code (`F5`) from this repository.
+Then run the extension in VS Code (`F5`) from this repository. The local server builds asynchronously once per activation, so the editor stays responsive while it starts.
 
 Run `npm test` to check extension activation, logging-channel compatibility, startup failures, and shutdown. These JavaScript regression tests live in `tests/FScript.LanguageServer.Tests/` and run alongside the .NET language-server tests in CI.
 
@@ -87,3 +87,18 @@ The extension starts the language server with one of these strategies:
 3. Local development fallback: builds `../src/FScript.LanguageServer/FScript.LanguageServer.csproj` and runs `bin/Debug/net10.0/FScript.LanguageServer.dll`
 
 Map annotations use postfix forms such as `string map[int]` and `string map[Priority]`. String-keyed maps appear as `string map`, including when annotated with `map[string]`. Hover and inlay hints preserve inferred key types.
+
+## External-function environments
+
+Place a `fscript.toml` in a workspace folder:
+
+```toml
+[runtime]
+extern-assemblies = ["./extensions/Geometry.dll"]
+```
+
+One discovered manifest is selected automatically. With multiple candidates, use **FScript: Select Configuration**; **No configuration** is always available. Each workspace folder has an independent persisted choice. A nonempty folder setting `fscript.config` overrides that choice; clear the setting to use the picker. The configuration status item shows the effective selection.
+
+Configured paths resolve from the manifest directory. With no explicit root, selected editor environments use the workspace folder, while the CLI keeps its normal script/current-directory default. Run the same environment with `fscript --config ./fscript.toml script.fss`. Editor REPL commands do not automatically adopt it.
+
+Configured DLLs execute registration code and require workspace trust. Changes to saved manifests or provider DLLs restart only the affected server and reanalyze open buffers. On Windows, stop the server with `fscript.lsp.enabled` before rebuilding a locked DLL, then re-enable it. Invalid environments report manifest diagnostics and revert to default analysis without stale configured signatures. See the [full specification](../docs/specs/environment-configuration.md).

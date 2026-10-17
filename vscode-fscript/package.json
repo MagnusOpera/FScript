@@ -79,6 +79,11 @@
         "command": "fscript.executeCurrentScriptInRepl",
         "title": "Execute Current Script in REPL",
         "category": "FScript"
+      },
+      {
+        "command": "fscript.selectConfiguration",
+        "title": "Select Configuration",
+        "category": "FScript"
       }
     ],
     "menus": {
@@ -102,25 +107,29 @@
           "type": "boolean",
           "default": true,
           "order": 1,
-          "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints)."
+          "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints).",
+          "scope": "resource"
         },
         "fscript.inlayHints.enabled": {
           "type": "boolean",
           "default": true,
           "order": 2,
-          "description": "Enable inlay hints provided by the FScript language server."
+          "description": "Enable inlay hints provided by the FScript language server.",
+          "scope": "resource"
         },
         "fscript.hoverHints.enabled": {
           "type": "boolean",
           "default": true,
           "order": 3,
-          "description": "Enable hover hints provided by the FScript language server."
+          "description": "Enable hover hints provided by the FScript language server.",
+          "scope": "resource"
         },
         "fscript.server.path": {
           "type": "string",
           "default": "",
           "order": 4,
-          "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the first workspace folder."
+          "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the workspace folder, or extension directory for standalone files.",
+          "scope": "resource"
         },
         "fscript.server.logLevel": {
           "type": "string",
@@ -132,19 +141,26 @@
             "info",
             "debug"
           ],
-          "description": "Requested language server log level sent through initialization options."
+          "description": "Requested language server log level sent through initialization options.",
+          "scope": "resource"
         },
         "fscript.repl.command": {
           "type": "string",
           "default": "auto",
           "order": 6,
           "description": "Shell command used to launch the FScript REPL terminal. Use 'auto' to prefer local workspace CLI via dotnet run, then fallback to 'fscript'."
+        },
+        "fscript.config": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Environment configuration path, relative to this workspace folder. Overrides the saved configuration selection."
         }
       }
     }
   },
   "scripts": {
-    "test": "node --test ../tests/FScript.LanguageServer.Tests/ExtensionStartupTests.js",
+    "test": "node --test ../tests/FScript.LanguageServer.Tests/*Tests.js",
     "lint": "echo \"No lint configured\"",
     "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
     "vscode:prepublish": "npm run compile",
@@ -157,5 +173,15 @@
   "devDependencies": {
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Configured external providers and script execution require workspace trust.",
+      "restrictedConfigurations": [
+        "fscript.server.path",
+        "fscript.repl.command"
+      ]
+    }
   }
 }

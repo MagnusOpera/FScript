@@ -407,3 +407,7 @@ let signatures = ExportSignatures.fromTypedProgram typed
 ## Registering host-managed types
 
 Use `ExtensionRegistration` and the registration-aware inference/evaluation, `ScriptHost`, or `Interactive` entry points to provide host type descriptors alongside extern functions. `HostInterop.create` validates visible field snapshots; `HostInterop.unwrap` gives trusted host functions access to the opaque payload. Existing extern-list APIs retain their empty-type-registration behavior. See [host-managed types](./host-managed-types.md) for the complete contract and API names.
+
+## Environment initialization
+
+`FScript.Runtime.EnvironmentConfiguration` parses/normalizes manifests and merges caller defaults and overrides into `EnvironmentSettings`, without loading providers. `EnvironmentLoader.load` creates an atomic `ExtensionRegistration` through the existing provider protocol. Embedders can inspect effective settings before deciding to load executable assemblies. Existing explicit-registration APIs remain unchanged. Registration-aware inference with local-variable telemetry is also available to editor hosts. See [environment configuration](./environment-configuration.md).

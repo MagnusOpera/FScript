@@ -101,6 +101,7 @@ internal static class LspClient
             try
             {
                 client.Process.Kill(true);
+                client.Process.WaitForExit(5000);
             }
             catch
             {

@@ -19,6 +19,7 @@
     <Compile Include="XmlExternsTests.fs" />
     <Compile Include="ScriptHostTests.fs" />
     <Compile Include="HostManagedTests.fs" />
+    <Compile Include="EnvironmentConfigurationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

@@ -32,6 +32,8 @@
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />
+    <Compile Include="EnvironmentConfiguration.fs" />
+    <Compile Include="EnvironmentLoader.fs" />
     <Compile Include="ExportSignatures.fs" />
     <Compile Include="ScriptHost.fs" />
   </ItemGroup>
@@ -47,6 +49,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
     <PackageReference Include="System.Text.Json" Version="10.0.12" />
   </ItemGroup>
 

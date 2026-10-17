@@ -60,3 +60,7 @@ Filesystem extern behavior:
 - Keep capability scope narrow.
 - Model recoverable operational failures with `option` values.
 - Add tests for allow/deny paths and edge cases.
+
+## Configured providers in editor workspaces
+
+Environment manifests do not sandbox provider code. VS Code Restricted Mode permits discovery and parsing, but blocks configured assembly execution on both sides of the language-client boundary. Default static analysis remains available. CLI configuration retains the trust assumptions of explicit assembly flags. See [environment configuration](./environment-configuration.md#trust-and-boundaries).

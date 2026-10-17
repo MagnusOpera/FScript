@@ -15,6 +15,8 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 - Host-managed types: [`host-managed-types.md`](./host-managed-types.md)
 - External functions and extensibility: [`external-functions.md`](./external-functions.md)
 
+- Shared CLI/editor environments: [`environment-configuration.md`](./environment-configuration.md)
+
 ## Hosting and security
 
 - Embedding `FScript.Language`: [`embedding-fscript-language.md`](./embedding-fscript-language.md)

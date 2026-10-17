@@ -77,6 +77,7 @@ internal sealed class LspServer
         switch (method)
         {
             case "initialized":
+                global::FScript.LanguageServer.LspRuntimeExterns.publishConfigurationDiagnostics();
                 break;
             case "textDocument/didOpen":
                 if (paramsObj is not null)
@@ -107,6 +108,9 @@ internal sealed class LspServer
         {
             case "initialize":
                 FSLspHandlers.handleInitialize(idNode, paramsObj is null ? FSharpOption<JsonObject>.None : FSharpOption<JsonObject>.Some(paramsObj));
+                break;
+            case "fscript/environmentInfo":
+                FSLspProtocol.sendResponse(idNode, FSharpOption<JsonNode?>.Some(global::FScript.LanguageServer.LspRuntimeExterns.info()));
                 break;
             case "shutdown":
                 _shutdownRequested = true;

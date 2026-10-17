@@ -341,3 +341,49 @@ type CliTests() =
             Assert.That(code, Is.EqualTo(2), stderr)
         finally
             if File.Exists path then File.Delete path
+
+    [<Test>]
+    member _.``Configuration loads providers in file and stdin modes from a different directory`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-environment-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            let assembly = validProviderAssemblyPath ()
+            let relativeAssembly = Path.GetRelativePath(dir, assembly).Replace("\\", "/")
+            File.WriteAllText(manifest, $"[runtime]\nroot = '.'\nextern-assemblies = ['{relativeAssembly}']")
+            let script = Path.Combine(dir, "script.fss")
+            File.WriteAllText(script, "Ext.acceptNode (Ext.node Ext.answer)")
+            for args, input in [ ["--config"; manifest; script], None
+                                 ["-c"; manifest], Some "Ext.acceptNode (Ext.node Ext.answer)"
+                                 ["-c"; manifest; "--extern-assembly"; assembly], Some "Ext.answer" ] do
+                let code, output, error = runCli repo repo args input
+                Assert.That(code, Is.EqualTo(0), error)
+                Assert.That(output.Trim(), Is.EqualTo("42"))
+            let code, output, error = runCli repo repo ["-c"; manifest] (Some "Ext.rootDirectory")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output, Does.Contain(dir))
+            let code, output, error = runCli repo repo ["-c"; manifest; "--root"; repo] (Some "Ext.rootDirectory")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output, Does.Contain(repo))
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Configuration is explicit and invalid manifests fail before execution`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-environment-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            File.WriteAllText(manifest, "[project]\nentry = 'unused.fss'")
+            let code, output, error = runCli repo dir [] (Some "42")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output.Trim(), Is.EqualTo("42"))
+            let code, _, error = runCli repo dir ["--config"; manifest] (Some "42")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(error, Does.Contain("project"))
+            File.WriteAllText(manifest, "[runtime]\ndefault-externs = false")
+            let code, _, error = runCli repo dir ["-c"; manifest] (Some "Console.writeLine \"test\"")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(error, Does.Contain("Console"))
+        finally Directory.Delete(dir, true)

@@ -16,6 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Conflict\FScript.Cli.Tests.Fixtures.Conflict.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Valid\FScript.Cli.Tests.Fixtures.Valid.fsproj" />
     <ProjectReference Include="..\..\src\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\..\src\FScript.CSharpInterop\FScript.CSharpInterop.fsproj" />
   </ItemGroup>

@@ -14,6 +14,10 @@ type ValidExternProvider =
 type ValidHostContextProvider =
     [<FScriptExternProvider>]
     static member Provide(ctx: HostContext) : ExternalFunction list =
+        let marker = System.IO.Path.Combine(ctx.RootDirectory, "provider-registration.requested")
+        if System.IO.File.Exists(marker) then
+            System.IO.File.WriteAllText(System.IO.Path.Combine(ctx.RootDirectory, "provider-registration.executed"), "registered")
+            System.Console.WriteLine("fixture provider registration")
         [ { Name = "Ext.rootDirectory"
             Scheme = Forall([], TString)
             Arity = 0

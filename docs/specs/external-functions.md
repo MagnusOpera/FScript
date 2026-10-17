@@ -147,3 +147,7 @@ Recommended steps:
 ## Host-managed type registration
 
 Providers may additionally return `ExtensionRegistration` (`Types` plus existing `Functions`), with the same zero-argument or `HostContext` invocation conventions. Host type metadata and opaque values use the existing extern execution bridge. Legacy providers remain supported. See [host-managed types](./host-managed-types.md) for creation restrictions, structural readers, payload transport, and boundary validation.
+
+## Shared environment discovery
+
+The CLI `--config` flag and VS Code environment selection reuse the runtime provider loader and its authoritative `ExtensionRegistration`. Both legacy provider signatures remain supported. See [environment configuration](./environment-configuration.md) for path resolution, merging, discovery, trust and reload behavior.
