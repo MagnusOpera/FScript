@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.0]
+
+
 - Replaced script export attributes with contextual `export let` declarations while keeping `export` available as an identifier.
 - Completed the standard-library and language reference and improved tutorial order, examples, and core-versus-host guidance.
 - Removed the F# TypeProvider package and its compile-time script projection support.
@@ -12,6 +15,8 @@ All notable changes to FScript are documented in this file.
 - Documented host-managed values, extension providers, and shared CLI and VS Code environments.
 - Added shared FFI environment configuration for CLI execution and trusted, workspace-specific VS Code completion and diagnostics.
 - Added host-managed extension types with visible fields, opaque host state, and safe structural reading and transport.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.80.1...0.81.0
 
 ## [0.80.1]
 
