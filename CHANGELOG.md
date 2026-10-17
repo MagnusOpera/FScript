@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.2]
+
+
 - Added an OpenGL FFI sample with script-generated teapot geometry, camera, lighting, animation, and an Examples walkthrough.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.1...0.81.2
 
 ## [0.81.1]
 
