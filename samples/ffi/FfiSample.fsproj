@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>FScript.Ffi.Sample</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Graphics.fs" />
+    <Compile Include="Program.fs" />
+    <Content Include="*.fss" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FScript.Runtime/FScript.Runtime.fsproj" />
+    <ProjectReference Include="Renderer/Renderer.csproj" />
+  </ItemGroup>
+</Project>

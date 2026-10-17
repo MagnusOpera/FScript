@@ -174,3 +174,7 @@ The lexer keeps `export` as an identifier. At a top-level statement boundary, th
 ## Typed host function adapters
 
 `FScript.Runtime.HostFunctions` inspects the declared F# function type once to prepare its curried invocation steps, scheme, arity, and argument/result codecs. `HostTypes` owns the shared CLR-to-script type projection and snapshot/restoration logic for both object fields and function boundaries. The adapter validates explicit registrations during construction and validates values before handler execution and after result conversion. It returns the existing `ExternalFunction`; no new invocation mechanism, global registry, Language dependency, assembly discovery protocol, or JavaScript authoring API is introduced.
+
+## FFI graphics sample
+
+`samples/ffi` separates script-owned geometry and scene decisions from the native renderer. Its F# executable/provider references Runtime and a small C# Silk.NET backend; the backend has no Language or Runtime dependency. `teapot.fss` tessellates Bézier control points and supplies vertices/normals/indices; `scene.fss` supplies camera, light, material, and animation. The host invokes exported functions on the window thread. Sample tests use a recording backend and require no display; graphical checks remain explicit. These sample-only dependencies do not enter the CLI, Runtime package, or JavaScript build.

@@ -28,7 +28,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Examples',
-      items: ['examples/guided-examples', 'examples/common-patterns'],
+      items: ['examples/guided-examples', 'examples/common-patterns', 'examples/ffi-graphics'],
     },
     {
       type: 'category',

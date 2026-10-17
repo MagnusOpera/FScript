@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added an OpenGL FFI sample with script-generated teapot geometry, camera, lighting, animation, and an Examples walkthrough.
+
 ## [0.81.1]
 
 

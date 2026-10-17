@@ -45,3 +45,7 @@ Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fie
 - Reflection invocation wrappers are removed from handler-error diagnostics; errors identify the registered function.
 
 Manual `ExternalFunction` records remain available for authoritative custom schemes, callbacks through `ExternalCallContext.Apply`, explicit runtime-context access, and arity-zero external values. Language remains independent of Runtime reflection helpers.
+
+## Executable graphics example
+
+The [`samples/ffi`](../../samples/ffi/README.md) sample applies these adapters to geometry, lighting, camera, and rendering functions. Script-constructible records carry scene data; opaque `Window` and `Mesh` values retain backend ownership and resource handles. The provider is discoverable without creating native resources. The host owns the main-thread window/render loop and releases GPU resources on exit. Headless integration tests run the actual geometry-generation and scene scripts through the same registration and adapters.

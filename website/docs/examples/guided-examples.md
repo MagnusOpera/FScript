@@ -16,6 +16,7 @@ This chapter is example-first: each section includes complete code you can copy 
 | Model recursive domain data | [Recursive records and traversal](#4-recursive-records-and-traversal) |
 | Split a script into modules | [Imports + exports](#5-imports--exports-multi-file) |
 | Call a script from an application | [An embedded pricing rule](#6-an-embedded-pricing-rule) |
+| Explore typed FFI with graphics and opaque resources | [A rotating teapot](./ffi-graphics.md) |
 
 ## 1) Hello with script arguments
 
@@ -237,3 +238,5 @@ The script owns the changeable rule. The host owns loading, input, output, and e
 4. Run example 5 when you are ready for multi-file scripts and host-facing exports.
 5. Run example 6 when you are ready to cross the script/host boundary.
 6. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.
+
+Continue with [FFI Graphics — A Rotating Teapot](./ffi-graphics.md) to generate a 3D model in FScript and send geometry, camera, and lighting through a typed .NET provider.
