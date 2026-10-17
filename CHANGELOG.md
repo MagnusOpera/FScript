@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.1]
+
+
 - Added typed F# host function declarations that derive signatures, arity, and value conversions from handlers.
 - Explained host type and function descriptors alongside the embedding helpers.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.0...0.81.1
 
 ## [0.81.0]
 
