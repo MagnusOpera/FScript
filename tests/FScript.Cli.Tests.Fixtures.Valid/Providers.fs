@@ -24,11 +24,19 @@ type ValidHostContextProvider =
             Impl = (fun _ _ -> VString ctx.RootDirectory) } ]
 
 
+[<FScriptHostType("Node")>]
+type ProviderNode =
+    { [<FScriptVisible>] Value: int64
+      Context: HostContext }
+
+[<FScriptHostType("Point", ScriptConstructible = true)>]
+type ProviderPoint = { [<FScriptVisible>] X: int64 }
+
 type HostManagedProvider =
     [<FScriptExternProvider>]
     static member Provide(ctx: HostContext) : ExtensionRegistration =
-        let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }
-        let registration = { HostInterop.empty with Types = [descriptor] }
+        let descriptor = HostTypes.describe<ProviderNode>()
+        let registration = { HostInterop.empty with Types = [descriptor; HostTypes.describe<ProviderPoint>()] }
         { registration with
             Functions =
                 [ { Name = "Ext.node"
@@ -36,13 +44,16 @@ type HostManagedProvider =
                     Arity = 1
                     Impl = fun _ args ->
                         match args with
-                        | [VInt n] -> HostInterop.create registration "Node" (Map.ofList ["Value", VInt n]) ctx
+                        | [VInt n] -> HostTypes.wrap registration { Value = n; Context = ctx }
                         | _ -> failwith "Expected integer" }
                   { Name = "Ext.acceptNode"
                     Scheme = Forall([], TFun(TNamed "Node", TInt))
                     Arity = 1
                     Impl = fun _ args ->
-                        let host = HostInterop.unwrap "Node" args.Head
-                        match host.Payload with
-                        | :? HostContext as original when original = ctx -> host.Fields.["Value"]
-                        | _ -> failwith "Host state was lost" } ] }
+                        let node = HostTypes.unwrap<ProviderNode> args.Head
+                        if node.Context = ctx then VInt node.Value
+                        else failwith "Host state was lost" }
+                  { Name = "Ext.acceptPoint"
+                    Scheme = Forall([], TFun(TNamed "Point", TInt))
+                    Arity = 1
+                    Impl = fun _ args -> VInt((HostTypes.unwrap<ProviderPoint> args.Head).X) } ] }

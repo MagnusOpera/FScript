@@ -634,7 +634,8 @@ module LspHandlers =
                     let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
                     let contents = JsonObject()
                     contents["kind"] <- JsonValue.Create("markdown")
-                    contents["value"] <- JsonValue.Create($"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\nhost-managed")
+                    let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
+                    contents["value"] <- JsonValue.Create($"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}")
                     let result = JsonObject()
                     result["contents"] <- contents
                     LspProtocol.sendResponse idNode (Some result)

@@ -387,3 +387,11 @@ type CliTests() =
             Assert.That(code, Is.Not.EqualTo(0))
             Assert.That(error, Does.Contain("Console"))
         finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Provider data records can be constructed and updated by scripts`` () =
+        let repo = findRepoRoot ()
+        let source = "let point = { X = 1 }\nExt.acceptPoint { point with X = 42 }"
+        let code, output, error = runCli repo repo ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
+        Assert.That(code, Is.EqualTo(0), error)
+        Assert.That(output.Trim(), Is.EqualTo("42"))

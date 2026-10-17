@@ -199,4 +199,18 @@ public sealed class EnvironmentTests
         finally { LspClient.Stop(client); }
     }
 
+    [Test]
+    public void Provider_constructible_records_support_literals_updates_and_type_hover()
+    {
+        var client = Start();
+        try
+        {
+            const string source = "let point = { X = 1 }\nlet accept (point: Point) = Ext.acceptPoint { point with X = 42 }\naccept point";
+            Assert.That(Open(client, source)["params"]?["diagnostics"]?.AsArray(), Is.Empty);
+            Assert.That(Request(client, "textDocument/hover", 1, 20)?.ToJsonString(), Does.Contain("script-constructible record"));
+            Assert.That(Request(client, "textDocument/completion", 1, 20)?.ToJsonString(), Does.Contain("Point"));
+        }
+        finally { LspClient.Stop(client); }
+    }
+
 }

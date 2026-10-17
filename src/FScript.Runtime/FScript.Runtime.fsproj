@@ -22,6 +22,7 @@
     <Compile Include="Types.fs" />
     <Compile Include="ExternProvider.fs" />
     <Compile Include="Common.fs" />
+    <Compile Include="HostTypes.fs" />
     <Compile Include="Decode.fs" />
     <Compile Include="FsExterns.fs" />
     <Compile Include="RegexExterns.fs" />
