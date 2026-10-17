@@ -14,7 +14,7 @@ let text = String.replace "-" "_" "a-b-c"
 
 ## `String.indexOf : string -> string -> int option`
 
-Argument order is `value -> source`.
+Argument order is `value -> source`. Matching is ordinal and case-sensitive; returns the first zero-based index or `None` when absent.
 
 ```fsharp
 let maybeIndex = String.indexOf "script" "fscript"
@@ -56,7 +56,7 @@ let joined = String.concat "," ["a"; "b"; "c"]
 ## `String.split : string -> string -> string list`
 
 Argument order is `separator -> source`.
-Splits on the exact separator string.
+Splits on the exact separator string and preserves empty entries, including trailing ones.
 
 ```fsharp
 let parts = String.split "," "a,b,c"

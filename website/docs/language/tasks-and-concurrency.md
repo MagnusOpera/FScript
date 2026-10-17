@@ -32,6 +32,7 @@ Tasks are opaque handles. You create them with `Task.spawn` and observe them wit
 ```fsharp
 let work =
   Task.spawn (fun () -> 21 * 2)
+let answer = Task.await work
 ```
 
 Signature:
@@ -85,3 +86,5 @@ Console.writeLine $"{result}"
 ```
 
 For a larger example, see [`samples/parallel-quicksort.fss`](https://github.com/MagnusOpera/FScript/blob/main/samples/parallel-quicksort.fss).
+
+Continue with [Guided Examples](../examples/guided-examples) to combine these features, or consult the [Stdlib Overview](../stdlib/overview) for available operations.

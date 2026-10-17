@@ -108,20 +108,6 @@ Responsibilities:
 Use this when:
 - You want C# ownership of the server host process while reusing existing language services.
 
-### `FScript.TypeProvider`
-Role:
-- F# compile-time type provider for exported FScript functions.
-
-Responsibilities:
-- Parse and type-check `.fss` scripts during F# compilation.
-- Project `[<export>]` functions as strongly-typed static members.
-- Resolve compile-time/runtime extern providers.
-- Enforce runtime signature compatibility using compile-time fingerprints.
-
-Use this when:
-- You want F# compile-time validation of script contracts.
-- You want strongly-typed invocation of exported script functions without hand-written wrappers.
-
 ## Typical composition
 
 ### CLI execution path
@@ -157,7 +143,6 @@ Use this when:
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
 - `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
-- `FScript.TypeProvider` depends on `FScript.Language` and `FScript.Runtime`.
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable. The JavaScript facade is intentionally separate from `.NET` runtime externs: v1 exposes core language hosting, virtual imports, tagged values, and JS-provided externs, while filesystem, console, task, and other runtime modules stay in the .NET runtime layer.
@@ -166,10 +151,21 @@ This keeps the language engine reusable while runtime capabilities remain host-c
 
 `FScript.Language` owns host type descriptors, `ExtensionRegistration`, `HostInterop`, and `VHostManaged`. The value contains visible field snapshots, type metadata, and an opaque host payload. Inference resolves registered types separately from constructible records. Internal record-shape variables retain the whole argument type and carry a constructibility requirement for record updates; they participate in substitution, generalization, and instantiation. No new script syntax or language trait is added.
 
-`FScript.Runtime.ScriptHost`, interactive sessions, the CLI, and the type provider pass a registration through inference and evaluation. The existing provider attribute accepts either legacy extern lists or registrations. No process-global host type registry or second invocation bridge is used. Field projection, matching, equality, and display share visible-field behavior; serialization never traverses the opaque payload. See the [host-managed type specification](../specs/host-managed-types.md).
+`FScript.Runtime.ScriptHost`, interactive sessions, and the CLI pass a registration through inference and evaluation. The existing provider attribute accepts either legacy extern lists or registrations. No process-global host type registry or second invocation bridge is used. Field projection, matching, equality, and display share visible-field behavior; serialization never traverses the opaque payload. See the [host-managed type specification](../specs/host-managed-types.md).
 
 ## Shared external-function environments
 
 `FScript.Runtime` owns TOML parsing, effective environment settings and the provider loader extracted from the CLI. Parsing is independent of executable loading. `FScript.Language` continues to depend on neither Runtime nor TOML. CLI and LSP use the same registration metadata and validation.
 
 The VS Code extension owns discovery, persisted selection, trust gating and one language-client/server process per workspace folder, with a separate default client for standalone/untitled documents. Configuration paths and trust enter through initialization options. The server reports effective settings/watch paths through `fscript/environmentInfo`; JavaScript does not parse TOML or duplicate signatures. Process replacement reloads assemblies and discards analysis caches together. Document ownership filters isolate nested workspace roots; imports use the requesting environment. See [environment configuration](../specs/environment-configuration.md).
+
+## CLR projection helpers
+
+`FScript.Runtime.HostTypes` owns opt-in CLR type/property attributes, reflection over visible properties, and a shared field mapping used to derive descriptors and snapshot values. It creates the existing Language descriptors and delegates value creation/validation to `HostInterop`; registrations, inference and external invocation use the existing bridge. Typed retrieval checks expected projection metadata and payload CLR type without evaluating getters. Reflection helpers do not add a global registration cache, CLR method discovery, or a dependency from Language to Runtime.
+
+The reflection attribute's `ScriptConstructible` option selects the existing ordinary-record descriptor encoding (`HostManaged = false`) or opaque encoding. Constructible F# records require all constructor fields to be visible at descriptor initialization. Runtime projection converts ordinary script values back into CLR records with recursive container conversion and checked integer narrowing; Language continues to operate on ordinary records and has no dependency on CLR construction. Opaque mode retains its payload validation and transport rules.
+
+
+## Export declarations
+
+The lexer keeps `export` as an identifier. At a top-level statement boundary, the parser recognizes `Ident "export"` followed by `Let` and marks the existing `SLet`/`SLetRecGroup` export flag. Nested uses of that declaration prefix are rejected; ordinary identifiers named `export` remain valid. No attribute model or extra AST statement kind is introduced. TextMate and LSP semantic classification highlight only the contextual prefix. Export discovery and invocation continue to consume the existing flags.

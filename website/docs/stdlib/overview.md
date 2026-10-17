@@ -4,49 +4,42 @@ title: Stdlib Overview
 slug: /stdlib/overview
 ---
 
-FScript ships with a built-in standard library, a default runtime extern registry, and a small set of always-available top-level built-ins.
+Start with lists, options, and maps for data transformations. Add runtime modules when a script needs files, console I/O, serialization, or concurrency.
 
-Everything in this section is available in every script without imports.
+## Availability
 
-## Modules
+| Surface | Modules or names | Available when |
+| --- | --- | --- |
+| Core functions and values | `List`, `Option`, `Map`, `String`, `Int`, `Float`, `Bool`, `ignore` | Always, including JavaScript hosts |
+| Default .NET runtime externs | `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid` | The host registers them; the CLI enables them by default |
+| Execution metadata | `Env : Environment` | Injected by the CLI/REPL or supplied by an embedding host |
 
-- `Console`
-- `Task`
-- `List`
-- `Option`
-- `Map`
-- `String`
-- `Int`
-- `Float`
-- `Bool`
+No imports are needed for registered functions. An embedding host may expose a subset of the runtime catalog, and the CLI's `--no-default-externs` disables that catalog without removing core functions. The browser playground supplies its own capabilities; it does not load the .NET runtime.
 
-## Top-level built-ins
+`ignore` is a core function with type `'a -> unit`: `42 |> ignore` returns `()`. It needs no external provider. `Env` is a host-supplied value, not a function. See [Built-ins and Execution Metadata](./builtins).
 
-- `Env`
-- `ignore`
+## Choose a module
 
-## Core rules
+| Task | Module |
+| --- | --- |
+| Transform, filter, or fold a sequence | [List](./list) |
+| Handle optional values and defaults | [Option](./option) |
+| Look up and transform keyed values | [Map](./map) |
+| Split, join, replace, or search text | [String](./string) |
+| Parse and format scalar values | [Int, Float, Bool](./scalars) |
+| Read or write console text | [Console](./console) |
+| Run concurrent work and await results | [Task](./task) |
+| Read, write, and discover files | [Fs](./fs) |
+| Decode and encode JSON | [Json](./json) |
+| Extract regular-expression capture groups | [Regex](./regex) |
+| Query XML element text and attributes | [Xml](./xml) |
+| Compute an MD5 digest | [Hash](./hash) |
+| Create a GUID string | [Guid](./guid) |
 
-- Functions are curried.
-- Pipe-friendly usage is preferred.
-- Task values use the native `'a task` type form.
-- `Task.spawn` starts concurrent work and `Task.await` synchronizes on the result when the embedding host includes the default task externs.
-- Map keys may be `string`, `int`, `bool`, or unions whose cases all have no payload. Use `value map[key]` for explicit key annotations; plain `value map` means string keys.
-- Many parsing/indexing operations return `option` instead of throwing.
+## Reading the signatures
 
-## Built-in types
+Functions are curried: `Map.add key value map` takes three arguments. Pipelines supply the final argument: `map |> Map.add key value`. Repeated type variables must agree; for example, `'a -> 'a option -> 'a` uses one type throughout a call.
 
-- `type Environment = { ScriptName: string option; Arguments: string list }`
-- `type FsKind = File of string | Directory of string | Missing`
+An `option` result distinguishes success (`Some value`) from absence or a supported recoverable failure (`None`). It does not promise that all failures are caught: for example, `List.tail []` fails, and denied filesystem reads raise an error. Each module describes its boundary behavior.
 
-## Where to go next
-
-- [Built-ins](./builtins) for `Env`, `Environment`, `FsKind`, and `ignore`
-- [Console Module](./console)
-- [Native Types Reference](/manual/reference/native-types) for list/map indexers and native type access forms
-- [Task Module](./task)
-- [List Module](./list)
-- [Option Module](./option)
-- [Map Module](./map)
-- [String Module](./string)
-- [Int, Float, Bool Modules](./scalars)
+Use the [complete signature index](../reference/stdlib-reference.md) for lookup, [Native Types](../reference/native-types-reference.md) for literals and indexers, and [Stdlib Recipes](./recipes) for small compositions.

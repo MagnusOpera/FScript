@@ -4,7 +4,7 @@ title: Pattern Matching
 slug: /language/pattern-matching
 ---
 
-Pattern matching is central in FScript.
+Use `match` to inspect data and bind the parts a branch needs. Cases run from top to bottom; `_` ignores a value. Cover every expected case: the interpreter reports an error at runtime if none matches.
 
 ## Matching options
 
@@ -73,3 +73,21 @@ let message = describe { [Low] = "later"; [High] = "now" }
 ```
 
 This infers `describe` as `string map[Priority] -> string`. Extra entries are permitted in a map match.
+
+## Tuple bindings and guards
+
+```fsharp
+let pair = ("api", 42)
+let (name, count) = pair
+
+let sizeLabel value =
+  match value with
+  | n when n > 10 -> "large"
+  | _ -> "small"
+```
+
+Tuple patterns can be used in nonrecursive `let` bindings. Record field destructuring uses `match`, not `let { ... }`. Record patterns can also read the visible fields of an opaque host value without changing the original value or exposing hidden state.
+
+For map extraction, a dynamic key pattern with a guard searches candidate entries for a match; use a literal key pattern when selecting a known key. Matching permits extra entries and `..rest` captures the entries left after extraction.
+
+Next: [Type System](./type-system).

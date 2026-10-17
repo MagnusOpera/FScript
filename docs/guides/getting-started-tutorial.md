@@ -8,7 +8,7 @@ You will learn:
 - how to model data with records/lists/maps/options/unions,
 - how to use pattern matching,
 - how to split scripts with `import`,
-- how to expose host-callable functions with `[<export>]`.
+- how to expose host-callable functions with `export let`.
 
 ## Get FScript
 
@@ -53,22 +53,22 @@ make build
 Then run scripts with:
 
 ```bash
-./src/FScript/bin/Debug/net10.0/fscript your-script.fss
+dotnet run --project src/FScript -- your-script.fss
 ```
 
 And the same extra CLI modes:
 
 ```bash
-cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r .
-cat your-script.fss | ./src/FScript/bin/Debug/net10.0/fscript -r . -- arg1 arg2
-./src/FScript/bin/Debug/net10.0/fscript version
-./src/FScript/bin/Debug/net10.0/fscript
+cat your-script.fss | dotnet run --project src/FScript -- -r .
+cat your-script.fss | dotnet run --project src/FScript -- -r . -- arg1 arg2
+dotnet run --project src/FScript -- version
+dotnet run --project src/FScript --
 ```
 
 Quick REPL check after local build:
 
 ```bash
-./src/FScript/bin/Debug/net10.0/fscript
+dotnet run --project src/FScript --
 ```
 
 For REPL-specific behavior (multiline submission, retained state, exit controls), see [`docs/guides/repl.md`](./repl.md).
@@ -402,7 +402,10 @@ Console.writeLine $"{answer}"
 
 Tasks use the native type form `'a task`. Spawned thunks run concurrently, `Task.await` synchronizes on the result, and task failures remain fatal runtime errors.
 
+The core library (`List`, `Option`, `Map`, `String`, scalar helpers, and `ignore`) is always available. `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, and `Guid` require runtime registration and are enabled by default in the CLI. JavaScript hosts supply their own runtime capabilities.
+
 Full reference:
+- [Standard library signature index](../../website/docs/reference/stdlib-reference.md)
 - [`docs/specs/stdlib-functions.md`](../specs/stdlib-functions.md)
 
 ## 10. Imports and file modules
@@ -430,16 +433,15 @@ Notes:
 FScript is designed to be embedded.
 At host boundary, scripts can expose explicit entry points while the host controls capabilities and security.
 
-Mark top-level bindings with `[<export>]` when a host must discover them:
+Mark top-level bindings with `export let` when a host must discover them:
 
 ```fsharp
-[<export>] let dispatch (context: { Command: string }) =
-  [{ Command = "echo"; Arguments = context.Command; ErrorLevel = 0 }]
+type Command = { Command: string; Arguments: string; ErrorLevel: int }
 
-// Export descriptor map
-{
-  [nameof dispatch] = [Dispatch; Never]
-}
+export let dispatch (command: string) =
+  [{ Command = "echo"; Arguments = command; ErrorLevel = 0 }]
+
+let exportedName = nameof dispatch // "dispatch"
 ```
 
 Security/hosting teaser:
@@ -450,7 +452,7 @@ Security/hosting teaser:
 When embedding, keep this mindset:
 - expose only needed externs,
 - keep filesystem/network boundaries explicit,
-- use host-level timeout/cancellation/resource limits.
+- enforce execution and resource limits in the host, with process isolation when hard termination is required.
 - see [`docs/specs/embedding-fscript-language.md`](../specs/embedding-fscript-language.md) for the embedding API,
 - see [`docs/specs/external-functions.md`](../specs/external-functions.md) for extern design/registration,
 - see [`docs/specs/sandbox-and-security.md`](../specs/sandbox-and-security.md) for the full security model.

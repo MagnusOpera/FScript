@@ -30,6 +30,6 @@ let host = config |> Map.tryGet "host" |> Option.defaultValue "127.0.0.1"
 
 ```fsharp
 let filtered =
-  { ["a"] = 1; ["b"] = -1 }
+  { ["a"] = 1; ["b"] = (0 - 1) }
   |> Map.filter (fun _ value -> value > 0)
 ```

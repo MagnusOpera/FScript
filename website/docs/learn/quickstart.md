@@ -4,8 +4,6 @@ title: Quickstart
 slug: /learn/quickstart
 ---
 
-# Your first useful FScript in five minutes
-
 You will build a small pricing rule, run it, and see the language features that make FScript useful inside a host application.
 
 :::tip Zero-install route
@@ -76,7 +74,7 @@ Run it:
 fscript pricing.fss
 ```
 
-You should see:
+The script writes the following line (the CLI also prints the final expression result, `()`):
 
 ```text
 12 Scale seats: $348/month
@@ -87,16 +85,16 @@ You have already used four important ideas:
 - `type Plan` names the only valid plan choices.
 - `match` handles every choice explicitly.
 - `let quote plan seats` declares a function without type boilerplate.
-- the compiler infers the types and checks the program before it runs.
+- the interpreter infers the types and checks the program before it runs.
 
-Try removing the `Scale` branch or calling `quote "Scale" 12`. The type checker will stop the mistake at the script boundary.
+Try calling `quote "Scale" 12`: the type checker rejects a string where a `Plan` is expected. Keep all match cases: an unmatched value causes a runtime error, rather than a compile-time exhaustiveness diagnostic.
 
 ## 3. Make the rule host-callable
 
-An embedded script exposes only the bindings you mark as part of its host contract. Add the `export` annotation:
+An embedded script exposes only the bindings you mark as part of its host contract. Replace the existing `quote` declaration with this version:
 
 ```fsharp
-[<export>] let quote plan seats =
+export let quote plan seats =
   pricePerSeat plan * seats
 ```
 

@@ -29,8 +29,9 @@ What this introduces:
 
 - `type` for union declarations,
 - `if/else` as an expression,
-- `match` for exhaustive branching,
-- zero-argument function calls such as `ping ()`,
+- `match` for branching on union cases,
 - string interpolation with `$"..."`.
 
-Next: continue into the language chapters for each feature in detail.
+The function `classify` returns a union value; the `match` turns it into a string. Both branches produce the same type, so the whole expression has one inferred type.
+
+Next: start [Values and Bindings](../language/values-and-bindings). The Language chapters build from expressions and functions to data types, matching, imports, and concurrency.

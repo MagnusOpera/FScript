@@ -10,7 +10,7 @@ FScript is designed for host applications that embed a scripting language safely
 
 1. Reference language/runtime packages.
 2. Build a host context.
-3. Register extern functions your scripts can call.
+3. Register extern functions and, when needed, host-managed types your scripts can use.
 4. Load scripts (with include resolution if needed).
 5. Resolve exported function signatures.
 6. Execute exported functions and handle results/errors.
@@ -19,13 +19,13 @@ FScript is designed for host applications that embed a scripting language safely
 
 - [`MagnusOpera.FScript.Language`](https://www.nuget.org/packages/MagnusOpera.FScript.Language)
 - [`MagnusOpera.FScript.Runtime`](https://www.nuget.org/packages/MagnusOpera.FScript.Runtime)
-- [`MagnusOpera.FScript.TypeProvider`](https://www.nuget.org/packages/MagnusOpera.FScript.TypeProvider)
 
 ## Recommended reading order
 
 1. [Real-World Embedding (Load, Resolve Type, Execute)](./real-world-embedding)
 2. [Fable and JavaScript Hosts](./fable-javascript)
-3. [F# Type Provider and Use Cases](./type-provider)
-4. [Register Extern Functions](./register-externs)
-5. [Resolver and Includes](./resolver-and-includes)
-6. [Sandbox and Safety](./sandbox-and-safety)
+3. [Register Extern Functions](./register-externs)
+4. [Host-Provided Types](./host-managed-types)
+5. [Environment Configuration](../reference/environment-configuration)
+6. [Resolver and Includes](./resolver-and-includes)
+7. [Sandbox and Safety](./sandbox-and-safety)

@@ -92,7 +92,7 @@ let updated = Map.add "port" 8080 Map.empty
 
 ## `Map.ofList : ('key * 'v) list -> 'v map['key]`
 
-Builds a map from key-value tuples.
+Builds a map from key-value tuples. If a key appears more than once, the last value wins.
 
 ```fsharp
 let m = [("a", 1); ("b", 2)] |> Map.ofList
@@ -100,7 +100,7 @@ let m = [("a", 1); ("b", 2)] |> Map.ofList
 
 ## `Map.fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state`
 
-Folds over key-value entries.
+Folds over key-value entries in key order, rather than insertion order. The other map traversals use the same ordering.
 
 ```fsharp
 let total =
@@ -176,4 +176,4 @@ type Result = | Empty | Value of int
 // let badUnion = { [Empty] = "empty" }
 ```
 
-`Json.serialize` encodes string, integer, and boolean keys as JSON object property names. It returns `None` for maps containing union keys. The [F# type provider](../embedding/type-provider) supports string-keyed maps only.
+`Json.serialize` encodes string, integer, and boolean keys as JSON object property names. It returns `None` for maps containing union keys.

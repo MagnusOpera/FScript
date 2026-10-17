@@ -82,3 +82,52 @@ let applyTwiceExtern =
 - Prefer pure externs when possible.
 - Return option-like outcomes for recoverable failures.
 - Choose stable names; extern names are script-level API surface.
+
+## Register functions together with host types
+
+Use `ExtensionRegistration` when an environment also exposes [host-managed types](./host-managed-types). Its `Types` list supplies visible field descriptors; `Functions` contains the same extern records shown above:
+
+```fsharp
+let registration =
+    { HostInterop.empty with Functions = externs }
+
+let loaded =
+    ScriptHost.loadSourceWithRegistration registration
+        "Host.slugify \"Hello World\""
+```
+
+`HostInterop.ofExterns externs` is equivalent when no host types are registered. Existing extern-list APIs remain supported. Registration-aware `ScriptHost`, inference/evaluation, and interactive APIs preserve type metadata and opaque payloads.
+
+Schemes remain authoritative at host-call boundaries. Arguments/results must have their declared interpreter shapes, including nested records, unions, and options. A `VMap` is not a `VRecord`; a visible-field record cannot stand in for a host-managed value. Host adapters should construct the appropriate `Value` cases or use the opt-in `HostTypes` helpers for [attributed host-managed objects](./host-managed-types).
+
+## Assembly providers for CLI and editor
+
+The existing `[<FScriptExternProvider>]` attribute marks a public static provider method in a compiled .NET assembly:
+
+```fsharp
+open FScript.Runtime
+
+type AppExternProvider =
+    [<FScriptExternProvider>]
+    static member Provide() : ExtensionRegistration =
+        { HostInterop.empty with Functions = [ slugifyExtern ] }
+```
+
+Providers accept either no parameters or one `HostContext` and return either `ExternalFunction list` or `ExtensionRegistration`. The loader discovers marked methods; no separate signature file or language-level extern declarations are needed. Registered schemes drive execution checks and editor inference/completion. Duplicate function names and host-type conflicts fail initialization. Return the provider's own functions/types; the loader adds `Registry.all` separately when defaults are enabled.
+
+Load an assembly explicitly:
+
+```bash
+fscript --extern-assembly ./extensions/AppExterns.dll script.fss
+```
+
+Or list it in a shared `fscript.toml`:
+
+```toml
+[runtime]
+extern-assemblies = ["./extensions/AppExterns.dll"]
+```
+
+Run `fscript --config ./fscript.toml script.fss`, or select that manifest in VS Code. See [Environment Configuration](../reference/environment-configuration) for paths, precedence, selection, and reload.
+
+Provider registration executes host code and may have side effects. The CLI trusts explicitly supplied providers; VS Code requires workspace trust before loading configured assemblies. Parsing a manifest alone does not execute them.

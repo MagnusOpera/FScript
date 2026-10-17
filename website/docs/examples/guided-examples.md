@@ -149,7 +149,7 @@ explore displayNode root
 This example introduces:
 
 - `import "..." as Alias`,
-- top-level `[<export>]` bindings,
+- top-level `export let` bindings,
 - using imported record types in exported functions.
 
 ### File: `includes/common.fss`
@@ -172,9 +172,9 @@ let join_with_comma items =
 ```fsharp
 import "includes/common.fss" as Common
 
-[<export>] let extension_name = "demo"
+export let extension_name = "demo"
 
-[<export>] let summary (project: Common.ProjectInfo) =
+export let summary (project: Common.ProjectInfo) =
   let steps = [ "build"; "test"; "publish" ] |> List.map Common.describe_command
   $"{Common.describe_project project}: {Common.join_with_comma steps}"
 
@@ -197,7 +197,7 @@ type Customer =
   { Plan: string
     Seats: int }
 
-[<export>] let quote (customer: Customer) =
+export let quote (customer: Customer) =
   let pricePerSeat =
     match customer.Plan with
     | "scale" -> 29

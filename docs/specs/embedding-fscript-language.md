@@ -101,7 +101,7 @@ const shout = extern({
 const value = run("Host.shout \"fable\"", { externs: [shout] });
 // value = { kind: "string", value: "fable!" }
 
-const loaded = load("[<export>] let add x y = x + y\n[<export>] let answer = 42");
+const loaded = load("export let add x y = x + y\nexport let answer = 42");
 const sum = invoke(loaded, "add", [1, 2]);
 const answer = getValue(loaded, "answer");
 ```
@@ -151,7 +151,7 @@ Sessions retain submitted declarations, inferred binding schemes, runtime values
 Fable builds do not use the .NET file-backed import resolver. A JavaScript host must supply imports through virtual paths:
 
 ```javascript
-const loaded = load("import \"shared.fss\" as Shared\n[<export>] let value = Shared.inc 41", {
+const loaded = load("import \"shared.fss\" as Shared\nexport let value = Shared.inc 41", {
   rootDirectory: "/",
   entryFile: "/main.fss",
   sources: {
@@ -172,7 +172,7 @@ open FScript.Language
 open FScript.Runtime
 
 let externs = Registry.all { RootDirectory = "."; DeniedPathGlobs = [] }
-let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y"
+let loaded = ScriptHost.loadSource externs "export let add x y = x + y"
 let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
 ```
 
@@ -259,7 +259,7 @@ Host-visible static types are represented by `Type`:
 
 Use `Types.typeToString` for display/diagnostics.
 The postfix script type syntax `'a map` corresponds to `TMap(TString, 'a)`.
-The explicit `Value map[Key]` syntax corresponds to `TMap(Key, Value)`; supported key types are `string`, `int`, `bool`, and unions with no payload-bearing cases. `Json.serialize` encodes string, integer, and boolean map keys as JSON object property names; maps containing union keys return `None`. The F# type provider currently projects string-keyed maps only.
+The explicit `Value map[Key]` syntax corresponds to `TMap(Key, Value)`; supported key types are `string`, `int`, `bool`, and unions with no payload-bearing cases. `Json.serialize` encodes string, integer, and boolean map keys as JSON object property names; maps containing union keys return `None`.
 
 ## Runtime values
 
@@ -338,7 +338,7 @@ open FScript.Runtime
 
 let root = "/virtual/workspace"
 let entryFile = Path.Combine(root, "main.fss")
-let entrySource = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.add1 x"
+let entrySource = "import \"shared.fss\" as Shared\nexport let run x = Shared.add1 x"
 
 let normalizeVirtualPath (path: string) =
     Path.GetFullPath(path)
@@ -389,7 +389,7 @@ After inference, get function descriptors to expose callable surface in hosts.
 ```fsharp
 open FScript.Language
 
-let typed = "[<export>] let run x = x" |> FScript.parse |> FScript.infer
+let typed = "export let run x = x" |> FScript.parse |> FScript.infer
 let descriptors = Descriptor.describeFunctions typed Map.empty
 ```
 
@@ -400,7 +400,7 @@ Use `FScript.Runtime.ExportSignatures.fromTypedProgram` when a host needs export
 open FScript.Language
 open FScript.Runtime
 
-let typed = "[<export>] let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
+let typed = "export let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
 let signatures = ExportSignatures.fromTypedProgram typed
 ```
 
@@ -411,3 +411,9 @@ Use `ExtensionRegistration` and the registration-aware inference/evaluation, `Sc
 ## Environment initialization
 
 `FScript.Runtime.EnvironmentConfiguration` parses/normalizes manifests and merges caller defaults and overrides into `EnvironmentSettings`, without loading providers. `EnvironmentLoader.load` creates an atomic `ExtensionRegistration` through the existing provider protocol. Embedders can inspect effective settings before deciding to load executable assemblies. Existing explicit-registration APIs remain unchanged. Registration-aware inference with local-variable telemetry is also available to editor hosts. See [environment configuration](./environment-configuration.md).
+
+## CLR-backed host type descriptors
+
+For host-managed values backed by real CLR types, use Runtime's `[<FScriptHostType("Name")>]` and `[<FScriptVisible>]` attributes with `HostTypes.describe<'T>()`, `wrap registration value`, and `unwrap<'T> value`. The same mapping derives field types and snapshots property values; hidden state remains the original CLR payload. Descriptor creation does not execute getters. See [host-managed types](./host-managed-types.md#optional-clr-projection-helpers) for mappings, registration requirements, and failures. The lower-level Language helpers remain available for custom descriptors/payloads.
+
+Set `ScriptConstructible = true` on fully visible F# record types to accept ordinary script-created records. Descriptor initialization rejects hidden constructor fields. `HostTypes.wrap` then emits `VRecord`, and `unwrap<'T>` constructs a CLR record from the fields instead of retrieving an opaque payload. The default opaque mode remains available for hidden host state. See [provided record construction](./host-managed-types.md#script-constructible-provided-types).

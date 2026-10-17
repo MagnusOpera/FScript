@@ -9,7 +9,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `import "relative/path/file.fss" as Alias` directives
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
-  - `[<export>] let` / `[<export>] let rec` bindings
+  - `export let` / `export let rec` bindings
   - expressions
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
 - Comments use `//` line-comment syntax.
@@ -29,9 +29,9 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `let rec f x = ... and g y = ...`
   - nested via blocks
   - tuple destructuring is supported for non-`rec` `let` bindings only
-  - `[<export>] let` requires a single identifier binding (tuple patterns are rejected)
-  - `[<export>]` is only valid on top-level `let` bindings
-  - attribute names are case-sensitive (`[<export>]` is valid, `[<Export>]` is not)
+  - `export let` requires a single identifier binding (tuple patterns are rejected)
+  - `export let` is only valid on top-level `let` bindings
+  - `export` is a contextual, case-sensitive modifier recognized only immediately before top-level `let`; it remains a valid ordinary binding, parameter, and field name. Script attributes are unsupported.
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`

@@ -6,7 +6,7 @@ This document is a quick comparison guide. It highlights intentional differences
 ## Scope of the language
 - FScript is a small interpreted subset, not a full compiler language.
 - FScript supports a focused core: `let`, `let rec` (functions), `if/elif/else`, `for`, `match`, lists, tuples, options, records, discriminated unions, pipelines, and extern calls.
-- Many F#/OCaml features are intentionally absent today (classes, interfaces, computation expressions, etc.). Script composition uses `import`, and imported files are exposed through filename-derived modules.
+- Many F#/OCaml features are intentionally absent today (classes, interfaces, computation expressions, etc.). Script composition uses `import`, and imported files are accessed through explicit aliases (`import "shared.fss" as Shared`).
 
 ## Syntax differences
 
@@ -90,7 +90,7 @@ let x =
 - FScript has a smaller built-in surface and relies on host-provided externs for host/system capabilities (for example `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`), while collection helpers are provided by the embedded prelude.
 
 ### Reflection-style type tokens
-- FScript provides `typeof Name` tokens for host extern workflows (for example JSON/XML decode helpers).
+- FScript provides `typeof Name` tokens for host extern workflows (for example `Json.deserialize`).
 - This is a focused runtime integration feature, not full .NET/OCaml runtime reflection.
 
 ## Practical porting checklist

@@ -89,6 +89,4 @@ Curried function types are right-associative:
 - tuples like `(int * string)`
 - record and union types
 
-## Next
-
-Read [Structural vs Named Annotations](./structural-vs-named-annotations) for record annotation styles and guidance.
+Next: [Structural vs Named Annotations](./structural-vs-named-annotations).

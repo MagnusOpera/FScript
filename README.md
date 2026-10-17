@@ -114,6 +114,13 @@ Disable default runtime externs (`Registry.all`):
 dotnet run --project src/FScript -- --no-default-externs samples/types-showcase.fss
 ```
 
+Share a configured external-function environment with VS Code:
+```sh
+fscript --config ./fscript.toml scripts/build.fss
+```
+
+The CLI loads configuration only when requested. See [environment configuration](docs/specs/environment-configuration.md) for the schema, flag precedence, workspace selection, and trust rules.
+
 Load user extern providers from an assembly (repeatable):
 ```bash
 dotnet run --project src/FScript -- --extern-assembly ./MyExterns.dll samples/types-showcase.fss
@@ -166,7 +173,7 @@ Host integration lives in `src/FScript.Runtime`.
 
 ## Extensibility Model
 
-FScript is extended through host-provided externs.
+FScript is extended through host-provided externs. Registrations can also expose [host-managed types](docs/specs/host-managed-types.md) with immutable visible fields and opaque host state; scripts can read and transport them but cannot construct or update them. See the [embedding guide](website/docs/embedding/host-managed-types.md) for a complete example.
 
 Each extern declares:
 - a public name (for script calls),
@@ -195,6 +202,8 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 - Documentation website: `https://fscript.magnusopera.io/`
 - Documentation portal: [`docs/README.md`](docs/README.md)
 - Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
+- [Complete standard-library signature index](website/docs/reference/stdlib-reference.md)
+- [Syntax and operators](website/docs/reference/syntax-reference.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
 - FScript vs F# / OCaml: [`docs/guides/fsharp-ocaml-differences.md`](docs/guides/fsharp-ocaml-differences.md)
@@ -204,7 +213,7 @@ Website development commands:
 ```bash
 make website-install
 make website-build
-make website-serve
+make website
 make website-version version=X.Y.Z
 ```
 

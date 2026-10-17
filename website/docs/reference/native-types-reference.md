@@ -29,6 +29,7 @@ Type form: `'a list`
 
 | Form | Signature | Description |
 | --- | --- | --- |
+| `[first..last]` | `int list` | Inclusive integer range; steps by +1 or -1 toward the final bound. |
 | `[]` | `'a list` | Empty list literal. |
 | `head :: tail` | `'a -> 'a list -> 'a list` | Prepends one item to a list. |
 | `left @ right` | `'a list -> 'a list -> 'a list` | Concatenates two lists. |
@@ -75,7 +76,7 @@ Type form: `(t1 * t2 * ...)`
 | Form | Signature | Description |
 | --- | --- | --- |
 | `(a, b)` | `'a * 'b` | Tuple literal. |
-| `let (a, b) = value` | `('a * 'b) -> unit` | Tuple destructuring in bindings. |
+| `let (a, b) = value` | binding syntax | Introduces two bindings from a tuple; this is not a function returning unit. |
 | tuple pattern matching | `('a * 'b) -> 'r` | Use `match value with (a, b) -> ...` to decompose tuples. |
 
 Tuples do not have a native indexer. Destructure them instead.
@@ -86,9 +87,17 @@ Type form: `{ Field: t; ... }`
 
 | Form | Signature | Description |
 | --- | --- | --- |
-| `{ Name = value }` | field-set dependent | Record literal. |
+| `{ Name = value }` | field-set dependent | Record literal requiring an unambiguous declared record field set. |
 | `record.Field` | `{ Field: 'a; ... } -> 'a` | Field access by name. |
-| `{ record with Field = value }` | same record type -> same record type | Record update syntax. |
+| `{ record with Field = value }` | same record type -> same record type | Copy a record and replace existing fields. |
+| `{\| Field = value \|}` | structural record | Structural record literal. |
+| `{\| record with Field = value \|}` | record-shape dependent | Structural record update; may add fields; existing field types must remain compatible. |
+
+## Host-managed types
+
+A .NET host can register named types with immutable visible fields and an opaque payload. Scripts can read and match visible fields and transport complete values, including as collection values. They cannot construct these types from record literals or use either record-update syntax on them. Equality, formatting, and JSON serialization use visible fields only; JSON decoding cannot restore host-managed state.
+
+These are host-supplied types rather than built-in record declarations. Hosts can also register script-constructible records; those use ordinary record construction and update rules. See [Host-Provided Types](../embedding/host-managed-types) for registration and invocation examples.
 
 ## Unions
 
@@ -104,8 +113,8 @@ Type form: `type Shape = | Point | Circle of int`
 
 Primitive built-in types:
 
-- `int`
-- `float`
+- `int`: signed 64-bit integer
+- `float`: double-precision floating-point number
 - `bool`
 - `string`
 - `unit`
@@ -125,3 +134,9 @@ These do not use indexers. For parsing and formatting helpers, see [Int, Float, 
 Mixed numeric types and nonnumeric operands are rejected. `+` does not concatenate strings, lists, or maps. Use `String.concat` for strings and `@` for lists.
 
 See [Type System](../language/type-system) for the type hierarchy and specialization examples.
+
+## Function values and type tokens
+
+Functions use `argument -> result`; arrows associate to the right. A function is applied with whitespace, passed as a value, or captured in a closure. `unit -> 'a` functions are called with `()`. Function values have no list/map-style indexer.
+
+`typeof Name` produces a runtime `type` token for a known declared type. Tokens are intended for host functions such as `Json.deserialize`; they do not expose CLR reflection or construct instances. `nameof binding` produces a `string` after checking that the binding exists. See [Syntax and Operators](./syntax-reference.md) for annotations, expressions, and precedence.

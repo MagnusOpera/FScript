@@ -39,7 +39,7 @@ By the end of this manual, you should be comfortable with:
 ## Suggested learning path
 
 1. Start with [Quickstart](./learn/quickstart) to install and run your first script.
-2. Continue with [Language Fundamentals](./language/values-and-bindings) and work through Language chapters in order.
+2. Take the [Language Tour](./learn/language-tour), then start [Values and Bindings](./language/values-and-bindings) and follow the Language chapters in order.
 3. Use [Examples](./examples/guided-examples) to practice complete script patterns.
 4. Study [Stdlib](./stdlib/overview) to learn the built-in modules in depth.
 5. Move to [Embedding](./embedding/overview) when you need host integration.
@@ -49,6 +49,6 @@ By the end of this manual, you should be comfortable with:
 - **Learn**: onboarding and first working scripts.
 - **Language**: core syntax, data modeling, typing, imports/exports, layout rules.
 - **Examples**: practical scripts and reusable patterns.
-- **Embedding**: host integration model, extern registration, safety boundaries.
 - **Stdlib**: detailed function-by-function reference and recipes.
-- **Reference**: CLI usage and quick lookup material.
+- **Embedding**: host integration model, extern registration, safety boundaries.
+- **Reference**: CLI options, environment configuration, syntax/operators, native types, and the complete function signature index.

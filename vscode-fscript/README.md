@@ -46,19 +46,14 @@ The extension is published on tag pushes only, to both:
 - VS Code Marketplace
 - Open VSX
 
-Release checklist:
-
-1. Update `vscode-fscript/package.json` version.
-2. Update root `CHANGELOG.md` (the extension changelog points to this file).
-3. Commit and push.
-4. Push tag `vX.Y.Z` matching `package.json` version.
-
-The CI workflow validates that tag version and extension version are identical before publishing.
+Follow the repository [release process](../AGENTS.md#release-process-tags-and-github-draft): prepare the release with `make release-prepare version=X.Y.Z`, push its commit and tag together, then review and publish the draft produced by CI. Extension packaging and publishing are controlled by the same versioned tag workflow.
 
 ## Settings
 
 - `fscript.lsp.enabled`: enable/disable LSP features.
 - `fscript.inlayHints.enabled`: toggle inlay hints from the language server.
+- `fscript.hoverHints.enabled`: toggle inferred hover hints.
+- `fscript.config`: explicit folder-relative environment manifest path; overrides persisted UI selection.
 - `fscript.server.path`: optional custom path to `FScript.LanguageServer.dll`.
 - `fscript.server.logLevel`: requested server log level (`error`, `warn`, `info`, `debug`).
 - `fscript.repl.command`: shell command used to start REPL in the extension terminal. Default is `auto` (prefer local workspace CLI via `dotnet run`, then fallback to `fscript`).
@@ -71,6 +66,9 @@ The CI workflow validates that tag version and extension version are identical b
 - `FScript: Show Language Server Output`: opens language server logs.
 - `FScript: View AST`: renders AST JSON from the active file.
 - `FScript: View Inferred AST`: renders inferred AST JSON from the active file.
+- `FScript: Select Configuration`: choose automatic discovery, a manifest, or no configuration for a workspace folder.
+
+See the complete [settings and commands reference](../website/docs/reference/editor-reference.md) for defaults and trust behavior.
 
 ## Logs and Status
 

@@ -59,12 +59,12 @@ let pairs = [1; 2] |> List.collect (fun n -> [n; n])
 Returns `true` if any item matches.
 
 ```fsharp
-let hasEven = [1; 3; 4] |> List.exists (fun n -> n % 2 == 0)
+let hasEven = [1; 3; 4] |> List.exists (fun n -> n % 2 = 0)
 ```
 
 ## `List.contains : 'a -> 'a list -> bool`
 
-Checks whether a value appears in a list.
+Checks scalar membership (`unit`, `int`, `float`, `bool`, or `string`). The current implementation does not compare composite values here; use `List.exists (fun item -> item = needle)` for records, options, tuples, lists, maps, or union values.
 
 ```fsharp
 let hasTwo = [1; 2; 3] |> List.contains 2
@@ -80,7 +80,7 @@ let reversed = [1; 2; 3] |> List.rev
 
 ## `List.distinct : 'a list -> 'a list`
 
-Removes duplicate values.
+Removes duplicates while preserving the first occurrence order. Equality is recursive for data values; host-managed values compare their visible fields, excluding opaque payloads.
 
 ```fsharp
 let unique = [1; 2; 2; 3] |> List.distinct
@@ -99,7 +99,7 @@ let sum = [1; 2; 3] |> List.fold (fun acc n -> acc + n) 0
 Keeps only matching items.
 
 ```fsharp
-let odds = [1; 2; 3; 4] |> List.filter (fun n -> n % 2 == 1)
+let odds = [1; 2; 3; 4] |> List.filter (fun n -> n % 2 = 1)
 ```
 
 ## `List.length : 'a list -> int`
@@ -145,7 +145,7 @@ let maybeFirst = [10; 20] |> List.tryHead
 
 ## `List.tail : 'a list -> 'a list`
 
-Returns all elements except the head.
+Returns all elements except the head. An empty input is an evaluation error; use a `head :: tail` / `[]` match when emptiness is expected.
 
 ```fsharp
 let rest = [1; 2; 3] |> List.tail

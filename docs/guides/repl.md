@@ -11,7 +11,7 @@ fscript
 If you are running from source:
 
 ```bash
-./src/FScript/bin/Debug/net10.0/fscript
+dotnet run --project src/FScript --
 ```
 
 ## Prompts
@@ -23,7 +23,7 @@ If you are running from source:
 
 - The REPL tries to parse/evaluate after each entered line.
 - If the input is syntactically incomplete, it keeps buffering lines.
-- For multiline blocks, submit with an extra blank line after your block (double-Enter while pending).
+- For a pending multiline block, enter two blank lines to force submission. Complete input may execute earlier because the REPL tries each line as it arrives.
 - On successful execution, expression results are printed.
 - If the result is a function value, the REPL prints a typed signature (for example `(x: int) -> int`) instead of an opaque closure value.
 
@@ -50,7 +50,7 @@ Set the sandbox/import root with `-r`/`--root`:
 fscript -r /path/to/project
 ```
 
-This affects path resolution for `import` and runtime filesystem extern behavior.
+This sets the runtime filesystem root. Import loading requires an include-capable host/loader; the CLI REPL currently parses submissions without resolving file imports. Use file mode for multi-file scripts.
 
 ## Mode selection notes
 

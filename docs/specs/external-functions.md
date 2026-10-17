@@ -21,6 +21,8 @@ Registry entrypoint:
   - supported method signatures:
     - `unit -> ExternalFunction list`
     - `HostContext -> ExternalFunction list`
+    - `unit -> ExtensionRegistration`
+    - `HostContext -> ExtensionRegistration`
 
 Interpreter integration:
 - Extern schemes are injected into type inference environment.
@@ -97,6 +99,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
   - `String.concat : string -> string list -> string`
   - `String.split : string -> string -> string list`
     - argument order: `separator -> source`
+  - `String.endsWith : string -> string -> bool`
 - Runtime externs focus on host/system capabilities.
 - `FsKind` is provided by stdlib as:
   - `FsKind.File of string`
@@ -104,9 +107,13 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
   - `FsKind.Missing`
 - See [`stdlib-functions.md`](./stdlib-functions.md) for the full stdlib function reference.
 
-### Typed decoders
+### Serialization and XML queries
 - `Json.deserialize : type -> string -> 'a option`
 - `Json.serialize : 'a -> string option`
+  - encoding supports scalars, unit/options, lists, tuples, records, visible host-managed fields, and maps with string/int/bool keys
+  - unsupported nested values (including unions, functions, tasks, and union-keyed maps) return `None`
+- JSON decoding uses the runtime token, with missing option fields mapped to `None` and extra record properties ignored; unsupported targets, including opaque host-managed types, cannot be manufactured
+- The generic decoder scheme does not statically associate its token with the result; receiving functions can declare the intended return type
 - `Xml.queryValues : string -> string -> string list option`
   - argument order: `query -> xmldoc`
   - query subset: `.../@attr` and `.../text()` selectors only
@@ -116,7 +123,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 
 ## Error and option behavior
 - Type/arity mismatch in extern calls raises eval errors.
-- Many data/IO externs return `None` on operational failures (parse/IO/regex failures), rather than throwing.
+- Options describe supported absence/conversion failures, not a universal exception boundary. JSON parsing and regex failures return `None`; denied filesystem reads/writes raise errors, and reading an existing unreadable file can propagate I/O errors.
 - `Xml.queryValues` does not support XML namespaces.
 
 ## Extending with new externs
@@ -128,14 +135,14 @@ Recommended steps:
    - `tests/FScript.Runtime.Tests` for direct module behavior.
    - `tests/FScript.Language.Tests/HostExternTests.fs` for interpreter integration.
 
-## CLI-only extern assembly injection
+## Shared extern assembly loading
 - The `fscript` CLI can inject externs from user assemblies via:
   - `--extern-assembly <path>` (repeatable)
   - `--no-default-externs` (disables `Registry.all`)
 - Provider discovery:
-  - CLI loads each unique assembly path once.
+  - The shared Runtime loader loads each unique assembly path once.
   - It discovers methods annotated with `[<FScriptExternProvider>]`.
-  - It invokes each discovered provider once per CLI process startup.
+  - It invokes each discovered provider once per environment initialization. CLI initializes before execution; VS Code initializes once per folder-server process.
 - Conflicts:
   - Any duplicate external function name across defaults + user providers is a fatal CLI error.
 - Runtime constraints:

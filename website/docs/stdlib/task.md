@@ -23,6 +23,7 @@ Schedules a thunk for concurrent execution and returns an opaque task handle imm
 ```fsharp
 let pending =
   Task.spawn (fun () -> "done")
+let result = Task.await pending
 ```
 
 Notes:

@@ -23,7 +23,16 @@ import {
   load,
   invoke,
   getValue,
+  listFunctions,
+  listValues,
+  parse,
+  infer,
+  evaluate,
+  formatValue,
+  fromJs,
+  toJs,
   createSession,
+  resetSession,
   submit,
 } from "@magnusopera/fscript";
 ```
@@ -43,12 +52,12 @@ FScript `int` values are returned as JavaScript `bigint`. Safe JavaScript intege
 
 ## Load and invoke exports
 
-Use `[<export>]` on top-level bindings that the host should call repeatedly.
+Use `export let` on top-level bindings that the host should call repeatedly.
 
 ```javascript
 const loaded = load(`
-[<export>] let add x y = x + y
-[<export>] let answer = 42
+export let add x y = x + y
+export let answer = 42
 `);
 
 const sum = invoke(loaded, "add", [1, 2]);
@@ -80,7 +89,7 @@ Browser and Node Fable hosts do not use the .NET file-backed resolver. Imports m
 
 ```javascript
 const loaded = load(
-  'import "shared.fss" as Shared\n[<export>] let value = Shared.inc 41',
+  'import "shared.fss" as Shared\nexport let value = Shared.inc 41',
   {
     rootDirectory: "/",
     entryFile: "/main.fss",
@@ -127,8 +136,35 @@ Values crossing the JavaScript boundary are represented structurally:
 | `(1, "x")` | `{ kind: "tuple", values: [...] }` |
 | `{ name = "Ada" }` | `{ kind: "record", fields: { ... } }` |
 | `Some 1` / `None` | `{ kind: "option", value: taggedValue \| null }` |
+| Map | `{ kind: "map", entries: [{ key: taggedKey, value: taggedValue }, ...] }` |
+| Union case value | `{ kind: "union", typeName, caseName, value: taggedPayload \| null }` |
+| Type token | `{ kind: "type", name: "..." }` (output only) |
 
-Functions, externals, tasks, and union constructors are opaque at the JavaScript boundary. Exported functions should be called through `invoke`.
+Functions, externals, tasks, and unapplied union constructors are opaque at the JavaScript boundary. Constructed union values use the tagged union form above. Exported functions should be called through `invoke`.
+
+Input conversion accepts plain strings, booleans, bigint integers, numbers, arrays (lists), and plain objects (records). `null`/`undefined` become `None`. Use tagged forms to distinguish tuples, maps, options, and explicitly floating-point numbers. Tagged map keys must be strings, integers, booleans, or payload-free union values. Output-only `type` and `opaque` tags cannot be converted back as ordinary input values.
+
+## API lookup
+
+| Entry point | Purpose |
+| --- | --- |
+| `run(source, options?)` | Parse, infer, and evaluate; return the final tagged value |
+| `parse(source, options?)` | Produce an opaque parsed-program handle |
+| `infer(program, externs?)` | Produce a typed-program handle, using the parsed handle's externs unless overridden |
+| `evaluate(typedProgram, externs?)` | Evaluate a typed handle and return a tagged value |
+| `load(source, options?)` | Load once and retain exported functions/values |
+| `invoke(loaded, name, args)` | Call an exported function with converted arguments |
+| `getValue(loaded, name)` | Read an exported non-callable value |
+| `listFunctions(loaded)`, `listValues(loaded)` | Return exported names |
+| `createSession(options?)`, `submit(session, source)`, `resetSession(session)` | Create, advance, and reset persistent state |
+| `formatValue(value)` | Format a plain/tagged input as FScript text |
+| `fromJs(value)`, `toJs(internalValue)` | Convert to/from an internal Fable value; `toJs` returns a tagged object, not an untagged primitive |
+| `extern(definition)` | Build an extern with `name`, `arity`, `scheme`, and `invoke` |
+| `T` | Build type/scheme descriptors |
+
+Options accept `externs`, `rootDirectory`, `entryFile`, `sources`, and `resolveImport`. Imports need the virtual resolver options shown above. Most callers should use `run` or `load`/`invoke` rather than the separate compiler stages.
+
+`T` exposes `unit`, `int`, `float`, `bool`, `string`, `typeToken`, `var(id)`, `list(type)`, `task(type)`, `option(type)`, `map(valueType)` (string keys), `tuple(types)`, `record(fields)`, `func(argument, result)`, `scheme(type)`, and `forall(variableIds, type)`. Use repeated `T.var(id)` values and list the same IDs in `T.forall` for polymorphic schemes. The descriptors are facade values, not source annotation strings.
 
 ## Errors
 
@@ -149,3 +185,9 @@ try {
 The Fable package exposes the core language engine, virtual imports, exported invocation, tagged values, sessions, and JavaScript-provided externs. It does not include .NET runtime externs such as `Fs.*`, `Console.*`, `Task.spawn`, or `Task.await`.
 
 Try the browser runtime in the [FScript sandbox](/sandbox).
+
+## .NET host-managed values and assembly environments
+
+Host-managed opaque payloads and `[<FScriptExternProvider>]` assembly discovery belong to the .NET bridge. The JavaScript facade does not support authoring host-managed values; attempts to export them fail rather than discard state or metadata. `fscript.toml` does not load CLR assemblies into the JavaScript host or browser playground.
+
+See [Host-Managed Types](./host-managed-types) and [Environment Configuration](../reference/environment-configuration) for .NET embedding and CLI/editor usage. Existing JavaScript extern APIs remain unchanged.
