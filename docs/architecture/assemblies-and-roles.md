@@ -161,3 +161,9 @@ Use this when:
 - `FScript` depends on both `FScript.Language` and `FScript.Runtime`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable. The JavaScript facade is intentionally separate from `.NET` runtime externs: v1 exposes core language hosting, virtual imports, tagged values, and JS-provided externs, while filesystem, console, task, and other runtime modules stay in the .NET runtime layer.
+
+## Host-managed value transport
+
+`FScript.Language` owns host type descriptors, `ExtensionRegistration`, `HostInterop`, and `VHostManaged`. The value contains visible field snapshots, type metadata, and an opaque host payload. Inference resolves registered types separately from constructible records. Internal record-shape variables retain the whole argument type and carry a constructibility requirement for record updates; they participate in substitution, generalization, and instantiation. No new script syntax or language trait is added.
+
+`FScript.Runtime.ScriptHost`, interactive sessions, the CLI, and the type provider pass a registration through inference and evaluation. The existing provider attribute accepts either legacy extern lists or registrations. No process-global host type registry or second invocation bridge is used. Field projection, matching, equality, and display share visible-field behavior; serialization never traverses the opaque payload. See the [host-managed type specification](../specs/host-managed-types.md).

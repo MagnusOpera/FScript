@@ -12,6 +12,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 ## Standard library and extern model
 
 - Stdlib functions: [`stdlib-functions.md`](./stdlib-functions.md)
+- Host-managed types: [`host-managed-types.md`](./host-managed-types.md)
 - External functions and extensibility: [`external-functions.md`](./external-functions.md)
 
 ## Hosting and security

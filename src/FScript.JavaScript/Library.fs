@@ -175,6 +175,7 @@ let rec private valueToTagged value : obj =
         createObj
             [ "kind" ==> "tuple"
               "values" ==> (values |> List.map valueToTagged |> List.toArray) ]
+    | VHostManaged _ -> failwith "Host-managed values cannot cross the JavaScript facade"
     | VRecord fields ->
         let fieldObject =
             fields

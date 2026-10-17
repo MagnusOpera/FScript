@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added host-managed extension types with visible fields, opaque host state, and safe structural reading and transport.
+
 ## [0.80.1]
 
 

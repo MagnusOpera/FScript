@@ -195,9 +195,9 @@ module ScriptRuntime =
         |> Array.filter (fun item -> not (String.IsNullOrWhiteSpace(item)))
         |> Array.toList
 
-    let private invokeExternProvider (ctx: HostContext) (providerType: System.Type) (providerMethod: MethodInfo) : ExternalFunction list =
-        if providerMethod.ReturnType <> externListType then
-            invalidOp $"Invalid extern provider '{providerType.FullName}.{providerMethod.Name}': return type must be ExternalFunction list."
+    let private invokeExternProvider (ctx: HostContext) (providerType: System.Type) (providerMethod: MethodInfo) : ExtensionRegistration =
+        if providerMethod.ReturnType <> externListType && providerMethod.ReturnType <> typeof<ExtensionRegistration> then
+            invalidOp $"Invalid extern provider '{providerType.FullName}.{providerMethod.Name}': return type must be ExternalFunction list or ExtensionRegistration."
 
         let parameters = providerMethod.GetParameters()
         let args =
@@ -214,10 +214,11 @@ module ScriptRuntime =
             invalidOp $"Extern provider '{providerType.FullName}.{providerMethod.Name}' returned null."
         else
             match provided with
-            | :? (ExternalFunction list) as externs -> externs
+            | :? (ExternalFunction list) as externs -> HostInterop.ofExterns externs
+            | :? ExtensionRegistration as registration -> registration
             | _ -> invalidOp $"Extern provider '{providerType.FullName}.{providerMethod.Name}' returned an invalid value."
 
-    let resolveExterns (rootDirectory: string) (externProviderTypeNames: string list) : ExternalFunction list =
+    let resolveRegistration (rootDirectory: string) (externProviderTypeNames: string list) : ExtensionRegistration =
         let ctx = { RootDirectory = rootDirectory; DeniedPathGlobs = [] }
         let defaults = Registry.all ctx
 
@@ -229,9 +230,9 @@ module ScriptRuntime =
                 |> Array.toList
                 |> List.filter (fun methodInfo ->
                     methodInfo.GetCustomAttributes(typeof<FScriptExternProviderAttribute>, false).Length > 0)
-                |> List.collect (fun methodInfo -> invokeExternProvider ctx providerType methodInfo))
+                |> List.map (fun methodInfo -> invokeExternProvider ctx providerType methodInfo))
 
-        let allExterns = defaults @ userExterns
+        let allExterns = defaults @ (userExterns |> List.collect (fun r -> r.Functions))
         let conflicts =
             allExterns
             |> List.groupBy (fun ext -> ext.Name)
@@ -239,10 +240,18 @@ module ScriptRuntime =
             |> List.map fst
 
         if conflicts.IsEmpty then
-            allExterns
+            let registration = { Types = userExterns |> List.collect (fun r -> r.Types); Functions = allExterns }
+            HostInterop.typeDefinitions registration [] |> ignore
+            registration
         else
             let conflictText = String.concat ", " conflicts
             invalidOp $"External function name conflicts detected: {conflictText}"
+
+    let resolveExterns rootDirectory externProviderTypeNames =
+        let registration = resolveRegistration rootDirectory externProviderTypeNames
+        if not registration.Types.IsEmpty then
+            invalidOp "Use resolveRegistration for providers that register host types."
+        registration.Functions
 
     let private getContract (contractJson: string) =
         let parsed = Contract.fromJson contractJson
@@ -280,13 +289,13 @@ module ScriptRuntime =
             match runtimeOverride with
             | Some value -> value.RootDirectory
             | None -> contract.CompileRootDirectory
-        let externs = resolveExterns rootDirectory contract.ExternProviderTypeNames
+        let registration = resolveRegistration rootDirectory contract.ExternProviderTypeNames
         match runtimeOverride with
         | Some value ->
             let resolver = defaultArg value.ResolveImportedSource (fun _ -> None)
-            ScriptHost.loadSourceWithIncludes externs value.RootDirectory value.EntryFile value.EntrySource resolver
+            ScriptHost.loadSourceWithIncludesAndRegistration registration value.RootDirectory value.EntryFile value.EntrySource resolver
         | None ->
-            ScriptHost.loadFile externs contract.CompileScriptPath
+            ScriptHost.loadFileWithRegistration registration contract.CompileScriptPath
 
     let invoke (contractJson: string) (functionName: string) (args: obj array) : obj =
         let contract = getContract contractJson

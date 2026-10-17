@@ -3,7 +3,7 @@ namespace FScript.Language
 module Interactive =
     type Session =
         private
-            { Externs: ExternalFunction list
+            { Registration: ExtensionRegistration
               RetainedProgramRev: Program
               TypeDeclarations: Program
               InferenceBindings: Map<string, ExternalFunction>
@@ -58,8 +58,8 @@ module Interactive =
             | TypeInfer.TSType _
             | TypeInfer.TSExpr _ -> current) bindings
 
-    let create externs =
-        { Externs = externs
+    let createWithRegistration registration =
+        { Registration = registration
           RetainedProgramRev = []
           TypeDeclarations = []
           InferenceBindings = Map.empty
@@ -78,8 +78,8 @@ module Interactive =
 
         match session.EvaluationState with
         | None ->
-            let typed = TypeInfer.inferProgramWithExterns session.Externs program
-            let state = Eval.evalProgramWithExternsState session.Externs typed
+            let typed = TypeInfer.inferProgramWithRegistration session.Registration program
+            let state = Eval.evalProgramWithRegistrationState session.Registration typed
             let retained = retainedStatements program
             let nextSession =
                 { session with
@@ -93,8 +93,8 @@ module Interactive =
               RetainedCount = retainedCount }
         | Some _ when containsTypeDeclaration ->
             let candidate = (session.RetainedProgramRev |> List.rev) @ program
-            let typed = TypeInfer.inferProgramWithExterns session.Externs candidate
-            let state = Eval.evalProgramWithExternsState session.Externs typed
+            let typed = TypeInfer.inferProgramWithRegistration session.Registration candidate
+            let state = Eval.evalProgramWithRegistrationState session.Registration typed
             let submittedTyped = typed |> List.skip session.RetainedProgramRev.Length
             let retained = retainedRev |> List.rev
             let nextSession =
@@ -109,9 +109,9 @@ module Interactive =
               RetainedCount = retainedCount }
         | Some previousState ->
             let inferenceExterns =
-                session.Externs @ (session.InferenceBindings |> Map.values |> Seq.toList)
+                session.Registration.Functions @ (session.InferenceBindings |> Map.values |> Seq.toList)
             let inferenceProgram = session.TypeDeclarations @ program
-            let typed = TypeInfer.inferProgramWithExterns inferenceExterns inferenceProgram
+            let typed = TypeInfer.inferProgramWithRegistration { session.Registration with Functions = inferenceExterns } inferenceProgram
             let submittedTyped = typed |> List.skip session.TypeDeclarations.Length
             let state = Eval.evalProgramFromState previousState submittedTyped
             let nextSession =
@@ -123,3 +123,5 @@ module Interactive =
               TypedProgram = submittedTyped
               State = state
               RetainedCount = retainedCount }
+
+    let create externs = createWithRegistration (HostInterop.ofExterns externs)

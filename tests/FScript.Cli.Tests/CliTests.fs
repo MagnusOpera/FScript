@@ -319,3 +319,25 @@ type CliTests() =
 
         Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
         Assert.That(normalized, Is.EqualTo("WHAT IS YOUR NAME?\nHELLO Ada\n()"))
+
+    [<Test>]
+    member _.``Host-managed extension works in stdin mode`` () =
+        let repoRoot = findRepoRoot ()
+        let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath ()] (Some "let retain x =\n    let v = x.Value\n    x\nExt.acceptNode (retain (Ext.node 42))")
+        Assert.That(code, Is.EqualTo(0), stderr)
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Host-managed extension works in file mode and rejects construction`` () =
+        let repoRoot = findRepoRoot ()
+        let path = Path.Combine(Path.GetTempPath(), $"fscript-host-managed-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(path, "Ext.acceptNode (Ext.node 42)")
+            let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath (); path] None
+            Assert.That(code, Is.EqualTo(0), stderr)
+            Assert.That(stdout.Trim(), Is.EqualTo("42"))
+            File.WriteAllText(path, "Ext.acceptNode {| Value = 42 |}")
+            let code, _, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath (); path] None
+            Assert.That(code, Is.EqualTo(2), stderr)
+        finally
+            if File.Exists path then File.Delete path

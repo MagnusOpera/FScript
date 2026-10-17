@@ -62,11 +62,11 @@ type FScriptScriptProvider(config: TypeProviderConfig) as this =
                 Path.GetFullPath(Path.Combine(config.ResolutionFolder, rootDirectory))
 
         let externProviderNames = ScriptRuntime.parseExternProviderNames externProviders
-        let externs = ScriptRuntime.resolveExterns resolvedRootDirectory externProviderNames
+        let registration = ScriptRuntime.resolveRegistration resolvedRootDirectory externProviderNames
         let typed =
             resolvedScriptPath
             |> FScript.parseFileWithIncludes resolvedRootDirectory
-            |> FScript.inferWithExterns externs
+            |> FScript.inferWithRegistration registration
 
         let functionContracts =
             typed

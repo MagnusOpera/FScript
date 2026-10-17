@@ -8,6 +8,8 @@ module FScript =
     let parseSourceWithIncludesResolver = IncludeResolver.parseProgramFromSourceWithIncludesResolver
     let infer = TypeInfer.inferProgram
     let inferWithExterns = TypeInfer.inferProgramWithExterns
+    let inferWithRegistration = TypeInfer.inferProgramWithRegistration
+    let evalWithRegistration = Eval.evalProgramWithRegistration
     let eval = Eval.evalProgram
     let evalWithExterns = Eval.evalProgramWithExterns
 

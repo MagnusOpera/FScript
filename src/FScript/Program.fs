@@ -12,9 +12,9 @@ let formatSpan (span: Span) =
     | Some file -> sprintf "(%s:%d:%d)" file span.Start.Line span.Start.Column
     | None -> sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
 
-let runTypedProgram (externs: ExternalFunction list) (program: Program) =
-    let typed = TypeInfer.inferProgramWithExterns externs program
-    let result = Eval.evalProgramWithExterns externs typed
+let runTypedProgram (registration: ExtensionRegistration) (program: Program) =
+    let typed = TypeInfer.inferProgramWithRegistration registration program
+    let result = Eval.evalProgramWithRegistration registration typed
     Console.WriteLine(Pretty.valueToString result)
     0
 
@@ -42,12 +42,12 @@ let resolveExternalFunctions
     (args: ParseResults<CliArgs>)
     (context: HostContext)
     (baseDirectory: string)
-    : Result<ExternalFunction list, string> =
+    : Result<ExtensionRegistration, string> =
     let defaultSources =
         if args.Contains <@ No_Default_Externs @> then
             []
         else
-            [ "runtime default externs", Registry.all context ]
+            [ "runtime default externs", HostInterop.ofExterns (Registry.all context) ]
 
     let assemblyInputs = args.GetResults <@ Extern_Assembly @>
 
@@ -83,7 +83,7 @@ let resolveExternalFunctions
             | ex ->
                 Error ex.Message
 
-        let tryLoadProviderSources (assemblyPath: string) : Result<(string * ExternalFunction list) list, string> =
+        let tryLoadProviderSources (assemblyPath: string) : Result<(string * ExtensionRegistration) list, string> =
             if not (File.Exists assemblyPath) then
                 Error $"Extern assembly not found: {assemblyPath}"
             else
@@ -106,13 +106,13 @@ let resolveExternalFunctions
                         else
                             let rec collectProviders
                                 (remaining: (System.Type * MethodInfo) list)
-                                (acc: (string * ExternalFunction list) list)
-                                : Result<(string * ExternalFunction list) list, string> =
+                                (acc: (string * ExtensionRegistration) list)
+                                : Result<(string * ExtensionRegistration) list, string> =
                                 match remaining with
                                 | [] -> Ok (List.rev acc)
                                 | (declaringType, providerMethod) :: tail ->
-                                    if providerMethod.ReturnType <> externListType then
-                                        Error $"Invalid extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}': return type must be ExternalFunction list."
+                                    if providerMethod.ReturnType <> externListType && providerMethod.ReturnType <> typeof<ExtensionRegistration> then
+                                        Error $"Invalid extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}': return type must be ExternalFunction list or ExtensionRegistration."
                                     else
                                         let parameters = providerMethod.GetParameters()
                                         let invokeArgsResult : Result<objnull array, string> =
@@ -134,6 +134,9 @@ let resolveExternalFunctions
                                                     match rawProvided with
                                                     | :? (ExternalFunction list) as provided ->
                                                         let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
+                                                        collectProviders tail ((sourceName, HostInterop.ofExterns provided) :: acc)
+                                                    | :? ExtensionRegistration as provided ->
+                                                        let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
                                                         collectProviders tail ((sourceName, provided) :: acc)
                                                     | _ ->
                                                         Error $"Extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}' returned an invalid value."
@@ -146,7 +149,7 @@ let resolveExternalFunctions
                 | ex ->
                     Error $"Failed to load extern assembly '{assemblyPath}': {ex.GetBaseException().Message}"
 
-        let loadedUserSources : Result<(string * ExternalFunction list) list, string> =
+        let loadedUserSources : Result<(string * ExtensionRegistration) list, string> =
             uniqueAssemblyPaths
             |> List.fold (fun state assemblyPath ->
                 match state with
@@ -154,7 +157,7 @@ let resolveExternalFunctions
                 | Ok acc ->
                     match tryLoadProviderSources assemblyPath with
                     | Ok providers -> Ok (acc @ providers)
-                    | Error _ as err -> err) (Ok ([] : (string * ExternalFunction list) list))
+                    | Error _ as err -> err) (Ok ([] : (string * ExtensionRegistration) list))
 
         loadedUserSources
         |> Result.bind (fun userSources ->
@@ -162,7 +165,7 @@ let resolveExternalFunctions
             let conflicts =
                 allSources
                 |> List.collect (fun (sourceName, externs) ->
-                    externs |> List.map (fun ext -> ext.Name, sourceName))
+                    externs.Functions |> List.map (fun ext -> ext.Name, sourceName))
                 |> List.groupBy fst
                 |> List.choose (fun (name, entries) ->
                     if entries.Length > 1 then
@@ -176,7 +179,14 @@ let resolveExternalFunctions
                         None)
 
             if conflicts.IsEmpty then
-                allSources |> List.collect snd |> Ok
+                let registrations = allSources |> List.map snd
+                let registration =
+                    { Types = registrations |> List.collect (fun r -> r.Types)
+                      Functions = registrations |> List.collect (fun r -> r.Functions) }
+                try
+                    HostInterop.typeDefinitions registration [] |> ignore
+                    Ok registration
+                with EvalException error -> Error error.Message
             else
                 let conflictSummary = String.concat "; " conflicts
                 Error $"External function name conflicts detected: {conflictSummary}")
@@ -203,7 +213,7 @@ let parseEnvironmentPrelude (scriptName: string option) (arguments: string list)
     environmentPrelude scriptName arguments
     |> FScript.parseWithSourceName (Some "<cli-environment>")
 
-let runFile (externs: ExternalFunction list) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
+let runFile (registration: ExtensionRegistration) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
     if not (File.Exists scriptPath) then
         Console.Error.WriteLine($"File not found: {scriptPath}")
         1
@@ -216,11 +226,11 @@ let runFile (externs: ExternalFunction list) (rootDirectory: string) (scriptPath
         let envProgram = parseEnvironmentPrelude (Some scriptName) arguments
         let scriptProgram = FScript.parseFileWithIncludes rootDirectory scriptPath
         let program = envProgram @ scriptProgram
-        runTypedProgram externs program
+        runTypedProgram registration program
 
-let runSource (externs: ExternalFunction list) (_rootDirectory: string) (source: string) (arguments: string list) =
+let runSource (registration: ExtensionRegistration) (_rootDirectory: string) (source: string) (arguments: string list) =
     let combinedSource = $"{environmentPrelude None arguments}\n{source}"
-    let loaded = ScriptHost.loadSource externs combinedSource
+    let loaded = ScriptHost.loadSourceWithRegistration registration combinedSource
     Console.WriteLine(Pretty.valueToString loaded.LastValue)
     0
 
@@ -280,9 +290,9 @@ let printVersion () =
         | null -> "0.0.0"
         | v -> v.ToString()
 
-let runRepl (externs: ExternalFunction list) (_rootDirectory: string) =
+let runRepl (registration: ExtensionRegistration) (_rootDirectory: string) =
     let initialProgram = parseEnvironmentPrelude None []
-    let initialSubmission = Interactive.create externs |> fun session -> Interactive.submit session initialProgram
+    let initialSubmission = Interactive.createWithRegistration registration |> fun session -> Interactive.submit session initialProgram
     let mutable session = initialSubmission.Session
     let mutable pendingLines: string list = []
     let mutable pendingBlankLines = 0
@@ -410,19 +420,19 @@ let main argv =
                 | Error message ->
                     Console.Error.WriteLine(message)
                     1
-                | Ok externs ->
+                | Ok registration ->
                     match scriptPath with
                     | Some path ->
-                        runFile externs rootDirectory path scriptArguments
+                        runFile registration rootDirectory path scriptArguments
                     | None when Console.IsInputRedirected ->
                         let source = Console.In.ReadToEnd()
-                        runSource externs rootDirectory source scriptArguments
+                        runSource registration rootDirectory source scriptArguments
                     | None ->
                         if not scriptArguments.IsEmpty then
                             Console.Error.WriteLine("Script arguments require file or stdin mode. Use 'fscript <script.fss> -- <args...>' or pipe stdin with '--'.")
                             1
                         else
-                            runRepl externs rootDirectory
+                            runRepl registration rootDirectory
             with
             | ParseException err ->
                 Console.Error.WriteLine($"Parse error {formatSpan err.Span}: {err.Message}")

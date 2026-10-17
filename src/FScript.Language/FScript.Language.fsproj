@@ -30,6 +30,7 @@
     <Compile Include="Parser.fs" />
     <Compile Include="IncludeResolver.fs" />
     <Compile Include="BuiltinTypes.fs" />
+    <Compile Include="HostInterop.fs" />
     <Compile Include="BuiltinSignatures.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />

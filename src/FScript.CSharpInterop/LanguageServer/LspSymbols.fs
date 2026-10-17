@@ -323,6 +323,8 @@ let queryValues : string -> string -> string list option
             | TList t1 -> sprintf "%s list" (postfixArg t1)
             | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
+            | THostManaged (name, _) -> name
+            | TRecordShape (_, fields, _) -> go (TRecord fields)
             | TRecord fields ->
                 fields
                 |> Map.toList

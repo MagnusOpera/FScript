@@ -5,6 +5,7 @@ open System.Globalization
 open System.Text.Json
 open System.Xml.Linq
 open FScript.Language
+open FScript.Language.HostInterop
 
 module internal HostDecode =
     let private missingFieldValue (target: Type) : Value option =
@@ -79,6 +80,8 @@ module internal HostDecode =
                     | Some v -> map <- map.Add(name, v)
                     | None -> ok <- false
             if ok then Some (VRecord map) else None
+        | THostManaged _
+        | TRecordShape _
         | TNamed _
         | TUnion _
         | TTypeToken
@@ -140,6 +143,8 @@ module internal HostDecode =
                     | None -> ok <- false
             if ok then Some (VRecord map) else None
         | TTuple _
+        | THostManaged _
+        | TRecordShape _
         | TNamed _
         | TUnion _
         | TTypeToken
@@ -175,7 +180,8 @@ module internal HostEncode =
                 | Some xs, Some x -> Some (x :: xs)
                 | _ -> None) (Some [])
             |> Option.map (fun encoded -> "[" + (encoded |> List.rev |> String.concat ",") + "]")
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             fields
             |> Map.toList
             |> List.map (fun (name, fieldValue) ->
@@ -234,7 +240,8 @@ module internal HostEncode =
                     else
                         ok <- false
             ok
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             let mutable ok = true
             for KeyValue(name, fieldValue) in fields do
                 if ok then
@@ -258,7 +265,7 @@ module internal HostEncode =
 
     let encodeXml (value: Value) : string option =
         match value with
-        | VRecord _ ->
+        | RecordFields _ ->
             let root = XElement(XName.Get("root"))
             if populateXmlElement root value then
                 Some (XDocument(root).ToString(SaveOptions.DisableFormatting))

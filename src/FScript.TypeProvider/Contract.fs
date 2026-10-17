@@ -204,6 +204,8 @@ module Contract =
             |> Result.map SupportedType.StringMap
         | TMap _ ->
             Error $"{typePath}: only string-keyed maps (T map) are supported."
+        | THostManaged _
+        | TRecordShape _ -> Error $"{typePath}: host-managed or constrained record types are not supported in exported signatures."
         | TNamed name ->
             Error $"{typePath}: named type '{name}' is not supported in exported signatures."
         | TRecord _ ->

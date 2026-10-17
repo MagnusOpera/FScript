@@ -28,6 +28,12 @@ type Value =
     | VTask of TaskHandle
     | VClosure of string * Expr * Env ref
     | VExternal of ExternalFunction * Value list
+    | VHostManaged of HostManagedValue
+
+and HostManagedValue =
+    { Descriptor: HostTypeDescriptor
+      Fields: Map<string, Value>
+      Payload: obj }
 
 and TaskOutcome =
     | TaskSucceeded of Value
@@ -54,3 +60,7 @@ and ExternalFunction =
       Arity: int }
 
 and Env = Map<string, Value>
+
+type ExtensionRegistration =
+    { Types: HostTypeDescriptor list
+      Functions: ExternalFunction list }

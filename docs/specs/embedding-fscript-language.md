@@ -403,3 +403,7 @@ open FScript.Runtime
 let typed = "[<export>] let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
 let signatures = ExportSignatures.fromTypedProgram typed
 ```
+
+## Registering host-managed types
+
+Use `ExtensionRegistration` and the registration-aware inference/evaluation, `ScriptHost`, or `Interactive` entry points to provide host type descriptors alongside extern functions. `HostInterop.create` validates visible field snapshots; `HostInterop.unwrap` gives trusted host functions access to the opaque payload. Existing extern-list APIs retain their empty-type-registration behavior. See [host-managed types](./host-managed-types.md) for the complete contract and API names.

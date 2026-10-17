@@ -18,6 +18,7 @@
     <Compile Include="JsonExternsTests.fs" />
     <Compile Include="XmlExternsTests.fs" />
     <Compile Include="ScriptHostTests.fs" />
+    <Compile Include="HostManagedTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

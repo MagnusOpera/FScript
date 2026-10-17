@@ -18,6 +18,7 @@
     <Compile Include="PrettyTests.fs" />
     <Compile Include="ExternalTests.fs" />
     <Compile Include="HostExternTests.fs" />
+    <Compile Include="HostManagedTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

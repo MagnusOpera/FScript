@@ -4,6 +4,7 @@ open System
 open System.Globalization
 
 module BuiltinFunctions =
+    open HostInterop
     let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
 
     let private fail message =
@@ -100,7 +101,7 @@ module BuiltinFunctions =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | VTuple xs, VTuple ys ->
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
-        | VRecord xf, VRecord yf ->
+        | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
             && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))

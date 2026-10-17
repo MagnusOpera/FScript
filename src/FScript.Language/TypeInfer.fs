@@ -18,6 +18,12 @@ module TypeInfer =
                     | Some mapped when mapped <> current -> apply mapped
                     | Some _ -> current
                     | None -> current
+                | TRecordShape (id, fields, constructible) ->
+                    match s.TryFind id with
+                    | Some (TRecordShape (other, mappedFields, mappedConstructible)) when other = id ->
+                        TRecordShape(id, mappedFields |> Map.map (fun _ t -> apply t), mappedConstructible)
+                    | Some mapped when mapped <> current -> apply mapped
+                    | _ -> TRecordShape(id, fields |> Map.map (fun _ t -> apply t), constructible)
                 | TList t1 -> TList (apply t1)
                 | TTask t1 -> TTask (apply t1)
                 | TTuple ts -> TTuple (ts |> List.map apply)
@@ -57,6 +63,8 @@ module TypeInfer =
             | TTask item
             | TOption item -> loop item
             | TTuple items -> items |> List.exists loop
+            | TRecordShape (id, fields, _) -> id = v || (fields |> Map.exists (fun _ t -> loop t))
+            | THostManaged _ -> false
             | TRecord fields -> fields |> Map.exists (fun _ fieldType -> loop fieldType)
             | TMap (keyType, valueType)
             | TFun (keyType, valueType) -> loop keyType || loop valueType
@@ -94,6 +102,40 @@ module TypeInfer =
                     |> List.fold (fun sAcc (x, y) ->
                         let s1 = uni seen' (applyType sAcc x) (applyType sAcc y)
                         compose s1 sAcc) emptySubst
+                | TVar v, t
+                | t, TVar v ->
+                    if t = TVar v then emptySubst
+                    elif t = TNumeric v then Map.ofList [ v, t ]
+                    elif occurs v t then raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    else Map.ofList [ v, t ]
+                | TRecordShape (id, xf, xc), TRecordShape (other, yf, yc) ->
+                    let shared = xf |> Map.filter (fun name _ -> yf.ContainsKey name)
+                    let s = uni seen' (TRecord shared) (TRecord (yf |> Map.filter (fun name _ -> shared.ContainsKey name)))
+                    let fields = Map.fold (fun acc name t -> Map.add name t acc) xf yf |> Map.map (fun _ t -> applyType s t)
+                    if fields |> Map.exists (fun _ t -> occurs id t || occurs other t) then
+                        raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    let merged = TRecordShape(other, fields, xc || yc)
+                    let mergedSubst =
+                        if id = other then Map.ofList [other, merged]
+                        else Map.ofList [id, merged; other, merged]
+                    compose mergedSubst s
+                | TRecordShape (id, required, constructible), concrete
+                | concrete, TRecordShape (id, required, constructible) ->
+                    let rec fieldsOf t =
+                        match t with
+                        | TNamed name -> typeDefs.TryFind name |> Option.bind fieldsOf
+                        | TRecord fields -> Some fields
+                        | THostManaged (_, fields) when not constructible -> Some fields
+                        | _ -> None
+                    if occurs id concrete then
+                        raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    match fieldsOf concrete with
+                    | Some fields when required |> Map.forall (fun name _ -> fields.ContainsKey name) ->
+                        let selected = fields |> Map.filter (fun name _ -> required.ContainsKey name)
+                        let s = uni seen' (TRecord required) (TRecord selected)
+                        compose (Map.ofList [id, applyType s concrete]) s
+                    | _ -> raise (TypeException { Message = "Record constraint requires compatible fields and a constructible value for updates"; Span = span })
+                | THostManaged (x, _), THostManaged (y, _) when x = y -> emptySubst
                 | TRecord xf, TRecord yf ->
                     let fieldsToCheck, otherFields =
                         if xf.Count <= yf.Count then xf, yf
@@ -117,12 +159,6 @@ module TypeInfer =
                     let s1 = uni seen' a1 a2
                     let s2 = uni seen' (applyType s1 b1) (applyType s1 b2)
                     compose s2 s1
-                | TVar v, t
-                | t, TVar v ->
-                    if t = TVar v then emptySubst
-                    elif t = TNumeric v then Map.ofList [ v, t ]
-                    elif occurs v t then raise (TypeException { Message = "Occurs check failed"; Span = span })
-                    else Map.ofList [ v, t ]
                 | TNamed name, t ->
                     match typeDefs.TryFind name with
                     | Some expanded when expanded <> TNamed name -> uni seen' expanded t
@@ -156,6 +192,9 @@ module TypeInfer =
                 match freshMap |> Map.tryFind v with
                 | Some (TVar fresh) -> TNumeric fresh
                 | _ -> t
+            | TRecordShape (id, fields, constructible) ->
+                let fresh = match freshMap.TryFind id with Some (TVar v) -> v | _ -> id
+                TRecordShape(fresh, fields |> Map.map (fun _ t -> subst t), constructible)
             | TList a -> TList (subst a)
             | TTask a -> TTask (subst a)
             | TTuple ts -> TTuple (ts |> List.map subst)
@@ -376,7 +415,10 @@ module TypeInfer =
             fields
             |> List.map (fun (name, t) -> name, annotationTypeFromRef typeDefs span t)
             |> Map.ofList
-            |> TRecord
+            |> fun fields ->
+                match Types.freshVar() with
+                | TVar id -> TRecordShape(id, fields, false)
+                | _ -> failwith "Expected type variable"
 
     let rec private functionReturnType (t: Type) : Type =
         match t with
@@ -456,7 +498,9 @@ module TypeInfer =
                 loop valueType
             | TList inner | TTask inner | TOption inner -> loop inner
             | TTuple items -> List.iter loop items
-            | TRecord fields -> fields |> Map.values |> Seq.iter loop
+            | TRecord fields
+            | TRecordShape (_, fields, _)
+            | THostManaged (_, fields) -> fields |> Map.values |> Seq.iter loop
             | TFun (arg, result) -> loop arg; loop result
             | _ -> ()
         loop t
@@ -503,7 +547,11 @@ module TypeInfer =
                     let envPart, tPart = inferPattern telemetry typeDefs constructors p
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
-            env, TRecord fieldTypes
+            let shape =
+                match Types.freshVar() with
+                | TVar id -> TRecordShape(id, fieldTypes, false)
+                | _ -> failwith "Expected type variable"
+            env, shape
         | PMap (clauses, tailPattern, span) ->
             let startIndex = currentTelemetryCaptureCount telemetry
             let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
@@ -592,7 +640,9 @@ module TypeInfer =
             | TList inner -> loop inner
             | TTask inner -> loop inner
             | TTuple items -> items |> List.iter loop
-            | TRecord fields -> fields |> Map.values |> Seq.iter loop
+            | TRecord fields
+            | TRecordShape (_, fields, _)
+            | THostManaged (_, fields) -> fields |> Map.values |> Seq.iter loop
             | TOption inner -> loop inner
             | TFun (a, b) -> loop a; loop b
             | _ -> ()
@@ -828,34 +878,7 @@ module TypeInfer =
             let mutable resultTypeOpt : Type option = None
             for (pat, guard, body, caseSpan) in cases do
                 let envPat, tPat = inferPattern telemetry typeDefs constructors pat
-                let sPat =
-                    match pat, applyType sAcc tScrut, tPat with
-                    | PRecord _, TRecord scrutFields, TRecord patFields ->
-                        patFields
-                        |> Map.fold (fun sLocal field patTy ->
-                            match scrutFields.TryFind field with
-                            | Some scrutTy ->
-                                let sField = unify typeDefs (applyType sLocal scrutTy) (applyType sLocal patTy) caseSpan
-                                compose sField sLocal
-                            | None ->
-                                raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
-                    | PRecord _, TNamed typeName, TRecord patFields ->
-                        match typeDefs.TryFind typeName with
-                        | Some (TRecord scrutFields) ->
-                            patFields
-                            |> Map.fold (fun sLocal field patTy ->
-                                match scrutFields.TryFind field with
-                                | Some scrutTy ->
-                                    let sField = unify typeDefs (applyType sLocal scrutTy) (applyType sLocal patTy) caseSpan
-                                    compose sField sLocal
-                                | None ->
-                                    raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
-                        | _ ->
-                            raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
-                    | PRecord _, _, _ ->
-                        raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
-                    | _ ->
-                        unify typeDefs (applyType sAcc tScrut) tPat caseSpan
+                let sPat = unify typeDefs (applyType sAcc tScrut) tPat caseSpan
                 let envCase = applyEnv (compose sPat sAcc) env
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
                 let caseBoundNames = envPat |> Map.toList |> List.map fst
@@ -962,13 +985,19 @@ module TypeInfer =
             let tRes = TMap (applyType sAcc keyType, applyType sAcc valueType)
             sAcc, tRes, asTyped expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sBase =
+                match applyType sInitial tBase with
+                | TRecordShape (id, fields, _) -> compose (Map.ofList [id, TRecordShape(id, fields, true)]) sInitial
+                | _ -> sInitial
             let baseFields =
                 match applyType sBase tBase with
-                | TRecord fields -> fields
+                | TRecord fields
+                | TRecordShape (_, fields, _) -> fields
                 | TNamed name ->
                     match typeDefs.TryFind name with
                     | Some (TRecord fields) -> fields
+                    | Some (THostManaged _) -> raise (TypeException { Message = $"Host-managed type '{name}' cannot be updated"; Span = span })
                     | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
                 | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
             let mutable sAcc = sBase
@@ -986,13 +1015,19 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped expr tRes
         | EStructuralRecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sBase =
+                match applyType sInitial tBase with
+                | TRecordShape (id, fields, _) -> compose (Map.ofList [id, TRecordShape(id, fields, true)]) sInitial
+                | _ -> sInitial
             let baseFields =
                 match applyType sBase tBase with
-                | TRecord fields -> fields
+                | TRecord fields
+                | TRecordShape (_, fields, _) -> fields
                 | TNamed name ->
                     match typeDefs.TryFind name with
                     | Some (TRecord fields) -> fields
+                    | Some (THostManaged _) -> raise (TypeException { Message = $"Host-managed type '{name}' cannot be updated"; Span = span })
                     | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
                 | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
             let mutable sAcc = sBase
@@ -1013,20 +1048,33 @@ module TypeInfer =
         | EFieldGet (target, fieldName, span) ->
             let inferRecordField s1 tTarget =
                 match applyType s1 tTarget with
-                | TRecord fields ->
+                | TRecordShape (id, fields, constructible) ->
+                    match fields.TryFind fieldName with
+                    | Some tField -> s1, tField
+                    | None ->
+                        let tField = Types.freshVar()
+                        let s = compose (Map.ofList [id, TRecordShape(id, fields.Add(fieldName, tField), constructible)]) s1
+                        s, tField
+                | TRecord fields
+                | THostManaged (_, fields) ->
                     match fields.TryFind fieldName with
                     | Some tField -> s1, tField
                     | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                 | TNamed name ->
                     match typeDefs.TryFind name with
-                    | Some (TRecord fields) ->
+                    | Some (TRecord fields)
+                    | Some (THostManaged (_, fields)) ->
                         match fields.TryFind fieldName with
                         | Some tField -> s1, tField
                         | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                     | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
                 | TVar _ as tv ->
                     let tField = Types.freshVar()
-                    let sField = unify typeDefs tv (TRecord (Map.ofList [ fieldName, tField ])) span
+                    let shape =
+                        match Types.freshVar() with
+                        | TVar id -> TRecordShape(id, Map.ofList [fieldName, tField], false)
+                        | _ -> failwith "Expected type variable"
+                    let sField = unify typeDefs tv shape span
                     let s = compose sField s1
                     s, applyType s tField
                 | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
@@ -1200,7 +1248,11 @@ module TypeInfer =
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
-    let private inferProgramWithExternsRawAndLocals (captureLocalVariables: bool) (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+    let private inferProgramWithExternsRawAndLocals (captureLocalVariables: bool) (registration: ExtensionRegistration) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+        let externs = registration.Functions
+        let hostDefinitions =
+            try HostInterop.typeDefinitions registration ((BuiltinTypes.typeDefs |> List.map (fun d -> d.Name)) @ (program |> List.choose (function SType d -> Some d.Name | _ -> None)))
+            with EvalException error -> raise (TypeException { Message = error.Message; Span = error.Span })
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
             @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
@@ -1220,6 +1272,8 @@ module TypeInfer =
                     |> List.map (fun (fieldName, t) -> fieldName, typeFromRef decls [ d.Name ] t)
                     |> Map.ofList
                     |> TRecord)
+
+        let typeDefs = Map.fold (fun acc name t -> Map.add name t acc) typeDefs hostDefinitions
 
         let constructors =
             decls
@@ -1407,7 +1461,7 @@ module TypeInfer =
             reraise ()
 
     let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        inferProgramWithExternsRawAndLocals false externs program |> fst
+        inferProgramWithExternsRawAndLocals false (HostInterop.ofExterns externs) program |> fst
 
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -1437,10 +1491,19 @@ module TypeInfer =
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
 
-        inferProgramWithExternsRawAndLocals true externs program
+        inferProgramWithExternsRawAndLocals true (HostInterop.ofExterns externs) program
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program
 
     let inferProgram (program: Program) : TypedProgram =
         inferProgramWithExterns [] program
+
+    let inferProgramWithRegistration (registration: ExtensionRegistration) program =
+        // Preserve the existing reserved-name checks before the registration-aware inference pass.
+        let reserved = BuiltinSignatures.builtinReservedNames
+        if registration.Functions |> List.exists (fun ext -> Set.contains ext.Name reserved) then
+            raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
+        if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
+            raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
+        inferProgramWithExternsRawAndLocals false registration program |> fst

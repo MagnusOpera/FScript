@@ -152,3 +152,7 @@ Angle-bracket map type syntax is not supported.
 - `typeof Name` yields a type token.
 - `nameof identifier` yields the bound identifier name as `string`.
 - Type tokens are consumed by host externs (for example JSON/XML decoding).
+
+## Host-managed records
+
+Explicit host descriptors may mark a type `HostManaged`. Such values expose immutable visible fields and preserve opaque host state and metadata through transport. Scripts may read, match, and compare visible fields but cannot construct or update these values. Structural readers preserve the concrete host type when returning the whole argument. See [host-managed types](./host-managed-types.md).

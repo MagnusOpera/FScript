@@ -21,6 +21,14 @@ type Type =
     | TTypeToken
     | TVar of int
     | TNumeric of int
+    | THostManaged of name: string * fields: Map<string, Type>
+    // The witness retains the whole argument type through structural readers.
+    | TRecordShape of id: int * fields: Map<string, Type> * requiresConstruction: bool
+
+type HostTypeDescriptor =
+    { Name: string
+      Fields: Map<string, Type>
+      HostManaged: bool }
 
 [<StructuralEquality; StructuralComparison>]
 type Scheme = Forall of int list * Type
@@ -48,6 +56,8 @@ module Types =
         | TList t1 -> ftvType t1
         | TTask t1 -> ftvType t1
         | TTuple ts -> ts |> List.map ftvType |> List.fold Set.union Set.empty
+        | THostManaged _ -> Set.empty
+        | TRecordShape (id, fields, _) -> Set.add id (fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty)
         | TRecord fields -> fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty
         | TMap (tk, tv) -> Set.union (ftvType tk) (ftvType tv)
         | TOption t1 -> ftvType t1
@@ -80,6 +90,8 @@ module Types =
             | TList t1 -> sprintf "%s list" (postfixArg t1)
             | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
+            | THostManaged (name, _) -> name
+            | TRecordShape (_, fields, _) -> go (TRecord fields)
             | TRecord fields ->
                 fields
                 |> Map.toList

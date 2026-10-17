@@ -1,6 +1,7 @@
 namespace FScript.Language
 
 module Eval =
+    open HostInterop
 #if FABLE_COMPILER
 #else
     open System.Threading.Tasks
@@ -57,7 +58,8 @@ module Eval =
             xs |> List.map valueToInterpolationString |> String.concat ";" |> sprintf "[%s]"
         | VTuple xs ->
             xs |> List.map valueToInterpolationString |> String.concat ", " |> sprintf "(%s)"
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             fields
             |> Map.toList
             |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToInterpolationString value))
@@ -96,7 +98,7 @@ module Eval =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | VTuple xs, VTuple ys ->
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
-        | VRecord xf, VRecord yf ->
+        | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
             && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
             && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
@@ -195,13 +197,16 @@ module Eval =
             | TOption inner, VOption None -> true
             | TOption inner, VOption (Some v) -> valueHasType v inner
             | TMap (_, _), VMap _ -> true
-            | TRecord fields, VRecord values ->
+            | TRecord fields, RecordFields values ->
                 // Structural superset: all required fields must exist and match.
                 fields
                 |> Map.forall (fun name ft ->
                     match values.TryFind name with
                     | Some fv -> valueHasType fv ft
                     | None -> false)
+            | THostManaged _, _ -> HostInterop.matches typeDefs t value
+            | TRecordShape (_, fields, _), RecordFields values ->
+                fields |> Map.forall (fun name ft -> values.TryFind name |> Option.exists (fun fv -> valueHasType fv ft))
             | TNamed name, v ->
                 match typeDefs.TryFind name with
                 | Some expanded -> valueHasType v expanded
@@ -320,7 +325,7 @@ module Eval =
                 | Some acc, Some next ->
                     Some (Map.fold (fun state k value -> Map.add k value state) acc next)
                 | _ -> None)
-        | PRecord (fields, _), VRecord values ->
+        | PRecord (fields, _), RecordFields values ->
             (Some Map.empty, fields)
             ||> List.fold (fun accOpt (name, p) ->
                 match accOpt, values.TryFind name with
@@ -429,7 +434,7 @@ module Eval =
         | VExternal (ext, args) ->
             let args' = argValue :: args
             if args'.Length = ext.Arity then
-                ext.Impl (createExternContext runtime typeDefs span) (args' |> List.rev)
+                HostInterop.invoke typeDefs ext (createExternContext runtime typeDefs span) (args' |> List.rev)
             elif args'.Length < ext.Arity then
                 VExternal (ext, args')
             else
@@ -615,14 +620,16 @@ module Eval =
                 | Some value -> value
                 | None ->
                     match evalExpr runtime typeDefs env target with
-                    | VRecord fields ->
+                    | VRecord fields
+                    | VHostManaged { Fields = fields } ->
                         match fields.TryFind fieldName with
                         | Some fieldValue -> fieldValue
                         | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                     | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
             | _ ->
                 match evalExpr runtime typeDefs env target with
-                | VRecord fields ->
+                | VRecord fields
+                | VHostManaged { Fields = fields } ->
                     match fields.TryFind fieldName with
                     | Some value -> value
                     | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
@@ -750,7 +757,7 @@ module Eval =
         let applyExternal (ext: ExternalFunction) (existingArgsRev: Value list) (newArgs: Value list) =
             let allArgs = (existingArgsRev |> List.rev) @ newArgs
             if allArgs.Length = ext.Arity then
-                ext.Impl (createExternContext runtime typeDefs unknownSpan) allArgs
+                HostInterop.invoke typeDefs ext (createExternContext runtime typeDefs unknownSpan) allArgs
             elif allArgs.Length < ext.Arity then
                 VExternal (ext, allArgs |> List.rev)
             else
@@ -870,7 +877,8 @@ module Eval =
 
         evaluateStatements runtime state.TypeDefs state.Env program
 
-    let evalProgramWithExternsState (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : ProgramState =
+    let evalProgramWithRegistrationState (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
+        let externs = registration.Functions
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
             { SyncRoot = obj ()
@@ -955,6 +963,9 @@ module Eval =
                     |> Map.ofList
                     |> TRecord)
 
+        let hostDefinitions = HostInterop.typeDefinitions registration (decls |> Map.keys |> Seq.toList)
+        let typeDefs = Map.fold (fun acc name t -> Map.add name t acc) typeDefs hostDefinitions
+
         let constructorValues =
             decls
             |> Map.toList
@@ -974,7 +985,7 @@ module Eval =
             (BuiltinFunctions.builtinExterns @ externs)
             |> List.fold (fun acc ext ->
                 if ext.Arity = 0 then
-                    let value = ext.Impl externContext []
+                    let value = HostInterop.invoke typeDefs ext externContext []
                     acc.Add(ext.Name, value)
                 else
                     acc.Add(ext.Name, VExternal (ext, []))) Map.empty
@@ -984,7 +995,13 @@ module Eval =
         evaluateStatements runtime typeDefs env program
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
-        (evalProgramWithExternsState externs program).LastValue
+        (evalProgramWithRegistrationState (HostInterop.ofExterns externs) program).LastValue
 
     let evalProgram (program: TypeInfer.TypedProgram) : Value =
         evalProgramWithExterns [] program
+
+    let evalProgramWithExternsState externs program =
+        evalProgramWithRegistrationState (HostInterop.ofExterns externs) program
+
+    let evalProgramWithRegistration registration program =
+        (evalProgramWithRegistrationState registration program).LastValue

@@ -37,17 +37,32 @@ module ScriptHost =
             | _ -> [])
 
     let private collectFunctionSignatures (program: TypeInfer.TypedProgram) : Map<string, FunctionSignature> =
+        let rec flatten t =
+            match t with
+            | TFun (argument, result) ->
+                let rest, final = flatten result
+                argument :: rest, final
+            | other -> [], other
+        let declared = ExportSignatures.fromTypedProgram program
         program
-        |> ExportSignatures.fromTypedProgram
-        |> Map.map (fun _ signature ->
-            { Name = signature.Name
-              ParameterNames = signature.ParameterNames
-              ParameterTypes = signature.ParameterTypes
-              ReturnType = signature.ReturnType })
+        |> List.collect (function
+            | TypeInfer.TSLet(name, _, t, _, true, _) -> [name, t]
+            | TypeInfer.TSLetRecGroup(bindings, true, _) -> bindings |> List.map (fun (name, _, t, _) -> name, t)
+            | _ -> [])
+        |> List.choose (fun (name, t) ->
+            let parameters, result = flatten t
+            if parameters.IsEmpty then None
+            else
+                let names =
+                    match declared.TryFind name with
+                    | Some signature -> signature.ParameterNames
+                    | None -> parameters |> List.mapi (fun index _ -> $"arg{index + 1}")
+                Some (name, { Name = name; ParameterNames = names; ParameterTypes = parameters; ReturnType = result }))
+        |> Map.ofList
 
-    let private loadProgram (externs: ExternalFunction list) (program: Program) : LoadedScript =
-        let typed = FScript.inferWithExterns externs program
-        let state = Eval.evalProgramWithExternsState externs typed
+    let private loadProgram (registration: ExtensionRegistration) (program: Program) : LoadedScript =
+        let typed = TypeInfer.inferProgramWithRegistration registration program
+        let state = Eval.evalProgramWithRegistrationState registration typed
         let exportedNames =
             declaredExportedNames typed
             |> List.distinct
@@ -98,13 +113,13 @@ module ScriptHost =
           ExportedValues = values
           LastValue = state.LastValue }
 
-    let loadSource (externs: ExternalFunction list) (source: string) : LoadedScript =
+    let loadSourceWithRegistration (registration: ExtensionRegistration) (source: string) : LoadedScript =
         let program = FScript.parse source
         if program |> List.exists (function SImport _ -> true | _ -> false) then
             raise (HostCommon.evalError "'import' is only supported when loading scripts from files")
-        loadProgram externs program
+        loadProgram registration program
 
-    let loadFile (externs: ExternalFunction list) (path: string) : LoadedScript =
+    let loadFileWithRegistration (registration: ExtensionRegistration) (path: string) : LoadedScript =
         let fullPath = Path.GetFullPath(path)
         let rootDirectory =
             match Path.GetDirectoryName(fullPath) with
@@ -112,10 +127,10 @@ module ScriptHost =
             | "" -> Directory.GetCurrentDirectory()
             | dir -> dir
         let program = FScript.parseFileWithIncludes rootDirectory fullPath
-        loadProgram externs program
+        loadProgram registration program
 
-    let loadSourceWithIncludes
-        (externs: ExternalFunction list)
+    let loadSourceWithIncludesAndRegistration
+        (registration: ExtensionRegistration)
         (rootDirectory: string)
         (entryFile: string)
         (entrySource: string)
@@ -127,7 +142,7 @@ module ScriptHost =
                 entryFile
                 entrySource
                 resolveImportedSource
-        loadProgram externs program
+        loadProgram registration program
 
     let listFunctions (loaded: LoadedScript) : string list =
         loaded.ExportedFunctionNames
@@ -152,8 +167,17 @@ module ScriptHost =
         else
             match loaded.ExportedFunctions |> Map.tryFind functionName with
             | Some fnValue when isCallable fnValue ->
-                Eval.invokeValue loaded.TypeDefs fnValue args
+                match loaded.ExportedFunctionSignatures.TryFind functionName with
+                | Some signature ->
+                    let fullType = List.foldBack (fun argument result -> TFun(argument, result)) signature.ParameterTypes signature.ReturnType
+                    HostInterop.validateCall loaded.TypeDefs fullType args (fun () -> Eval.invokeValue loaded.TypeDefs fnValue args)
+                | None -> Eval.invokeValue loaded.TypeDefs fnValue args
             | Some _ ->
                 raise (HostCommon.evalError $"'{functionName}' is not callable")
             | None ->
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
+
+    let loadSource externs source = loadSourceWithRegistration (HostInterop.ofExterns externs) source
+    let loadFile externs path = loadFileWithRegistration (HostInterop.ofExterns externs) path
+    let loadSourceWithIncludes externs root entry source resolver =
+        loadSourceWithIncludesAndRegistration (HostInterop.ofExterns externs) root entry source resolver
