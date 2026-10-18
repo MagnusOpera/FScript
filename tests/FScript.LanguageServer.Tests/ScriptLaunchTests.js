@@ -7,9 +7,10 @@ test('script paths and manifest paths remain literal process arguments', () => {
   assert.equal(launch.command, 'fscript');
   assert.deepEqual(launch.args, ['--config', '/work/config with spaces.toml', '/work/a $x.fss']);
 });
-test('standalone scripts use defaults and local repository scripts use dotnet CLI', () => {
+test('standalone and repository scripts both use the installed CLI', () => {
   assert.deepEqual(scriptLaunch('/tmp/a.fss').args, ['/tmp/a.fss']);
   assert.equal(scriptLaunch('/tmp/a.fss').cwd, '/tmp');
-  assert.deepEqual(scriptLaunch('/repo/main.fss', '/repo', undefined, '/repo/src/FScript/FScript.fsproj').args,
-    ['run', '--project', '/repo/src/FScript/FScript.fsproj', '--', '/repo/main.fss']);
+  const repository = scriptLaunch('/repo/main.fss', '/repo');
+  assert.equal(repository.command, 'fscript');
+  assert.deepEqual(repository.args, ['/repo/main.fss']);
 });

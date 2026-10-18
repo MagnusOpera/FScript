@@ -345,6 +345,9 @@ test('run script forwards the owning folder configuration through process argume
   harness.vscode.tasks = { executeTask: async task => { executed = task; } };
   await harness.commands.get('fscript.runScript')();
   assert.equal(saved, true);
+  // existsSync reports that the repository CLI project exists: it must not select dotnet run.
+  assert.equal(executed.execution.command, 'fscript');
+  assert.deepEqual(Array.from(executed.execution.args), ['--config', '/work/nested/ffi/fscript.toml', '/work/nested/teapot main.fss']);
   assert.equal(executed.scope.uri.fsPath, '/work/nested');
   assert.ok(executed.execution.args.includes('/work/nested/ffi/fscript.toml'));
   assert.equal(executed.execution.args.at(-1), '/work/nested/teapot main.fss');

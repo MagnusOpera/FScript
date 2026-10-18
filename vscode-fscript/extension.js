@@ -795,9 +795,7 @@ async function activate(context) {
     // Resolve fresh selection even when language-server features are disabled.
     const entry = { folder };
     if (folder) await refreshSelection(entry);
-    const project = folder && path.join(folder.uri.fsPath, 'src', 'FScript', 'FScript.fsproj');
-    const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path,
-      project && fs.existsSync(project) ? project : undefined);
+    const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path);
     const task = new vscode.Task({ type: 'fscript', script: document.uri.toString() },
       folder || vscode.TaskScope.Workspace, 'Run Current Script', 'FScript',
       new vscode.ProcessExecution(launch.command, launch.args, { cwd: launch.cwd }), []);

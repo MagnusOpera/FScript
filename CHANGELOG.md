@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Always use the installed FScript CLI for VS Code’s Run Current Script command, including in the FScript repository.
 - Make direct CLI execution the primary path in the FFI graphics walkthrough.
 
 ## [0.81.3]
