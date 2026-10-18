@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.6]
+
+
 - Support host-provided union types and F# sets in typed FFI adapters, including editor completion and hover.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.5...0.81.6
 
 ## [0.81.5]
 
