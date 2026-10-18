@@ -16,6 +16,10 @@ public sealed class ReleasePackagingTests
         Assert.That(releaseVersion, Is.Not.Null.And.Not.Empty);
         var expected = Version.Parse(releaseVersion!);
         expected = new Version(expected.Major, expected.Minor, expected.Build, 0);
+        var sdk = AssemblyName.GetAssemblyName(Path.Combine(directory!, "FScript.Extensibility.dll"));
+        Assert.That(sdk.Version, Is.EqualTo(new Version(1, 0, 0, 0)),
+            "The SDK assembly identity is independent of the product release.");
+        Assert.That(sdk.GetPublicKeyToken(), Is.Empty, "The SDK is unsigned.");
         foreach (var name in new[] { "FScript.Language", "FScript.Runtime", "FScript.CSharpInterop", "FScript.LanguageServer" })
         {
             var assembly = AssemblyName.GetAssemblyName(Path.Combine(directory!, name + ".dll"));

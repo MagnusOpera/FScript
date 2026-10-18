@@ -77,3 +77,6 @@ website-version:
 
 website-typecheck:
 	cd website && npm run typecheck
+
+verify-sdk-provider:
+	.github/scripts/verify-sdk-provider.sh

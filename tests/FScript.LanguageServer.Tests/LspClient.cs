@@ -31,6 +31,14 @@ internal static class LspClient
 
     private static readonly Lazy<string> EnsureServerDllBuilt = new(() =>
     {
+        var stagedDirectory = Environment.GetEnvironmentVariable("FSCRIPT_RELEASE_SERVER_DIR");
+        if (!string.IsNullOrWhiteSpace(stagedDirectory))
+        {
+            var stagedServer = Path.Combine(stagedDirectory, "FScript.LanguageServer.dll");
+            if (!File.Exists(stagedServer))
+                throw new FileNotFoundException("Staged language server not found.", stagedServer);
+            return stagedServer;
+        }
         var root = FindRepoRoot();
         var serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.csproj");
         var serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll");

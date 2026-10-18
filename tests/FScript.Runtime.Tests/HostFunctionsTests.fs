@@ -5,6 +5,10 @@ open System.Threading.Tasks
 open NUnit.Framework
 open FScript.Language
 open FScript.Runtime
+open FScript.Extensibility
+
+module ScriptHost = FScript.Testing.SdkTestHost
+module Pretty = FScript.Testing.SdkTestPretty
 
 [<FScriptHostType("FunctionNode")>]
 type FunctionNode = { [<FScriptVisible>] Value: int64; Token: Guid }
@@ -27,7 +31,7 @@ type HostFunctionsTests() =
     let empty = HostInterop.empty
     let registration descriptors = { HostInterop.empty with Types = descriptors }
     let nodeRegistration () = registration [HostTypes.describe<FunctionNode>()]
-    let error action = (Assert.Throws<EvalException>(Action action) |> nonNull).Data0.Message
+    let error action = (Assert.Catch<System.Exception>(Action action) |> nonNull).Message
     let run types functions source =
         ScriptHost.loadSourceWithRegistration { HostInterop.empty with Types = types; Functions = functions } source
     let assertValue expected actual =
@@ -69,11 +73,11 @@ type HostFunctionsTests() =
                           (fun (xs: int list, ys: int64 array, entries: Map<string, int option>, pair: struct (bool * string)) ->
                               xs @ [int ys[0]], [|Some entries["answer"]; None|], pair)
         let input = VTuple [VList [VInt 1L]; VList [VInt 2L]; VMap(Map.ofList [MKString "answer", VOption(Some(VInt 42L))]); VTuple [VBool true; VString "ok"]]
-        let result = HostTestHelpers.invoke handler [input]
+        let result = FScript.Testing.SdkTestHost.invokeExternal handler [input]
         assertValue (VTuple [VList [VInt 1L;VInt 2L]; VList [VOption(Some(VOption(Some(VInt 42L)))); VOption None]; VTuple [VBool true; VString "ok"]]) result
         let absent = HostFunctions.create empty "Host.absent" (fun (value: unit option) -> value)
-        assertValue (VOption None) (HostTestHelpers.invoke absent [VOption None])
-        assertValue (VOption(Some VUnit)) (HostTestHelpers.invoke absent [VOption(Some VUnit)])
+        assertValue (VOption None) (FScript.Testing.SdkTestHost.invokeExternal absent [VOption None])
+        assertValue (VOption(Some VUnit)) (FScript.Testing.SdkTestHost.invokeExternal absent [VOption(Some VUnit)])
 
     [<Test>]
     member _.``Typed factories and readers preserve hidden host payloads`` () =
@@ -106,7 +110,7 @@ type HostFunctionsTests() =
         let handler = HostFunctions.create types "Host.nested" (fun (nodes: Map<string, FunctionNode option list>) -> nodes)
         let node = HostTypes.wrap types ({Value=42L; Token=token}: FunctionNode)
         let input = VMap(Map.ofList [MKString "nodes", VList [VOption(Some node); VOption None]])
-        match HostTestHelpers.invoke handler [input] with
+        match FScript.Testing.SdkTestHost.invokeExternal handler [input] with
         | VMap fields ->
             match fields[MKString "nodes"] with
             | VList [VOption(Some value); VOption None] ->
@@ -123,7 +127,7 @@ type HostFunctionsTests() =
         let handler = HostFunctions.create types "Host.snapshot" (fun () -> calls <- calls + 1; value)
         Assert.That(calls, Is.Zero)
         Assert.That(value.Reads, Is.Zero)
-        HostTestHelpers.invoke handler [VUnit] |> ignore
+        FScript.Testing.SdkTestHost.invokeExternal handler [VUnit] |> ignore
         Assert.That(calls, Is.EqualTo(1))
         Assert.That(value.Reads, Is.EqualTo(1))
 
@@ -166,9 +170,9 @@ type HostFunctionsTests() =
         let mutable calls = 0
         let handler = HostFunctions.create empty "Host.checked" (fun (first: int) -> calls <- calls + 1; fun (second: int) -> first + second)
         for arguments in [[VInt 1L]; [VInt 1L;VInt 2L;VInt 3L]; [VInt 1L;VString "bad"]; [VInt 1L;VInt(Int64.MaxValue)]] do
-            error (fun () -> HostTestHelpers.invoke handler arguments |> ignore) |> ignore
+            error (fun () -> FScript.Testing.SdkTestHost.invokeExternal handler arguments |> ignore) |> ignore
         Assert.That(calls, Is.Zero)
-        assertValue (VInt 3L) (HostTestHelpers.invoke handler [VInt 1L;VInt 2L])
+        assertValue (VInt 3L) (FScript.Testing.SdkTestHost.invokeExternal handler [VInt 1L;VInt 2L])
         Assert.That(calls, Is.EqualTo(1))
 
     [<Test>]
@@ -181,15 +185,15 @@ type HostFunctionsTests() =
         let host = HostInterop.unwrap descriptor.Name original
         let invalid = [VRecord host.Fields; VHostManaged {host with Descriptor={descriptor with HostManaged=false}};
                        VHostManaged {host with Payload=(box "wrong" |> nonNull)}; VHostManaged {host with Fields=Map.ofList ["Value", VString "wrong"]}]
-        for value in invalid do error (fun () -> HostTestHelpers.invoke handler [value] |> ignore) |> ignore
+        for value in invalid do error (fun () -> FScript.Testing.SdkTestHost.invokeExternal handler [value] |> ignore) |> ignore
         Assert.That(calls, Is.Zero)
 
     [<Test>]
     member _.``Errors identify the function and do not leak reflection wrappers`` () =
         let handler = HostFunctions.create empty "Host.explode" (fun () -> (failwith "broken handler": int))
-        let message = error (fun () -> HostTestHelpers.invoke handler [VUnit] |> ignore)
+        let message = error (fun () -> FScript.Testing.SdkTestHost.invokeExternal handler [VUnit] |> ignore)
         Assert.That(message, Does.Contain("Host.explode"))
         Assert.That(message, Does.Contain("broken handler"))
         Assert.That(message, Does.Not.Contain("TargetInvocationException"))
         let nullResult = HostFunctions.create empty "Host.nullResult" (fun () -> Unchecked.defaultof<string>)
-        Assert.That(error (fun () -> HostTestHelpers.invoke nullResult [VUnit] |> ignore), Does.Contain("Host.nullResult.result"))
+        Assert.That(error (fun () -> FScript.Testing.SdkTestHost.invokeExternal nullResult [VUnit] |> ignore), Does.Contain("Host.nullResult.result"))

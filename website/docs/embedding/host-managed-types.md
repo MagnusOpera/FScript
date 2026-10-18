@@ -10,12 +10,11 @@ Opaque projection is the default and can retain hidden resource state. Set `Scri
 
 ## Register a type and a factory
 
-A descriptor names the script type and its visible field types. The typed function helper handles argument decoding and result snapshots, including retention of opaque CLR payloads. An `ExtensionRegistration` groups descriptors with ordinary `ExternalFunction` records. This complete F# example registers a `Node` factory and calls script exports:
+A descriptor names the script type and its visible field types. The typed function helper handles argument decoding and result snapshots, including retention of opaque CLR payloads. An `ExtensionRegistration` groups descriptors with ordinary `ExternalFunction` records. This complete F# example registers a `Node` factory and passes its result to a typed host handler:
 
 ```fsharp
 open System
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 [<FScriptHostType("Node")>]
 type Node =
@@ -36,19 +35,15 @@ let makeNode =
 let registration =
     { typeRegistration with Functions = [ makeNode ] }
 
-let source = """
-export let make (value: int) = Host.makeNode value
-
-export let retain (node: Node) =
-    let visible = node.Value
-    node
-"""
-
-let loaded = ScriptHost.loadSourceWithRegistration registration source
-let original = ScriptHost.invoke loaded "make" [ VInt 42L ]
-let returned = ScriptHost.invoke loaded "retain" [ original ]
-let state = HostTypes.unwrap<Node> returned
-printfn "Value: %d; private token: %O" state.Value state.Token
+// CLR conversion stays inside the SDK handler.
+let inspect =
+    HostFunctions.create typeRegistration "Host.inspect"
+        (fun (node: Node) -> printfn "Value: %d; private token: %O" node.Value node.Token)
+let environment = { registration with Functions = [makeNode; inspect] }
+let loaded =
+    FScript.Runtime.ScriptHost.loadSourceWithRegistration
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistration environment)
+        "let node = Host.makeNode 42\nHost.inspect node"
 ```
 
 `HostTypes.describe<Node>()` inspects the real CLR type without constructing a value or invoking getters. `[<FScriptVisible>]` explicitly opts a property into the script surface; unmarked members remain hidden, regardless of their CLR type. The descriptor is still an ordinary `HostTypeDescriptor` in the existing registration.
@@ -73,7 +68,7 @@ Only public readable instance properties are supported; annotated static members
 
 ### The type descriptor behind the helper
 
-`HostTypes.describe<Node>()` builds this ordinary `FScript.Language.HostTypeDescriptor` record:
+`HostTypes.describe<Node>()` builds this ordinary `FScript.Extensibility.HostTypeDescriptor` record:
 
 ```fsharp
 let nodeDescriptor : HostTypeDescriptor =
@@ -85,7 +80,7 @@ let nodeDescriptor : HostTypeDescriptor =
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `Name` | `string` | Script-visible type name, referenced by `TNamed "Node"` in function schemes. |
-| `Fields` | `Map<string, Type>` | Visible field names and their script types. |
+| `Fields` | `Map<string, ScriptType>` | Visible field names and their script types. |
 | `HostManaged` | `bool` | `true` requires host-created opaque values; `false` allows ordinary record construction and updates in scripts. |
 
 The descriptor describes the script surface. It contains no CLR type, constructor, field getter, or hidden payload: `Token` is absent. The attributed CLR type supplies the conversion rules used by `HostTypes` and `HostFunctions`; the descriptor alone does not define how to reconstruct a CLR object.
@@ -107,24 +102,24 @@ Descriptors and registrations belong to the host/session; duplicate type names a
 For data-only F# records, opt into script construction:
 
 ```fsharp
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 [<FScriptHostType("Point", ScriptConstructible = true)>]
 type Point =
     { [<FScriptVisible>]
       Value: int64 }
 
-let registration =
+let types =
     { HostInterop.empty with Types = [HostTypes.describe<Point>()] }
-
+let inspect = HostFunctions.create types "Host.inspect" (fun (point: Point) -> printfn "%d" point.Value)
+let registration = { types with Functions = [inspect] }
 let source = """
 let point = { Value = 1 }
-{ point with Value = 42 }
+Host.inspect { point with Value = 42 }
 """
-let loaded = ScriptHost.loadSourceWithRegistration registration source
-let native = HostTypes.unwrap<Point> loaded.LastValue
-printfn "%d" native.Value
+let loaded =
+    FScript.Runtime.ScriptHost.loadSourceWithRegistration
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration) source
 ```
 
 Scripts use normal record construction and updates, and extern functions can receive those records through their declared `Point` parameter. `HostTypes.unwrap<Point>` constructs the CLR record from the script fields; `HostTypes.wrap` converts it back to an ordinary `VRecord`. This mode carries no opaque payload or retained host state.
@@ -190,7 +185,7 @@ The helper produces a plain `HostUnionDescriptor`:
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `Name` | `string` | Script-visible nominal union type name. |
-| `Cases` | `Map<string, Type option>` | Case names and payload types; `None` means a nullary case. Multiple CLR payload fields use `TTuple`. |
+| `Cases` | `Map<string, ScriptType option>` | Case names and payload types; `None` means a nullary case. Multiple CLR payload fields use `TTuple`. |
 
 Put every referenced union descriptor in `ExtensionRegistration.Unions`, and every referenced record descriptor in `Types`. Union projections require `ScriptConstructible = true` and nonrecursive supported payloads. `HostTypes.describe` describes records; `describeUnion` describes unions.
 

@@ -9,8 +9,7 @@ Externs are host functions exposed to scripts. For concrete, synchronous F# hand
 ## Declare a typed handler
 
 ```fsharp
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 let add =
     HostFunctions.create HostInterop.empty "Host.add"
@@ -19,7 +18,8 @@ let add =
 let registration =
     { HostInterop.empty with Functions = [add] }
 let loaded =
-    ScriptHost.loadSourceWithRegistration registration "Host.add 20 22"
+    FScript.Runtime.ScriptHost.loadSourceWithRegistration
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration) "Host.add 20 22"
 // loaded.LastValue = VInt 42L
 ```
 
@@ -42,9 +42,8 @@ Create the function during environment/provider initialization and reuse it. The
 A handler can close over configuration or resources without exposing them as script arguments:
 
 ```fsharp
-let hostContext =
-    { HostContext.RootDirectory = "."
-      DeniedPathGlobs = [] }
+// In an assembly provider, use its HostContext parameter.
+let hostContext = HostContext(".", [], [])
 
 let slugifyExtern =
     HostFunctions.create HostInterop.empty "Host.slugify"
@@ -52,21 +51,21 @@ let slugifyExtern =
 let rootExtern =
     HostFunctions.create HostInterop.empty "Host.root"
         (fun () -> hostContext.RootDirectory)
-let externs = slugifyExtern :: rootExtern :: Registry.all hostContext
+let externs = slugifyExtern :: rootExtern :: hostContext.DefaultFunctions
 ```
 
 When an assembly provider accepts `HostContext`, capture that parameter inside its handlers. The host owns lifetime and synchronization of captured resources.
 
 ## The function descriptor behind the helper
 
-`HostFunctions.create` builds an `FScript.Language.ExternalFunction` record. This record is the function descriptor consumed by inference and execution:
+`HostFunctions.create` builds an `FScript.Extensibility.ExternalFunction` record. This record is the function descriptor consumed by inference and execution:
 
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `Name` | `string` | Script-visible name, such as `Host.add`. |
-| `Scheme` | `Scheme` | Authoritative script type, used for inference and boundary validation. |
+| `Scheme` | `FunctionScheme` | Authoritative script type, used for inference and boundary validation. |
 | `Arity` | `int` | Number of script arguments required before `Impl` runs. |
-| `Impl` | `ExternalCallContext -> Value list -> Value` | Host implementation receiving interpreter values and returning an interpreter value. |
+| `Impl` | `ExternalCallContext -> ScriptValue list -> ScriptValue` | Host implementation receiving interpreter values and returning an interpreter value. |
 
 For the typed `add` handler above, the helper generates the equivalent of this manual declaration, with argument/result validation and CLR conversion supplied by the adapter:
 
@@ -132,27 +131,28 @@ type ExtensionRegistration =
 | `Unions` | `HostUnionDescriptor list` | Named union types, cases, and payload types used by script construction, matching, and boundary validation. |
 | `Functions` | `ExternalFunction list` | Callable host functions and their authoritative schemes, used by execution and editor tooling. |
 
-The entries are the [type descriptors](./host-managed-types.md#the-type-descriptor-behind-the-helper) and function descriptors described above. `HostInterop.empty` sets both lists to empty:
+The entries are the [type descriptors](./host-managed-types.md#the-type-descriptor-behind-the-helper) and function descriptors described above. `HostInterop.empty` sets all three lists to empty:
 
 ```fsharp
 let registration =
     { HostInterop.empty with Functions = externs }
 
 let loaded =
-    ScriptHost.loadSourceWithRegistration registration
+    FScript.Runtime.ScriptHost.loadSourceWithRegistration
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration)
         "Host.slugify \"Hello World\""
 ```
 
 `HostInterop.ofExterns externs` is equivalent when no host types are registered. Existing extern-list APIs remain supported. Registration-aware `ScriptHost`, inference/evaluation, and interactive APIs preserve type metadata and opaque payloads.
 
-Schemes remain authoritative at host-call boundaries. Arguments/results must have their declared interpreter shapes, including nested records, unions, and options. A `VMap` is not a `VRecord`; a visible-field record cannot stand in for a host-managed value. Host adapters should construct the appropriate `Value` cases or use the opt-in `HostTypes` helpers for [attributed host-managed objects](./host-managed-types).
+Schemes remain authoritative at host-call boundaries. Arguments/results must have their declared interpreter shapes, including nested records, unions, and options. A `VMap` is not a `VRecord`; a visible-field record cannot stand in for a host-managed value. Host adapters should construct the appropriate `ScriptValue` cases or use the opt-in `HostTypes` helpers for [attributed host-managed objects](./host-managed-types).
 
 ## Assembly providers for CLI and editor
 
 The existing `[<FScriptExternProvider>]` attribute marks a public static provider method in a compiled .NET assembly:
 
 ```fsharp
-open FScript.Runtime
+open FScript.Extensibility
 
 type AppExternProvider =
     [<FScriptExternProvider>]
@@ -178,3 +178,13 @@ extern-assemblies = ["./extensions/AppExterns.dll"]
 Run `fscript --config ./fscript.toml script.fss`, or select that manifest in VS Code. See [Environment Configuration](../reference/environment-configuration) for paths, precedence, selection, and reload.
 
 Provider registration executes host code and may have side effects. The CLI trusts explicitly supplied providers; VS Code requires workspace trust before loading configured assemblies. Parsing a manifest alone does not execute them.
+
+## SDK dependency and lifetime
+
+Extension projects reference only `MagnusOpera.FScript.Extensibility` 1.x and open `FScript.Extensibility`. The SDK targets `netstandard2.1` and has no dependency on the interpreter. Its unsigned assembly identity remains `1.0.0.0` throughout compatible 1.x releases; package and file versions follow releases. Existing extensions must rebuild against this SDK.
+
+Embedders additionally reference Runtime. Convert an SDK registration using `ExtensionBridge.toLanguageRegistration` before passing it to native `ScriptHost` APIs. Those APIs still use `FScript.Language.Value`; SDK values and interpreter values are distinct representations. Perform CLR conversion in SDK handlers, or inspect interpreter values explicitly at the embedding boundary.
+
+`HostContext` is a sealed read-only class exposing `RootDirectory`, `DeniedPathGlobs`, and `DefaultFunctions`. Providers can filter host-supplied defaults without referencing Runtime. Return only provider-owned functions when the loader also enables defaults, to avoid duplicate registrations.
+
+Manual callbacks and tasks are opaque SDK handles. Use `ExternalCallContext.Apply`, `SpawnTask`, `AwaitTask`, and `CheckRuntime`; never inspect a closure or task worker. An invocation context expires when its handler returns. Handles may pass between calls in the same active host evaluation, but foreign or expired handles fail. SDK conversion failures use `ExtensionException`, preserving an inner cause where available; callback failures retain their script source location.

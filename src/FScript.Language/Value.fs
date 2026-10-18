@@ -48,7 +48,9 @@ and TaskHandle =
 #endif
 
 and ExternalCallContext =
-    { Apply: Value -> Value -> Value
+    { Session: obj
+      IsActive: unit -> bool
+      Apply: Value -> Value -> Value
       SpawnTask: Value -> Value
       AwaitTask: Value -> Value
       CheckRuntime: unit -> unit }

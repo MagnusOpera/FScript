@@ -151,7 +151,7 @@ This keeps the language engine reusable while runtime capabilities remain host-c
 
 `FScript.Language` owns host type descriptors, `ExtensionRegistration`, `HostInterop`, and `VHostManaged`. The value contains visible field snapshots, type metadata, and an opaque host payload. Inference resolves registered types separately from constructible records. Internal record-shape variables retain the whole argument type and carry a constructibility requirement for record updates; they participate in substitution, generalization, and instantiation. No new script syntax or language trait is added.
 
-`FScript.Runtime.ScriptHost`, interactive sessions, and the CLI pass a registration through inference and evaluation. The existing provider attribute accepts either legacy extern lists or registrations. No process-global host type registry or second invocation bridge is used. Field projection, matching, equality, and display share visible-field behavior; serialization never traverses the opaque payload. See the [host-managed type specification](../specs/host-managed-types.md).
+`FScript.Runtime.ScriptHost`, interactive sessions, and the CLI pass a registration through inference and evaluation. The SDK provider attribute accepts SDK function lists or registrations; Runtime adapts these to Language. No process-global host type registry or second invocation bridge is used. Field projection, matching, equality, and display share visible-field behavior; serialization never traverses the opaque payload. See the [host-managed type specification](../specs/host-managed-types.md).
 
 ## Shared external-function environments
 
@@ -161,9 +161,9 @@ The VS Code extension owns discovery, persisted selection, trust gating and one 
 
 ## CLR projection helpers
 
-`FScript.Runtime.HostTypes` owns opt-in CLR type/property attributes, reflection over visible properties, and a shared field mapping used to derive descriptors and snapshot values. It creates the existing Language descriptors and delegates value creation/validation to `HostInterop`; registrations, inference and external invocation use the existing bridge. Typed retrieval checks expected projection metadata and payload CLR type without evaluating getters. Reflection helpers do not add a global registration cache, CLR method discovery, or a dependency from Language to Runtime.
+`FScript.Extensibility.HostTypes` owns opt-in CLR type/property attributes, reflection over visible properties, and a shared field mapping used to derive descriptors and snapshot values. It creates SDK descriptors and snapshots; Runtime translates these into Language representations through `ExtensionBridge`, while inference and evaluation retain native validation. Typed retrieval checks expected projection metadata and payload CLR type without evaluating getters. Reflection helpers do not add a global registration cache, CLR method discovery, or a dependency from Language to Runtime.
 
-The reflection attribute's `ScriptConstructible` option selects the existing ordinary-record descriptor encoding (`HostManaged = false`) or opaque encoding. Constructible F# records require all constructor fields to be visible at descriptor initialization. Runtime projection converts ordinary script values back into CLR records with recursive container conversion and checked integer narrowing; Language continues to operate on ordinary records and has no dependency on CLR construction. Opaque mode retains its payload validation and transport rules.
+The reflection attribute's `ScriptConstructible` option selects the existing ordinary-record descriptor encoding (`HostManaged = false`) or opaque encoding. Constructible F# records require all constructor fields to be visible at descriptor initialization. SDK projection converts SDK record values back into CLR records with recursive container conversion and checked integer narrowing; Language continues to operate on ordinary records and has no dependency on CLR construction. Opaque mode retains its payload validation and transport rules.
 
 
 ## Export declarations
@@ -173,7 +173,7 @@ The lexer keeps `export` as an identifier. At a top-level statement boundary, th
 
 ## Typed host function adapters
 
-`FScript.Runtime.HostFunctions` inspects the declared F# function type once to prepare its curried invocation steps, scheme, arity, and argument/result codecs. `HostTypes` owns the shared CLR-to-script type projection and snapshot/restoration logic for both object fields and function boundaries. The adapter validates explicit registrations during construction and validates values before handler execution and after result conversion. It returns the existing `ExternalFunction`; no new invocation mechanism, global registry, Language dependency, assembly discovery protocol, or JavaScript authoring API is introduced.
+`FScript.Extensibility.HostFunctions` inspects the declared F# function type once to prepare its curried invocation steps, scheme, arity, and argument/result codecs. `HostTypes` owns the shared CLR-to-script type projection and snapshot/restoration logic for both object fields and function boundaries. The adapter validates explicit registrations during construction and validates values before handler execution and after result conversion. It returns the existing `ExternalFunction`; no new invocation mechanism, global registry, Language dependency, assembly discovery protocol, or JavaScript authoring API is introduced.
 
 ## FFI graphics sample
 
@@ -192,3 +192,13 @@ Language owns `HostUnionDescriptor` and the registration’s `Unions` collection
 ## Release assembly identity
 
 The tag workflow publishes the VS Code language server with the release `Version`, matching Language and Runtime NuGet assembly identities. A staging regression check verifies every bundled FScript server assembly before VSIX packaging. A default `0.0.0.0` server assembly cannot satisfy providers referencing the versioned NuGet assembly.
+
+## Independent extension SDK
+
+`FScript.Extensibility.dll` belongs to its own sibling repository and NuGet release lifecycle. Extension assemblies reference `MagnusOpera.FScript.Extensibility` without Language or Runtime. Attributes, CLR projection helpers, SDK descriptors, type schemes, values, and opaque callable/task interfaces live there. Public record and union shapes are frozen within 1.x; its unsigned assembly version stays `1.0.0.0`.
+
+Runtime depends on the SDK and translates registrations through `ExtensionBridge.toLanguageRegistration`. Language retains its native inference types and values and has no SDK dependency, including in Fable builds. Providers receive SDK `HostContext` with adapted default functions. Configured loading still merges registrations atomically and performs native validation before analysis or evaluation.
+
+Callbacks and tasks cross through host-owned handles tied to an evaluation session. Contexts expire on handler return; sessions expire after evaluation/invocation. Conversion retains visible snapshots, payloads, and nominal metadata, while callback errors preserve interpreter source locations. The bridge never exports ASTs, closure environments, or worker state.
+
+For development, `/p:UseLocalFScriptExtensibility=true` selects the sibling SDK project. Ordinary builds and releases use the independently published NuGet package. No build configuration is shared in the umbrella directory.

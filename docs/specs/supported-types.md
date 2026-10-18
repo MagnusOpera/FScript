@@ -157,6 +157,6 @@ Angle-bracket map type syntax is not supported.
 
 Explicit host descriptors may mark a type `HostManaged`. Such values expose immutable visible fields and preserve opaque host state and metadata through transport. Scripts may read, match, and compare visible fields but cannot construct or update these values. Structural readers preserve the concrete host type when returning the whole argument. See [host-managed types](./host-managed-types.md).
 
-.NET hosts can derive host-managed descriptors from explicitly attributed CLR types using `FScript.Runtime.HostTypes`. This is an opt-in host adapter, not a new script type category. Supported CLR field mappings and rejected shapes are specified in [host-managed types](./host-managed-types.md#optional-clr-projection-helpers).
+.NET hosts can derive host-managed descriptors from explicitly attributed CLR types using `FScript.Extensibility.HostTypes`. This is an opt-in host adapter, not a new script type category. Supported CLR field mappings and rejected shapes are specified in [host-managed types](./host-managed-types.md#optional-clr-projection-helpers).
 
 Host registrations may also supply nominal, script-constructible unions through `HostUnionDescriptor`. CLR union payloads and F# sets use the mappings described in [host types](./host-managed-types.md#constructible-foreign-unions).

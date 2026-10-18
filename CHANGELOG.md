@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Move extension authoring to the independent FScript.Extensibility SDK; existing providers must rebuild against its stable 1.x API.
+
 ## [0.81.7]
 
 

@@ -19,6 +19,8 @@
     <Compile Include="XmlExternsTests.fs" />
     <Compile Include="ScriptHostTests.fs" />
     <Compile Include="HostManagedTests.fs" />
+    <Compile Include="ExtensionBridgeTests.fs" />
+    <Compile Include="SdkTestHost.fs" />
     <Compile Include="HostTypesTests.fs" />
     <Compile Include="HostFunctionsTests.fs" />
     <Compile Include="HostUnionTests.fs" />

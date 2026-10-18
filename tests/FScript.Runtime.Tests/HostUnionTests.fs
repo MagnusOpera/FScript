@@ -4,6 +4,10 @@ open System
 open NUnit.Framework
 open FScript.Language
 open FScript.Runtime
+open FScript.Extensibility
+
+module ScriptHost = FScript.Testing.SdkTestHost
+module Pretty = FScript.Testing.SdkTestPretty
 
 [<FScriptHostType("Foreign.Mode", ScriptConstructible = true)>]
 type ForeignMode = Idle | Message of string | Pair of int64 * bool | Labels of Set<string>
@@ -68,18 +72,18 @@ match result.Mode with
     [<Test>]
     member _.``host unions reject wrong payloads and union identities``() =
         Assert.That(Action(fun () -> run "Host.mode (Message 42)" |> ignore), Throws.TypeOf<TypeException>())
-        Assert.That(Action(fun () -> HostTypes.unwrap<ForeignMode> (VUnionCase("Other", "Idle", None)) |> ignore), Throws.TypeOf<EvalException>())
-        Assert.That(Action(fun () -> HostTypes.unwrap<ForeignMode> (VUnionCase("Foreign.Mode", "Pair", Some(VInt 42L))) |> ignore), Throws.TypeOf<EvalException>())
+        Assert.That(Action(fun () -> HostTypes.unwrap<ForeignMode> (VUnionCase("Other", "Idle", None)) |> ignore), Throws.TypeOf<ExtensionException>())
+        Assert.That(Action(fun () -> HostTypes.unwrap<ForeignMode> (VUnionCase("Foreign.Mode", "Pair", Some(VInt 42L))) |> ignore), Throws.TypeOf<ExtensionException>())
 
     [<Test>]
     member _.``registration checks cover unions records and script declarations``() =
         let duplicate = { types with Unions = types.Unions @ types.Unions }
-        Assert.That(Action(fun () -> HostInterop.typeDefinitions duplicate [] |> ignore), Throws.TypeOf<EvalException>())
+        Assert.That(Action(fun () -> HostInterop.typeDefinitions duplicate [] |> ignore), Throws.TypeOf<ExtensionException>())
         let conflict = { types with Types = [{ Name = "Foreign.Mode"; Fields = Map.empty; HostManaged = false }] }
-        Assert.That(Action(fun () -> HostInterop.typeDefinitions conflict [] |> ignore), Throws.TypeOf<EvalException>())
-        Assert.That(Action(fun () -> HostFunctions.create HostInterop.empty "Host.mode" (fun (mode: ForeignMode) -> mode) |> ignore), Throws.TypeOf<EvalException>())
+        Assert.That(Action(fun () -> HostInterop.typeDefinitions conflict [] |> ignore), Throws.TypeOf<ExtensionException>())
+        Assert.That(Action(fun () -> HostFunctions.create HostInterop.empty "Host.mode" (fun (mode: ForeignMode) -> mode) |> ignore), Throws.TypeOf<ExtensionException>())
 
     [<Test>]
     member _.``recursive and opaque union projections fail early``() =
-        Assert.That(Action(fun () -> HostTypes.describeUnion<RecursiveForeign>() |> ignore), Throws.TypeOf<EvalException>())
-        Assert.That(Action(fun () -> HostTypes.describeUnion<OpaqueUnion>() |> ignore), Throws.TypeOf<EvalException>())
+        Assert.That(Action(fun () -> HostTypes.describeUnion<RecursiveForeign>() |> ignore), Throws.TypeOf<ExtensionException>())
+        Assert.That(Action(fun () -> HostTypes.describeUnion<OpaqueUnion>() |> ignore), Throws.TypeOf<ExtensionException>())

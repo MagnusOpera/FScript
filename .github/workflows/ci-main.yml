@@ -38,6 +38,9 @@ jobs:
       - name: Test
         run: dotnet test FScript.sln --configuration Release --no-build --logger "trx" --results-directory TestResults
 
+      - name: Verify independently versioned SDK provider
+        run: make verify-sdk-provider
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

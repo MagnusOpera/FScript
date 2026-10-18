@@ -14,6 +14,7 @@ module Eval =
 
     type private RuntimeState =
         { SyncRoot: obj
+          mutable Active: bool
           PendingTasks: ResizeArray<TaskHandle>
           mutable BackgroundFailure: EvalError option }
 
@@ -357,7 +358,9 @@ module Eval =
         | _ -> None
 
     let rec private createExternContext (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) : ExternalCallContext =
-        { Apply = applyFunctionValue runtime evalExpr typeDefs span
+        { Session = runtime.SyncRoot
+          IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active)
+          Apply = applyFunctionValue runtime evalExpr typeDefs span
           SpawnTask = spawnTaskValue runtime typeDefs
           AwaitTask = awaitTaskValue runtime
           CheckRuntime = fun () -> raiseIfBackgroundFailed runtime }
@@ -755,6 +758,7 @@ module Eval =
     let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
         let runtime =
             { SyncRoot = obj ()
+              Active = true
               PendingTasks = ResizeArray()
               BackgroundFailure = None }
 
@@ -789,7 +793,8 @@ module Eval =
                 let next = applyFunctionValue runtime evalExpr typeDefs unknownSpan value nextArg
                 applyMany next tailArgs
 
-        applyMany fnValue args
+        try applyMany fnValue args
+        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
 
     let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -876,16 +881,19 @@ module Eval =
     let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
         let runtime =
             { SyncRoot = obj ()
+              Active = true
               PendingTasks = ResizeArray()
               BackgroundFailure = None }
 
-        evaluateStatements runtime state.TypeDefs state.Env program
+        try evaluateStatements runtime state.TypeDefs state.Env program
+        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
 
     let evalProgramWithRegistrationState (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
         let externs = registration.Functions
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
             { SyncRoot = obj ()
+              Active = true
               PendingTasks = ResizeArray()
               BackgroundFailure = None }
 
@@ -991,18 +999,20 @@ module Eval =
 
         let externContext = createExternContext runtime typeDefs unknownSpan
 
-        let mutable env : Env =
-            (BuiltinFunctions.builtinExterns @ externs)
-            |> List.fold (fun acc ext ->
-                if ext.Arity = 0 then
-                    let value = HostInterop.invoke typeDefs ext externContext []
-                    acc.Add(ext.Name, value)
-                else
-                    acc.Add(ext.Name, VExternal (ext, []))) Map.empty
-        env <-
-            constructorValues
-            |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
-        evaluateStatements runtime typeDefs env program
+        try
+            let mutable env : Env =
+                (BuiltinFunctions.builtinExterns @ externs)
+                |> List.fold (fun acc ext ->
+                    if ext.Arity = 0 then
+                        let value = HostInterop.invoke typeDefs ext externContext []
+                        acc.Add(ext.Name, value)
+                    else
+                        acc.Add(ext.Name, VExternal (ext, []))) Map.empty
+            env <-
+                constructorValues
+                |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
+            evaluateStatements runtime typeDefs env program
+        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
         (evalProgramWithRegistrationState (HostInterop.ofExterns externs) program).LastValue

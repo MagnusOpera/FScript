@@ -68,3 +68,9 @@ Environment manifests do not sandbox provider code. VS Code Restricted Mode perm
 ## Native provider dependencies on macOS
 
 The signed CLI allows JIT and disables hardened-runtime library validation so explicitly configured providers can load native dependencies signed by other teams (for example GLFW in the FFI sample). Providers execute only through assembly flags or a selected manifest, including CLI manifest discovery beside the entry script or in the stdin/REPL working directory. `--no-config` disables manifest discovery; the editor gates configured provider execution on workspace trust. Provider code and its native dependencies execute with the host process's permissions and must be trusted.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.

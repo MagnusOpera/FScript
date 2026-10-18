@@ -34,7 +34,8 @@ module EnvironmentLoader =
                 |> List.map normalizeAssemblyPath
                 |> List.filter seen.Add
 
-            let externListType = typeof<ExternalFunction list>
+            let externListType = typeof<FScript.Extensibility.ExternalFunction list>
+            let providerContext = FScript.Extensibility.HostContext(context.RootDirectory, context.DeniedPathGlobs, ExtensionBridge.toExtensionFunctions (Registry.all context))
 
             let tryGetTypes (assembly: Assembly) : Result<System.Type list, string> =
                 try
@@ -66,7 +67,7 @@ module EnvironmentLoader =
                                 |> List.collect (fun t ->
                                     t.GetMethods(BindingFlags.Public ||| BindingFlags.Static)
                                     |> Array.toList
-                                    |> List.filter (fun m -> m.GetCustomAttributes(typeof<FScriptExternProviderAttribute>, false).Length > 0)
+                                    |> List.filter (fun m -> m.GetCustomAttributes(typeof<FScript.Extensibility.FScriptExternProviderAttribute>, false).Length > 0)
                                     |> List.map (fun m -> t, m))
 
                             if providerMethods.IsEmpty then
@@ -79,15 +80,15 @@ module EnvironmentLoader =
                                     match remaining with
                                     | [] -> Ok (List.rev acc)
                                     | (declaringType, providerMethod) :: tail ->
-                                        if providerMethod.ReturnType <> externListType && providerMethod.ReturnType <> typeof<ExtensionRegistration> then
+                                        if providerMethod.ReturnType <> externListType && providerMethod.ReturnType <> typeof<FScript.Extensibility.ExtensionRegistration> then
                                             Error $"Invalid extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}': return type must be ExternalFunction list or ExtensionRegistration."
                                         else
                                             let parameters = providerMethod.GetParameters()
                                             let invokeArgsResult : Result<objnull array, string> =
                                                 if parameters.Length = 0 then
                                                     Ok [||]
-                                                elif parameters.Length = 1 && parameters.[0].ParameterType = typeof<HostContext> then
-                                                    Ok [| box context |]
+                                                elif parameters.Length = 1 && parameters.[0].ParameterType = typeof<FScript.Extensibility.HostContext> then
+                                                    Ok [| box providerContext |]
                                                 else
                                                     Error $"Invalid extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}': expected signature unit -> ExternalFunction list or HostContext -> ExternalFunction list."
 
@@ -100,12 +101,12 @@ module EnvironmentLoader =
                                                         Error $"Extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}' returned null."
                                                     else
                                                         match rawProvided with
-                                                        | :? (ExternalFunction list) as provided ->
+                                                        | :? (FScript.Extensibility.ExternalFunction list) as provided ->
                                                             let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
-                                                            collectProviders tail ((sourceName, HostInterop.ofExterns provided) :: acc)
-                                                        | :? ExtensionRegistration as provided ->
+                                                            collectProviders tail ((sourceName, FScript.Extensibility.HostInterop.ofExterns provided |> ExtensionBridge.toLanguageRegistration) :: acc)
+                                                        | :? FScript.Extensibility.ExtensionRegistration as provided ->
                                                             let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
-                                                            collectProviders tail ((sourceName, provided) :: acc)
+                                                            collectProviders tail ((sourceName, ExtensionBridge.toLanguageRegistration provided) :: acc)
                                                         | _ ->
                                                             Error $"Extern provider '{declaringType.FullName}.{providerMethod.Name}' in '{assemblyPath}' returned an invalid value."
                                                 with

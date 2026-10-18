@@ -66,6 +66,7 @@ brew install magnusopera/tap/fscript
 ### Embeddable language via NuGet
 - `MagnusOpera.FScript.Language`
 - `MagnusOpera.FScript.Runtime`
+- `MagnusOpera.FScript.Extensibility` (independent SDK for extension authors)
 
 ## VS Code Extension
 

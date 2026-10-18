@@ -8,7 +8,7 @@ FScript is designed for host applications that embed a scripting language safely
 
 ## Embedding workflow
 
-1. Reference language/runtime packages.
+1. Reference Language/Runtime for embedding and the independent Extensibility SDK for provider authoring.
 2. Build a host context.
 3. Register [typed extern handlers](./register-externs.md) and, when needed, [host-provided types](./host-managed-types.md) your scripts can use.
 4. Load scripts (with include resolution if needed).
@@ -19,6 +19,7 @@ FScript is designed for host applications that embed a scripting language safely
 
 - [`MagnusOpera.FScript.Language`](https://www.nuget.org/packages/MagnusOpera.FScript.Language)
 - [`MagnusOpera.FScript.Runtime`](https://www.nuget.org/packages/MagnusOpera.FScript.Runtime)
+- [`MagnusOpera.FScript.Extensibility`](https://www.nuget.org/packages/MagnusOpera.FScript.Extensibility) — independently versioned provider contracts and CLR helpers.
 
 ## Recommended reading order
 

@@ -5,7 +5,7 @@ This document describes the host external-function model, built-in extern catalo
 
 ## External function model
 
-An external function is represented by:
+The native interpreter external function is represented by:
 - `Name: string`
 - `Scheme: Scheme` (polymorphic type scheme)
 - `Arity: int`
@@ -17,8 +17,8 @@ Registry entrypoint:
     - `RootDirectory : string`
     - `DeniedPathGlobs : string list` (root-relative glob patterns hidden/blocked inside root)
 - Optional plugin protocol marker:
-  - `[<FScript.Runtime.FScriptExternProvider>]` on `public static` provider methods in user assemblies
-  - supported method signatures:
+  - `[<FScript.Extensibility.FScriptExternProvider>]` on `public static` provider methods in user assemblies
+  - supported method signatures (all contract types below belong to `FScript.Extensibility`):
     - `unit -> ExternalFunction list`
     - `HostContext -> ExternalFunction list`
     - `unit -> ExtensionRegistration`
@@ -36,7 +36,7 @@ LSP integration:
 
 ## Typed F# handlers
 
-`FScript.Runtime.HostFunctions.create registration name handler` returns the same `ExternalFunction` record with a generated closed scheme, curried arity, and conversions shared with `HostTypes`. Concrete synchronous F# handlers do not need to repeat `Scheme`, `Arity`, or `Value` pattern matches. Registered host descriptors remain explicit. Manual records remain available for capabilities outside this adapter. See [Host function adapters](./host-functions.md) for signature validation and invocation semantics.
+`FScript.Extensibility.HostFunctions.create registration name handler` returns the same `ExternalFunction` record with a generated closed scheme, curried arity, and conversions shared with `HostTypes`. Concrete synchronous F# handlers do not need to repeat `Scheme`, `Arity`, or `Value` pattern matches. Registered host descriptors remain explicit. Manual records remain available for capabilities outside this adapter. See [Host function adapters](./host-functions.md) for signature validation and invocation semantics.
 
 ## Higher-order extern execution
 Higher-order externs are implemented in runtime extern modules and receive an `ExternalCallContext`.
@@ -157,8 +157,14 @@ Recommended steps:
 
 ## Host-managed type registration
 
-Providers may additionally return `ExtensionRegistration` (`Types`, `Unions`, and `Functions`), with the same zero-argument or `HostContext` invocation conventions. Host type metadata and opaque values use the existing extern execution bridge. Legacy providers remain supported. See [host-managed types](./host-managed-types.md) for creation restrictions, structural readers, payload transport, and boundary validation.
+Providers may additionally return `ExtensionRegistration` (`Types`, `Unions`, and `Functions`), with the same zero-argument or `HostContext` invocation conventions. Host type metadata and opaque values use the existing extern execution bridge. SDK function-list providers are also supported. See [host-managed types](./host-managed-types.md) for creation restrictions, structural readers, payload transport, and boundary validation.
 
 ## Shared environment discovery
 
-The CLI `--config` flag and VS Code environment selection reuse the runtime provider loader and its authoritative `ExtensionRegistration`. Both legacy provider signatures remain supported. See [environment configuration](./environment-configuration.md) for path resolution, merging, discovery, trust and reload behavior.
+The CLI `--config` flag and VS Code environment selection reuse the runtime provider loader and its authoritative `ExtensionRegistration`. Both SDK function-list provider signatures are supported. See [environment configuration](./environment-configuration.md) for path resolution, merging, discovery, trust and reload behavior.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.

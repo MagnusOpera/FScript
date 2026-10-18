@@ -1,7 +1,6 @@
 namespace FScript.Cli.Tests.Fixtures.Valid
 
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 type ValidExternProvider =
     [<FScriptExternProvider>]

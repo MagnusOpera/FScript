@@ -8,7 +8,7 @@ Transport preserves the payload and `HostManaged` metadata. CLR object or interp
 
 ## Explicit registration
 
-`FScript.Language.HostTypeDescriptor` contains `Name`, `Fields : Map<string, Type>`, and `HostManaged : bool`. Hidden state is not a field descriptor. `ExtensionRegistration` contains `Types`, `Unions : HostUnionDescriptor list`, and existing `Functions : ExternalFunction list`; function schemes remain authoritative.
+`FScript.Extensibility.HostTypeDescriptor` contains `Name`, `Fields : Map<string, ScriptType>`, and `HostManaged : bool`. Hidden state is not a field descriptor. `ExtensionRegistration` contains `Types`, `Unions : HostUnionDescriptor list`, and existing `Functions : ExternalFunction list`; function schemes remain authoritative.
 
 Type names are local to a registration/session. Duplicate names and collisions with built-in or script type declarations fail. Descriptors with `HostManaged = false` use ordinary record semantics.
 
@@ -53,7 +53,7 @@ Pretty printing, string interpolation, and JSON serialization expose visible fie
 
 Use `FScript.inferWithRegistration` and `FScript.evalWithRegistration`, `ScriptHost.loadSourceWithRegistration` / `loadFileWithRegistration` / `loadSourceWithIncludesAndRegistration`, or `Interactive.createWithRegistration`. Existing extern-list APIs remain available with an empty host-type registration.
 
-Existing `[FScriptExternProvider]` methods may return `ExtensionRegistration` with either no parameters or one `HostContext` parameter. Legacy `ExternalFunction list` providers remain supported. CLI loading supports `--extern-assembly` and automatically discovered or explicit `--config` environments, including file, stdin, and REPL execution. VS Code uses the same provider metadata through a selected, trusted [environment configuration](./environment-configuration.md). Provider names and function-name conflict checks are unchanged.
+Existing `[FScriptExternProvider]` methods may return `ExtensionRegistration` with either no parameters or one `HostContext` parameter. SDK `ExternalFunction list` providers are also supported; former Runtime/Language providers must rebuild against the SDK. CLI loading supports `--extern-assembly` and automatically discovered or explicit `--config` environments, including file, stdin, and REPL execution. VS Code uses the same provider metadata through a selected, trusted [environment configuration](./environment-configuration.md). Provider names and function-name conflict checks are unchanged.
 
 External calls and embedded exported-function invocation validate declared argument and result types. Per-call type-variable bindings also prevent polymorphic round trips from replacing a host-managed argument, including one nested in containers, with an ordinary record. Plain records and values of another host type cannot satisfy a required host-managed type. Runtime record updates reject host-managed operands even when inference is bypassed.
 
@@ -61,7 +61,7 @@ The JavaScript tagged-value facade does not expose host-managed payloads; attemp
 
 ## Optional CLR projection helpers
 
-`FScript.Runtime` provides `FScriptHostTypeAttribute(name)` on CLR classes/structs and `FScriptVisibleAttribute` on properties. Its `ScriptConstructible` option defaults to `false` (opaque values); `true` selects ordinary constructible record projection. Being provided by a module does not itself prohibit script construction. `HostTypes.describe<'T>()` derives a `HostTypeDescriptor` without invoking getters. The type attribute is required on each projected CLR type, and only explicitly marked public readable instance properties become visible fields. Hidden members are ignored even when their types are unsupported.
+`FScript.Extensibility` provides `FScriptHostTypeAttribute(name)` on CLR classes/structs and `FScriptVisibleAttribute` on properties. Its `ScriptConstructible` option defaults to `false` (opaque values); `true` selects ordinary constructible record projection. Being provided by a module does not itself prohibit script construction. `HostTypes.describe<'T>()` derives a `HostTypeDescriptor` without invoking getters. The type attribute is required on each projected CLR type, and only explicitly marked public readable instance properties become visible fields. Hidden members are ignored even when their types are unsupported.
 
 `HostTypes.wrap registration value` checks that the registration contains exactly matching descriptors for the root and every referenced attributed type, then snapshots marked getters once per value occurrence. Opaque mode retains the original CLR value as payload; constructible mode produces an ordinary `VRecord` without a payload. The snapshot is recursively converted into ordinary interpreter scalars/containers or nested host-managed values. No partial value is returned on a getter/conversion failure. Registrations remain explicit and local; helpers add no global type registry.
 
@@ -69,7 +69,7 @@ The JavaScript tagged-value facade does not expose host-managed payloads; attemp
 
 Mappings are `Int32`/`Int64` to script `int`, `Double` to `float`, `Boolean`, `String`, F# `unit`, F# lists, sets, and one-dimensional arrays to lists, F# options, F# tuples/struct tuples, string-keyed F# maps, and nested attributed types to named host types. Container conversion copies visible values. Null roots/fields fail except F# option `None` and boxed unit. Unsupported types fail at description time with the CLR property path; there is no string/object fallback or numeric narrowing. Annotated static properties, private/nonexistent getters, indexers, invalid names, duplicate visible names, colliding CLR projections, and recursive visible type graphs fail clearly. Missing nested registrations fail even when a container has no actual nested values.
 
-These helpers live entirely in Runtime; Language stays reflection-free and independent of Runtime. The JavaScript facade does not support authoring or exporting host-managed payloads. `HostFunctions.create` reuses the same conversion path to derive closed function schemes and synchronous handler invocation. Arbitrary CLR method discovery, native layouts, and resource lifetime management remain outside these helpers. See [typed host functions](./host-functions.md).
+These helpers live in the independently versioned Extensibility SDK; Language stays reflection-free and has no SDK dependency. The JavaScript facade does not support authoring or exporting host-managed payloads. `HostFunctions.create` reuses the same conversion path to derive closed function schemes and synchronous handler invocation. Arbitrary CLR method discovery, native layouts, and resource lifetime management remain outside these helpers. See [typed host functions](./host-functions.md).
 
 ## Script-constructible provided types
 
@@ -81,7 +81,7 @@ Constructible provided types follow existing ordinary record literal resolution,
 
 ## Constructible foreign unions
 
-`HostUnionDescriptor` contains `Name: string` and `Cases: Map<string, Type option>`. Register these in `ExtensionRegistration.Unions`. Names share the same collision checks as record descriptors and script declarations. Cases become ordinary nominal union constructors available by short name and fully qualified type/case name; script declarations take precedence over short host constructor names. Payload inference, matching, equality, and value transport use the existing union representation.
+`HostUnionDescriptor` contains `Name: string` and `Cases: Map<string, ScriptType option>`. Register these in `ExtensionRegistration.Unions`. Names share the same collision checks as record descriptors and script declarations. Cases become ordinary nominal union constructors available by short name and fully qualified type/case name; script declarations take precedence over short host constructor names. Payload inference, matching, equality, and value transport use the existing union representation.
 
 `HostTypes.describeUnion<'T>()` derives this descriptor from an F# discriminated union marked `[<FScriptHostType("Protocol.Mode", ScriptConstructible = true)>]`. Nullary cases have no payload, one-field cases use that field's type, and multiple fields form a tuple payload. Every payload type must use a supported projection and every referenced descriptor must be registered. Opaque and recursive union projections are rejected. `HostTypes.wrap`, `unwrap`, and `HostFunctions.create` convert these unions recursively, including inside records and containers.
 

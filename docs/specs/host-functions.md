@@ -2,7 +2,7 @@
 
 ## Public API
 
-`FScript.Runtime.HostFunctions.create registration name handler : ExternalFunction` adapts a concrete synchronous F# function. It derives a monomorphic `Forall([], ...)` scheme, arity, and interpreter-value conversion. The resulting record works with all existing extern-list and registration-aware host entry points and assembly providers.
+`FScript.Extensibility.HostFunctions.create registration name handler : ExternalFunction` adapts a concrete synchronous F# function. It derives a monomorphic `Forall([], ...)` scheme, arity, and interpreter-value conversion. The resulting record works with all existing extern-list and registration-aware host entry points and assembly providers.
 
 ```fsharp
 let add =
@@ -14,11 +14,11 @@ No script syntax, general CLR method discovery, new function attributes, or impl
 
 ## Descriptor representation
 
-The helper returns the existing `FScript.Language.ExternalFunction` record, whose fields are `Name: string`, `Scheme: Scheme`, `Arity: int`, and `Impl: ExternalCallContext -> Value list -> Value`. For the example above, `Scheme` is `Forall([], TFun(TInt, TFun(TInt, TInt)))` and `Arity` is `2`; `Impl` performs validated argument decoding, handler invocation, and result encoding.
+The helper returns the SDK `FScript.Extensibility.ExternalFunction` record, whose fields are `Name: string`, `Scheme: FunctionScheme`, `Arity: int`, and `Impl: ExternalCallContext -> ScriptValue list -> ScriptValue`. For the example above, `Scheme` is `Forall([], TFun(TInt, TFun(TInt, TInt)))` and `Arity` is `2`; `Impl` performs validated argument decoding, handler invocation, and result encoding.
 
-Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fields: Map<string, Type>`, and `HostManaged: bool`. `HostTypes.describe` produces these descriptors from attributed CLR types. Descriptors contain only script-visible type metadata, never CLR conversion code or opaque payloads. A named type appears in function schemes as `TNamed descriptor.Name`; `HostManaged = false` permits script record construction and updates, while `true` requires host-created opaque values.
+Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fields: Map<string, ScriptType>`, and `HostManaged: bool`. `HostTypes.describe` produces these descriptors from attributed CLR types. Descriptors contain only script-visible type metadata, never CLR conversion code or opaque payloads. A named type appears in function schemes as `TNamed descriptor.Name`; `HostManaged = false` permits script record construction and updates, while `true` requires host-created opaque values.
 
-`ExtensionRegistration` groups `Types: HostTypeDescriptor list`, `Unions: HostUnionDescriptor list`, and `Functions: ExternalFunction list`. Both helpers produce these existing public data structures; direct descriptor authoring remains supported.
+`ExtensionRegistration` groups `Types: HostTypeDescriptor list`, `Unions: HostUnionDescriptor list`, and `Functions: ExternalFunction list`. Both helpers produce these SDK data structures; direct descriptor authoring remains supported.
 
 ## Signatures and registration
 
@@ -34,7 +34,7 @@ Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fie
 
 ## Invocation
 
-- The helper returns the existing `ExternalFunction` representation; interpreter application and partial application remain unchanged.
+- The helper returns the SDK `ExternalFunction` representation; interpreter application and partial application remain unchanged.
 - The complete argument count is checked, including when `Impl` is called directly.
 - Every argument is validated and converted before the first CLR invocation step. Invalid later arguments cannot trigger earlier curried side effects.
 - CLR Int32 input conversion checks the full 64-bit script integer range before narrowing.
@@ -44,7 +44,7 @@ Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fie
 - Null values are rejected except for the CLR representations of unit and absent F# options.
 - Reflection invocation wrappers are removed from handler-error diagnostics; errors identify the registered function.
 
-Manual `ExternalFunction` records remain available for authoritative custom schemes, callbacks through `ExternalCallContext.Apply`, explicit runtime-context access, and arity-zero external values. Language remains independent of Runtime reflection helpers.
+Manual `ExternalFunction` records remain available for authoritative custom schemes, callbacks through `ExternalCallContext.Apply`, explicit runtime-context access, and arity-zero external values. Language remains independent of SDK reflection helpers.
 
 ## Executable graphics example
 

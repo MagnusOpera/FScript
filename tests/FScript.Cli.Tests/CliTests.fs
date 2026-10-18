@@ -71,6 +71,14 @@ type CliTests() =
         Path.Combine(repoRoot, "samples", "basic")
 
     [<Test>]
+    member _.``Provider binaries reference SDK without interpreter implementation`` () =
+        let assembly = typeof<FScript.Cli.Tests.Fixtures.Valid.ValidExternProvider>.Assembly
+        let references = assembly.GetReferencedAssemblies() |> Array.map (fun reference -> reference.Name)
+        Assert.That(references, Does.Contain("FScript.Extensibility"))
+        Assert.That(references, Does.Not.Contain("FScript.Language"))
+        Assert.That(references, Does.Not.Contain("FScript.Runtime"))
+
+    [<Test>]
     member _.``Runs script file from positional path`` () =
         let repoRoot = findRepoRoot ()
         let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-{Guid.NewGuid():N}.fss")

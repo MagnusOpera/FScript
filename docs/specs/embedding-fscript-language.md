@@ -414,13 +414,19 @@ Use `ExtensionRegistration` and the registration-aware inference/evaluation, `Sc
 
 ## CLR-backed host type descriptors
 
-For host-managed values backed by real CLR types, use Runtime's `[<FScriptHostType("Name")>]` and `[<FScriptVisible>]` attributes with `HostTypes.describe<'T>()`, `wrap registration value`, and `unwrap<'T> value`. The same mapping derives field types and snapshots property values; hidden state remains the original CLR payload. Descriptor creation does not execute getters. See [host-managed types](./host-managed-types.md#optional-clr-projection-helpers) for mappings, registration requirements, and failures. The lower-level Language helpers remain available for custom descriptors/payloads.
+For host-managed values backed by real CLR types, use the independent SDK's `[<FScriptHostType("Name")>]` and `[<FScriptVisible>]` attributes with `HostTypes.describe<'T>()`, `wrap registration value`, and `unwrap<'T> value`. The same mapping derives field types and snapshots property values; hidden state remains the original CLR payload. Descriptor creation does not execute getters. See [host-managed types](./host-managed-types.md#optional-clr-projection-helpers) for mappings, registration requirements, and failures. The lower-level Language helpers remain available for custom descriptors/payloads.
 
 Set `ScriptConstructible = true` on fully visible F# record types to accept ordinary script-created records. Descriptor initialization rejects hidden constructor fields. `HostTypes.wrap` then emits `VRecord`, and `unwrap<'T>` constructs a CLR record from the fields instead of retrieving an opaque payload. The default opaque mode remains available for hidden host state. See [provided record construction](./host-managed-types.md#script-constructible-provided-types).
 
 
 ## Typed host function declaration
 
-Use `HostFunctions.create registration name handler` for concrete synchronous F# handlers. It returns an `ExternalFunction` accepted by existing extern-list and registration-aware entry points, deriving the monomorphic scheme, arity, and conversions from the handler signature. Register all referenced host types explicitly; use the manual record API for script callbacks, polymorphic schemes, or runtime call-context access. See [host function adapters](./host-functions.md).
+Use `HostFunctions.create registration name handler` for concrete synchronous F# handlers. It returns an SDK `ExternalFunction`; adapt its containing registration with `ExtensionBridge.toLanguageRegistration` for native embedding entry points, deriving the monomorphic scheme, arity, and conversions from the handler signature. Register all referenced host types explicitly; use the manual record API for script callbacks, polymorphic schemes, or runtime call-context access. See [host function adapters](./host-functions.md).
 
 Registrations also expose `Unions: HostUnionDescriptor list`; inference, evaluation, and interactive sessions retain these named union definitions and constructors across submissions. Qualified constructors such as `Protocol.Mode.Enabled 42` resolve through the same environment as external functions.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.

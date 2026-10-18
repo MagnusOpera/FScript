@@ -59,14 +59,18 @@ let resolveImportedSource (fullPath: string) : string option =
 
 // 3) Inject host function(s) as externs.
 let normalizeNameExtern =
-    HostFunctions.create HostInterop.empty "Host.normalizeName"
+    FScript.Extensibility.HostFunctions.create
+        FScript.Extensibility.HostInterop.empty "Host.normalizeName"
         (fun (name: string) -> name.Trim().ToUpperInvariant())
 
 let hostContext =
     { HostContext.RootDirectory = root
       DeniedPathGlobs = [] }
 
-let externs = normalizeNameExtern :: Registry.all hostContext
+let custom =
+    ExtensionBridge.toLanguageRegistration
+        { FScript.Extensibility.HostInterop.empty with Functions = [normalizeNameExtern] }
+let externs = custom.Functions @ Registry.all hostContext
 
 // 4) Load script once (imports + extern typing + evaluation environment).
 let loaded =

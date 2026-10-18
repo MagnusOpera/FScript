@@ -62,3 +62,9 @@ Development and extension-test hosts build the local server asynchronously, once
 Provider registrations merge record and union descriptors together. Duplicate type names across either collection, built-ins, or script declarations are initialization errors. Union constructors and signatures are available in every configured CLI/editor environment. The language server offers union-type and short/qualified case completion plus descriptor-backed type/case hover, using the loaded registration.
 
 Packaged editor servers must carry the release assembly version used by the matching Language and Runtime NuGet packages. Provider DLLs referencing those packages must load without identity mismatches; missing-constructor diagnostics after an environment failure are secondary to the manifest diagnostic.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.

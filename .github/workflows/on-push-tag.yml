@@ -51,11 +51,11 @@ jobs:
           rm -rf vscode-fscript/server
           dotnet publish src/FScript.LanguageServer/FScript.LanguageServer.csproj -c Release -p:PublishAot=false -p:Version=${{ env.BUILD_VERSION }} -o vscode-fscript/server
 
-      - name: Verify staged server assembly versions
+      - name: Verify staged server assembly versions and SDK providers
         env:
           FSCRIPT_RELEASE_SERVER_DIR: ${{ github.workspace }}/vscode-fscript/server
           FSCRIPT_RELEASE_VERSION: ${{ env.BUILD_VERSION }}
-        run: dotnet test tests/FScript.LanguageServer.Tests/FScript.LanguageServer.Tests.csproj -c Release --filter FullyQualifiedName~ReleasePackagingTests
+        run: dotnet test tests/FScript.LanguageServer.Tests/FScript.LanguageServer.Tests.csproj -c Release --filter "FullyQualifiedName~ReleasePackagingTests|FullyQualifiedName~EnvironmentTests"
 
       - name: Install extension packaging tool
         run: npm install -g @vscode/vsce@4.0.0

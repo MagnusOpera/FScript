@@ -82,13 +82,13 @@ The `Math` functions are sample-provided externs, not additions to the language'
 
 ## Descriptors behind the helpers
 
-These remain ordinary `FScript.Language` data structures:
+These remain ordinary `FScript.Extensibility` data structures:
 
 | Structure | Fields | Purpose in this sample |
 | --- | --- | --- |
 | `HostTypeDescriptor` | `Name`, `Fields`, `HostManaged` | `Vec3` has visible float fields and `HostManaged = false`; `Mesh` exposes metadata with `HostManaged = true`. No GPU handles appear in descriptors. |
 | `ExternalFunction` | `Name`, `Scheme`, `Arity`, `Impl` | `Graphics.uploadMesh` gets scheme `Window -> Geometry -> Mesh`, arity two, and an adapter that decodes records and wraps the opaque result. |
-| `ExtensionRegistration` | `Types`, `Functions` | Groups the nine type descriptors and ten function descriptors for the host, CLI, and editor. |
+| `ExtensionRegistration` | `Types`, `Unions`, `Functions` | Groups the nine type descriptors and ten function descriptors for the host, CLI, and editor. |
 
 The generated upload scheme is `Forall([], TFun(TNamed "Window", TFun(TNamed "Geometry", TNamed "Mesh")))`. Registration is explicit and local; the helpers add no global functions or types.
 
@@ -103,3 +103,9 @@ fscript samples/ffi/main.fss
 ```
 
 That command runs the entry script, which opens the window through the provider. In VS Code, open `main.fss`, select this manifest, and use **FScript: Run Current Script**. The run command saves the file and starts a fresh CLI process with the owning folder’s selected configuration; trust is required. REPL commands remain separate. The manifest points to the Release output relative to itself. After changing provider code, rebuild and reload the environment. On Windows, stopping the language server may be necessary before rebuilding a locked assembly.
+
+## Independent extension SDK
+
+The provider references only `MagnusOpera.FScript.Extensibility` 1.0.0 and its renderer project. SDK attributes, descriptors, typed handlers, and opaque callback handles define its entire FScript dependency. Runtime is used only by the test harness. Compatible SDK 1.x releases keep unsigned assembly identity 1.0.0.0 independently of CLI/editor product versions.
+
+For sibling source development, add `/p:UseLocalFScriptExtensibility=true` when building the provider. Normal builds use NuGet. Execution still starts in `main.fss` through the CLI or VS Code and its existing `fscript.toml`.

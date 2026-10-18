@@ -2,8 +2,7 @@ namespace FScript.Ffi.Sample
 
 open System
 open System.Numerics
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 open FScript.Ffi.Rendering
 
 [<FScriptHostType("Vec3", ScriptConstructible = true)>]
@@ -152,8 +151,8 @@ module Graphics =
                       VUnit
                   | _ -> invalidArg "frames" "Use a nonnegative frame limit (zero runs until close); headless mode requires a positive limit."
               with
-              | EvalException _ -> reraise()
-              | error -> raise (EvalException { Message = $"Graphics window loop failed: {error.Message}"; Span = Span.mk (Span.pos 0 0) (Span.pos 0 0) }) }
+              | :? ExtensionException -> reraise()
+              | error -> raise (ExtensionException($"Graphics window loop failed: {error.Message}", error)) }
 
 
     let registration =

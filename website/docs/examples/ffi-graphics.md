@@ -249,3 +249,7 @@ To run the sample's automated checks:
 ```sh
 dotnet test samples/ffi/Tests/FfiSample.Tests.fsproj -c Release
 ```
+
+## Extension SDK dependency
+
+The provider's only FScript package reference is `MagnusOpera.FScript.Extensibility` 1.0.0. Open `FScript.Extensibility` for attributes, descriptors, `HostTypes`, and `HostFunctions`. This independently versioned SDK contains no interpreter implementation. The renderer remains a separate project; only the integration test harness references Runtime. Window callbacks use opaque SDK handles through `ExternalCallContext`, preserving the CLI/config entry point and cleanup behavior.

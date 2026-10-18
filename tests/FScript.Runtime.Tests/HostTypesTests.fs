@@ -4,6 +4,10 @@ open System
 open NUnit.Framework
 open FScript.Language
 open FScript.Runtime
+open FScript.Extensibility
+
+module ScriptHost = FScript.Testing.SdkTestHost
+module Pretty = FScript.Testing.SdkTestPretty
 
 [<FScriptHostType("Node")>]
 type ReflectedNode =
@@ -82,7 +86,7 @@ type HostTypesTests() =
     let nodeRegistration () = registration [HostTypes.describe<ReflectedNode>()]
     let node () : ReflectedNode = { Value = 42; Token = Guid.NewGuid() }
     let assertValue actual expected = Assert.That(Pretty.valueToString actual, Is.EqualTo(Pretty.valueToString expected))
-    let error action = (Assert.Throws<EvalException>(Action(action)) |> nonNull).Data0.Message
+    let error action = (Assert.Catch<System.Exception>(Action(action)) |> nonNull).Message
 
     [<Test>]
     member _.``Descriptors opt in fields and map CLR int to script int`` () =
@@ -218,7 +222,7 @@ type ConstructibleClass() =
 [<TestFixture>]
 type ConstructibleHostTypesTests() =
     let registered descriptors = { HostInterop.empty with Types = descriptors }
-    let error action = (Assert.Throws<EvalException>(Action(action)) |> nonNull).Data0.Message
+    let error action = (Assert.Catch<System.Exception>(Action(action)) |> nonNull).Message
     let pointRegistration () = registered [HostTypes.describe<ConstructiblePoint>()]
 
     [<Test>]

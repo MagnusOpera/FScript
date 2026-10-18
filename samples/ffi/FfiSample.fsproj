@@ -5,7 +5,12 @@
     <Content Include="*.fss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/FScript.Runtime/FScript.Runtime.fsproj" />
     <ProjectReference Include="Renderer/Renderer.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
+    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' == 'true'">
+    <ProjectReference Include="$(FScriptExtensibilityProject)" />
   </ItemGroup>
 </Project>

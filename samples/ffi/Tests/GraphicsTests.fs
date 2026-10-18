@@ -5,6 +5,9 @@ open System.IO
 open NUnit.Framework
 open FScript.Language
 open FScript.Runtime
+open FScript.Extensibility
+
+module ScriptHost = FScript.Testing.SdkTestHost
 open FScript.Ffi.Sample
 open FScript.Ffi.Rendering
 
@@ -24,11 +27,7 @@ type GraphicsTests() =
           Indices = [0L; 1L; 2L] }
     let call name args =
         let fn = Graphics.registration.Functions |> List.find (fun f -> f.Name = name)
-        let context =
-            { Apply = fun _ _ -> failwith "unused"
-              SpawnTask = fun _ -> failwith "unused"
-              AwaitTask = fun _ -> failwith "unused"
-              CheckRuntime = ignore }
+        let context = ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)
         fn.Impl context args
 
     [<Test>]
@@ -51,7 +50,7 @@ type GraphicsTests() =
         | Ok registration ->
             Assert.That(registration.Types.Length, Is.EqualTo 9)
             Assert.That(registration.Functions.Length, Is.EqualTo 10)
-            let scene = ScriptHost.loadFileWithRegistration registration (Path.Combine(root, "scene.fss"))
+            let scene = FScript.Runtime.ScriptHost.loadFileWithRegistration registration (Path.Combine(root, "scene.fss"))
             Assert.That(scene.ExportedFunctionNames, Does.Contain "render")
 
     [<Test>]
