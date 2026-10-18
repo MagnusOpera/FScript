@@ -6,10 +6,16 @@ open System.Reflection
 open System.Runtime.CompilerServices
 open FScript.Language
 
+/// The registration and concrete assets used by a successfully initialized environment.
+type LoadedEnvironment =
+    { Registration: ExtensionRegistration
+      AssemblyPaths: string list
+      Packages: ResolvedExtensionPackage list }
+
 module EnvironmentLoader =
     let private loadCore
         (settings: EnvironmentSettings)
-        : Result<ExtensionRegistration, string> =
+        : Result<LoadedEnvironment, string> =
         let context : HostContext = { RootDirectory = settings.RootDirectory; DeniedPathGlobs = [] }
         let defaultSources =
             if not settings.DefaultExterns then
@@ -17,9 +23,11 @@ module EnvironmentLoader =
             else
                 [ "runtime default externs", HostInterop.ofExterns (Registry.all context) ]
 
+        let packageEnvironment = NuGetEnvironment.restore settings
         let assemblyInputs = settings.ExternAssemblies
+        let hasInjectedAssemblies = not assemblyInputs.IsEmpty || not settings.Packages.IsEmpty
 
-        if not assemblyInputs.IsEmpty && not RuntimeFeature.IsDynamicCodeSupported then
+        if hasInjectedAssemblies && not RuntimeFeature.IsDynamicCodeSupported then
             Error "External assembly injection is not supported by this runtime (likely AOT/native)."
         else
             let normalizeAssemblyPath (path: string) =
@@ -52,12 +60,14 @@ module EnvironmentLoader =
                 | ex ->
                     Error ex.Message
 
-            let tryLoadProviderSources (assemblyPath: string) : Result<(string * ExtensionRegistration) list, string> =
+            let packageContext = lazy (new ExtensionLoadContext(packageEnvironment.AssemblyPaths))
+
+            let tryLoadProviderSources allowEmpty (assemblyPath: string) : Result<(string * ExtensionRegistration) list, string> =
                 if not (File.Exists assemblyPath) then
                     Error $"Extern assembly not found: {assemblyPath}"
                 else
                     try
-                        let assembly = Assembly.LoadFrom(assemblyPath)
+                        let assembly = if allowEmpty then packageContext.Value.LoadFromAssemblyPath(assemblyPath) else Assembly.LoadFrom(assemblyPath)
                         match tryGetTypes assembly with
                         | Error message ->
                             Error $"Failed to inspect assembly '{assemblyPath}': {message}"
@@ -70,7 +80,7 @@ module EnvironmentLoader =
                                     |> List.filter (fun m -> m.GetCustomAttributes(typeof<FScript.Extensibility.FScriptExternProviderAttribute>, false).Length > 0)
                                     |> List.map (fun m -> t, m))
 
-                            if providerMethods.IsEmpty then
+                            if providerMethods.IsEmpty && not allowEmpty then
                                 Error $"No [<FScriptExternProvider>] methods found in assembly '{assemblyPath}'."
                             else
                                 let rec collectProviders
@@ -124,11 +134,38 @@ module EnvironmentLoader =
                     match state with
                     | Error _ as err -> err
                     | Ok acc ->
-                        match tryLoadProviderSources assemblyPath with
+                        match tryLoadProviderSources false assemblyPath with
                         | Ok providers -> Ok (acc @ providers)
                         | Error _ as err -> err) (Ok ([] : (string * ExtensionRegistration) list))
 
-            loadedUserSources
+            // Discover each marked package assembly once, including marked dependencies.
+            // A plotting provider can therefore reuse the numerical provider's type registration.
+            let packageProviders = Collections.Generic.Dictionary<string, (string * ExtensionRegistration) list>(StringComparer.OrdinalIgnoreCase)
+            let scanPackageAssembly path =
+                match packageProviders.TryGetValue path with
+                | true, providers -> Ok (providers, false)
+                | _ ->
+                    tryLoadProviderSources true path |> Result.map (fun providers ->
+                        packageProviders.[path] <- providers
+                        providers, true)
+            let loadedRootSources =
+                packageEnvironment.Packages |> List.fold (fun state package ->
+                    state |> Result.bind (fun accumulated ->
+                        let providers = package.Assemblies |> List.fold (fun state path ->
+                            state |> Result.bind (fun (found, fresh) ->
+                                scanPackageAssembly path |> Result.map (fun (sources, isFresh) ->
+                                    found @ sources, fresh @ (if isFresh then sources else [])))) (Ok ([], []))
+                        providers |> Result.bind (fun (found, fresh) ->
+                            if found.IsEmpty then Error $"NuGet package '{package.Name}' {package.Version} contains no [<FScriptExternProvider>] methods in compatible runtime assemblies."
+                            else Ok (accumulated @ fresh)))) loadedUserSources
+            let loadedPackageSources =
+                packageEnvironment.AssemblyPaths |> List.fold (fun state path ->
+                    state |> Result.bind (fun accumulated ->
+                        let name = Path.GetFileNameWithoutExtension path
+                        if name = "FScript.Extensibility" || name = "FSharp.Core" then Ok accumulated
+                        else scanPackageAssembly path |> Result.map (fun (found, fresh) -> accumulated @ (if fresh then found else [])))) loadedRootSources
+
+            loadedPackageSources
             |> Result.bind (fun userSources ->
                 let allSources = defaultSources @ userSources
                 let conflicts =
@@ -155,7 +192,9 @@ module EnvironmentLoader =
                           Functions = registrations |> List.collect (fun r -> r.Functions) }
                     try
                         HostInterop.typeDefinitions registration [] |> ignore
-                        Ok registration
+                        Ok { Registration = registration
+                             AssemblyPaths = (uniqueAssemblyPaths @ packageEnvironment.AssemblyPaths) |> List.distinct
+                             Packages = packageEnvironment.Packages }
                     with EvalException error -> Error error.Message
                 else
                     let conflictSummary = String.concat "; " conflicts
@@ -163,6 +202,12 @@ module EnvironmentLoader =
 
 
     /// Initialize providers atomically; callers never receive a partial registration.
-    let load settings =
-        try loadCore settings
+    let loadWithInfo (settings: EnvironmentSettings) =
+        try
+            if not settings.Packages.IsEmpty && not RuntimeFeature.IsDynamicCodeSupported then
+                Error "NuGet extensions are not supported by this runtime (likely AOT/native)."
+            else loadCore settings
         with ex -> Error $"Failed to initialize external-function environment: {ex.GetBaseException().Message}"
+
+    /// Load a registration from local DLLs and configured NuGet packages.
+    let load settings = loadWithInfo settings |> Result.map (fun loaded -> loaded.Registration)

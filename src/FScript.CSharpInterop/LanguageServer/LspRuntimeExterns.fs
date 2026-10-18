@@ -13,6 +13,7 @@ module LspRuntimeExterns =
     let mutable private configurationPath: string option = None
     let mutable private settings: EnvironmentSettings option = None
     let mutable private error: string option = None
+    let mutable private loadedEnvironment: LoadedEnvironment option = None
     let mutable private blocked = false
 
     let initialize (options: JsonObject option) =
@@ -21,6 +22,7 @@ module LspRuntimeExterns =
         settings <- None
         error <- None
         blocked <- false
+        loadedEnvironment <- None
         let stringValue (o: JsonObject) (key: string) =
             match o[key] with
             | :? JsonValue as v -> try Some(v.GetValue<string>()) with _ -> None
@@ -48,10 +50,12 @@ module LspRuntimeExterns =
                         let loaded =
                             try
                                 Console.SetOut(Console.Error)
-                                EnvironmentLoader.load effective
+                                EnvironmentLoader.loadWithInfo effective
                             finally Console.SetOut(output)
                         match loaded with
-                        | Ok loaded -> registration <- Some loaded
+                        | Ok loaded ->
+                            loadedEnvironment <- Some loaded
+                            registration <- Some loaded.Registration
                         | Error message -> error <- Some $"{path}: {message}"
             | None -> ()
         | None -> ()
@@ -73,7 +77,16 @@ module LspRuntimeExterns =
         settings |> Option.iter (fun s ->
             result["rootDirectory"] <- JsonValue.Create(s.RootDirectory)
             result["defaultExterns"] <- JsonValue.Create(s.DefaultExterns)
-            s.ExternAssemblies |> List.iter (fun path -> paths.Add(JsonValue.Create(path))))
+            let watchPaths = loadedEnvironment |> Option.map (fun loaded -> loaded.AssemblyPaths) |> Option.defaultValue s.ExternAssemblies
+            watchPaths |> List.iter (fun path -> paths.Add(JsonValue.Create(path))))
+        let packages = JsonArray()
+        loadedEnvironment |> Option.iter (fun loaded ->
+            for package in loaded.Packages do
+                let item = JsonObject()
+                item["name"] <- JsonValue.Create(package.Name)
+                item["version"] <- JsonValue.Create(package.Version)
+                packages.Add item)
+        result["packages"] <- packages
         result["externAssemblies"] <- paths
         result
 

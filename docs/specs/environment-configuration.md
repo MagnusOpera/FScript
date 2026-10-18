@@ -1,15 +1,19 @@
 # Environment configuration
 
-`fscript.toml` describes external-function providers. It has no script entry point, package references, imports, or build settings.
+`fscript.toml` describes external-function providers. It supports local assemblies and NuGet extension packages, with no script entry point, imports, or build settings.
 
 ```toml
 [runtime]
 root = "."
 default-externs = true
 extern-assemblies = ["./extensions/Geometry.dll"]
+
+[[runtime.packages]]
+name = "FScript.Numerics.Extensions"
+version = "0.1.0" # optional; omit for latest stable
 ```
 
-All properties are optional. Only the `runtime` table and the three properties above are accepted. `root` is a string, `default-externs` is a boolean, and `extern-assemblies` is an array of strings. Invalid TOML, unknown keys/tables, and incorrect property types are errors. Parsing and normalization never load executable providers.
+All properties are optional. Only the `runtime` table and the properties above are accepted. `packages` is an array of tables, each with a required NuGet `name` and optional exact string `version`. Unknown package properties, invalid IDs/versions, and duplicate IDs (case-insensitive) are errors. Version ranges and wildcard strings are not accepted; omit the version for latest stable. Explicit prerelease versions are supported. `root` is a string, `default-externs` is a boolean, and `extern-assemblies` is an array of strings. Invalid TOML, unknown keys/tables, and incorrect property types are errors. Parsing and normalization never restore packages, access feeds, or load executable providers.
 
 ## CLI
 
@@ -21,9 +25,21 @@ Manifest root and assembly paths resolve relative to the manifest directory. Exp
 
 Configuration, missing-file, loading, provider-signature and registration-conflict errors stop execution with a nonzero exit. The same legacy and registration-returning `[<FScriptExternProvider>]` methods work through flags and configuration.
 
+## NuGet extension packages
+
+The shared Runtime loader restores all configured packages as one dependency graph using the in-process NuGet client (6.14.3, compatible with Runtime's netstandard2.1 target). Execution needs no installed .NET SDK, MSBuild, or `dotnet` subprocess. Package build targets/scripts are not executed. Standard `NuGet.Config` package-source settings are resolved from the manifest directory; packages and runtime assets are cached in `.fscript` beside the selected manifest. Restoration is automatic: there is no install command. `.fscript/packages` stores extracted/downloaded NuGets, `.fscript/restore` contains resolution state, and `.fscript/environments` contains selected runtime assets. Add `.fscript/` to source-control exclusions; deleting it clears the cache (stop loaded editor/host processes first on Windows). Local feeds and explicitly configured source credentials are supported. With default NuGet settings, packages come from nuget.org. Changes to NuGet.Config require reinitializing the environment.
+
+Omitted versions float to the latest stable release and are reevaluated on each environment initialization, including editor-server restart. No background update polling is performed. Exact versions can reuse the package cache offline; floating versions require available source metadata. Pin versions for repeatable execution. A missing/incompatible package, unavailable source, dependency downgrade/range violation, or unusable provider fails initialization atomically.
+
+NuGet selects compatible runtime assets for the running .NET major version and process RID using an embedded portable runtime graph. Selected managed dependencies, satellite resources, and native libraries are staged under the manifest-local `.fscript` cache, with a separate directory for each resolved graph. Native assets retain both their normal library-search placement and RID-native paths. Reference assemblies, build targets, analyzers, and tools are not provider candidates. Cache writes are serialized and files are published atomically.
+
+Each explicitly requested package must contain at least one compatible runtime assembly with a public static `[FScriptExternProvider]` method. This **existing SDK attribute** identifies the registration entry point; no extra package/type attribute or assembly path is required. Each provider returns SDK `ExtensionRegistration` (type/union/function descriptors) or an SDK function list, with zero arguments or an SDK `HostContext`. Dependencies bearing the same provider attribute are registered automatically, once per assembly; ordinary dependencies contribute runtime assets only. This lets a plotting extension depend on the numerical provider that owns `NDArray`, without duplicating its descriptor. Explicitly listing that dependency as well does not register it twice. Multiple requested packages share dependency resolution; local DLL providers load first, then package providers in declaration order. Existing duplicate function/type checks apply across defaults, DLLs, and packages.
+
+All NuGet providers and their dependencies from one manifest use one private, non-collectible `AssemblyLoadContext`, sharing only the host SDK and FSharp.Core contracts. Compatible dependencies are resolved once for the whole environment, so numerical and plotting packages exchange the same CLR `NDArray` type. Host-loaded copies of private package assemblies are not reused. SDK ABI-version mismatches and requirements for a newer FSharp.Core assembly fail clearly. Conflicting package requirements fail during restore rather than loading two incompatible copies of a shared numerical type. A package that consumes another provider’s script type references its descriptor in local validation but returns only its own descriptors/functions. Local DLL injection keeps its existing load context. Change package versions in a fresh host process; CLI runs and editor restarts naturally provide this boundary. SDK-only extensions remain independently versioned from the FScript interpreter. Runtime restores and adapts their registrations; Language and Fable gain no NuGet dependency.
+
 ## VS Code
 
-Each workspace folder has one active environment. The extension discovers nested `fscript.toml` candidates within that folder, respecting enabled `files.exclude` and `search.exclude` patterns and excluding `.git`, `node_modules`, `bin`, and `obj`. Explicit paths can refer to excluded or external locations. Discovery does not create inheritance or select the nearest manifest to a source file. Nested workspace roots own their own documents and candidates.
+Each workspace folder has one active environment. The extension discovers nested `fscript.toml` candidates within that folder, respecting enabled `files.exclude` and `search.exclude` patterns and excluding `.git`, `.fscript`, `node_modules`, `bin`, and `obj`. Explicit paths can refer to excluded or external locations. Discovery does not create inheritance or select the nearest manifest to a source file. Nested workspace roots own their own documents and candidates.
 
 **FScript: Select Configuration** offers discovered workspace-relative paths, **No configuration**, and **Automatic selection**. With no active editor folder, the command asks which folder to configure. Choices persist in workspace state by folder URI.
 
@@ -35,13 +51,13 @@ For a selected environment, omitted `runtime.root` defaults to the workspace fol
 
 ## Language server and reload
 
-The extension starts one process per workspace folder, plus a default client for documents outside folders. Initialization options are `workspaceFolderUri`, optional `configurationPath`, and `workspaceTrusted`; configured assemblies require an explicit true trust value. Absent environment options preserve existing LSP behavior. Registered schemes and host-type descriptors feed normal and best-effort inference, completion, hover, signature help, hints and inferred-AST requests. Script code and extern implementations are not evaluated for editor analysis; provider registration itself executes host code.
+The extension starts one process per workspace folder, plus a default client for documents outside folders. Initialization options are `workspaceFolderUri`, optional `configurationPath`, and `workspaceTrusted`; configured assemblies and NuGet restore/provider execution require an explicit true trust value. Absent environment options preserve existing LSP behavior. Registered schemes and host-type descriptors feed normal and best-effort inference, completion, hover, signature help, hints and inferred-AST requests. Script code and extern implementations are not evaluated for editor analysis; provider registration itself executes host code.
 
-`fscript/environmentInfo` returns the selected configuration path, effective root/default-extern flag, normalized assembly watch paths, `blockedByTrust`, `failed`, and an optional error. It inspects the already initialized environment and does not reload providers.
+`fscript/environmentInfo` returns the selected configuration path, effective root/default-extern flag, normalized local/staged assembly watch paths, resolved root-package `name`/`version` pairs in `packages`, `blockedByTrust`, `failed`, and an optional error. It inspects the already initialized environment and does not reload providers.
 
 Saved manifest edits, manifest discovery changes, selection/settings changes, trust grants, and configured/adjacent dependency DLL changes debounce and restart affected environments. A fresh process drops assembly state and URI-keyed document caches; language-client synchronization resends current open buffers. Imports are analyzed in their requesting root document's environment, even if imported files are shared across roots. Registrations and caches never cross server processes.
 
-Assemblies use the existing .NET `Assembly.LoadFrom` strategy, not in-process hot reload. On Windows, loaded DLLs may be locked: stop the language server (disable `fscript.lsp.enabled`) before rebuilding a locked provider, then re-enable it. Restart after replacing dependencies when a filesystem event is unavailable. No binary shadow copying or collectible load contexts are introduced.
+Local DLL assemblies use the existing .NET `Assembly.LoadFrom` strategy; NuGet environments use one private managed load context with shared SDK/FSharp.Core contracts, without in-process hot reload. On Windows, loaded DLLs may be locked: stop the language server (disable `fscript.lsp.enabled`) before rebuilding a locked provider, then re-enable it. Restart after replacing dependencies when a filesystem event is unavailable. Package runtime assets are staged for dependency resolution; no collectible contexts or hot reload are introduced. Managed isolation does not change OS native-library loading constraints.
 
 Environment loading is atomic. A failure reports diagnostics on the selected manifest, retains safe default editor analysis and an explicit failed status, and never retains a previous configured registration. Correcting the manifest or provider triggers recovery. Unrelated workspace folders continue operating.
 
@@ -49,7 +65,7 @@ Environment loading is atomic. A failure reports diagnostics on the selected man
 
 Assembly providers execute arbitrary .NET code and may invoke native code. Configuration and filesystem roots are not security boundaries for provider code. Running a script trusts providers from its selected or automatically discovered manifest as well as explicit assembly flags. Use `--no-config` to prevent manifest loading.
 
-In VS Code Restricted Mode, discovery and TOML parsing are available but providers never load. Default editor analysis remains available. Trust grants restart environments. Workspace-defined server and REPL executable settings are restricted, and REPL execution commands require trust. Selection is retained while blocked. VS Code REPL commands do not automatically forward the editor's selected manifest in this phase.
+In VS Code Restricted Mode, discovery and TOML parsing are available but packages are never restored and providers never load. Default editor analysis remains available. Trust grants restart environments. Workspace-defined server and REPL executable settings are restricted, and REPL execution commands require trust. Selection is retained while blocked. VS Code REPL commands do not automatically forward the editor's selected manifest in this phase.
 
 ## Editor startup
 

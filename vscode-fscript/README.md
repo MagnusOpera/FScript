@@ -104,3 +104,13 @@ Configured DLLs execute registration code and require workspace trust. Changes t
 ## Run a script with its selected environment
 
 **FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command always uses the installed `fscript` executable from PATH, including inside the FScript repository. Install CLI 0.81.5 or later and make it available to VS Code before running a script. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
+
+### NuGet extension packages
+
+Manifests can also use `[[runtime.packages]]` with required `name` and optional exact `version` (omitted means latest stable). Packages use the existing SDK `[FScriptExternProvider]` registration method; no assembly path or additional attribute is needed. Trusted folder environments restore transitive runtime dependencies through NuGet, without an installed .NET SDK. Restricted Mode performs no restore or provider execution. Packages restore automatically into `.fscript` beside the manifest; this cache is excluded from configuration discovery. Add `.fscript/` to `.gitignore`. Resolved versions appear in the configuration tooltip. Restart the environment to refresh an unpinned package; pin versions for repeatable execution.
+
+```toml
+[[runtime.packages]]
+name = "FScript.Numerics.Extensions"
+version = "0.1.0"
+```

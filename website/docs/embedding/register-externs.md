@@ -188,3 +188,9 @@ Embedders additionally reference Runtime. Convert an SDK registration using `Ext
 `HostContext` is a sealed read-only class exposing `RootDirectory`, `DeniedPathGlobs`, and `DefaultFunctions`. Providers can filter host-supplied defaults without referencing Runtime. Return only provider-owned functions when the loader also enables defaults, to avoid duplicate registrations.
 
 Manual callbacks and tasks are opaque SDK handles. Use `ExternalCallContext.Apply`, `SpawnTask`, `AwaitTask`, and `CheckRuntime`; never inspect a closure or task worker. An invocation context expires when its handler returns. Handles may pass between calls in the same active host evaluation, but foreign or expired handles fail. SDK conversion failures use `ExtensionException`, preserving an inner cause where available; callback failures retain their script source location.
+
+## Distribute through NuGet
+
+Package your SDK-only provider as a .NET library with its normal package dependencies. The public static method bearing `[FScriptExternProvider]` remains the discovery entry point and returns the type/function registration; no additional attribute is required. Users declare `[[runtime.packages]]` with your package `name` and optional exact `version` in their manifest. FScript restores dependencies and loads compatible runtime assets without building the package or requiring the .NET SDK. See [Environment Configuration](../reference/environment-configuration#nuget-packages).
+
+Complementary extensions may share opaque CLR values, such as NDArray. Depend on the numerical provider’s package, use its descriptors for handler validation, and return only your own registration entries. Provider dependencies are discovered once and all packages in the manifest share one managed dependency context. Do not re-register another provider’s types or functions.

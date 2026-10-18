@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Load NuGet extension packages from fscript.toml, with optional latest-stable versions, local caching, and shared isolated dependencies for CLI and trusted VS Code environments.
+
 ## [0.82.0]
 
 

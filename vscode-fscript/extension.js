@@ -632,7 +632,7 @@ function clientForUri(uri) {
 function selectionKey(folder) { return `fscript.environment:${folder.uri.toString()}`; }
 
 async function discoverConfigurations(folder) {
-  const exclusions = ['**/.git/**', '**/node_modules/**', '**/bin/**', '**/obj/**'];
+  const exclusions = ['**/.git/**', '**/.fscript/**', '**/node_modules/**', '**/bin/**', '**/obj/**'];
   for (const section of ['files', 'search']) {
     const values = vscode.workspace.getConfiguration(section, folder.uri).get('exclude', {});
     for (const [pattern, enabled] of Object.entries(values)) if (enabled === true) exclusions.push(pattern);
@@ -659,7 +659,8 @@ function updateConfigurationStatus() {
   const label = selection.path ? path.relative(entry.folder.uri.fsPath, selection.path) : 'No configuration';
   const state = entry.info?.failed ? 'error' : entry.info?.blockedByTrust ? 'trust required' : selection.source;
   configurationStatus.text = `${entry.info?.failed ? '$(error)' : '$(settings-gear)'} ${label}${state === 'selection needed' ? ': select configuration' : state === 'trust required' ? ': trust required' : ''}`;
-  configurationStatus.tooltip = `${entry.folder.name}: ${label} (${state})${entry.info?.error ? `\n${entry.info.error}` : ''}`;
+  const packages = (entry.info?.packages || []).map(pkg => `${pkg.name} ${pkg.version}`).join(', ');
+  configurationStatus.tooltip = `${entry.folder.name}: ${label} (${state})${packages ? `\nNuGet: ${packages}` : ''}${entry.info?.error ? `\n${entry.info.error}` : ''}`;
   configurationStatus.show();
 }
 

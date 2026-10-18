@@ -261,6 +261,7 @@ test('picker persists explicit none and the automatic choice restores discovery'
   await pause();
   assert.equal(h.clients.at(-1).options.initializationOptions.configurationPath, '/one/fscript.toml');
   assert.match(h.searches[0].exclude, /node_modules/);
+  assert.match(h.searches[0].exclude, /\.fscript/);
   await h.extension.deactivate();
 });
 

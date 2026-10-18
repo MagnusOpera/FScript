@@ -22,6 +22,7 @@ vscode-fscript/node_modules/
 *.sln.iml
 
 # NuGet
+.fscript/
 *.nupkg
 .nuget/
 packages/

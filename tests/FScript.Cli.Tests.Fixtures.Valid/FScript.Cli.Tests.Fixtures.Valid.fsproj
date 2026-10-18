@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <Compile Include="Providers.fs" />
+    <Compile Include="NuGetFixture.fs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">

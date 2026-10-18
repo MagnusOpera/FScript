@@ -74,3 +74,7 @@ The signed CLI allows JIT and disables hardened-runtime library validation so ex
 Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
 
 Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.
+
+## NuGet extension environments
+
+CLI manifest selection can restore and execute NuGet providers as well as local DLLs. These providers and native dependencies are trusted host code, outside script filesystem/runtime-limit enforcement. `--no-config` disables automatic manifest providers. VS Code gates both NuGet restoration and provider execution on workspace trust; parsing and discovery remain available in Restricted Mode. Package build targets/scripts are not run. Restore/source/provider errors fail the environment atomically.

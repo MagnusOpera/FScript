@@ -16,6 +16,7 @@ type EnvironmentConfigurationTests() =
         let parsed = EnvironmentConfiguration.parse configPath "" |> get
         Assert.That(parsed.Root, Is.EqualTo(None))
         Assert.That(parsed.ExternAssemblies, Is.EqualTo(None))
+        Assert.That(parsed.Packages, Is.EqualTo(None))
         let settings = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
         Assert.That(settings.RootDirectory, Is.EqualTo(directory))
         Assert.That(settings.DefaultExterns, Is.True)

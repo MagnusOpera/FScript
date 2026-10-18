@@ -11,17 +11,36 @@ An optional `fscript.toml` describes the external-function environment available
 root = "."
 default-externs = true
 extern-assemblies = ["./extensions/Geometry.dll"]
+
+[[runtime.packages]]
+name = "FScript.Numerics.Extensions"
+version = "0.1.0" # optional; omit to use latest stable
 ```
 
-All three properties are optional:
+All runtime properties are optional:
 
 | Property | Type | Default |
 | --- | --- | --- |
 | `runtime.root` | String | Existing execution/editor default, described below |
 | `runtime.default-externs` | Boolean | `true` |
 | `runtime.extern-assemblies` | Array of strings | Empty |
+| `runtime.packages` | Array of package tables | Empty |
 
-Unknown sections/properties, incorrect value types, and malformed TOML are errors. There is no entry point, package manager, dependency restore, build configuration, or import declaration in this file.
+Unknown sections/properties, incorrect value types, and malformed TOML are errors. Each package table requires `name` and optionally accepts an exact string `version`. Unknown properties, invalid IDs/versions, and repeated names are errors. There is no script entry point, build configuration, or import declaration in this file.
+
+## NuGet packages
+
+A package reference needs only its NuGet name. Omit `version` for the latest stable release, or supply an exact version (including a prerelease) for repeatable execution. The latest version is resolved when the CLI starts or the editor environment restarts; there is no background update polling. Version ranges and `"latest"`/wildcard strings are not version values.
+
+FScript restores transitive dependencies using NuGet sources from `NuGet.Config`, resolved from the manifest directory, and caches downloaded packages in `.fscript/packages` beside the manifest. There is no install command: startup restores automatically and reuses downloaded packages. Add `.fscript/` to `.gitignore`; VS Code excludes this cache from manifest discovery. No .NET SDK or build is required when running a packaged extension. Package build scripts and MSBuild targets are not executed. Pinned packages can run from cache offline; latest-version lookup needs source metadata. Reinitialize after changing NuGet.Config.
+
+Providers use the existing SDK `[FScriptExternProvider]` attribute on a public static method returning type/function registrations. No new attribute or DLL filename is needed. Each requested package must contain a compatible attributed provider; dependency packages bearing the provider attribute are also registered once. Ordinary dependencies supply runtime libraries. NuGet selects assets for the running framework and platform, and FScript stages runtime dependencies under the manifest-local `.fscript` cache. All configured packages resolve together; missing packages, version conflicts, incompatible assets, and registration errors stop initialization.
+
+VS Code requires workspace trust **before restoration or loading**. The configuration tooltip shows resolved package versions, and completion, hover, and diagnostics use the package's descriptors. Restart the environment to pick up a newer unpinned package. Use a fresh host process when changing extension versions; CLI execution and editor restarts already do this.
+
+### Sharing numerical values across extensions
+
+All packages in one manifest resolve together and load their dependencies in the same private context. A numerical provider and a plotting provider therefore use one `FScript.Numerics.NDArray` type and can exchange opaque array payloads. Provider dependencies are discovered automatically; the numerical type owner registers its descriptor once, and consumers register only their own functions/types. Explicitly listing the numerical provider as well is safe. Incompatible dependency requirements fail with a restore error instead of silently mixing assembly versions. Embedders that already reference extension CLR libraries directly should register them through their typed APIs when host-side typed access is required.
 
 ## CLI usage and precedence
 
@@ -74,7 +93,7 @@ External providers are executable .NET code. Workspace trust is required before 
 
 Saved manifest edits, selection/settings changes, manifest creation/deletion, and configured or adjacent dependency DLL changes restart affected folder servers. Open buffers are resynchronized, so completion, hover, signatures, hints, and diagnostics use the new registration. A failed environment reports manifest diagnostics, uses default analysis, and never retains stale configured externs. Other folders remain independent.
 
-DLLs use the existing .NET load context. On Windows, stop the server by disabling `fscript.lsp.enabled` before rebuilding a locked provider, then re-enable it. Reinitialize manually if filesystem changes were not detected. VS Code REPL commands do not automatically forward the selected configuration; use the explicit CLI command when executing that environment.
+Local DLLs use the existing .NET load context. NuGet packages from one manifest share an isolated managed load context, with the SDK and FSharp.Core contracts shared with the host. On Windows, stop the server by disabling `fscript.lsp.enabled` before rebuilding a locked provider, then re-enable it. Reinitialize manually if filesystem changes were not detected. VS Code REPL commands do not automatically forward the selected configuration; use the explicit CLI command when executing that environment.
 
 ## Embedding the same environment
 

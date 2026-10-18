@@ -25,6 +25,7 @@
     <Compile Include="HostFunctionsTests.fs" />
     <Compile Include="HostUnionTests.fs" />
     <Compile Include="EnvironmentConfigurationTests.fs" />
+    <Compile Include="NuGetEnvironmentTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
@@ -41,6 +42,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\..\src\FScript.Runtime\FScript.Runtime.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Valid\FScript.Cli.Tests.Fixtures.Valid.fsproj" />
+    <ProjectReference Include="..\FScript.Cli.Tests.Fixtures.Consumer\FScript.Cli.Tests.Fixtures.Consumer.fsproj" />
   </ItemGroup>
 
 </Project>

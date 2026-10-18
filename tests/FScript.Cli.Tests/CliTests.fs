@@ -480,3 +480,21 @@ type CliTests() =
             Assert.That(code, Is.Zero, error)
             Assert.That(output.Trim(), Is.EqualTo "42")
         finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``NuGet configuration loads attributed providers in file and stdin modes`` () =
+        use fixture = new NuGetFixture()
+        fixture.AddProvider "1.0.0"
+        fixture.WriteManifest "1.0.0"
+        let repo = findRepoRoot ()
+        let script = Path.Combine(fixture.Directory, "main.fss")
+        File.WriteAllText(script, "Ext.acceptNode (Ext.node 42)")
+        for args, input in [ [script], None; [], Some "Ext.answer" ] do
+            let code, output, error = runCli repo fixture.Directory args input
+            Assert.That(code, Is.EqualTo 0, error)
+            Assert.That(output, Does.Contain("42"))
+        fixture.WriteManifest "9.0.0"
+        let code, output, error = runCli repo fixture.Directory [script] None
+        Assert.That(code, Is.Not.EqualTo 0)
+        Assert.That(error, Does.Contain("NuGet").And.Contain(fixture.Name))
+        Assert.That(output, Does.Not.Contain("42"))

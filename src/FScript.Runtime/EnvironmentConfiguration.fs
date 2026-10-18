@@ -5,12 +5,16 @@ open System.IO
 open Tomlyn
 open Tomlyn.Model
 
+/// A NuGet extension package; omitted versions resolve to the latest stable release.
+type ExtensionPackage = { Name: string; Version: string option }
+
 /// Parsed configuration; omitted properties remain distinct from defaults.
 type EnvironmentConfiguration =
     { Path: string
       Root: string option
       DefaultExterns: bool option
-      ExternAssemblies: string list option }
+      ExternAssemblies: string list option
+      Packages: ExtensionPackage list option }
 
 /// Effective environment, containing absolute paths and its configuration provenance.
 type EnvironmentSettings =
@@ -18,7 +22,8 @@ type EnvironmentSettings =
       BaseDirectory: string
       RootDirectory: string
       DefaultExterns: bool
-      ExternAssemblies: string list }
+      ExternAssemblies: string list
+      Packages: ExtensionPackage list }
 
 module EnvironmentConfiguration =
     let normalizePath (baseDirectory: string) (path: string) =
@@ -46,7 +51,7 @@ module EnvironmentConfiguration =
                 | true, (:? TomlTable as table) -> table
                 | _ -> invalid document "runtime" "runtime" "Expected a table."
             for key in runtime.Keys do
-                if not (["root"; "default-externs"; "extern-assemblies"] |> List.contains key) then
+                if not (["root"; "default-externs"; "extern-assemblies"; "packages"] |> List.contains key) then
                     invalid runtime key $"runtime.{key}" "Unknown configuration property."
             let root =
                 match runtime.TryGetValue "root" with
@@ -66,10 +71,33 @@ module EnvironmentConfiguration =
                         | :? string as value -> value
                         | _ -> invalid runtime "extern-assemblies" "runtime.extern-assemblies" "Expected an array of strings.") |> Seq.toList |> Some
                 | _ -> invalid runtime "extern-assemblies" "runtime.extern-assemblies" "Expected an array of strings."
+            let packages =
+                match runtime.TryGetValue "packages" with
+                | false, _ -> None
+                | true, (:? TomlTableArray as entries) ->
+                    let seen = Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    entries |> Seq.map (fun entry ->
+                        for key in entry.Keys do
+                            if key <> "name" && key <> "version" then invalid entry key $"runtime.packages.{key}" "Unknown package property."
+                        let name =
+                            match entry.TryGetValue "name" with
+                            | true, (:? string as value) when NuGet.Packaging.PackageIdValidator.IsValidPackageId value -> value
+                            | _ -> invalid entry "name" "runtime.packages.name" "A valid NuGet package name is required."
+                        if not (seen.Add name) then invalid entry "name" "runtime.packages.name" $"Duplicate package '{name}'."
+                        let version =
+                            match entry.TryGetValue "version" with
+                            | false, _ -> None
+                            | true, (:? string as value) ->
+                                let mutable parsedVersion: NuGet.Versioning.NuGetVersion | null = null
+                                if NuGet.Versioning.NuGetVersion.TryParse(value, &parsedVersion) && value.Trim() = value then Some value
+                                else invalid entry "version" "runtime.packages.version" "Expected an exact NuGet version; omit it for latest stable."
+                            | _ -> invalid entry "version" "runtime.packages.version" "Expected a version string."
+                        { Name = name; Version = version }) |> Seq.toList |> Some
+                | _ -> invalid runtime "packages" "runtime.packages" "Expected an array of package tables ([[runtime.packages]])."
             let fullPath = Path.GetFullPath path
             let directory = Path.GetDirectoryName fullPath
             Ok { Path = fullPath; Root = root |> Option.map (normalizePath directory)
-                 DefaultExterns = defaults
+                 DefaultExterns = defaults; Packages = packages
                  ExternAssemblies = assemblies |> Option.map (List.map (normalizePath directory)) }
         with ex -> Error $"Unable to read environment configuration '{path}': {ex.Message}"
 
@@ -86,6 +114,7 @@ module EnvironmentConfiguration =
             |> Option.orElse (configuration |> Option.bind (fun c -> c.Root))
             |> Option.defaultValue defaultRoot |> Path.GetFullPath
           DefaultExterns = not disableDefaults && (configuration |> Option.bind (fun c -> c.DefaultExterns) |> Option.defaultValue true)
+          Packages = configuration |> Option.bind (fun c -> c.Packages) |> Option.defaultValue []
           ExternAssemblies =
             (configuration |> Option.bind (fun c -> c.ExternAssemblies) |> Option.defaultValue [])
             @ (assemblyArguments |> List.map (normalizePath baseDirectory))
