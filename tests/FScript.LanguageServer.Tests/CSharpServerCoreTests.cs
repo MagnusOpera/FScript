@@ -1004,6 +1004,49 @@ let mapPreview =
         }
     }
 
+    [TestCase("render", "Scene.render: (window: int) -> (mesh: int) -> (seconds: float) -> unit")]
+    [TestCase("answer", "Scene.answer : int")]
+    public void Imported_symbol_hover_uses_the_source_alias(string member, string expected)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"fscript-import-hover-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var client = LspClient.StartCSharp();
+        try
+        {
+            var scenePath = Path.Combine(directory, "scene.fss");
+            File.WriteAllText(scenePath, "export let render (window: int) (mesh: int) (seconds: float) = ()\nexport let answer = 42\n");
+            var source = $"import \"scene.fss\" as Scene\nScene.{member}\n";
+            var mainPath = Path.Combine(directory, "main.fss");
+            File.WriteAllText(mainPath, source);
+            var uri = new Uri(mainPath).AbsoluteUri;
+            LspTestFixture.Initialize(client);
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000, message =>
+                message["method"]?.ToString() == "textDocument/publishDiagnostics" && message["params"]?["uri"]?.ToString() == uri);
+            Assert.That(diagnostics["params"]?["diagnostics"]?.AsArray(), Is.Empty);
+            var position = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 1, ["character"] = 8 }
+            };
+            LspClient.SendRequest(client, 840, "textDocument/hover", position);
+            var hover = LspClient.ReadUntil(client, 10_000, message => message["id"]?.ToString() == "840");
+            var text = hover["result"]?["contents"]?["value"]?.GetValue<string>() ?? "";
+            Assert.That(text, Does.Contain(expected).And.Not.Contain("__imp"));
+            LspClient.SendRequest(client, 841, "textDocument/definition", position.DeepClone());
+            var definition = LspClient.ReadUntil(client, 10_000, message => message["id"]?.ToString() == "841");
+            Assert.That(definition["result"]?["uri"]?.GetValue<string>(), Is.EqualTo(new Uri(scenePath).AbsoluteUri));
+        }
+        finally
+        {
+            LspClient.Stop(client);
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Test]
     public void CSharp_server_displays_alias_types_and_navigates_alias_qualified_type_annotations()
     {

@@ -113,3 +113,7 @@ The VS Code extension requires VS Code 1.91 or later, matching its language clie
 The extension supplies a VS Code logging output channel for language-client logs and trace events. Activation awaits language-server initialization before showing the ready status; asynchronous startup failures show an error status and a user-facing message. The language client is stopped during deactivation and configuration restarts; its startup promise is not registered as a disposable.
 
 The language server classifies `numeric` as a type in semantic tokens. The extension also recognizes `numeric` annotations as `storage.type.fscript`, alongside built-in types, even when the language server is inactive. Identifier substrings such as `numericValue` do not receive this type scope.
+
+## Imported symbol hover names
+
+Hover signatures for imported functions and values display the document's public module alias, for example `Scene.render`, instead of resolver-generated names such as `__imp1.render`. This applies to named-parameter, ordinary typed-value, and fallback signature formatting. Parameter and type information is preserved. Internal symbol names remain the lookup keys for inference and definition navigation.

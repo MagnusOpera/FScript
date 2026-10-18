@@ -312,7 +312,7 @@ module LspHandlers =
         else
             typeText
 
-    let private displayTypeName (doc: DocumentState) (name: string) =
+    let private displayQualifiedName (doc: DocumentState) (name: string) =
         if String.IsNullOrWhiteSpace(name) then name
         else
             let parts = name.Split('.') |> Array.toList
@@ -325,6 +325,7 @@ module LspHandlers =
             | _ -> name
 
     let private formatFunctionSignature (doc: DocumentState) (sym: TopLevelSymbol) =
+        let displayName = displayQualifiedName doc sym.Name
         let paramNames = doc.FunctionParameters |> Map.tryFind sym.Name |> Option.defaultValue []
 
         match sym.TypeText with
@@ -334,7 +335,7 @@ module LspHandlers =
                 let effectiveParts =
                     match sym.TypeTargetName with
                     | Some returnName when parts.Length > 0 ->
-                        (parts |> List.take (parts.Length - 1)) @ [ displayTypeName doc returnName ]
+                        (parts |> List.take (parts.Length - 1)) @ [ displayQualifiedName doc returnName ]
                     | _ -> parts
                 let arrowText =
                     if effectiveParts.Length = (paramNames.Length + 1) then
@@ -344,11 +345,11 @@ module LspHandlers =
                         String.concat " -> " (args @ [ effectiveParts[effectiveParts.Length - 1] ])
                     else
                         String.concat " -> " effectiveParts
-                $"{sym.Name}: {arrowText}"
+                $"{displayName}: {arrowText}"
             else
-                $"{sym.Name} : {typeText}"
+                $"{displayName} : {typeText}"
         | Some typeText ->
-            $"{sym.Name} : {typeText}"
+            $"{displayName} : {typeText}"
         | None when sym.Kind = 12 && not paramNames.IsEmpty ->
             match doc.FunctionAnnotationTypes |> Map.tryFind sym.Name with
             | Some annotated when annotated.Length = paramNames.Length ->
@@ -356,7 +357,7 @@ module LspHandlers =
                     doc.FunctionDeclaredReturnTargets
                     |> Map.tryFind sym.Name
                     |> Option.defaultValue "unknown"
-                    |> displayTypeName doc
+                    |> displayQualifiedName doc
                 let parts = annotated @ [ returnType ]
                 let arrowText =
                     if parts.Length = (paramNames.Length + 1) then
@@ -366,12 +367,12 @@ module LspHandlers =
                         String.concat " -> " (args @ [ parts[parts.Length - 1] ])
                     else
                         String.concat " -> " parts
-                $"{sym.Name}: {arrowText}"
+                $"{displayName}: {arrowText}"
             | _ ->
                 let args = paramNames |> List.map (fun name -> $"({name})") |> String.concat " "
-                $"{sym.Name} {args}"
+                $"{displayName} {args}"
         | None ->
-            sym.Name
+            displayName
 
     let private formatInjectedFunctionSignature (doc: DocumentState) (name: string) (typeText: string) =
         match doc.InjectedFunctionParameterNames |> Map.tryFind name with

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Show public import aliases instead of internal module names in editor hover signatures.
+
 ## [0.82.1]
 
 
