@@ -10,23 +10,25 @@ Start here after [imports and exports](./guided-examples.md#5-imports--exports-m
 
 ## Run the sample
 
-Check out the [FScript repository](https://github.com/MagnusOpera/FScript). Build the provider library once with the .NET 10 SDK:
-
-```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
-```
-
-Then run the script using an installed FScript CLI (0.81.3 or later):
+Run the sample directly with the installed FScript CLI (0.81.3 or later), from the repository root:
 
 ```sh
 fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
-The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss`. Signed macOS CLI releases through 0.81.2 block third-party native libraries; 0.81.3 includes the required native-provider signing entitlement. For development, you can also run the repository CLI:
+Execution starts in `main.fss`, which loads the scene and starts rendering through the graphics provider.
+
+### One-time provider setup
+
+Check out the [FScript repository](https://github.com/MagnusOpera/FScript) and build the provider library with the .NET 10 SDK before the first run:
 
 ```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
+dotnet build samples/ffi/FfiSample.fsproj -c Release
 ```
+
+This compiles the FFI library used by `fscript`. Rebuild it when changing provider code; script edits only require running the `fscript` command again. Version 0.81.3 includes the macOS signing entitlement required to load GLFW.
+
+### Window and headless execution
 
 A copper-colored teapot rotates until you close the window or press Escape. The window can be resized. You need a desktop display and an OpenGL 3.3 core-capable driver. Linux also needs GLFW's system windowing dependencies. macOS uses a forward-compatible core context.
 
@@ -226,7 +228,7 @@ The path is relative to the manifest. In a trusted workspace, the editor loads t
 The CLI can load the same environment:
 
 ```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
 This runs `main.fss` and opens the window. In VS Code, open `main.fss` and use **FScript: Run Current Script** after selecting the manifest. The command saves the file and runs a fresh CLI process with the selected configuration. It requires workspace trust; REPL commands remain separate. See [Environment Configuration](../reference/environment-configuration.md) for selection, trust, and reload behavior.

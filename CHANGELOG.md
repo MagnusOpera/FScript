@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Make direct CLI execution the primary path in the FFI graphics walkthrough.
+
 ## [0.81.3]
 
 

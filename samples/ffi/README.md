@@ -16,11 +16,7 @@ Then use the installed FScript CLI (0.81.3 or later):
 fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
-The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss`. Signed macOS CLI releases through 0.81.2 block third-party native libraries; 0.81.3 includes the required native-provider signing entitlement. For development, you can also run the repository CLI:
-
-```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
-```
+The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss` through the `fscript` command above. Version 0.81.3 includes the macOS signing entitlement required to load GLFW.
 
 Close the window or press Escape to exit. The window can be resized. Run on a desktop with an OpenGL 3.3 core-capable driver; Linux also needs a working display and GLFW's system windowing dependencies. macOS uses a forward-compatible core context. Window creation and graphics calls run on the launching thread.
 
@@ -101,7 +97,7 @@ Build the sample in Release, then use **FScript: Select Configuration** to choos
 You can also load the environment through the ordinary CLI:
 
 ```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
 That command runs the entry script, which opens the window through the provider. In VS Code, open `main.fss`, select this manifest, and use **FScript: Run Current Script**. The run command saves the file and starts a fresh CLI process with the owning folder’s selected configuration; trust is required. REPL commands remain separate. The manifest points to the Release output relative to itself. After changing provider code, rebuild and reload the environment. On Windows, stopping the language server may be necessary before rebuilding a locked assembly.
