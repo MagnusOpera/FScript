@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.83.0]
+
+
 - Add CLI and VS Code debugging with expression stepping, safe inspection, native callbacks, independent task control, and configurable CLI selection.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.82.2...0.83.0
 
 ## [0.82.2]
 
