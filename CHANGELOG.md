@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix VS Code provider loading by matching bundled server assembly versions to the published FScript packages.
+
 ## [0.81.6]
 
 

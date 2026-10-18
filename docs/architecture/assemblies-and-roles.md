@@ -188,3 +188,7 @@ The CLI supplies the entry script directory (or cwd for stdin/REPL) to Runtimeâ€
 ## Foreign union registration
 
 Language owns `HostUnionDescriptor` and the registrationâ€™s `Unions` collection. Registered union definitions populate the existing inference constructor map and evaluation environment, including qualified names. Runtime alone reflects attributed F# unions and reconstructs CLR cases; multiple payload fields map to script tuples. Its shared codec also maps F# sets to lists and reconstructs sets with CLR ordering/deduplication. EnvironmentLoader merges union descriptors atomically with records/functions, and LSP completion/hover consumes the same registration.
+
+## Release assembly identity
+
+The tag workflow publishes the VS Code language server with the release `Version`, matching Language and Runtime NuGet assembly identities. A staging regression check verifies every bundled FScript server assembly before VSIX packaging. A default `0.0.0.0` server assembly cannot satisfy providers referencing the versioned NuGet assembly.
