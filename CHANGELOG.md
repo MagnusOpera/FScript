@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.83.2]
+
+
 - Automatically select each script’s nearest containing FFI manifest in VS Code, isolating sibling environments without manual switching.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.83.1...0.83.2
 
 ## [0.83.1]
 
