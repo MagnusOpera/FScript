@@ -26,7 +26,7 @@ smoke-tests:
 	dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas > /dev/null; \
 	echo "Running samples/ffi (headless)"; \
 	dotnet build samples/ffi/FfiSample.fsproj -c Release > /dev/null; \
-	dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss -- --headless; \
+	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
 	echo "All smoke tests passed."
 
 verify-changelog:

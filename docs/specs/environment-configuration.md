@@ -13,7 +13,7 @@ All properties are optional. Only the `runtime` table and the three properties a
 
 ## CLI
 
-Pass `--config <path>` or `-c <path>` explicitly. The CLI never searches for configuration automatically. The positional script, stdin and interactive modes, and script arguments after `--` retain their existing meanings.
+Without an explicit override, the CLI loads `fscript.toml` beside the entry script. Stdin and REPL modes look only in the current working directory. Discovery never searches parent directories or nested folders, and file execution never falls back to the working directory. Imported files retain the entry script’s environment. If no manifest exists at that location, existing defaults apply. `--config <path>` or `-c <path>` overrides discovery; `--no-config` disables manifest loading. These two options are mutually exclusive. The positional script, stdin and interactive modes, and script arguments after `--` retain their existing meanings.
 
 Settings apply in order: existing defaults, properties present in the manifest, explicit CLI flags. `--root` overrides `runtime.root`; `--no-default-externs` disables defaults even when enabled by configuration. There is no force-enable flag.
 
@@ -47,7 +47,7 @@ Environment loading is atomic. A failure reports diagnostics on the selected man
 
 ## Trust and boundaries
 
-Assembly providers execute arbitrary .NET code and may invoke native code. Configuration and filesystem roots are not security boundaries for provider code. The CLI trusts explicitly supplied assemblies/configuration.
+Assembly providers execute arbitrary .NET code and may invoke native code. Configuration and filesystem roots are not security boundaries for provider code. Running a script trusts providers from its selected or automatically discovered manifest as well as explicit assembly flags. Use `--no-config` to prevent manifest loading.
 
 In VS Code Restricted Mode, discovery and TOML parsing are available but providers never load. Default editor analysis remains available. Trust grants restart environments. Workspace-defined server and REPL executable settings are restricted, and REPL execution commands require trust. Selection is retained while blocked. VS Code REPL commands do not automatically forward the editor's selected manifest in this phase.
 
@@ -57,4 +57,4 @@ Development and extension-test hosts build the local server asynchronously, once
 
 ## Run a script with its selected environment
 
-**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command always uses the installed `fscript` executable from PATH, including inside the FScript repository. Install the CLI and make it available to VS Code before running a script. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. REPL execution commands remain separate and do not forward configuration.
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command always uses the installed `fscript` executable from PATH, including inside the FScript repository. Install CLI 0.81.5 or later and make it available to VS Code before running a script. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. When no editor configuration is selected, the run command passes `--no-config`, preserving explicit none and default/ambiguous selections. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.

@@ -10,11 +10,13 @@ Start here after [imports and exports](./guided-examples.md#5-imports--exports-m
 
 ## Run the sample
 
-Run the sample directly with the installed FScript CLI (0.81.3 or later), from the repository root:
+Run the sample directly with the installed FScript CLI (0.81.5 or later), from the repository root:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript samples/ffi/main.fss
 ```
+
+The CLI finds `samples/ffi/fscript.toml` beside `main.fss` automatically. With CLI 0.81.4 or earlier, pass `--config samples/ffi/fscript.toml` explicitly.
 
 Execution starts in `main.fss`, which loads the scene and starts rendering through the graphics provider.
 
@@ -35,7 +37,7 @@ A copper-colored teapot rotates until you close the window or press Escape. The 
 For a machine without a display, run the same scripts and FFI adapters against a recording backend:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --headless
+fscript samples/ffi/main.fss -- --headless
 ```
 
 The default scene generates 2,592 vertices and 4,096 triangles and renders three recorded frames in headless mode. This exercises script execution and conversions; it does not test OpenGL. For a bounded graphical check, use `-- --frames 3` to render three frames, check for teapot-colored pixels in the framebuffer, and exit.
@@ -228,7 +230,7 @@ The path is relative to the manifest. In a trusted workspace, the editor loads t
 The CLI can load the same environment:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript samples/ffi/main.fss
 ```
 
 This runs `main.fss` and opens the window. In VS Code, open `main.fss` and use **FScript: Run Current Script** after selecting the manifest. The command saves the file and runs a fresh CLI process with the selected configuration. It requires workspace trust; REPL commands remain separate. See [Environment Configuration](../reference/environment-configuration.md) for selection, trust, and reload behavior.

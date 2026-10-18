@@ -32,7 +32,8 @@ dotnet run --project src/FScript -- script.fss
 | --- | --- |
 | `--help` | Show usage and options |
 | `--root <path>`, `-r <path>` | Override filesystem/import root |
-| `--config <path>`, `-c <path>` | Load an explicit environment manifest |
+| `--config <path>`, `-c <path>` | Override automatic selection with an explicit environment manifest |
+| `--no-config` | Disable automatic manifest loading |
 | `--no-default-externs` | Omit the 21 default runtime externs; retain the core library |
 | `--extern-assembly <path>` | Add providers from an assembly; repeat to add more |
 | `--` | End CLI parsing; following arguments become `Env.Arguments` |
@@ -97,7 +98,7 @@ match Env.Arguments with
 
 ## Shared external-function configuration
 
-Load an optional environment explicitly with `--config <path>` or `-c <path>`:
+The CLI loads `fscript.toml` beside the script automatically. Stdin and REPL use the working directory. It does not search parents or nested folders, and imported files retain the entry environment. Use `--config <path>` or `-c <path>` to override selection, or `--no-config` to disable it; combining them is an error:
 
 ```bash
 fscript --config ./fscript.toml scripts/build.fss -- alice
@@ -111,7 +112,7 @@ default-externs = true
 extern-assemblies = ["./extensions/AppExterns.dll"]
 ```
 
-The positional script remains the entry point. Without one, terminal input starts the REPL and redirected stdin runs as a script. No configuration is discovered automatically when the flag is absent.
+The positional script remains the entry point. Without one, terminal input starts the REPL and redirected stdin runs as a script. Automatic discovery uses only the script directory or stdin/REPL working directory.
 
 Manifest paths resolve from its directory. Explicit `--root` overrides the configured root; `--no-default-externs` always disables defaults. Configured assemblies and repeated `--extern-assembly` flags combine in that order with normalized duplicates removed. Invalid manifests or failed provider registration stop execution with a nonzero exit.
 

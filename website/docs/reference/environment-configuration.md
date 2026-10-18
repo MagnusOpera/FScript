@@ -25,15 +25,19 @@ Unknown sections/properties, incorrect value types, and malformed TOML are error
 
 ## CLI usage and precedence
 
-Configuration loading is explicit:
+The CLI automatically loads `fscript.toml` beside the entry script, or in the current working directory for stdin/REPL. It checks only that directory: no parent or nested directory search, and no working-directory fallback for file execution. Imported scripts use the entry script’s environment. With no manifest, defaults apply.
+
+You can override or disable discovery:
 
 ```bash
+fscript scripts/build.fss
+fscript --no-config scripts/build.fss
 fscript --config ./fscript.toml scripts/build.fss
 fscript -c ./tools/fscript.toml scripts/test.fss -- alice
 fscript --config ./fscript.toml
 ```
 
-The final command starts the REPL when stdin is a terminal; piped stdin continues to run as a script. Without `--config`, the CLI does not search for manifests and retains its existing behavior.
+The final command starts the REPL when stdin is a terminal; piped stdin continues to run as a script. `--config` explicitly selects a manifest; `--no-config` disables discovery. Using both is an error. A discovered malformed manifest or failed provider stops execution rather than falling back to defaults.
 
 Settings apply in order: existing runtime defaults, properties present in the manifest, then explicit CLI flags. `--root` overrides `runtime.root`. `--no-default-externs` disables defaults regardless of the manifest; there is no force-enable flag. Assembly paths from the manifest precede repeated `--extern-assembly` arguments, with normalized duplicates removed while preserving first occurrence order.
 

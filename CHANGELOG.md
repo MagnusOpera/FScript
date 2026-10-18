@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Automatically load fscript.toml beside CLI scripts or in the stdin/REPL working directory, with --no-config to opt out.
+
 ## [0.81.4]
 
 

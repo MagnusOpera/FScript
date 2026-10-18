@@ -116,10 +116,12 @@ dotnet run --project src/FScript -- --no-default-externs samples/types-showcase.
 
 Share a configured external-function environment with VS Code:
 ```sh
+fscript scripts/build.fss
+# Override automatic selection when the manifest is elsewhere:
 fscript --config ./fscript.toml scripts/build.fss
 ```
 
-The CLI loads configuration only when requested. See [environment configuration](docs/specs/environment-configuration.md) for the schema, flag precedence, workspace selection, and trust rules.
+The CLI loads `fscript.toml` beside the script automatically; explicit `--config` selects a different location. See [environment configuration](docs/specs/environment-configuration.md) for the schema, flag precedence, workspace selection, and trust rules.
 
 Load user extern providers from an assembly (repeatable):
 ```bash
@@ -150,6 +152,8 @@ Start REPL:
 ```bash
 dotnet run --project src/FScript --
 ```
+
+The CLI automatically loads `fscript.toml` beside the entry script, or in the working directory for stdin/REPL. It does not search parent directories. Use `--config` to select another manifest or `--no-config` to skip discovery.
 
 Useful samples:
 

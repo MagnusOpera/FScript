@@ -229,11 +229,11 @@ function resolveReplLaunchCommand() {
   if (workspaceRoot) {
     const localCliProject = path.join(workspaceRoot, 'src', 'FScript', 'FScript.fsproj');
     if (fs.existsSync(localCliProject)) {
-      return `dotnet run --project "${localCliProject}" --`;
+      return `dotnet run --project "${localCliProject}" -- --no-config`;
     }
   }
 
-  return 'fscript';
+  return 'fscript --no-config';
 }
 
 function ensureReplTerminal() {

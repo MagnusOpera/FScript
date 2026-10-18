@@ -369,7 +369,7 @@ type CliTests() =
         finally Directory.Delete(dir, true)
 
     [<Test>]
-    member _.``Configuration is explicit and invalid manifests fail before execution`` () =
+    member _.``Discovered invalid manifests fail before execution and can be disabled`` () =
         let repo = findRepoRoot ()
         let dir = Path.Combine(Path.GetTempPath(), $"fscript-environment-{Guid.NewGuid():N}")
         Directory.CreateDirectory(dir) |> ignore
@@ -377,6 +377,10 @@ type CliTests() =
             let manifest = Path.Combine(dir, "fscript.toml")
             File.WriteAllText(manifest, "[project]\nentry = 'unused.fss'")
             let code, output, error = runCli repo dir [] (Some "42")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain("project"))
+            let code, output, error = runCli repo dir ["--no-config"] (Some "42")
             Assert.That(code, Is.EqualTo(0), error)
             Assert.That(output.Trim(), Is.EqualTo("42"))
             let code, _, error = runCli repo dir ["--config"; manifest] (Some "42")
@@ -395,3 +399,68 @@ type CliTests() =
         let code, output, error = runCli repo repo ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
         Assert.That(code, Is.EqualTo(0), error)
         Assert.That(output.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Automatic configuration is beside the script or in stdin cwd`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-discovery-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            File.Copy(validProviderAssemblyPath (), Path.Combine(dir, "provider.dll"))
+            File.WriteAllText(manifest, "[runtime]\nextern-assemblies = ['provider.dll']")
+            let script = Path.Combine(dir, "main.fss")
+            File.WriteAllText(script, "Ext.acceptNode (Ext.node Ext.answer)")
+            for cwd, args, input in [repo, [script], None; dir, [], Some "Ext.answer"] do
+                let code, output, error = runCli repo cwd args input
+                Assert.That(code, Is.Zero, error)
+                Assert.That(output.Trim(), Is.EqualTo "42")
+            let code, _, error = runCli repo repo ["--no-config"; script] None
+            Assert.That(code, Is.EqualTo 2)
+            Assert.That(error, Does.Contain "Ext")
+            let overrideManifest = Path.Combine(dir, "override.toml")
+            File.WriteAllText(overrideManifest, "[runtime]\ndefault-externs = true")
+            File.WriteAllText(manifest, "[broken]")
+            File.WriteAllText(script, "42")
+            let code, output, error = runCli repo repo [script] None
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain "broken")
+            let code, output, error = runCli repo repo ["-c"; overrideManifest; script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+            let code, _, error = runCli repo dir ["-c"; overrideManifest; "--no-config"] (Some "42")
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(error, Does.Contain "cannot be used together")
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``File discovery ignores parent and working directory manifests`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-discovery-{Guid.NewGuid():N}")
+        let nested = Path.Combine(dir, "scripts")
+        Directory.CreateDirectory(nested) |> ignore
+        try
+            File.WriteAllText(Path.Combine(dir, "fscript.toml"), "[broken]")
+            let script = Path.Combine(nested, "main.fss")
+            File.WriteAllText(script, "42")
+            let code, output, error = runCli repo dir [script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Imported modules do not discover their own environments`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-import-discovery-{Guid.NewGuid():N}")
+        let nested = Path.Combine(dir, "module")
+        Directory.CreateDirectory(nested) |> ignore
+        try
+            File.WriteAllText(Path.Combine(nested, "fscript.toml"), "[broken]")
+            File.WriteAllText(Path.Combine(nested, "helper.fss"), "let answer = 42")
+            let script = Path.Combine(dir, "main.fss")
+            File.WriteAllText(script, "import \"module/helper.fss\" as Helper\nHelper.answer")
+            let code, output, error = runCli repo repo [script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+        finally Directory.Delete(dir, true)

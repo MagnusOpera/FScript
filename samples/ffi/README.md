@@ -10,11 +10,13 @@ From the repository root, build the provider library once with the .NET 10 SDK:
 dotnet build samples/ffi/FfiSample.fsproj -c Release
 ```
 
-Then use the installed FScript CLI (0.81.3 or later):
+Then use the installed FScript CLI (0.81.5 or later):
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript samples/ffi/main.fss
 ```
+
+The CLI finds `samples/ffi/fscript.toml` beside `main.fss` automatically. With CLI 0.81.4 or earlier, pass `--config samples/ffi/fscript.toml` explicitly.
 
 The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss` through the `fscript` command above. Version 0.81.3 includes the macOS signing entitlement required to load GLFW.
 
@@ -23,13 +25,13 @@ Close the window or press Escape to exit. The window can be resized. Run on a de
 For a bounded graphical check, render three frames and verify that the framebuffer contains teapot-colored pixels:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --frames 3
+fscript samples/ffi/main.fss -- --frames 3
 ```
 
 For machines without a display, run the same script and typed FFI adapters against a recording backend:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --headless
+fscript samples/ffi/main.fss -- --headless
 dotnet test samples/ffi/Tests/FfiSample.Tests.fsproj -c Release
 ```
 
@@ -97,7 +99,7 @@ Build the sample in Release, then use **FScript: Select Configuration** to choos
 You can also load the environment through the ordinary CLI:
 
 ```sh
-fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+fscript samples/ffi/main.fss
 ```
 
 That command runs the entry script, which opens the window through the provider. In VS Code, open `main.fss`, select this manifest, and use **FScript: Run Current Script**. The run command saves the file and starts a fresh CLI process with the owning folder’s selected configuration; trust is required. REPL commands remain separate. The manifest points to the Release output relative to itself. After changing provider code, rebuild and reload the environment. On Windows, stopping the language server may be necessary before rebuilding a locked assembly.

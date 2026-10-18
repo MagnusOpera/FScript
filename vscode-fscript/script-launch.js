@@ -4,6 +4,7 @@ const path = require('path');
 function scriptLaunch(scriptPath, folderPath, configurationPath) {
   const args = [];
   if (configurationPath) args.push('--config', configurationPath);
+  else args.push('--no-config');
   args.push(scriptPath);
   return {
     command: 'fscript',

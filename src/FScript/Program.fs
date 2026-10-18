@@ -256,8 +256,8 @@ let main argv =
                 | None -> currentDirectory
 
             let settingsResult =
-                EnvironmentConfiguration.resolve
-                    (args.TryGetResult <@ Config @>) currentDirectory defaultRoot
+                EnvironmentConfiguration.resolveForCli
+                    (args.TryGetResult <@ Config @>) (args.Contains <@ No_Config @>) currentDirectory defaultRoot
                     (args.TryGetResult <@ Root @>)
                     (args.Contains <@ No_Default_Externs @>)
                     (args.GetResults <@ Extern_Assembly @>)

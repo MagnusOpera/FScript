@@ -410,7 +410,7 @@ Use `ExtensionRegistration` and the registration-aware inference/evaluation, `Sc
 
 ## Environment initialization
 
-`FScript.Runtime.EnvironmentConfiguration` parses/normalizes manifests and merges caller defaults and overrides into `EnvironmentSettings`, without loading providers. `EnvironmentLoader.load` creates an atomic `ExtensionRegistration` through the existing provider protocol. Embedders can inspect effective settings before deciding to load executable assemblies. Existing explicit-registration APIs remain unchanged. Registration-aware inference with local-variable telemetry is also available to editor hosts. See [environment configuration](./environment-configuration.md).
+`FScript.Runtime.EnvironmentConfiguration` parses/normalizes manifests and merges caller defaults and overrides into `EnvironmentSettings`, without loading providers. `EnvironmentLoader.load` creates an atomic `ExtensionRegistration` through the existing provider protocol. Embedders can inspect effective settings before deciding to load executable assemblies. `EnvironmentConfiguration.resolveForCli` adds CLI-only beside-entry discovery and `--no-config` handling; the existing `resolve` API remains explicit for embedders/editor environments. Existing explicit-registration APIs remain unchanged. Registration-aware inference with local-variable telemetry is also available to editor hosts. See [environment configuration](./environment-configuration.md).
 
 ## CLR-backed host type descriptors
 

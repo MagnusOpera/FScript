@@ -130,6 +130,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   return {
     extension: sandbox.module.exports, context, errors, clients, channels, status,
     watchers, vscode, selections, commands, information, searches, processCalls,
+    replLaunch: () => sandbox.resolveReplLaunchCommand(),
     pick: label => { choice = label; },
     grantTrust: () => { vscode.workspace.isTrusted = true; grantTrust(); },
     changeFolders: async () => changeFolders({}),
@@ -361,4 +362,9 @@ test('run script is blocked in untrusted workspaces', async () => {
   await harness.commands.get('fscript.runScript')();
   assert.ok(harness.errors.some(message => message.includes('trust this workspace')));
   harness.extension.deactivate();
+});
+
+test('automatic REPL launch preserves the default environment without CLI discovery', () => {
+  assert.equal(loadExtension().replLaunch(), 'fscript --no-config');
+  assert.ok(loadExtension({ folders: ['/work'] }).replLaunch().endsWith('-- --no-config'));
 });

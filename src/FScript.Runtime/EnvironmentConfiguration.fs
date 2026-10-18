@@ -99,3 +99,17 @@ module EnvironmentConfiguration =
                 | Some path -> read (normalizePath baseDirectory path) |> Result.map Some
             parsed |> Result.map (fun c -> merge baseDirectory defaultRoot c rootOverride disableDefaults assemblyArguments)
         with ex -> Error $"Invalid environment settings: {ex.Message}"
+
+    /// CLI-only discovery: file mode supplies the script directory; stdin/REPL supply cwd.
+    /// Explicit resolver APIs for embedders and editor environments remain discovery-free.
+    let resolveForCli configurationPath noConfig baseDirectory defaultRoot rootOverride disableDefaults assemblyArguments =
+        try
+            if noConfig && Option.isSome configurationPath then
+                Error "--config and --no-config cannot be used together."
+            else
+                let selected =
+                    configurationPath |> Option.orElseWith (fun () ->
+                        let candidate = Path.Combine(defaultRoot, "fscript.toml")
+                        if not noConfig && File.Exists candidate then Some candidate else None)
+                resolve selected baseDirectory defaultRoot rootOverride disableDefaults assemblyArguments
+        with ex -> Error $"Invalid environment settings: {ex.Message}"

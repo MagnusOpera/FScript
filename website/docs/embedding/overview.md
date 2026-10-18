@@ -32,4 +32,4 @@ FScript is designed for host applications that embed a scripting language safely
 
 ## Executable graphics sample
 
-The [FFI graphics walkthrough](../examples/ffi-graphics.md) puts geometry, camera, lighting, and animation in FScript. A typed .NET provider uploads the generated Utah teapot and renders it with OpenGL. It demonstrates script-constructible scene records, opaque window/mesh resources, typed function adapters, and editor discovery through `fscript.toml`. Run it with `fscript --config samples/ffi/fscript.toml samples/ffi/main.fss`; use `-- --headless` to exercise the scripts without a display.
+The [FFI graphics walkthrough](../examples/ffi-graphics.md) puts geometry, camera, lighting, and animation in FScript. A typed .NET provider uploads the generated Utah teapot and renders it with OpenGL. It demonstrates script-constructible scene records, opaque window/mesh resources, typed function adapters, and editor discovery through `fscript.toml`. Run it with `fscript samples/ffi/main.fss`; use `-- --headless` to exercise the scripts without a display.

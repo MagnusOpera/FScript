@@ -63,8 +63,8 @@ Filesystem extern behavior:
 
 ## Configured providers in editor workspaces
 
-Environment manifests do not sandbox provider code. VS Code Restricted Mode permits discovery and parsing, but blocks configured assembly execution on both sides of the language-client boundary. Default static analysis remains available. CLI configuration retains the trust assumptions of explicit assembly flags. See [environment configuration](./environment-configuration.md#trust-and-boundaries).
+Environment manifests do not sandbox provider code. VS Code Restricted Mode permits discovery and parsing, but blocks configured assembly execution on both sides of the language-client boundary. Default static analysis remains available. Executing a script also trusts providers from its automatically discovered manifest; `--no-config` opts out. See [environment configuration](./environment-configuration.md#trust-and-boundaries).
 
 ## Native provider dependencies on macOS
 
-The signed CLI allows JIT and disables hardened-runtime library validation so explicitly configured providers can load native dependencies signed by other teams (for example GLFW in the FFI sample). This does not authorize automatic provider discovery: CLI providers remain explicitly supplied, and the editor gates configured provider execution on workspace trust. Provider code and its native dependencies execute with the host process's permissions and must be trusted.
+The signed CLI allows JIT and disables hardened-runtime library validation so explicitly configured providers can load native dependencies signed by other teams (for example GLFW in the FFI sample). Providers execute only through assembly flags or a selected manifest, including CLI manifest discovery beside the entry script or in the stdin/REPL working directory. `--no-config` disables manifest discovery; the editor gates configured provider execution on workspace trust. Provider code and its native dependencies execute with the host process's permissions and must be trusted.

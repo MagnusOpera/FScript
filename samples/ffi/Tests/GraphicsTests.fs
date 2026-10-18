@@ -156,7 +156,7 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
 #endif
         let cli = Path.Combine(root, "src/FScript/bin", configuration, "net10.0/fscript.dll")
         let start = Diagnostics.ProcessStartInfo("dotnet", RedirectStandardOutput = true, RedirectStandardError = true)
-        for argument in [cli; "--extern-assembly"; typeof<GraphicsProvider>.Assembly.Location;
+        for argument in [cli; "--no-config"; "--extern-assembly"; typeof<GraphicsProvider>.Assembly.Location;
                          Path.Combine(root, "samples/ffi/main.fss"); "--"; argument] do
             start.ArgumentList.Add argument
         use cliProcess = new Diagnostics.Process(StartInfo = start)

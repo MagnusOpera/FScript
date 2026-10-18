@@ -66,3 +66,19 @@ type EnvironmentConfigurationTests() =
         match EnvironmentConfiguration.read (Path.Combine(directory, Guid.NewGuid().ToString(), "fscript.toml")) with
         | Ok _ -> Assert.Fail("Expected failure")
         | Error message -> Assert.That(message, Does.Contain("fscript.toml"))
+
+    [<Test>]
+    member _.``CLI discovery records provenance without executing providers`` () =
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-discovery-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            File.WriteAllText(manifest, "[runtime]\nextern-assemblies = ['missing.dll']")
+            let settings = EnvironmentConfiguration.resolveForCli None false directory dir (Some directory) false [] |> get
+            Assert.That(settings.ConfigurationPath, Is.EqualTo(Some manifest))
+            Assert.That(settings.ExternAssemblies, Is.EqualTo(box [Path.Combine(dir, "missing.dll")]))
+            let disabled = EnvironmentConfiguration.resolveForCli None true directory dir None false [] |> get
+            Assert.That(disabled.ConfigurationPath, Is.EqualTo None)
+            let explicitOnly = EnvironmentConfiguration.resolve None directory dir None false [] |> get
+            Assert.That(explicitOnly.ConfigurationPath, Is.EqualTo None)
+        finally Directory.Delete(dir, true)
