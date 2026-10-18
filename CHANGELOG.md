@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.3]
+
+
 - Allow the signed macOS CLI to load native provider dependencies signed by other teams.
 - Run the graphics FFI sample directly from FScript and add a VS Code run command that forwards the selected environment.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.2...0.81.3
 
 ## [0.81.2]
 
