@@ -760,6 +760,22 @@ function registerEnvironmentUi(context) {
 
 function registerDebugger(context) {
   if (!vscode.debug?.registerDebugConfigurationProvider) return;
+  context.subscriptions.push(vscode.commands.registerCommand('fscript.debugScript', async () => {
+    if (vscode.workspace.isTrusted !== true) {
+      vscode.window.showErrorMessage('FScript: trust this workspace before debugging scripts.');
+      return;
+    }
+    const editor = getActiveFscriptEditor();
+    if (!editor) return;
+    const document = editor.document;
+    if (document.uri.scheme !== 'file') {
+      vscode.window.showErrorMessage('FScript: save the script to a file before debugging it.');
+      return;
+    }
+    return vscode.debug.startDebugging(vscode.workspace.getWorkspaceFolder(document.uri), {
+      type: 'fscript', request: 'launch', name: 'Debug Current Script', program: document.uri.fsPath
+    });
+  }));
   context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('fscript', {
     resolveDebugConfiguration(_folder, configuration) {
       if (!configuration.type) return { ...configuration, type: 'fscript', request: 'launch', name: 'Debug FScript', program: '${file}' };

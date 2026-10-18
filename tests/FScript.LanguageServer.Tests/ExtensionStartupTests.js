@@ -23,6 +23,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const processCommands = [];
   const debugProviders = [];
   const debugFactories = [];
+  const debugLaunches = [];
   let choice;
 
   const selections = new Map();
@@ -31,6 +32,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const workspaceFolder = value => rootFolders?.filter(folder => value?.fsPath === folder.uri.fsPath || value?.fsPath?.startsWith(`${folder.uri.fsPath}/`)).sort((a,b) => b.uri.fsPath.length-a.uri.fsPath.length)[0];
   const vscode = {
     debug: {
+      async startDebugging(folder,configuration) { debugLaunches.push({folder,configuration}); return true; },
       registerDebugConfigurationProvider(type, provider) { debugProviders.push({type,provider}); return disposable(); },
       registerDebugAdapterDescriptorFactory(type, factory) { debugFactories.push({type,factory}); return disposable(); }
     },
@@ -141,7 +143,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   };
   return {
     extension: sandbox.module.exports, context, errors, clients, channels, status,
-    watchers, vscode, selections, commands, information, searches, processCalls, processCommands, debugProviders, debugFactories,
+    watchers, vscode, selections, commands, information, searches, processCalls, processCommands, debugProviders, debugFactories, debugLaunches,
     replLaunch: () => sandbox.resolveReplLaunchCommand(),
     pick: label => { choice = label; },
     grantTrust: () => { vscode.workspace.isTrusted = true; grantTrust(); },
@@ -429,4 +431,32 @@ test('debug adapter factory also refuses execution in Restricted Mode', async ()
   assert.throws(() => harness.debugFactories[0].factory.createDebugAdapterDescriptor(), /Trust this workspace/);
   assert.equal(harness.processCalls.length, 0);
   await harness.extension.deactivate();
+});
+
+
+test('Debug Current Script launches the owning folder through the debug configuration provider', async () => {
+  for (const folders of [['/workspace', '/workspace/nested'], undefined]) {
+    const harness = loadExtension({ folders, enabled: false });
+    await harness.extension.activate(harness.context);
+    harness.vscode.window.activeTextEditor = { document: { languageId: 'fscript', uri: harness.vscode.Uri.file('/workspace/nested/main.fss') } };
+    assert.equal(await harness.commands.get('fscript.debugScript')(), true);
+    const launch = harness.debugLaunches[0];
+    assert.equal(launch.folder?.uri.fsPath, folders ? '/workspace/nested' : undefined);
+    assert.equal(launch.configuration.type, 'fscript');
+    assert.equal(launch.configuration.request, 'launch');
+    assert.equal(launch.configuration.program, '/workspace/nested/main.fss');
+    await harness.extension.deactivate();
+  }
+});
+
+test('Debug Current Script refuses untrusted workspaces and unsaved documents', async () => {
+  for (const trusted of [false, true]) {
+    const harness = loadExtension({ trusted, enabled: false });
+    await harness.extension.activate(harness.context);
+    harness.vscode.window.activeTextEditor = { document: { languageId: 'fscript', uri: {scheme: 'untitled'} } };
+    await harness.commands.get('fscript.debugScript')();
+    assert.equal(harness.debugLaunches.length, 0);
+    assert.match(harness.errors.at(-1), trusted ? /save the script/i : /trust this workspace/i);
+    await harness.extension.deactivate();
+  }
 });

@@ -125,6 +125,9 @@ version. Debugging requires workspace trust and uses the selected workspace
 configuration, matching editor analysis. Script input/output uses an integrated
 terminal.
 
+You can also run **FScript: Debug Current Script** from the Command Palette,
+or choose **Debug Current Script** from the FScript editor context menu.
+
 ```json
 {
   "type": "fscript",

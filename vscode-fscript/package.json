@@ -91,6 +91,11 @@
         "command": "fscript.runScript",
         "title": "Run Current Script",
         "category": "FScript"
+      },
+      {
+        "command": "fscript.debugScript",
+        "title": "Debug Current Script",
+        "category": "FScript"
       }
     ],
     "menus": {
@@ -109,6 +114,11 @@
           "command": "fscript.runScript",
           "when": "editorLangId == fscript",
           "group": "navigation@49"
+        },
+        {
+          "command": "fscript.debugScript",
+          "when": "editorLangId == fscript",
+          "group": "navigation@48"
         }
       ]
     },

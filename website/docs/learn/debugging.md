@@ -10,6 +10,10 @@ it is unavailable in the JavaScript/Fable host.
 ## Start a session
 
 Open a script and press **F5**. Choose **FScript** if VS Code asks for a debugger.
+
+You can also run **FScript: Debug Current Script** from the Command Palette,
+or choose **Debug Current Script** from the FScript editor context menu.
+
 A minimal `.vscode/launch.json` configuration is:
 
 ```json

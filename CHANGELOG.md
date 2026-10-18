@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Add a Debug Current Script command to the VS Code command palette and editor context menu.
+
 ## [0.83.0]
 
 

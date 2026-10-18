@@ -37,6 +37,8 @@ All commands appear in the Command Palette under **FScript**.
 | Open REPL | `fscript.openRepl` | Start an FScript terminal session. |
 | Send Selection to REPL | `fscript.sendSelectionToRepl` | Send the selected source to the REPL. |
 | Execute Current Script in REPL | `fscript.executeCurrentScriptInRepl` | Send the current script to the REPL. |
+| Run Current Script | `fscript.runScript` | Run the active saved script using the selected CLI and environment. |
+| Debug Current Script | `fscript.debugScript` | Debug the active saved script using the same launch provider as F5. |
 | Select Configuration | `fscript.selectConfiguration` | Select automatic discovery, a manifest, or no configuration for a workspace folder. |
 
 The configuration status item shows the effective selection and its source or failure. Server health/output access is separate. A saved manifest or provider DLL change restarts only the affected folder server and resynchronizes open buffers. A custom server path must point to a compatible language-server assembly.
@@ -46,6 +48,10 @@ The configuration status item shows the effective selection and its source or fa
 **FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript.cli.path` when configured, otherwise `fscript` from PATH. Use CLI 0.81.5 or later. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
 
 ## Debugger
+
+**FScript: Debug Current Script** launches the active saved FScript file through
+the same debug configuration provider as F5. It is available in the Command
+Palette and the FScript editor context menu.
 
 F5 launches the CLI selected by `fscript.cli.path` (default: `fscript` on PATH)
 with the owning folder's selected environment.

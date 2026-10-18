@@ -32,7 +32,7 @@ exports.run = async function run() {
   const termination = vscode.debug.onDidTerminateDebugSession(session => { if (session.type === 'fscript') resolveEnd(); });
   const timeout = setTimeout(() => rejectStop(new Error('Timed out waiting for real VS Code debugger stop')),30000);
   try {
-    assert.equal(await vscode.debug.startDebugging(folder,{ type:'fscript',request:'launch',name:'FScript smoke',program:program.fsPath }),true);
+    assert.equal(await vscode.commands.executeCommand('fscript.debugScript'),true);
     const {session,threadId} = await stopped;
     const stack = await session.customRequest('stackTrace',{threadId});
     assert.equal(stack.stackFrames[0].name,'calculate');
