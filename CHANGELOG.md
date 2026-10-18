@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.81.5]
+
+
 - Automatically load fscript.toml beside CLI scripts or in the stdin/REPL working directory, with --no-config to opt out.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.4...0.81.5
 
 ## [0.81.4]
 
