@@ -39,3 +39,7 @@ All commands appear in the Command Palette under **FScript**.
 | Select Configuration | `fscript.selectConfiguration` | Select automatic discovery, a manifest, or no configuration for a workspace folder. |
 
 The configuration status item shows the effective selection and its source or failure. Server health/output access is separate. A saved manifest or provider DLL change restarts only the affected folder server and resynchronizes open buffers. A custom server path must point to a compatible language-server assembly.
+
+## Run a script with its selected environment
+
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript` from PATH, or `dotnet run` with the CLI project when the owning workspace folder is the FScript repository. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. REPL execution commands remain separate and do not forward configuration.

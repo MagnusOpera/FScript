@@ -104,6 +104,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const sandbox = {
     module: { exports: {} },
     require(id) {
+      if (id === './script-launch') return require(path.join(extensionPath, 'script-launch.js'));
       if (id === './config-selection') return require(path.join(extensionPath, 'config-selection.js'));
       if (id === 'vscode') return vscode;
       if (id === 'vscode-languageclient/node') return { LanguageClient, TransportKind: { stdio: 0 } };
@@ -323,4 +324,38 @@ test('folder-resolved language-server settings declare resource scope', () => {
   for (const name of ['lsp.enabled', 'inlayHints.enabled', 'hoverHints.enabled', 'server.path', 'server.logLevel', 'config']) {
     assert.equal(manifest.contributes.configuration.properties[`fscript.${name}`].scope, 'resource');
   }
+});
+
+test('run script forwards the owning folder configuration through process arguments', async () => {
+  const harness = loadExtension({ folders: ['/work', '/work/nested'], enabled: false,
+    settings: { '/work/nested': 'ffi/fscript.toml' } });
+  await harness.extension.activate(harness.context);
+  let saved = false;
+  let executed;
+  harness.vscode.window.activeTextEditor = { document: {
+    languageId: 'fscript', isDirty: true,
+    uri: { scheme: 'file', fsPath: '/work/nested/teapot main.fss', toString: () => 'file:///work/nested/teapot main.fss' },
+    save: async () => { saved = true; return true; }
+  } };
+  harness.vscode.TaskScope = { Workspace: 1 };
+  harness.vscode.TaskRevealKind = { Always: 1 };
+  harness.vscode.TaskPanelKind = { New: 1 };
+  harness.vscode.ProcessExecution = class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } };
+  harness.vscode.Task = class { constructor(definition, scope, name, source, execution) { Object.assign(this, { scope, execution }); } };
+  harness.vscode.tasks = { executeTask: async task => { executed = task; } };
+  await harness.commands.get('fscript.runScript')();
+  assert.equal(saved, true);
+  assert.equal(executed.scope.uri.fsPath, '/work/nested');
+  assert.ok(executed.execution.args.includes('/work/nested/ffi/fscript.toml'));
+  assert.equal(executed.execution.args.at(-1), '/work/nested/teapot main.fss');
+  assert.equal(executed.execution.options.cwd, '/work/nested');
+  harness.extension.deactivate();
+});
+
+test('run script is blocked in untrusted workspaces', async () => {
+  const harness = loadExtension({ trusted: false });
+  await harness.extension.activate(harness.context);
+  await harness.commands.get('fscript.runScript')();
+  assert.ok(harness.errors.some(message => message.includes('trust this workspace')));
+  harness.extension.deactivate();
 });

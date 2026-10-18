@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>FScript.Ffi.Sample</AssemblyName></PropertyGroup>
+  <PropertyGroup><AssemblyName>FScript.Ffi.Sample</AssemblyName><EnableDynamicLoading>true</EnableDynamicLoading></PropertyGroup>
   <ItemGroup>
     <Compile Include="Graphics.fs" />
-    <Compile Include="Program.fs" />
     <Content Include="*.fss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

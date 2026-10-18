@@ -179,6 +179,16 @@ jobs:
             echo "Expected codesign identifier '$expected_identifier' but found '$actual_identifier'" >&2
             exit 1
           fi
+          codesign --display --entitlements - --xml .out/darwin/arm64/fscript > .out/darwin/signed-entitlements.plist
+          python3 - <<'PYTHON'
+          import plistlib
+          with open('.out/darwin/signed-entitlements.plist', 'rb') as source:
+              entitlements = plistlib.load(source)
+          for key in ('com.apple.security.cs.allow-jit', 'com.apple.security.cs.disable-library-validation'):
+              if entitlements.get(key) is not True:
+                  raise SystemExit(f'Signed CLI is missing required entitlement: {key}')
+          print('Verified signed CLI entitlements for JIT and native providers.')
+          PYTHON
           (cd .out/darwin/arm64; zip ../fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip ./*)
 
       - name: Notarize arm64

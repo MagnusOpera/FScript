@@ -84,6 +84,11 @@
         "command": "fscript.selectConfiguration",
         "title": "Select Configuration",
         "category": "FScript"
+      },
+      {
+        "command": "fscript.runScript",
+        "title": "Run Current Script",
+        "category": "FScript"
       }
     ],
     "menus": {
@@ -97,6 +102,11 @@
           "command": "fscript.executeCurrentScriptInRepl",
           "when": "editorLangId == fscript",
           "group": "navigation@51"
+        },
+        {
+          "command": "fscript.runScript",
+          "when": "editorLangId == fscript",
+          "group": "navigation@49"
         }
       ]
     },

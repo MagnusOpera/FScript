@@ -100,3 +100,7 @@ One discovered manifest is selected automatically. With multiple candidates, use
 Configured paths resolve from the manifest directory. With no explicit root, selected editor environments use the workspace folder, while the CLI keeps its normal script/current-directory default. Run the same environment with `fscript --config ./fscript.toml script.fss`. Editor REPL commands do not automatically adopt it.
 
 Configured DLLs execute registration code and require workspace trust. Changes to saved manifests or provider DLLs restart only the affected server and reanalyze open buffers. On Windows, stop the server with `fscript.lsp.enabled` before rebuilding a locked DLL, then re-enable it. Invalid environments report manifest diagnostics and revert to default analysis without stale configured signatures. See the [full specification](../docs/specs/environment-configuration.md).
+
+## Run a script with its selected environment
+
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript` from PATH, or `dotnet run` with the CLI project when the owning workspace folder is the FScript repository. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. REPL execution commands remain separate and do not forward configuration.

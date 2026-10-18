@@ -4,6 +4,7 @@ const os = require('os');
 const cp = require('child_process');
 const vscode = require('vscode');
 const { selectConfiguration } = require('./config-selection');
+const { scriptLaunch } = require('./script-launch');
 const clients = new Map();
 let extensionContext;
 let configurationStatus;
@@ -776,6 +777,33 @@ async function activate(context) {
     await runAstCommand('fscript/viewInferredAst', 'fscript-inferred-ast');
   });
   context.subscriptions.push(viewInferredAstCommandSubscription);
+
+  context.subscriptions.push(vscode.commands.registerCommand('fscript.runScript', async () => {
+    if (vscode.workspace.isTrusted === false) {
+      vscode.window.showErrorMessage('FScript: trust this workspace before running scripts.');
+      return;
+    }
+    const editor = getActiveFscriptEditor();
+    if (!editor) return;
+    const document = editor.document;
+    if (document.uri.scheme !== 'file') {
+      vscode.window.showErrorMessage('FScript: save the script to a file before running it.');
+      return;
+    }
+    if (document.isDirty && !(await document.save())) return;
+    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+    // Resolve fresh selection even when language-server features are disabled.
+    const entry = { folder };
+    if (folder) await refreshSelection(entry);
+    const project = folder && path.join(folder.uri.fsPath, 'src', 'FScript', 'FScript.fsproj');
+    const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path,
+      project && fs.existsSync(project) ? project : undefined);
+    const task = new vscode.Task({ type: 'fscript', script: document.uri.toString() },
+      folder || vscode.TaskScope.Workspace, 'Run Current Script', 'FScript',
+      new vscode.ProcessExecution(launch.command, launch.args, { cwd: launch.cwd }), []);
+    task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.New };
+    await vscode.tasks.executeTask(task);
+  }));
 
   openReplCommandSubscription = vscode.commands.registerCommand('fscript.openRepl', () => {
     ensureReplTerminal();

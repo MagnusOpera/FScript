@@ -54,3 +54,7 @@ In VS Code Restricted Mode, discovery and TOML parsing are available but provide
 ## Editor startup
 
 Development and extension-test hosts build the local server asynchronously, once per extension activation; multiple folder clients share that build. Packaged extensions use their bundled server. Resource-scoped server settings apply independently to folder clients. Default editor completion and hover expose the visible fields of the built-in `Env` value from its built-in type definition.
+
+## Run a script with its selected environment
+
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript` from PATH, or `dotnet run` with the CLI project when the owning workspace folder is the FScript repository. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. REPL execution commands remain separate and do not forward configuration.

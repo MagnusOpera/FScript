@@ -1,4 +1,6 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
+using Silk.NET.Core.Loader;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
@@ -24,8 +26,28 @@ public sealed unsafe class OpenGlGraphics : IGraphics, IDisposable
     public int FramesRendered { get; private set; }
     public int ColoredPixels { get; private set; }
 
+    private static readonly Lazy<bool> nativeSearch = new(() =>
+    {
+        // A provider is loaded outside the CLI's .deps.json. Locate its bundled
+        // native assets relative to this assembly, rather than the CLI installation.
+        if (PathResolver.Default is DefaultPathResolver resolver)
+        {
+            string os = OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsWindows() ? "win" : "linux";
+            string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+            string directory = Path.Combine(Path.GetDirectoryName(typeof(OpenGlGraphics).Assembly.Location)!,
+                "runtimes", $"{os}-{arch}", "native");
+            // Surface macOS signing/dependency errors rather than Window.Create's
+            // generic "no suitable platform" message. Keep the module for this process.
+            if (OperatingSystem.IsMacOS()) NativeLibrary.Load(Path.Combine(directory, "libglfw.3.dylib"));
+            resolver.Resolvers.Insert(0, name => [Path.Combine(directory, Path.GetFileName(name))]);
+        }
+        return true;
+    });
+
     public OpenGlGraphics()
     {
+        _ = nativeSearch.Value;
+        _ = Silk.NET.GLFW.GlfwProvider.GLFW.Value;
         var options = WindowOptions.Default;
         options.Title = "FScript FFI — Utah teapot";
         options.Size = new Vector2D<int>(960, 720);

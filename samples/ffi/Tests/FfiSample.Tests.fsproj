@@ -6,5 +6,5 @@
     <PackageReference Include="NUnit" Version="4.6.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="6.3.1" />
   </ItemGroup>
-  <ItemGroup><ProjectReference Include="../FfiSample.fsproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../FfiSample.fsproj" /><ProjectReference Include="../../../src/FScript/FScript.fsproj" ReferenceOutputAssembly="false" /></ItemGroup>
 </Project>

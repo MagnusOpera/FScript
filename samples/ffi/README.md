@@ -4,10 +4,22 @@ FScript builds a Utah teapot from 32 bicubic Bézier patches, computes surface n
 
 ## Run
 
-From the repository root, with the .NET 10 SDK installed:
+From the repository root, build the provider library once with the .NET 10 SDK:
 
 ```sh
-dotnet run --project samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/FfiSample.fsproj -c Release
+```
+
+Then use the installed FScript CLI (0.81.3 or later):
+
+```sh
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+```
+
+The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss`. Signed macOS CLI releases through 0.81.2 block third-party native libraries; 0.81.3 includes the required native-provider signing entitlement. For development, you can also run the repository CLI:
+
+```sh
+dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
 Close the window or press Escape to exit. The window can be resized. Run on a desktop with an OpenGL 3.3 core-capable driver; Linux also needs a working display and GLFW's system windowing dependencies. macOS uses a forward-compatible core context. Window creation and graphics calls run on the launching thread.
@@ -15,13 +27,13 @@ Close the window or press Escape to exit. The window can be resized. Run on a de
 For a bounded graphical check, render three frames and verify that the framebuffer contains teapot-colored pixels:
 
 ```sh
-dotnet run --project samples/ffi/FfiSample.fsproj -c Release -- --frames 3
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --frames 3
 ```
 
 For machines without a display, run the same script and typed FFI adapters against a recording backend:
 
 ```sh
-dotnet run --project samples/ffi/FfiSample.fsproj -c Release -- --headless
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --headless
 dotnet test samples/ffi/Tests/FfiSample.Tests.fsproj -c Release
 ```
 
@@ -32,7 +44,7 @@ Headless mode checks script execution and conversion; it does not exercise shade
 1. Read `scene.fss`: ordinary record literals create the camera, light, material, and rotation. `initialize` generates and uploads a mesh; `render` changes its rotation each frame.
 2. Read `teapot.fss`: the control points and patch connectivity are script data. Cubic Bézier evaluation, derivatives, cross products, normalized normals, and indexed tessellation all run in FScript. Change `Teapot.generate 8` in the scene to change the resolution (clamped to 2–32 segments per patch edge). Re-run the host after editing; this sample does not hot reload.
 3. Read `Graphics.fs`: attributes expose real F# records as script types. `HostTypes.describe` creates descriptors, and `HostFunctions.create` derives function schemes, arity, and conversions from typed handlers.
-4. Read `Program.fs`: the host loads the scene, creates a window, invokes `initialize`, and then invokes `render` with elapsed seconds until the native window closes.
+4. Read `main.fss`: the entry script calls `Graphics.run` with a setup callback. That callback uploads the mesh and returns a render closure retaining it. The provider pumps native events and invokes the closure through `ExternalCallContext.Apply` until the window closes.
 5. Read `Renderer/`: the C# backend contains shaders, view/projection matrix construction, GPU buffers, and window/input handling. It contains no teapot model or scene choices.
 
 The dataset's provenance and license are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). This sample keeps collapsed pole triangles in the index buffer (the rasterizer ignores zero-area triangles) and supplies defined pole normals. The renderer draws both sides of the open teapot surfaces.
@@ -57,6 +69,8 @@ The dataset's provenance and license are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY
 
 | Function | Script type | Purpose |
 | --- | --- | --- |
+| `Graphics.run` | `int -> (Window -> float -> unit) -> unit` | Open a window and run a script setup/render closure; zero frames means until close |
+| `Graphics.runHeadless` | `int -> (Window -> float -> unit) -> unit` | Run a positive number of frames without a display |
 | `Graphics.uploadMesh` | `Window -> Geometry -> Mesh` | Validate and upload positions, normals, and triangle indices once |
 | `Graphics.clear` | `Window -> Color -> unit` | Clear color and depth buffers |
 | `Graphics.setCamera` | `Window -> Camera -> unit` | Set the view and perspective; aspect ratio follows framebuffer size |
@@ -76,7 +90,7 @@ These remain ordinary `FScript.Language` data structures:
 | --- | --- | --- |
 | `HostTypeDescriptor` | `Name`, `Fields`, `HostManaged` | `Vec3` has visible float fields and `HostManaged = false`; `Mesh` exposes metadata with `HostManaged = true`. No GPU handles appear in descriptors. |
 | `ExternalFunction` | `Name`, `Scheme`, `Arity`, `Impl` | `Graphics.uploadMesh` gets scheme `Window -> Geometry -> Mesh`, arity two, and an adapter that decodes records and wraps the opaque result. |
-| `ExtensionRegistration` | `Types`, `Functions` | Groups the nine type descriptors and eight function descriptors for the host, CLI, and editor. |
+| `ExtensionRegistration` | `Types`, `Functions` | Groups the nine type descriptors and ten function descriptors for the host, CLI, and editor. |
 
 The generated upload scheme is `Forall([], TFun(TNamed "Window", TFun(TNamed "Geometry", TNamed "Mesh")))`. Registration is explicit and local; the helpers add no global functions or types.
 
@@ -87,7 +101,7 @@ Build the sample in Release, then use **FScript: Select Configuration** to choos
 You can also load the environment through the ordinary CLI:
 
 ```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/scene.fss
+dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
-That command checks/loads the scene and its exports; the dedicated sample host is what creates a window and calls those exports. The manifest points to the Release output relative to itself. After changing provider code, rebuild and reload the environment. On Windows, stopping the language server may be necessary before rebuilding a locked assembly.
+That command runs the entry script, which opens the window through the provider. In VS Code, open `main.fss`, select this manifest, and use **FScript: Run Current Script**. The run command saves the file and starts a fresh CLI process with the owning folder’s selected configuration; trust is required. REPL commands remain separate. The manifest points to the Release output relative to itself. After changing provider code, rebuild and reload the environment. On Windows, stopping the language server may be necessary before rebuilding a locked assembly.

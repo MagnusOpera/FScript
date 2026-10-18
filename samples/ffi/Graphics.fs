@@ -115,6 +115,47 @@ module Graphics =
             invalidArg "Shininess" "Shininess must be between one and 256."
         window.Backend.Draw(mesh.Resource, vector "rotation" rotation, color material.Color, float32 material.Shininess)
 
+    // Callbacks use the explicit descriptor API: typed adapters deliberately do not
+    // marshal script functions. Apply keeps execution in the current interpreter.
+    let private run headless : ExternalFunction =
+        { Name = if headless then "Graphics.runHeadless" else "Graphics.run"
+          Scheme = Forall([], TFun(TInt, TFun(TFun(TNamed "Window", TFun(TFloat, TUnit)), TUnit)))
+          Arity = 2
+          Impl = fun context arguments ->
+              try
+                  match arguments with
+                  | [VInt frames; setup] when frames >= (if headless then 1L else 0L) && frames <= int64 Int32.MaxValue ->
+                      let mutable render = None
+                      let initialize (backend: IGraphics) =
+                          let windowTypes = { HostInterop.empty with Types = [HostTypes.describe<Window>()] }
+                          let window = HostTypes.wrap windowTypes { Title = "FScript FFI — Utah teapot"; Backend = backend }
+                          render <- Some(context.Apply setup window)
+                      let frame seconds =
+                          context.CheckRuntime()
+                          match render with
+                          | Some callback ->
+                              match context.Apply callback (VFloat seconds) with
+                              | VUnit -> ()
+                              | _ -> invalidOp "The render callback must return unit."
+                          | None -> invalidOp "The scene has not been initialized."
+                      if headless then
+                          let backend = RecordingGraphics()
+                          initialize backend
+                          for index in 0 .. int frames - 1 do frame (float index / 60.0)
+                          printfn "Headless: %d mesh uploads; %d frames" backend.Meshes.Count backend.Rotations.Count
+                      else
+                          use backend = new OpenGlGraphics()
+                          backend.Run((fun () -> initialize backend), frame, int frames)
+                          if frames > 0L then
+                              printfn "OpenGL: %d frames; %d teapot-colored pixels" backend.FramesRendered backend.ColoredPixels
+                              if backend.ColoredPixels < 100 then invalidOp "The framebuffer did not contain the teapot."
+                      VUnit
+                  | _ -> invalidArg "frames" "Use a nonnegative frame limit (zero runs until close); headless mode requires a positive limit."
+              with
+              | EvalException _ -> reraise()
+              | error -> raise (EvalException { Message = $"Graphics window loop failed: {error.Message}"; Span = Span.mk (Span.pos 0 0) (Span.pos 0 0) }) }
+
+
     let registration =
         let types =
             { HostInterop.empty with
@@ -131,7 +172,9 @@ module Graphics =
                   HostFunctions.create types "Graphics.draw" draw
                   HostFunctions.create types "Math.toFloat" (fun (value: int64) -> float value)
                   HostFunctions.create types "Math.sqrt" (fun (value: float) -> Math.Sqrt value)
-                  HostFunctions.create types "Math.sin" (fun (value: float) -> Math.Sin value) ] }
+                  HostFunctions.create types "Math.sin" (fun (value: float) -> Math.Sin value)
+                  run false
+                  run true ] }
 
 type GraphicsProvider =
     // Discovery only builds descriptors and adapters. It never opens a window.

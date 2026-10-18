@@ -35,7 +35,7 @@ type GraphicsTests() =
     member _.``provider discovery builds descriptors without a window``() =
         let registration = GraphicsProvider.Provide()
         Assert.That(registration.Types.Length, Is.EqualTo 9)
-        Assert.That(registration.Functions.Length, Is.EqualTo 8)
+        Assert.That(registration.Functions.Length, Is.EqualTo 10)
         for descriptor in registration.Types do
             Assert.That(descriptor.HostManaged, Is.EqualTo(descriptor.Name = "Window" || descriptor.Name = "Mesh"))
         let mesh = registration.Types |> List.find (fun t -> t.Name = "Mesh")
@@ -50,7 +50,7 @@ type GraphicsTests() =
         | Error error -> Assert.Fail error
         | Ok registration ->
             Assert.That(registration.Types.Length, Is.EqualTo 9)
-            Assert.That(registration.Functions.Length, Is.EqualTo 8)
+            Assert.That(registration.Functions.Length, Is.EqualTo 10)
             let scene = ScriptHost.loadFileWithRegistration registration (Path.Combine(root, "scene.fss"))
             Assert.That(scene.ExportedFunctionNames, Does.Contain "render")
 
@@ -118,3 +118,55 @@ type GraphicsTests() =
         let material : Material = { Color = white; Shininess = 32.0 }
         Assert.That(Action(fun () -> call "Graphics.draw" [window second; mesh; wrap zero; wrap material] |> ignore), Throws.Exception)
         Assert.That(second.Rotations.Count, Is.Zero)
+
+    [<Test>]
+    member _.``script entry runs callbacks in the current interpreter``() =
+        let source = """
+let start (window: Window) =
+    let title = window.Title
+    fun seconds ->
+        if title = "FScript FFI — Utah teapot" then
+            Graphics.clear window { R = seconds; G = 0.0; B = 0.0 }
+        else Graphics.clear window { R = 2.0; G = 0.0; B = 0.0 }
+Graphics.runHeadless 3 start
+"""
+        let script = ScriptHost.loadSourceWithRegistration Graphics.registration source
+        Assert.That(script.LastValue, Is.EqualTo VUnit)
+
+    [<Test>]
+    member _.``render callback failures propagate to the script caller``() =
+        let source = """
+Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R = 2.0; G = 0.0; B = 0.0 })
+"""
+        Assert.That(Action(fun () -> ScriptHost.loadSourceWithRegistration Graphics.registration source |> ignore), Throws.Exception)
+
+    [<TestCase(0L)>]
+    [<TestCase(-1L)>]
+    member _.``headless frame limits must be positive`` frames =
+        Assert.That(Action(fun () -> call "Graphics.runHeadless" [VInt frames; VUnit] |> ignore), Throws.Exception)
+
+    [<TestCase("--headless", 0)>]
+    [<TestCase("--bad-option", 3)>]
+    member _.``real CLI executes the entry script with provider loading`` (argument: string, expectedExit: int) =
+        let root = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "../../.."))
+#if DEBUG
+        let configuration = "Debug"
+#else
+        let configuration = "Release"
+#endif
+        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net10.0/fscript.dll")
+        let start = Diagnostics.ProcessStartInfo("dotnet", RedirectStandardOutput = true, RedirectStandardError = true)
+        for argument in [cli; "--extern-assembly"; typeof<GraphicsProvider>.Assembly.Location;
+                         Path.Combine(root, "samples/ffi/main.fss"); "--"; argument] do
+            start.ArgumentList.Add argument
+        use cliProcess = new Diagnostics.Process(StartInfo = start)
+        cliProcess.Start() |> ignore
+        let output = cliProcess.StandardOutput.ReadToEndAsync()
+        let errors = cliProcess.StandardError.ReadToEndAsync()
+        if not (cliProcess.WaitForExit 30000) then
+            cliProcess.Kill(true)
+            Assert.Fail "CLI did not terminate."
+        Assert.That(cliProcess.ExitCode, Is.EqualTo expectedExit, errors.GetAwaiter().GetResult())
+        if expectedExit = 0 then
+            Assert.That(output.GetAwaiter().GetResult(), Does.Contain "1 mesh uploads; 3 frames")
+        else Assert.That(errors.GetAwaiter().GetResult(), Does.Contain "frame limit")

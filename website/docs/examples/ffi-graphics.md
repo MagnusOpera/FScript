@@ -10,10 +10,22 @@ Start here after [imports and exports](./guided-examples.md#5-imports--exports-m
 
 ## Run the sample
 
-Check out the [FScript repository](https://github.com/MagnusOpera/FScript) and run this command from its root with the .NET 10 SDK installed:
+Check out the [FScript repository](https://github.com/MagnusOpera/FScript). Build the provider library once with the .NET 10 SDK:
 
 ```sh
-dotnet run --project samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/FfiSample.fsproj -c Release
+```
+
+Then run the script using an installed FScript CLI (0.81.3 or later):
+
+```sh
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss
+```
+
+The provider is a library, so `dotnet build` is a one-time setup step; execution starts in `main.fss`. Signed macOS CLI releases through 0.81.2 block third-party native libraries; 0.81.3 includes the required native-provider signing entitlement. For development, you can also run the repository CLI:
+
+```sh
+dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
 A copper-colored teapot rotates until you close the window or press Escape. The window can be resized. You need a desktop display and an OpenGL 3.3 core-capable driver. Linux also needs GLFW's system windowing dependencies. macOS uses a forward-compatible core context.
@@ -21,7 +33,7 @@ A copper-colored teapot rotates until you close the window or press Escape. The 
 For a machine without a display, run the same scripts and FFI adapters against a recording backend:
 
 ```sh
-dotnet run --project samples/ffi/FfiSample.fsproj -c Release -- --headless
+fscript --config samples/ffi/fscript.toml samples/ffi/main.fss -- --headless
 ```
 
 The default scene generates 2,592 vertices and 4,096 triangles and renders three recorded frames in headless mode. This exercises script execution and conversions; it does not test OpenGL. For a bounded graphical check, use `-- --frames 3` to render three frames, check for teapot-colored pixels in the framebuffer, and exit.
@@ -35,7 +47,7 @@ All sample code lives under [`samples/ffi`](https://github.com/MagnusOpera/FScri
 | `scene.fss` | Chooses scene data, uploads the generated mesh, and animates it. |
 | `teapot.fss` | Holds the Bézier patch data and generates vertices, normals, and triangle indices. |
 | `Graphics.fs` | Declares the script-visible types and typed FFI functions. |
-| `Program.fs` | Loads the script and invokes its exports on the window thread. |
+| `main.fss` | Starts the window loop and returns a render closure that retains the mesh. |
 | `Renderer/` | Implements the native window, GPU buffers, shaders, and rendering. |
 | `fscript.toml` | Makes the provider available to CLI and editor analysis. |
 | `Tests/` | Tests geometry generation, scene calls, conversions, and resource boundaries without a display. |
@@ -81,7 +93,29 @@ export let render (window: Window) (mesh: Mesh) (seconds: float) =
 
 `Window` and `Mesh` are opaque types. The host supplies the window, and `Graphics.uploadMesh` creates the mesh. The script can read metadata such as `window.Title` and `mesh.VertexCount`, but cannot construct these types, update them, or access their hidden graphics state.
 
-The host calls `initialize` once and retains the returned mesh. It then calls `render` each frame with the same window and mesh plus elapsed seconds. Only small scene records cross the boundary during animation; geometry is generated and uploaded once.
+The entry script calls `Scene.initialize` once and retains the returned mesh in a closure. `Graphics.run` pumps window events and invokes that closure each frame through `ExternalCallContext.Apply`, passing elapsed seconds. Only small scene records cross the boundary during animation; geometry is generated and uploaded once.
+
+The executable entry point is `main.fss`:
+
+```fsharp
+import "scene.fss" as Scene
+
+// The script owns startup and retains the mesh in a render closure.
+let start (window: Window) =
+    let mesh = Scene.initialize window
+    fun seconds -> Scene.render window mesh seconds
+
+let parseFrames text = Int.tryParse text |> Option.defaultValue (0 - 1)
+
+match Env.Arguments with
+| [] -> Graphics.run 0 start
+| ["--headless"] -> Graphics.runHeadless 3 start
+| ["--headless"; count] -> Graphics.runHeadless (parseFrames count) start
+| ["--frames"; count] -> Graphics.run (parseFrames count) start
+| _ -> Graphics.run (0 - 1) start
+```
+
+`Graphics.run 0 start` runs until the window closes; a positive limit stops after that many frames. `Graphics.runHeadless` requires a positive limit and uses a recording backend.
 
 ## 2. Generate the model in FScript
 
@@ -164,7 +198,7 @@ The helper builds an `ExternalFunction` record:
 | `Arity` | `2` |
 | `Impl` | Validates and decodes script arguments, calls `upload`, and wraps the returned opaque mesh. |
 
-An `ExtensionRegistration` groups the nine type descriptors in `Types` and the eight function descriptors in `Functions`. The host passes this registration to `ScriptHost.loadFileWithRegistration`. The assembly provider returns the same registration for editor and CLI discovery.
+An `ExtensionRegistration` groups the nine type descriptors in `Types` and the ten function descriptors in `Functions`. The assembly provider returns this registration for editor and CLI discovery. The two window-loop functions use explicit `ExternalFunction` records because they accept script callbacks; geometry, rendering, and math functions continue to use `HostFunctions.create`.
 
 The renderer-facing functions are:
 
@@ -192,10 +226,10 @@ The path is relative to the manifest. In a trusted workspace, the editor loads t
 The CLI can load the same environment:
 
 ```sh
-dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/scene.fss
+dotnet run --project src/FScript -- --config samples/ffi/fscript.toml samples/ffi/main.fss
 ```
 
-This loads the scene and its exports. Run the dedicated sample host to open the window and invoke the scene exports. See [Environment Configuration](../reference/environment-configuration.md) for selection, trust, and reload behavior.
+This runs `main.fss` and opens the window. In VS Code, open `main.fss` and use **FScript: Run Current Script** after selecting the manifest. The command saves the file and runs a fresh CLI process with the selected configuration. It requires workspace trust; REPL commands remain separate. See [Environment Configuration](../reference/environment-configuration.md) for selection, trust, and reload behavior.
 
 ## Try changing the scene
 
