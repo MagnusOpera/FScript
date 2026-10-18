@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Support host-provided union types and F# sets in typed FFI adapters, including editor completion and hover.
+
 ## [0.81.5]
 
 

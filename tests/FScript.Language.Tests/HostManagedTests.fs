@@ -109,3 +109,11 @@ type HostManagedTests() =
         let second = Interactive.submit first.Session (FScript.parse "Host.accept (retain n)")
         Assert.That((HostInterop.unwrap "Node" second.State.LastValue).Payload, Is.EqualTo(HostManagedFixture.payload))
         Assert.Throws<TypeException>(System.Action(fun () -> Interactive.submit second.Session (FScript.parse "let x = retain n\n{ x with Value = 0 }") |> ignore)) |> ignore
+
+    [<Test>]
+    member _.``Registered unions persist across interactive submissions and remain nominal`` () =
+        let registration = { HostInterop.empty with Unions = [{ Name = "Protocol.Mode"; Cases = Map.ofList ["Off", None; "On", Some TInt] }] }
+        let first = Interactive.createWithRegistration registration |> fun session -> Interactive.submit session (FScript.parse "let accept (mode: Protocol.Mode) = mode\nlet value = accept (Protocol.Mode.On 42)")
+        let second = Interactive.submit first.Session (FScript.parse "match value with | On n -> n | Off -> 0")
+        Assert.That(Pretty.valueToString second.State.LastValue, Is.EqualTo("42"))
+        Assert.Throws<TypeException>(System.Action(fun () -> Interactive.submit second.Session (FScript.parse "accept 42") |> ignore)) |> ignore

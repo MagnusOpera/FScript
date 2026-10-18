@@ -29,7 +29,7 @@ type HostFunctionsTests() =
     let nodeRegistration () = registration [HostTypes.describe<FunctionNode>()]
     let error action = (Assert.Throws<EvalException>(Action action) |> nonNull).Data0.Message
     let run types functions source =
-        ScriptHost.loadSourceWithRegistration { Types = types; Functions = functions } source
+        ScriptHost.loadSourceWithRegistration { HostInterop.empty with Types = types; Functions = functions } source
     let assertValue expected actual =
         Assert.That(Pretty.valueToString actual, Is.EqualTo(Pretty.valueToString expected))
 

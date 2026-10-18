@@ -61,7 +61,7 @@ printfn "Value: %d; private token: %O" state.Value state.Token
 | --- | --- |
 | F# `int` (`Int32`), `int64` | `int` (`VInt`, with `int` widened to 64 bits) |
 | F# `float` (`Double`), `bool`, `string`, `unit` | `float`, `bool`, `string`, `unit` |
-| F# list or one-dimensional array | List of converted elements |
+| F# list, set, or one-dimensional array | List of converted elements |
 | F# option | Option of the converted value |
 | F# tuple or struct tuple | Tuple of converted elements |
 | F# `Map<string, 'T>` | String-keyed map of converted values |
@@ -165,3 +165,33 @@ Use `ScriptHost.loadFileWithRegistration` for files, `loadSourceWithIncludesAndR
 [Assembly providers](./register-externs#assembly-providers-for-cli-and-editor) can return the same registration for CLI execution and VS Code type checking. The [environment configuration](../reference/environment-configuration) selects those assemblies.
 
 The JavaScript facade does not support authoring or exporting host-managed payloads. Attributed descriptor generation and snapshot conversion are optional .NET runtime helpers; there is no automatic CLR method registration or native ABI mapping.
+
+## Host-provided unions
+
+Use an attributed F# union when the contract includes named choices or payload cases:
+
+```fsharp
+[<FScriptHostType("Protocol.Cacheability", ScriptConstructible = true)>]
+type Cacheability = Never | Local | Remote
+
+[<FScriptHostType("Protocol.ExportFlag", ScriptConstructible = true)>]
+type ExportFlag = Dispatch | Default | Cache of Cacheability
+
+let registration =
+    { HostInterop.empty with
+        Unions = [ HostTypes.describeUnion<Cacheability>()
+                   HostTypes.describeUnion<ExportFlag>() ] }
+```
+
+Scripts can construct `Cache Remote`, annotate a value as `Protocol.ExportFlag`, use `Protocol.ExportFlag.Cache Remote`, and match its cases. `HostFunctions.create` handles conversion to and from these CLR unions. Use short constructors when unambiguous; qualified constructors disambiguate types supplied by different modules.
+
+The helper produces a plain `HostUnionDescriptor`:
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `Name` | `string` | Script-visible nominal union type name. |
+| `Cases` | `Map<string, Type option>` | Case names and payload types; `None` means a nullary case. Multiple CLR payload fields use `TTuple`. |
+
+Put every referenced union descriptor in `ExtensionRegistration.Unions`, and every referenced record descriptor in `Types`. Union projections require `ScriptConstructible = true` and nonrecursive supported payloads. `HostTypes.describe` describes records; `describeUnion` describes unions.
+
+F# sets use script lists at the boundary. Host snapshots follow set iteration order; converting a script list back to a set sorts and removes duplicates using CLR comparison semantics.

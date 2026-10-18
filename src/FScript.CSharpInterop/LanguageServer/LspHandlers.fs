@@ -631,16 +631,25 @@ module LspHandlers =
             match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
             | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
                 let doc = documents[uri]
-                let hostDescriptor =
+                let hostDescription =
                     tryGetWordAtPosition doc.Text line character
-                    |> Option.bind (fun word -> LspRuntimeExterns.descriptors doc.SourcePath |> List.tryFind (fun d -> d.Name = word))
-                match hostDescriptor with
-                | Some descriptor ->
-                    let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
+                    |> Option.bind (fun word ->
+                        (LspRuntimeExterns.descriptors doc.SourcePath |> List.tryFind (fun d -> d.Name = word)
+                         |> Option.map (fun descriptor ->
+                            let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
+                            let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
+                            $"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}"))
+                        |> Option.orElseWith (fun () ->
+                            LspRuntimeExterns.unions doc.SourcePath |> List.tryFind (fun d -> d.Name = word || d.Cases.ContainsKey word || (d.Cases |> Map.exists (fun caseName _ -> d.Name + "." + caseName = word)))
+                            |> Option.map (fun descriptor ->
+                                let cases = descriptor.Cases |> Map.toList |> List.map (fun (name, payload) ->
+                                    match payload with None -> name | Some ty -> name + " of " + Types.typeToString ty) |> String.concat " | "
+                                $"```fscript\ntype {descriptor.Name} = {cases}\n```\nscript-constructible host union")))
+                match hostDescription with
+                | Some description ->
                     let contents = JsonObject()
                     contents["kind"] <- JsonValue.Create("markdown")
-                    let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
-                    contents["value"] <- JsonValue.Create($"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}")
+                    contents["value"] <- JsonValue.Create(description)
                     let result = JsonObject()
                     result["contents"] <- contents
                     LspProtocol.sendResponse idNode (Some result)

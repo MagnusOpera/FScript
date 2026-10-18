@@ -18,14 +18,14 @@ The helper returns the existing `FScript.Language.ExternalFunction` record, whos
 
 Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fields: Map<string, Type>`, and `HostManaged: bool`. `HostTypes.describe` produces these descriptors from attributed CLR types. Descriptors contain only script-visible type metadata, never CLR conversion code or opaque payloads. A named type appears in function schemes as `TNamed descriptor.Name`; `HostManaged = false` permits script record construction and updates, while `true` requires host-created opaque values.
 
-`ExtensionRegistration` groups `Types: HostTypeDescriptor list` and `Functions: ExternalFunction list`. Both helpers produce these existing public data structures; direct descriptor authoring remains supported.
+`ExtensionRegistration` groups `Types: HostTypeDescriptor list`, `Unions: HostUnionDescriptor list`, and `Functions: ExternalFunction list`. Both helpers produce these existing public data structures; direct descriptor authoring remains supported.
 
 ## Signatures and registration
 
 - Names must be nonempty qualified identifiers, using the same identifier-character convention as host type projections.
 - The handler must have a concrete F# function type and be non-null.
 - Every outer function arrow adds one curried argument. Unit arguments remain explicit; `unit -> int` has arity one.
-- All parameter and final-result types use the same supported mappings as `HostTypes`: primitives, unit, lists/one-dimensional arrays, options, tuples/struct tuples, string-keyed F# maps, and attributed host types.
+- All parameter and final-result types use the same supported mappings as `HostTypes`: primitives, unit, lists/sets/one-dimensional arrays, options, tuples/struct tuples, string-keyed F# maps, and attributed host records/unions.
 - Every referenced attributed type must have a matching descriptor in the supplied registration, even when only present inside an empty container or absent option.
 - Distinct CLR types in one signature cannot project to the same script type name.
 - Unsupported signatures and invalid registrations fail at adapter construction, without executing handlers or getters.

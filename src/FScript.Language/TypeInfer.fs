@@ -1079,8 +1079,12 @@ module TypeInfer =
                     s, applyType s tField
                 | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
 
-            match target with
-            | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
+            let rec qualifiedTarget = function
+                | EVar (name, _) when not (env.ContainsKey name) -> Some name
+                | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
+                | _ -> None
+            match qualifiedTarget target with
+            | Some moduleName ->
                 let qualifiedName = $"{moduleName}.{fieldName}"
                 match env.TryFind qualifiedName with
                 | Some scheme ->
@@ -1285,6 +1289,10 @@ module TypeInfer =
                     let sigInfo = { UnionName = typeName; Payload = payloadType }
                     [ caseName, sigInfo
                       $"{typeName}.{caseName}", sigInfo ]))
+            |> List.append (registration.Unions |> List.collect (fun descriptor ->
+                descriptor.Cases |> Map.toList |> List.collect (fun (caseName, payload) ->
+                    let info = { UnionName = descriptor.Name; Payload = payload }
+                    [caseName, info; $"{descriptor.Name}.{caseName}", info])))
             |> Map.ofList
 
         let constructorSchemes =

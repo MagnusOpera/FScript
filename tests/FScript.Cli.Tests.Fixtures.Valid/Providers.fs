@@ -32,14 +32,18 @@ type ProviderNode =
 [<FScriptHostType("Point", ScriptConstructible = true)>]
 type ProviderPoint = { [<FScriptVisible>] X: int64 }
 
+[<FScriptHostType("Protocol.Mode", ScriptConstructible = true)>]
+type ProviderMode = Disabled | Enabled of int64
+
 type HostManagedProvider =
     [<FScriptExternProvider>]
     static member Provide(ctx: HostContext) : ExtensionRegistration =
         let descriptor = HostTypes.describe<ProviderNode>()
-        let registration = { HostInterop.empty with Types = [descriptor; HostTypes.describe<ProviderPoint>()] }
+        let registration = { HostInterop.empty with Types = [descriptor; HostTypes.describe<ProviderPoint>()]; Unions = [HostTypes.describeUnion<ProviderMode>()] }
         { registration with
             Functions =
-                [ HostFunctions.create registration "Ext.node" (fun (n: int64) -> { Value = n; Context = ctx })
+                [ HostFunctions.create registration "Ext.mode" (fun (mode: ProviderMode) -> mode)
+                  HostFunctions.create registration "Ext.node" (fun (n: int64) -> { Value = n; Context = ctx })
                   HostFunctions.create registration "Ext.acceptNode" (fun (node: ProviderNode) ->
                       if node.Context = ctx then node.Value
                       else failwith "Host state was lost")

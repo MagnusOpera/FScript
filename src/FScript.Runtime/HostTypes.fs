@@ -11,7 +11,7 @@ open FScript.Language
 type FScriptHostTypeAttribute(name: string) =
     inherit Attribute()
     member _.Name = name
-    /// Allow scripts to construct ordinary record values instead of opaque host values.
+    /// Allow scripts to construct ordinary record or union values instead of opaque host values.
     member val ScriptConstructible = false with get, set
 
 /// Expose a public readable instance property as an immutable snapshot field.
@@ -52,6 +52,11 @@ module HostTypes =
     let private isGeneric definition (clrType: System.Type) =
         clrType.IsGenericType && clrType.GetGenericTypeDefinition() = definition
 
+    type internal Projection =
+        | Record of HostTypeDescriptor
+        | Union of HostUnionDescriptor
+        member this.Name = match this with Record d -> d.Name | Union d -> d.Name
+
     let rec private fieldType stack path (clrType: System.Type) : FScript.Language.Type =
         if clrType = typeof<int> || clrType = typeof<int64> then TInt
         elif clrType = typeof<float> then TFloat
@@ -59,14 +64,14 @@ module HostTypes =
         elif clrType = typeof<string> then TString
         elif clrType = typeof<unit> then TUnit
         elif clrType.IsArray && clrType.GetArrayRank() = 1 then TList(fieldType stack path (clrType.GetElementType() |> nonNull))
-        elif isGeneric typedefof<list<_>> clrType then TList(fieldType stack path (clrType.GetGenericArguments()[0]))
+        elif isGeneric typedefof<list<_>> clrType || isGeneric typedefof<Set<_>> clrType then TList(fieldType stack path (clrType.GetGenericArguments()[0]))
         elif isGeneric typedefof<option<_>> clrType then TOption(fieldType stack path (clrType.GetGenericArguments()[0]))
         elif FSharpType.IsTuple clrType then TTuple(FSharpType.GetTupleElements clrType |> Array.map (fieldType stack path) |> Array.toList)
         elif isGeneric typedefof<Map<_, _>> clrType && clrType.GetGenericArguments()[0] = typeof<string> then
             TMap(TString, fieldType stack path (clrType.GetGenericArguments()[1]))
         elif clrType.IsDefined(typeof<FScriptHostTypeAttribute>, false) then
-            let descriptor = describeType stack path clrType
-            TNamed descriptor.Name
+            if FSharpType.IsUnion clrType then TNamed((describeUnionType stack path clrType).Name)
+            else TNamed((describeType stack path clrType).Name)
         else fail path $"Unsupported visible CLR type '{clrType.FullName}'."
 
     and private describeType stack path (clrType: System.Type) : HostTypeDescriptor =
@@ -90,13 +95,30 @@ module HostTypes =
             |> Map.ofArray
         { Name = name; Fields = fields; HostManaged = not attribute.ScriptConstructible }
 
+    and private describeUnionType stack path (clrType: System.Type) : HostUnionDescriptor =
+        let name = hostName path clrType
+        if List.contains clrType stack then fail path "Recursive visible type graphs are not supported."
+        if not (FSharpType.IsUnion clrType) || not (clrType.GetCustomAttribute<FScriptHostTypeAttribute>(false).ScriptConstructible) then
+            fail path "Foreign unions require an F# union with ScriptConstructible = true."
+        let cases =
+            FSharpType.GetUnionCases clrType |> Array.map (fun case ->
+                let fields = case.GetFields() |> Array.map (fun field -> fieldType (clrType :: stack) $"{path}.{case.Name}.{field.Name}" field.PropertyType)
+                let payload = match fields with [||] -> None | [|one|] -> Some one | many -> Some(TTuple(Array.toList many))
+                case.Name, payload) |> Map.ofArray
+        { Name = name; Cases = cases }
+
     let private valueProjection path (clrType: System.Type) =
         let scriptType = fieldType [] path clrType
         let rec collect path (current: System.Type) = seq {
             if current.IsDefined(typeof<FScriptHostTypeAttribute>, false) then
-                yield current, describeType [] path current
-                for property in visibleProperties path current do
-                    yield! collect $"{path}.{property.Name}" property.PropertyType
+                if FSharpType.IsUnion current then
+                    yield current, Union(describeUnionType [] path current)
+                    for case in FSharpType.GetUnionCases current do
+                        for field in case.GetFields() do yield! collect $"{path}.{case.Name}.{field.Name}" field.PropertyType
+                else
+                    yield current, Record(describeType [] path current)
+                    for property in visibleProperties path current do
+                        yield! collect $"{path}.{property.Name}" property.PropertyType
             elif current.IsArray then yield! collect path (current.GetElementType() |> nonNull)
             elif FSharpType.IsTuple current then
                 for item in FSharpType.GetTupleElements current do yield! collect path item
@@ -109,18 +131,29 @@ module HostTypes =
         scriptType, descriptors
 
     let private projection (clrType: System.Type) =
-        let root = describeType [] clrType.FullName clrType
+        let root = if FSharpType.IsUnion clrType then Union(describeUnionType [] clrType.FullName clrType) else Record(describeType [] clrType.FullName clrType)
         let _, descriptors = valueProjection clrType.FullName clrType
         root, descriptors |> List.map snd
 
     /// Derive a descriptor without constructing a value or invoking any property getter.
-    let describe<'T> () = projection typeof<'T> |> fst
+    let describe<'T> () =
+        match projection typeof<'T> |> fst with
+        | Record descriptor -> descriptor
+        | Union _ -> fail typeof<'T>.FullName "Use HostTypes.describeUnion for union descriptors."
 
-    let private ensureRegistered (registration: ExtensionRegistration) (descriptor: HostTypeDescriptor) path =
+    /// Derive a script-constructible F# union descriptor, including tuple payloads.
+    let describeUnion<'T> () =
+        match projection typeof<'T> |> fst with
+        | Union descriptor -> descriptor
+        | Record _ -> fail typeof<'T>.FullName "Expected an attributed F# union."
+
+    let private ensureRegistered (registration: ExtensionRegistration) (descriptor: Projection) path =
         HostInterop.typeDefinitions registration [] |> ignore
-        match registration.Types |> List.tryFind (fun registered -> registered.Name = descriptor.Name) with
-        | Some registered when registered = descriptor -> ()
-        | _ -> fail path $"Registration must contain the matching descriptor '{descriptor.Name}'."
+        let found =
+            match descriptor with
+            | Record record -> registration.Types |> List.exists ((=) record)
+            | Union union -> registration.Unions |> List.exists ((=) union)
+        if not found then fail path $"Registration must contain the matching descriptor '{descriptor.Name}'."
 
     let private readProperty path (property: PropertyInfo) (value: obj) =
         try property.GetValue(value)
@@ -142,7 +175,7 @@ module HostTypes =
             elif clrType = typeof<float> then VFloat(unbox<float> value)
             elif clrType = typeof<bool> then VBool(unbox<bool> value)
             elif clrType = typeof<string> then VString(unbox<string> value)
-            elif clrType.IsArray || isGeneric typedefof<list<_>> clrType then
+            elif clrType.IsArray || isGeneric typedefof<list<_>> clrType || isGeneric typedefof<Set<_>> clrType then
                 let elementType = if clrType.IsArray then clrType.GetElementType() |> nonNull else clrType.GetGenericArguments()[0]
                 (value :?> IEnumerable) |> Seq.cast<objnull>
                 |> Seq.mapi (fun i item -> snapshot registration $"{path}[{i}]" elementType item)
@@ -162,10 +195,17 @@ module HostTypes =
                     let keyText = unbox<string> keyValue
                     MKString keyText, snapshot registration $"{path}[{keyText}]" valueType (readProperty path data item))
                 |> Map.ofSeq |> VMap
+            elif FSharpType.IsUnion clrType && clrType.IsDefined(typeof<FScriptHostTypeAttribute>, false) then
+                let descriptor = describeUnionType [] path clrType
+                ensureRegistered registration (Union descriptor) path
+                let case, fields = FSharpValue.GetUnionFields(value, clrType)
+                let values = Array.zip (case.GetFields()) fields |> Array.map (fun (field, item) -> snapshot registration $"{path}.{case.Name}" field.PropertyType item)
+                let payload = match values with [||] -> None | [|one|] -> Some one | many -> Some(VTuple(Array.toList many))
+                VUnionCase(descriptor.Name, case.Name, payload)
             else wrapObject registration path clrType value
     and private wrapObject registration path clrType (value: objnull) =
         let descriptor = describeType [] path clrType
-        ensureRegistered registration descriptor path
+        ensureRegistered registration (Record descriptor) path
         if isNull value then fail path "Cannot wrap a null host object."
         let payload = nonNull value
         let fields =
@@ -183,9 +223,11 @@ module HostTypes =
 
     /// Convert visible properties to a snapshot; opaque projections also retain the CLR payload.
     let wrap<'T> registration (value: 'T) =
-        let _, descriptors = projection typeof<'T>
+        let root, descriptors = projection typeof<'T>
         for descriptor in descriptors do ensureRegistered registration descriptor typeof<'T>.FullName
-        wrapObject registration typeof<'T>.FullName typeof<'T> (box value)
+        match root with
+        | Record _ -> wrapObject registration typeof<'T>.FullName typeof<'T> (box value)
+        | Union _ -> snapshot registration typeof<'T>.FullName typeof<'T> (box value)
 
     let rec private restore path (clrType: System.Type) value : objnull =
         let mismatch () = fail path $"Script value cannot be converted to CLR type '{clrType.FullName}'."
@@ -220,6 +262,15 @@ module HostTypes =
                 let values = items |> List.mapi (fun i item -> restore $"{path}[{i}]" (clrType.GetGenericArguments()[0]) item)
                 List.foldBack (fun item tail -> FSharpValue.MakeUnion(cons, [|item; tail|])) values (FSharpValue.MakeUnion(empty, [||]))
             | _ -> mismatch ()
+        elif isGeneric typedefof<Set<_>> clrType then
+            match value with
+            | VList items ->
+                let elementType = clrType.GetGenericArguments()[0]
+                let values = Array.CreateInstance(elementType, items.Length)
+                items |> List.iteri (fun index item -> values.SetValue(restore $"{path}[{index}]" elementType item, index))
+                let constructor = clrType.GetConstructor([|typedefof<seq<_>>.MakeGenericType(elementType)|]) |> nonNull
+                constructor.Invoke([|values :> obj|])
+            | _ -> mismatch ()
         elif clrType.IsArray then
             match value with
             | VList items ->
@@ -249,6 +300,23 @@ module HostTypes =
                 let constructor = clrType.GetConstructor([|sequenceType|]) |> nonNull
                 constructor.Invoke([|pairs :> obj|])
             | _ -> mismatch ()
+        elif FSharpType.IsUnion clrType && clrType.IsDefined(typeof<FScriptHostTypeAttribute>, false) then
+            let descriptor = describeUnionType [] path clrType
+            match value with
+            | VUnionCase(name, caseName, payload) when name = descriptor.Name ->
+                match FSharpType.GetUnionCases clrType |> Array.tryFind (fun case -> case.Name = caseName) with
+                | None -> mismatch ()
+                | Some case ->
+                    let fields = case.GetFields()
+                    let arguments =
+                        match fields, payload with
+                        | [||], None -> [||]
+                        | [|field|], Some item -> [|restore path field.PropertyType item|]
+                        | many, Some(VTuple items) when many.Length = items.Length ->
+                            Array.map2 (fun (field: PropertyInfo) item -> restore path field.PropertyType item) many (List.toArray items)
+                        | _ -> fail path "Union payload does not match its CLR case."
+                    FSharpValue.MakeUnion(case, arguments)
+            | _ -> mismatch ()
         else
             let descriptor = describeType [] path clrType
             if descriptor.HostManaged then
@@ -268,15 +336,19 @@ module HostTypes =
                     FSharpValue.MakeRecord(clrType, arguments)
                 | _ -> mismatch ()
 
-    /// Retrieve opaque payloads or construct CLR records from script record values.
+    /// Retrieve opaque payloads or reconstruct CLR records/unions from script values.
     let unwrap<'T> value : 'T =
         let descriptor, descriptors = projection typeof<'T>
-        let typeDefs =
-            descriptors |> List.map (fun d ->
-                d.Name, if d.HostManaged then THostManaged(d.Name, d.Fields) else TRecord d.Fields) |> Map.ofList
-        if descriptor.HostManaged then
-            let host = HostInterop.unwrap descriptor.Name value
-            if host.Descriptor <> descriptor then fail typeof<'T>.FullName "Host descriptor does not match the CLR projection."
+        let registration =
+            { HostInterop.empty with
+                Types = descriptors |> List.choose (function Record d -> Some d | _ -> None)
+                Unions = descriptors |> List.choose (function Union d -> Some d | _ -> None) }
+        let typeDefs = HostInterop.typeDefinitions registration []
+        match descriptor with
+        | Record d when d.HostManaged ->
+            let host = HostInterop.unwrap d.Name value
+            if host.Descriptor <> d then fail typeof<'T>.FullName "Host descriptor does not match the CLR projection."
+        | _ -> ()
         HostInterop.validate typeDefs (TNamed descriptor.Name) value
         restore typeof<'T>.FullName typeof<'T> value |> unbox<'T>
 
@@ -284,7 +356,7 @@ module HostTypes =
     // Function adapters use this same mapping and conversion path as type projections.
     type internal ValueCodec =
         { ScriptType: FScript.Language.Type
-          Projections: (System.Type * HostTypeDescriptor) list
+          Projections: (System.Type * Projection) list
           Encode: objnull -> Value
           Decode: Value -> objnull }
 

@@ -61,6 +61,8 @@ module LspRuntimeExterns =
 
     let descriptors sourcePath = (forSourcePath sourcePath).Types
 
+    let unions sourcePath = (forSourcePath sourcePath).Unions
+
     let info () =
         let result = JsonObject()
         configurationPath |> Option.iter (fun path -> result["configurationPath"] <- JsonValue.Create(path))

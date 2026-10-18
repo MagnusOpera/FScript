@@ -157,7 +157,7 @@ Recommended steps:
 
 ## Host-managed type registration
 
-Providers may additionally return `ExtensionRegistration` (`Types` plus existing `Functions`), with the same zero-argument or `HostContext` invocation conventions. Host type metadata and opaque values use the existing extern execution bridge. Legacy providers remain supported. See [host-managed types](./host-managed-types.md) for creation restrictions, structural readers, payload transport, and boundary validation.
+Providers may additionally return `ExtensionRegistration` (`Types`, `Unions`, and `Functions`), with the same zero-argument or `HostContext` invocation conventions. Host type metadata and opaque values use the existing extern execution bridge. Legacy providers remain supported. See [host-managed types](./host-managed-types.md) for creation restrictions, structural readers, payload transport, and boundary validation.
 
 ## Shared environment discovery
 

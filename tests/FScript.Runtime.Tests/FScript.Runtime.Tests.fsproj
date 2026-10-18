@@ -21,6 +21,7 @@
     <Compile Include="HostManagedTests.fs" />
     <Compile Include="HostTypesTests.fs" />
     <Compile Include="HostFunctionsTests.fs" />
+    <Compile Include="HostUnionTests.fs" />
     <Compile Include="EnvironmentConfigurationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

@@ -150,6 +150,7 @@ module EnvironmentLoader =
                     let registrations = allSources |> List.map snd
                     let registration =
                         { Types = registrations |> List.collect (fun r -> r.Types)
+                          Unions = registrations |> List.collect (fun r -> r.Unions)
                           Functions = registrations |> List.collect (fun r -> r.Functions) }
                     try
                         HostInterop.typeDefinitions registration [] |> ignore

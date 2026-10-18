@@ -613,8 +613,12 @@ module Eval =
                 VRecord updated
             | _ -> raise (EvalException { Message = "Structural record update requires a record value"; Span = span })
         | EFieldGet (target, fieldName, span) ->
-            match target with
-            | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
+            let rec qualifiedTarget = function
+                | EVar (name, _) when not (env.ContainsKey name) -> Some name
+                | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
+                | _ -> None
+            match qualifiedTarget target with
+            | Some moduleName ->
                 let qualifiedName = $"{moduleName}.{fieldName}"
                 match env.TryFind qualifiedName with
                 | Some value -> value
@@ -978,6 +982,12 @@ module Eval =
                         | Some _ -> VUnionCtor(typeName, caseName)
                     [ caseName, value
                       $"{typeName}.{caseName}", value ]))
+
+        let constructorValues =
+            (registration.Unions |> List.collect (fun descriptor ->
+                descriptor.Cases |> Map.toList |> List.collect (fun (caseName, payload) ->
+                    let value = if payload.IsNone then VUnionCase(descriptor.Name, caseName, None) else VUnionCtor(descriptor.Name, caseName)
+                    [caseName, value; $"{descriptor.Name}.{caseName}", value]))) @ constructorValues
 
         let externContext = createExternContext runtime typeDefs unknownSpan
 

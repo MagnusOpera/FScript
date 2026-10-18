@@ -29,7 +29,7 @@ Give parameters concrete types when F# cannot infer them. `int64` matches FScrip
 
 ## Supported types and registration
 
-Arguments and results use the same [CLR mappings as host-provided types](./host-managed-types.md#supported-clr-field-mappings): scalars, unit, lists/one-dimensional arrays, options, tuples/struct tuples, string-keyed F# maps, and attributed host types. No separate conversion policy is introduced.
+Arguments and results use the same [CLR mappings as host-provided types](./host-managed-types.md#supported-clr-field-mappings): scalars, unit, lists/sets/one-dimensional arrays, options, tuples/struct tuples, string-keyed F# maps, and attributed host types. No separate conversion policy is introduced.
 
 Pass a registration containing every host descriptor referenced by the handler, including types inside empty containers or `None` results. Unsupported signatures, missing/mismatched descriptors, conflicting CLR projections, null handlers, and invalid names fail at function creation, before script execution. Callbacks, .NET delegates, tasks/async values, arbitrary objects, and unannotated records are unsupported. Returning a function is interpreted as more curried parameters, rather than a separately marshaled function value.
 
@@ -120,6 +120,7 @@ Use `ExtensionRegistration` when an environment also exposes [host-managed types
 ```fsharp
 type ExtensionRegistration =
     { Types: HostTypeDescriptor list
+      Unions: HostUnionDescriptor list
       Functions: ExternalFunction list }
 ```
 
@@ -128,6 +129,7 @@ type ExtensionRegistration =
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `Types` | `HostTypeDescriptor list` | Named type definitions available for script annotations, field checking, and host-value validation. |
+| `Unions` | `HostUnionDescriptor list` | Named union types, cases, and payload types used by script construction, matching, and boundary validation. |
 | `Functions` | `ExternalFunction list` | Callable host functions and their authoritative schemes, used by execution and editor tooling. |
 
 The entries are the [type descriptors](./host-managed-types.md#the-type-descriptor-behind-the-helper) and function descriptors described above. `HostInterop.empty` sets both lists to empty:

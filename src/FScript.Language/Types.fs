@@ -30,6 +30,11 @@ type HostTypeDescriptor =
       Fields: Map<string, Type>
       HostManaged: bool }
 
+/// Script-constructible union supplied by a host; payloads use ordinary script types.
+type HostUnionDescriptor =
+    { Name: string
+      Cases: Map<string, Type option> }
+
 [<StructuralEquality; StructuralComparison>]
 type Scheme = Forall of int list * Type
 

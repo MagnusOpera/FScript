@@ -63,4 +63,5 @@ and Env = Map<string, Value>
 
 type ExtensionRegistration =
     { Types: HostTypeDescriptor list
+      Unions: HostUnionDescriptor list
       Functions: ExternalFunction list }

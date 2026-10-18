@@ -422,3 +422,5 @@ Set `ScriptConstructible = true` on fully visible F# record types to accept ordi
 ## Typed host function declaration
 
 Use `HostFunctions.create registration name handler` for concrete synchronous F# handlers. It returns an `ExternalFunction` accepted by existing extern-list and registration-aware entry points, deriving the monomorphic scheme, arity, and conversions from the handler signature. Register all referenced host types explicitly; use the manual record API for script callbacks, polymorphic schemes, or runtime call-context access. See [host function adapters](./host-functions.md).
+
+Registrations also expose `Unions: HostUnionDescriptor list`; inference, evaluation, and interactive sessions retain these named union definitions and constructors across submissions. Qualified constructors such as `Protocol.Mode.Enabled 42` resolve through the same environment as external functions.

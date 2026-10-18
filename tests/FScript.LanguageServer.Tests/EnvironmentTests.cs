@@ -77,6 +77,21 @@ public sealed class EnvironmentTests
         finally { LspClient.Stop(client); }
     }
 
+    [Test]
+    public void Foreign_union_constructors_annotations_and_hover_use_provider_metadata()
+    {
+        var client = Start();
+        try
+        {
+            var diagnostics = Open(client, "let mode (x: Protocol.Mode) = Ext.mode x\nmode (Protocol.Mode.Enabled 42)\n");
+            Assert.That(diagnostics["params"]?["diagnostics"]?.AsArray(), Is.Empty);
+            Assert.That(Request(client, "textDocument/completion", 0, 0)?.ToJsonString(), Does.Contain("Protocol.Mode.Enabled"));
+            Assert.That(Request(client, "textDocument/hover", 0, 17)?.ToJsonString(), Does.Contain("Enabled"));
+            Assert.That(Open(client, "Ext.mode (Enabled true)")["params"]?["diagnostics"]?.AsArray(), Is.Not.Empty);
+        }
+        finally { LspClient.Stop(client); }
+    }
+
     [TestCase("let node = Ext.node true")]
     [TestCase("let bad (node: Node) = node.Hidden")]
     [TestCase("let bad (node: Node) = { node with Value = 4 }")]

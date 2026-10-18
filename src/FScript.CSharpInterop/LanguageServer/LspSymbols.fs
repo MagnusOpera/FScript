@@ -3116,7 +3116,16 @@ let queryValues : string -> string -> string list option
                 |> List.map (fun d ->
                     { Name = d.Name; Kind = 5; TypeText = Some d.Name; TypeTargetName = Some d.Name
                       Span = Span.mk (Span.pos 1 1) (Span.pos 1 1) })
-            let symbols = doc.Symbols @ hostSymbols
+            let unionSymbols =
+                LspRuntimeExterns.unions doc.SourcePath |> List.collect (fun descriptor ->
+                    let location = Span.mk (Span.pos 1 1) (Span.pos 1 1)
+                    let typeSymbol = { Name = descriptor.Name; Kind = 5; TypeText = Some descriptor.Name; TypeTargetName = Some descriptor.Name; Span = location }
+                    let cases = descriptor.Cases |> Map.toList |> List.collect (fun (name, payload) ->
+                        let text = match payload with None -> descriptor.Name | Some ty -> Types.typeToString ty + " -> " + descriptor.Name
+                        [name; descriptor.Name + "." + name] |> List.map (fun name ->
+                            { Name = name; Kind = 22; TypeText = Some text; TypeTargetName = Some descriptor.Name; Span = location }))
+                    typeSymbol :: cases)
+            let symbols = doc.Symbols @ hostSymbols @ unionSymbols
             let keywords =
                 [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
                   "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some" ]

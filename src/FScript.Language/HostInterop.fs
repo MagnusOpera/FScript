@@ -5,7 +5,7 @@ module HostInterop =
     let private span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
     let private fail message = raise (EvalException { Message = message; Span = span })
 
-    let empty : ExtensionRegistration = { Types = []; Functions = [] }
+    let empty : ExtensionRegistration = { Types = []; Unions = []; Functions = [] }
     let ofExterns functions = { empty with Functions = functions }
 
     let typeDefinitions (registration: ExtensionRegistration) (scriptNames: string list) =
@@ -19,6 +19,14 @@ module HostInterop =
             definitions <- definitions.Add(descriptor.Name,
                 if descriptor.HostManaged then THostManaged(descriptor.Name, descriptor.Fields)
                 else TRecord descriptor.Fields)
+        for descriptor in registration.Unions do
+            if System.String.IsNullOrWhiteSpace descriptor.Name || descriptor.Cases.IsEmpty then
+                fail "Host unions require a name and at least one case"
+            if List.contains descriptor.Name reserved || Map.containsKey descriptor.Name definitions then
+                fail $"Host type name conflict: '{descriptor.Name}'"
+            if descriptor.Cases |> Map.exists (fun name _ -> System.String.IsNullOrWhiteSpace name) then
+                fail $"Host union '{descriptor.Name}' has an empty case name"
+            definitions <- definitions.Add(descriptor.Name, TUnion(descriptor.Name, descriptor.Cases))
         definitions
 
     let rec matches (definitions: Map<string, Type>) (expected: Type) (value: Value) =

@@ -321,6 +321,14 @@ type CliTests() =
         Assert.That(normalized, Is.EqualTo("WHAT IS YOUR NAME?\nHELLO Ada\n()"))
 
     [<Test>]
+    member _.``Provider unions support qualified construction and matching in CLI`` () =
+        let repoRoot = findRepoRoot ()
+        let source = "match Ext.mode (Protocol.Mode.Enabled 42) with | Enabled n -> n | Disabled -> 0"
+        let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
+        Assert.That(code, Is.EqualTo(0), stderr)
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
     member _.``Host-managed extension works in stdin mode`` () =
         let repoRoot = findRepoRoot ()
         let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath ()] (Some "let retain x =\n    let v = x.Value\n    x\nExt.acceptNode (retain (Ext.node 42))")
