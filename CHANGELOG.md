@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.82.0]
+
+
 - Move extension authoring to the independent FScript.Extensibility SDK; existing providers must rebuild against its stable 1.x API.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.7...0.82.0
 
 ## [0.81.7]
 
