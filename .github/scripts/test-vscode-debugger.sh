@@ -12,7 +12,7 @@ else
   vscode_executable=$(command -v code)
 fi
 fixture=$(mktemp -d)
-trap 'rm -rf "$fixture"' EXIT
+trap 'if [[ ! -f "$fixture/result" ]]; then mkdir -p "$repo/.out/vscode-routing-failure"; cp -R "$fixture/user-data/logs" "$repo/.out/vscode-routing-failure/" 2>/dev/null || true; fi; rm -rf "$fixture"' EXIT
 mkdir -p "$fixture/workspace/.vscode" "$fixture/extensions"
 for dependency in "$HOME"/.vscode/extensions/ms-dotnettools.vscode-dotnet-runtime-*; do
   if [[ -d "$dependency" ]]; then ln -s "$dependency" "$fixture/extensions/$(basename "$dependency")"; fi
@@ -26,7 +26,8 @@ SCRIPT
 python3 - "$fixture/workspace/.vscode/settings.json" "$repo/src/FScript/bin/Release/net10.0/fscript.dll" <<'PYSETTINGS'
 import json,pathlib,sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps({
-    'fscript.lsp.enabled': False,
+    'fscript.lsp.enabled': True,
+    'fscript.server.path': str(pathlib.Path(sys.argv[2]).parents[5] / 'src/FScript.LanguageServer/bin/Release/net10.0/FScript.LanguageServer.dll'),
     'fscript.cli.path': sys.argv[2],
     'terminal.integrated.enablePersistentSessions': False
 }))

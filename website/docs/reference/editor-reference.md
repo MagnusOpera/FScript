@@ -41,7 +41,7 @@ All commands appear in the Command Palette under **FScript**.
 | Debug Current Script | `fscript.debugScript` | Debug the active saved script using the same launch provider as F5. |
 | Select Configuration | `fscript.selectConfiguration` | Select automatic discovery, a manifest, or no configuration for a workspace folder. |
 
-The configuration status item shows the effective selection and its source or failure. Server health/output access is separate. A saved manifest or provider DLL change restarts only the affected folder server and resynchronizes open buffers. A custom server path must point to a compatible language-server assembly.
+The configuration status item shows the effective selection and its source or failure. Server health/output access is separate. A saved manifest or provider DLL change restarts only the affected environment server and resynchronizes open buffers. A custom server path must point to a compatible language-server assembly.
 
 ## Run a script with its selected environment
 

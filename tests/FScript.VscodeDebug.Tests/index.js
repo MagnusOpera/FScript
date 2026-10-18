@@ -14,6 +14,60 @@ exports.run = async function run() {
   const extension = vscode.extensions.getExtension('MagnusOpera.fscript');
   assert.ok(extension,'Development extension must be installed');
   await extension.activate();
+  // Reproduce an umbrella workspace with two sibling manifests in a real language client.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const repo = path.resolve(__dirname, '../..');
+  const provider = path.join(repo, 'tests/FScript.Cli.Tests.Fixtures.Valid/bin/Release/net10.0/FScript.Cli.Tests.Fixtures.Valid.dll');
+  assert.ok(fs.existsSync(provider), 'Build the real provider fixture before the smoke test');
+  const ffiDirectory = path.join(folder.uri.fsPath, 'numerics/examples');
+  const plainDirectory = path.join(folder.uri.fsPath, 'other/examples');
+  fs.mkdirSync(ffiDirectory, {recursive:true});
+  fs.mkdirSync(plainDirectory, {recursive:true});
+  const manifest = path.join(ffiDirectory, 'fscript.toml');
+  const manifestText = `[runtime]\nextern-assemblies = ['${provider.replaceAll('\\','/')}']\n`;
+  fs.writeFileSync(path.join(folder.uri.fsPath, 'provider-registration.requested'), '');
+  fs.writeFileSync(manifest, manifestText);
+  fs.writeFileSync(path.join(plainDirectory, 'fscript.toml'), '[runtime]\n');
+  const validSource = 'let node = Ext.node 3\nlet value = node.Value\nvalue\n';
+  const typedUri = vscode.Uri.file(path.join(ffiDirectory, 'main.fss'));
+  const plainUri = vscode.Uri.file(path.join(plainDirectory, 'main.fss'));
+  fs.writeFileSync(typedUri.fsPath, validSource);
+  fs.writeFileSync(plainUri.fsPath, 'Ext.node 3\n');
+  const typedDocument = await vscode.workspace.openTextDocument(typedUri);
+  await vscode.window.showTextDocument(typedDocument,{preview:false});
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(plainUri),{preview:false});
+  async function until(check, label) {
+    const deadline = Date.now()+30000;
+    while(Date.now()<deadline) {
+      if(await check()) return;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    throw new Error(`Timed out: ${label}; state: ${JSON.stringify({language:typedDocument.languageId,closed:typedDocument.isClosed,uri:typedUri.toString(),folder:folder.uri.toString(),candidates:(await vscode.workspace.findFiles('**/fscript.toml')).map(u=>u.toString()),enabled:vscode.workspace.getConfiguration('fscript',folder.uri).get('lsp.enabled'),server:vscode.workspace.getConfiguration('fscript',folder.uri).get('server.path'),diagnostics:vscode.languages.getDiagnostics().map(([u,d])=>[u.toString(),d])})}`);
+  }
+  const hoverHasInt = async () => {
+    const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', typedUri, new vscode.Position(1,19));
+    return (hovers || []).some(hover => hover.contents.some(content => (typeof content === 'string' ? content : content.value || '').includes('int')));
+  };
+  await until(hoverHasInt, 'nearby FFI manifest supplies field hover while a sibling script is active');
+  await until(()=>vscode.languages.getDiagnostics(plainUri).some(d=>d.message.includes('Unbound variable')), 'sibling environment remains independent');
+  assert.equal(vscode.languages.getDiagnostics(typedUri).filter(d=>d.severity===vscode.DiagnosticSeverity.Error).length,0);
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(typedUri, new vscode.Range(typedDocument.positionAt(0),typedDocument.positionAt(typedDocument.getText().length)), 'let node = Ext.node "wrong"\n');
+  await vscode.workspace.applyEdit(edit);
+  await until(()=>vscode.languages.getDiagnostics(typedUri).some(d=>!d.message.includes('Unbound variable')), 'authoritative FFI error in unsaved buffer');
+  const marker=path.join(folder.uri.fsPath,'provider-registration.executed');
+  fs.rmSync(marker,{force:true});
+  fs.writeFileSync(manifest,manifestText+'# saved manifest restart\n');
+  await until(()=>fs.existsSync(marker),'automatic environment restarted after manifest save');
+  await until(()=>vscode.languages.getDiagnostics(typedUri).some(d=>!d.message.includes('Unbound variable')), 'unsaved buffer survives process restart');
+  assert.ok(typedDocument.isDirty);
+  const restore=new vscode.WorkspaceEdit();
+  restore.replace(typedUri,new vscode.Range(typedDocument.positionAt(0),typedDocument.positionAt(typedDocument.getText().length)),validSource);
+  await vscode.workspace.applyEdit(restore);
+  await until(async()=>await hoverHasInt()&&vscode.languages.getDiagnostics(typedUri).length===0,'updated unsaved buffer reanalyzed');
+  await vscode.window.showTextDocument(document);
+  console.log('Real VS Code automatic sibling environments, hover, diagnostics and unsaved-buffer restart passed.');
   const breakpoint = new vscode.SourceBreakpoint(new vscode.Location(program,new vscode.Position(2,4)));
   vscode.debug.addBreakpoints([breakpoint]);
   let resolveStop, rejectStop, resolveEnd;

@@ -6,7 +6,7 @@ const { test } = require('node:test');
 
 const extensionPath = path.resolve(__dirname, '../../vscode-fscript');
 
-function loadExtension({ initialize = async () => {}, enabled = true, folders, candidates = [], trusted = true, settings = {}, development = false, debugCli = false, cliPaths = {}, buildDotnet = async () => {} } = {}) {
+function loadExtension({ initialize = async () => {}, enabled = true, folders, candidates = [], trusted = true, settings = {}, development = false, debugCli = false, cliPaths = {}, documents = [], environmentInfo, buildDotnet = async () => {} } = {}) {
   const disposable = () => ({ dispose() {} });
   const errors = [];
   const clients = [];
@@ -15,6 +15,8 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   let configurationChanged;
   let grantTrust;
   let changeFolders;
+  let documentOpened;
+  let activeEditorChanged;
   const watchers = [];
   const commands = new Map();
   const information = [];
@@ -78,7 +80,8 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
       },
       registerTextDocumentContentProvider: disposable,
       onDidChangeTextDocument: disposable,
-      onDidOpenTextDocument: disposable,
+      textDocuments: documents,
+      onDidOpenTextDocument(callback) { documentOpened = callback; return disposable(); },
       onDidChangeConfiguration(callback) {
         configurationChanged = callback;
         return disposable();
@@ -94,7 +97,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
     vscode.workspace.findFiles = async (include, exclude) => { searches.push({ include, exclude }); return candidates.map(uri); };
     vscode.workspace.onDidGrantWorkspaceTrust = callback => { grantTrust = callback; return disposable(); };
     vscode.workspace.onDidChangeWorkspaceFolders = callback => { changeFolders = callback; return disposable(); };
-    vscode.window.onDidChangeActiveTextEditor = disposable;
+    vscode.window.onDidChangeActiveTextEditor = callback => { activeEditorChanged = callback; return disposable(); };
   }
   class LanguageClient {
     constructor(id, name, serverOptions, clientOptions) {
@@ -108,7 +111,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
       this.options.outputChannel.info('Starting language server');
       await initialize();
     }
-    async sendRequest() { return { externAssemblies: ['/extensions/provider.dll'] }; }
+    async sendRequest() { return environmentInfo ? environmentInfo(this.options.initializationOptions) : { externAssemblies: ['/extensions/provider.dll'] }; }
     async stop() { this.stopped = true; }
   }
   const sandbox = {
@@ -148,6 +151,15 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
     pick: label => { choice = label; },
     grantTrust: () => { vscode.workspace.isTrusted = true; grantTrust(); },
     changeFolders: async () => changeFolders({}),
+    open: async file => {
+      const document = { languageId: 'fscript', uri: uri(file), isDirty: true, getText: () => 'let unsaved = 42', async save() { this.isDirty = false; return true; } };
+      documents.push(document);
+      vscode.window.activeTextEditor = { document };
+      documentOpened(document);
+      activeEditorChanged?.({ document });
+      await pause();
+      return document;
+    },
     restart: () => configurationChanged({ affectsConfiguration: () => true })
   };
 }
@@ -295,6 +307,7 @@ test('manifest creation and deletion recompute automatic selection', async () =>
   const h = loadExtension({ folders: ['/one'], candidates });
   await h.extension.activate(h.context);
   const discovery = h.watchers.find(w => w.pattern === '**/fscript.toml');
+  await h.open('/one/nested/main.fss');
   candidates.push('/one/nested/fscript.toml');
   discovery.fire('Create', candidates[0]);
   await pause();
@@ -459,4 +472,96 @@ test('Debug Current Script refuses untrusted workspaces and unsaved documents', 
     assert.match(harness.errors.at(-1), trusted ? /save the script/i : /trust this workspace/i);
     await harness.extension.deactivate();
   }
+});
+
+
+test('umbrella workspace automatically isolates nearby Numerics and Graphics environments', async () => {
+  const paths=['/umbrella/product/samples/ffi/fscript.toml','/umbrella/numerics/examples/fscript.toml'];
+  const h=loadExtension({folders:['/umbrella'],candidates:paths});
+  await h.extension.activate(h.context);
+  assert.equal(h.clients.length,2,'unopened nested manifests must not execute providers');
+  const numerical=await h.open('/umbrella/numerics/examples/kmeans.fss');
+  const graphics=await h.open('/umbrella/product/samples/ffi/main.fss');
+  const plain=await h.open('/umbrella/plain.fss');
+  const owner=document=>h.clients.filter(c=>!c.stopped).filter(c=>{
+    let opened=false;c.options.middleware.didOpen(document,()=>{opened=true;});return opened;
+  });
+  assert.equal(owner(numerical).length,1);
+  assert.equal(owner(numerical)[0].options.initializationOptions.configurationPath,paths[1]);
+  assert.equal(owner(graphics).length,1);
+  assert.equal(owner(graphics)[0].options.initializationOptions.configurationPath,paths[0]);
+  assert.equal(owner(plain).length,1);
+  assert.equal(owner(plain)[0].options.initializationOptions.configurationPath,undefined);
+  for(const c of h.clients.filter(c=>!c.stopped)) {
+    const result=c.options.middleware.provideHover(numerical,{},()=> 'numerical-hover');
+    assert.equal(result,c===owner(numerical)[0]?'numerical-hover':null);
+  }
+  const before=h.clients.length;
+  await h.open('/umbrella/numerics/examples/other.fss');
+  assert.equal(h.clients.length,before,'documents sharing a manifest reuse their process');
+  assert.equal(h.errors.length,0);
+  await h.extension.deactivate();
+  assert.ok(h.clients.every(c=>c.stopped));
+});
+
+test('nested automatic overrides persist for simultaneously open unsaved documents and explicit none', async () => {
+  const candidates=['/work/fscript.toml','/work/nested/fscript.toml'];
+  const h=loadExtension({folders:['/work'],candidates});
+  await h.extension.activate(h.context);
+  await h.open('/work/nested/main.fss');
+  const child=h.clients.find(c=>c.options.initializationOptions.configurationPath===candidates[1]);
+  assert.ok(child);
+  const parent=h.clients[0];
+  h.pick('No configuration');await h.commands.get('fscript.selectConfiguration')();await pause();
+  assert.ok(parent.stopped&&child.stopped);
+  assert.equal(h.clients.at(-1).options.initializationOptions.configurationPath,undefined);
+  h.pick('Automatic selection');await h.commands.get('fscript.selectConfiguration')();await pause();
+  assert.equal(h.clients.at(-1).options.initializationOptions.configurationPath,candidates[1]);
+  assert.ok(h.vscode.workspace.textDocuments[0].isDirty);
+  candidates.pop();h.watchers.find(w=>w.pattern==='**/fscript.toml').fire('Delete','/work/nested/fscript.toml');await pause();
+  assert.equal(h.clients.at(-1).options.initializationOptions.configurationPath,candidates[0]);
+  await h.extension.deactivate();
+});
+
+
+test('automatic launch and debugger resolve the manifest beside the actual script', async () => {
+  const h=loadExtension({folders:['/umbrella'],candidates:['/umbrella/graphics/fscript.toml','/umbrella/numerics/examples/fscript.toml'],debugCli:true});
+  await h.extension.activate(h.context);
+  await h.open('/umbrella/numerics/examples/kmeans.fss');
+  const result=await h.debugProviders[0].provider.resolveDebugConfigurationWithSubstitutedVariables(undefined,{type:'fscript',request:'launch',program:'/umbrella/numerics/examples/kmeans.fss'});
+  assert.equal(result.configurationPath,'/umbrella/numerics/examples/fscript.toml');
+  let launched;
+  h.vscode.TaskRevealKind={Always:1};h.vscode.TaskPanelKind={New:1};
+  h.vscode.ProcessExecution=class{constructor(command,args,options){Object.assign(this,{command,args,options});}};
+  h.vscode.Task=class{constructor(definition,scope,name,source,execution){this.execution=execution;}};
+  h.vscode.tasks={executeTask:async task=>{launched=task;}};
+  await h.commands.get('fscript.runScript')();
+  assert.deepEqual(Array.from(launched.execution.args),['--config','/umbrella/numerics/examples/fscript.toml','/umbrella/numerics/examples/kmeans.fss']);
+  await h.extension.deactivate();
+});
+
+test('DLL changes restart only their automatic environment without disturbing sibling documents', async () => {
+  const h=loadExtension({folders:['/umbrella'],candidates:['/umbrella/one/fscript.toml','/umbrella/two/fscript.toml'],
+    environmentInfo: options => ({externAssemblies:options.configurationPath ? ['/extensions/'+path.basename(path.dirname(options.configurationPath))+'.dll']:[]})});
+  await h.extension.activate(h.context);
+  await h.open('/umbrella/one/a.fss');await h.open('/umbrella/two/b.fss');
+  const first=h.clients.find(c=>c.options.initializationOptions.configurationPath==='/umbrella/one/fscript.toml');
+  const second=h.clients.find(c=>c.options.initializationOptions.configurationPath==='/umbrella/two/fscript.toml');
+  const firstDll=h.watchers.find(w=>w.pattern?.pattern==='one.dll');
+  firstDll.fire('Change','/extensions/one.dll');firstDll.fire('Change','/extensions/one.dll');await pause();
+  assert.ok(first.stopped);assert.equal(second.stopped,false);
+  assert.equal(h.clients.at(-1).options.initializationOptions.configurationPath,'/umbrella/one/fscript.toml');
+  await h.extension.deactivate();
+});
+
+test('folder removal during automatic child startup leaves no orphan process or watcher', async () => {
+  let count=0,release;
+  const waiting=new Promise(resolve=>{release=resolve;});
+  const h=loadExtension({folders:['/work'],candidates:['/work/nested/fscript.toml'],initialize:async()=>{if(++count===3)await waiting;}});
+  await h.extension.activate(h.context);
+  await h.open('/work/nested/main.fss');
+  h.vscode.workspace.workspaceFolders.splice(0,1);
+  const removing=h.changeFolders();release();await removing;
+  assert.ok(h.clients.slice(0,3).every(c=>c.stopped));
+  await h.extension.deactivate();assert.ok(h.clients.every(c=>c.stopped));
 });

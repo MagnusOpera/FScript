@@ -96,7 +96,7 @@ Place a `fscript.toml` in a workspace folder:
 extern-assemblies = ["./extensions/Geometry.dll"]
 ```
 
-One discovered manifest is selected automatically. With multiple candidates, use **FScript: Select Configuration**; **No configuration** is always available. Each workspace folder has an independent persisted choice. A nonempty folder setting `fscript.config` overrides that choice; clear the setting to use the picker. The configuration status item shows the effective selection.
+Automatic selection uses the `fscript.toml` beside the script, or the nearest containing ancestor manifest within its workspace folder. Sibling configurations do not conflict: Numerics examples and a graphics sample can be open together with independent environments. With no containing manifest, defaults apply. **FScript: Select Configuration** can explicitly select one manifest for the whole folder, or **No configuration**. Each workspace folder has an independent persisted choice. Different automatic environments run in separate processes; documents sharing a manifest share their process. A nonempty folder setting `fscript.config` overrides that choice; clear the setting to use the picker. The configuration status item shows the effective selection.
 
 Configured paths resolve from the manifest directory. With no explicit root, selected editor environments use the workspace folder, while the CLI keeps its normal script/current-directory default. Run the same environment with `fscript --config ./fscript.toml script.fss`. Editor REPL commands do not automatically adopt it.
 
@@ -104,7 +104,7 @@ Configured DLLs execute registration code and require workspace trust. Changes t
 
 ## Run a script with its selected environment
 
-**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript.cli.path` when configured, otherwise `fscript` from PATH. Use CLI 0.81.5 or later. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's effective configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript.cli.path` when configured, otherwise `fscript` from PATH. Use CLI 0.81.5 or later. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
 
 ### NuGet extension packages
 

@@ -66,11 +66,11 @@ Missing manifests/assemblies, invalid providers, and conflicting registrations c
 
 ## VS Code selection
 
-The extension discovers nested `fscript.toml` files inside each workspace folder. It respects ordinary workspace exclusions and skips common dependency/build directories. Discovery does not merge manifests or select a different environment for each source file.
+The extension discovers nested `fscript.toml` files inside each workspace folder. It respects ordinary workspace exclusions and skips common dependency/build directories. In automatic mode, each script uses its nearest containing manifest within that workspace folder. A manifest beside the script takes precedence over a parent manifest; manifests are never merged. Sibling sample configurations do not conflict.
 
-- With zero candidates, use the default language-server environment.
-- With exactly one candidate, select it automatically unless an explicit choice overrides discovery.
-- With multiple candidates, use **FScript: Select Configuration**; until selected, use defaults and show that selection is needed.
+- With no containing manifest, use the default language-server environment, even if unrelated candidates exist.
+- Automatic selection uses the nearest containing manifest for each script, unless an explicit choice overrides discovery.
+- Multiple sibling manifests automatically serve their own scripts; no manual switching is required.
 - **No configuration** explicitly keeps defaults even when candidates exist. **Automatic selection** restores discovery behavior.
 
 Choices persist independently for each workspace folder. A nonempty folder-resolved setting takes precedence over the saved choice:
@@ -83,7 +83,7 @@ Choices persist independently for each workspace folder. A nonempty folder-resol
 
 Relative setting paths resolve from the workspace folder. Clear the setting to use the picker again. A missing or invalid explicit selection reports an error instead of switching to another discovered file. The status item identifies the effective selection and its source, trust block, or failure.
 
-Each folder has one selected environment for all its `.fss` documents. Nested workspace folders own their own selections. Shared imported source is checked in the requesting document's environment. Standalone files and untitled documents retain the default editor environment without scanning filesystem ancestors.
+Explicit manifest selections and **No configuration** apply to all `.fss` documents in that folder. Automatic environments are resolved per script and isolated in separate server processes; documents sharing a manifest share their process. Nested workspace folders own their own selections. Shared imported source is checked in the requesting document's environment. Standalone files and untitled documents retain the default editor environment without scanning filesystem ancestors.
 
 When a selected manifest omits `root`, the editor uses its workspace folder as the stable provider root. This differs from the CLI's script/current-directory default; specify `root` explicitly when both should use the same root. Without a selected manifest, the editor retains its historical source-directory defaults.
 
@@ -91,7 +91,7 @@ When a selected manifest omits `root`, the editor uses its workspace folder as t
 
 External providers are executable .NET code. Workspace trust is required before configured providers load. Restricted Mode still permits discovery, parsing, and default static analysis. Trusting the workspace reinitializes its environments. Configuration and `root` do not sandbox provider code or native calls.
 
-Saved manifest edits, selection/settings changes, manifest creation/deletion, and configured or adjacent dependency DLL changes restart affected folder servers. Open buffers are resynchronized, so completion, hover, signatures, hints, and diagnostics use the new registration. A failed environment reports manifest diagnostics, uses default analysis, and never retains stale configured externs. Other folders remain independent.
+Saved manifest edits, selection/settings changes, manifest creation/deletion, and configured or adjacent dependency DLL changes restart affected environment servers. Selection or discovery changes recompute that folder’s routing. Open buffers are resynchronized, so completion, hover, signatures, hints, and diagnostics use the new registration. A failed environment reports manifest diagnostics, uses default analysis, and never retains stale configured externs. Other folders remain independent.
 
 Local DLLs use the existing .NET load context. NuGet packages from one manifest share an isolated managed load context, with the SDK and FSharp.Core contracts shared with the host. On Windows, stop the server by disabling `fscript.lsp.enabled` before rebuilding a locked provider, then re-enable it. Reinitialize manually if filesystem changes were not detected. VS Code REPL commands do not automatically forward the selected configuration; use the explicit CLI command when executing that environment.
 

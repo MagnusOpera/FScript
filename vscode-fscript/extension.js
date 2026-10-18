@@ -165,8 +165,10 @@ async function stopClient() {
   for (const entry of current) {
     entry.disposed = true;
     clearTimeout(entry.timer);
+    clearTimeout(entry.folderTimer);
     for (const watcher of entry.watchers || []) watcher.dispose();
     entry.sourceWatcher?.dispose();
+    await entry.routingQueue?.catch(() => {});
     await entry.queue?.catch(() => {});
     if (entry.client) await entry.client.stop();
   }
@@ -570,7 +572,7 @@ async function startFolderClient(context, entry) {
       return;
     }
 
-    const owns = document => folderKey(document.uri) === entry.key;
+    const owns = document => environmentKey(document.uri) === entry.key;
     const middleware = {
       didOpen: async (document, next) => { if (owns(document)) await next(document); },
       didChange: async (event, next) => { if (owns(event.document)) await next(event); },
@@ -603,6 +605,7 @@ async function startFolderClient(context, entry) {
       }
     };
 
+    outputChannel?.debug(`Starting environment ${entry.key}: ${entry.selection?.path || 'defaults'}`);
     const LanguageClient = languageClientModule.LanguageClient;
     entry.client = new LanguageClient(`fscriptLanguageServer${entry.key}`, 'FScript Language Server', serverOptions, clientOptions);
     await entry.client.start();
@@ -628,14 +631,87 @@ function folderKey(uri) {
   return uri ? (vscode.workspace.getWorkspaceFolder?.(uri)?.uri.toString() || '') : '';
 }
 
+function documentSelection(base, uri) {
+  const selected = selectConfiguration(getConfig(base.folder.uri).configurationPath,
+    extensionContext.workspaceState?.get(selectionKey(base.folder)), base.candidates || [], uri?.fsPath);
+  if (selected.path) selected.path = path.resolve(base.folder.uri.fsPath, selected.path);
+  return selected;
+}
+
+function environmentKey(uri) {
+  const key = folderKey(uri);
+  const base = clients.get(key);
+  if (!base?.folder || !uri?.fsPath) return key;
+  const selected = documentSelection(base, uri);
+  // Settings and saved explicit selections use the folder's existing process.
+  if (selected.source !== 'automatic' || selected.path === base.selection?.path) return key;
+  return `${key}::${selected.path}`;
+}
+
 function clientForUri(uri) {
-  return clients.get(folderKey(uri))?.client;
+  return clients.get(environmentKey(uri))?.client;
+}
+
+async function ensureDocumentEnvironment(base, uri) {
+  if (base.disposed || clients.get(base.key) !== base) return;
+  const key = environmentKey(uri);
+  if (clients.has(key)) return;
+  const entry = { key, folder: base.folder, base, selection: documentSelection(base, uri), watchers: [], disposed: false };
+  clients.set(key, entry);
+  await startFolderClient(extensionContext, entry);
+}
+
+function enqueueFolder(base, action) {
+  base.routingQueue = (base.routingQueue || Promise.resolve()).catch(() => {}).then(async () => {
+    if (!base.disposed && clients.get(base.key) === base) await action();
+  }).catch(error => { outputChannel?.error(String(error)); setStatusError(String(error)); });
+  return base.routingQueue;
+}
+
+function openDocumentEnvironment(document) {
+  if (document.languageId !== 'fscript' || document.isClosed) return;
+  const base = clients.get(folderKey(document.uri));
+  if (base?.folder) return enqueueFolder(base, () => document.isClosed ? undefined : ensureDocumentEnvironment(base, document.uri));
+}
+
+async function synchronizeOpenEnvironments(base) {
+  const documents = [...(vscode.workspace.textDocuments || [])];
+  const active = vscode.window.activeTextEditor?.document;
+  if (active && !documents.includes(active)) documents.push(active);
+  for (const document of documents) {
+    if (document.languageId === 'fscript' && folderKey(document.uri) === base.key) await ensureDocumentEnvironment(base, document.uri);
+  }
+}
+
+function scheduleFolderRestart(base) {
+  clearTimeout(base.folderTimer);
+  base.folderTimer = setTimeout(() => enqueueFolder(base, async () => {
+    // Stop every old process before changing routing. New clients resynchronize open/unsaved documents.
+    const related = [...clients.values()].filter(entry => entry === base || entry.base === base);
+    for (const entry of related) {
+      entry.disposed = true;
+      clearTimeout(entry.timer);
+      for (const watcher of entry.watchers || []) watcher.dispose();
+      entry.sourceWatcher?.dispose();
+      await entry.queue?.catch(() => {});
+      if (entry.client) await entry.client.stop();
+      entry.client = undefined;
+      entry.info = undefined;
+      if (entry !== base) clients.delete(entry.key);
+    }
+    if (clients.get(base.key) !== base) return;
+    base.disposed = false;
+    await refreshSelection(base);
+    if (base.disposed) return;
+    await startFolderClient(extensionContext, base);
+    await synchronizeOpenEnvironments(base);
+  }), 250);
 }
 
 function selectionKey(folder) { return `fscript.environment:${folder.uri.toString()}`; }
 
 async function discoverConfigurations(folder) {
-  const exclusions = ['**/.git/**', '**/.fscript/**', '**/node_modules/**', '**/bin/**', '**/obj/**'];
+  const exclusions = ['**/.git/**', '**/.out/**', '**/.fscript/**', '**/node_modules/**', '**/bin/**', '**/obj/**'];
   for (const section of ['files', 'search']) {
     const values = vscode.workspace.getConfiguration(section, folder.uri).get('exclude', {});
     for (const [pattern, enabled] of Object.entries(values)) if (enabled === true) exclusions.push(pattern);
@@ -644,24 +720,26 @@ async function discoverConfigurations(folder) {
   return found.filter(uri => folderKey(uri) === folder.uri.toString()).map(uri => uri.fsPath).sort();
 }
 
-async function refreshSelection(entry) {
-  if (!entry.folder) return;
+async function refreshSelection(entry, uri) {
+  if (!entry.folder || entry.base) return;
   entry.candidates = await discoverConfigurations(entry.folder);
   const configured = getConfig(entry.folder.uri).configurationPath;
-  const selected = selectConfiguration(configured, extensionContext.workspaceState?.get(selectionKey(entry.folder)), entry.candidates);
+  const selected = selectConfiguration(configured, extensionContext.workspaceState?.get(selectionKey(entry.folder)), entry.candidates, uri?.fsPath || path.join(entry.folder.uri.fsPath, '.fscript-environment.fss'));
   if (selected.path) selected.path = path.resolve(entry.folder.uri.fsPath, selected.path);
   entry.selection = selected;
 }
 
 function updateConfigurationStatus() {
   if (!configurationStatus) return;
-  const key = folderKey(vscode.window.activeTextEditor?.document.uri);
-  const entry = clients.get(key) || (clients.size === 2 ? [...clients.values()].find(e => e.folder) : undefined);
+  const uri = vscode.window.activeTextEditor?.document.uri;
+  const base = clients.get(folderKey(uri));
+  const roots = [...clients.values()].filter(entry => entry.folder && !entry.base);
+  const entry = clients.get(environmentKey(uri)) || base || (roots.length === 1 ? roots[0] : undefined);
   if (!entry?.folder) { configurationStatus.hide(); return; }
-  const selection = entry.selection || { source: 'default' };
+  const selection = base?.folder && uri?.fsPath ? documentSelection(base, uri) : entry.selection || { source: 'default' };
   const label = selection.path ? path.relative(entry.folder.uri.fsPath, selection.path) : 'No configuration';
   const state = entry.info?.failed ? 'error' : entry.info?.blockedByTrust ? 'trust required' : selection.source;
-  configurationStatus.text = `${entry.info?.failed ? '$(error)' : '$(settings-gear)'} ${label}${state === 'selection needed' ? ': select configuration' : state === 'trust required' ? ': trust required' : ''}`;
+  configurationStatus.text = `${entry.info?.failed ? '$(error)' : '$(settings-gear)'} ${label}${state === 'trust required' ? ': trust required' : ''}`;
   const packages = (entry.info?.packages || []).map(pkg => `${pkg.name} ${pkg.version}`).join(', ');
   configurationStatus.tooltip = `${entry.folder.name}: ${label} (${state})${packages ? `\nNuGet: ${packages}` : ''}${entry.info?.error ? `\n${entry.info.error}` : ''}`;
   configurationStatus.show();
@@ -710,6 +788,7 @@ async function startClient(context) {
     clients.set(key, entry);
     await refreshSelection(entry);
     await startFolderClient(context, entry);
+    if (folder) await enqueueFolder(entry, () => synchronizeOpenEnvironments(entry));
   }
 }
 
@@ -737,17 +816,20 @@ function registerEnvironmentUi(context) {
     ], { title: `FScript configuration — ${folder.name}` });
     if (!picked) return;
     await context.workspaceState.update(selectionKey(folder), picked.choice);
-    scheduleEnvironmentRestart(entry);
+    scheduleFolderRestart(entry);
   }));
   const rediscover = uri => {
     const entry = clients.get(folderKey(uri));
-    if (entry?.folder) scheduleEnvironmentRestart(entry);
+    if (entry?.folder) scheduleFolderRestart(entry);
   };
   discoveryWatcher = vscode.workspace.createFileSystemWatcher('**/fscript.toml');
   discoveryWatcher.onDidCreate(rediscover);
   discoveryWatcher.onDidDelete(rediscover);
   context.subscriptions.push(discoveryWatcher);
-  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateConfigurationStatus));
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+    if (editor) openDocumentEnvironment(editor.document);
+    updateConfigurationStatus();
+  }));
   context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => {
     for (const entry of clients.values()) scheduleEnvironmentRestart(entry);
   }));
@@ -798,7 +880,7 @@ function registerDebugger(context) {
           if ((folder ? owner?.uri.toString() === folder.uri.toString() : document.uri.fsPath === program) && !(await document.save())) return undefined;
         }
         const entry = { folder };
-        if (folder) await refreshSelection(entry);
+        if (folder) await refreshSelection(entry, vscode.Uri.file(program));
         const cli = cliCommand(getConfig(vscode.Uri.file(program)).cliPath, folder?.uri.fsPath, program);
         const capability = await new Promise(resolve => {
           cp.execFile(cli.command, [...cli.args, '--debug-capabilities'], { timeout: 5000, encoding: 'utf8' }, (error, stdout) => {
@@ -866,7 +948,7 @@ async function activate(context) {
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     // Resolve fresh selection even when language-server features are disabled.
     const entry = { folder };
-    if (folder) await refreshSelection(entry);
+    if (folder) await refreshSelection(entry, document.uri);
     const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path, getConfig(document.uri).cliPath);
     const task = new vscode.Task({ type: 'fscript', script: document.uri.toString() },
       folder || vscode.TaskScope.Workspace, 'Run Current Script', 'FScript',
@@ -940,6 +1022,7 @@ async function activate(context) {
 
   textOpenSubscription = vscode.workspace.onDidOpenTextDocument((doc) => {
     if (doc.languageId === 'fscript') {
+      openDocumentEnvironment(doc);
       queueAnalysis(doc.uri);
     }
   });
@@ -963,7 +1046,10 @@ async function activate(context) {
         await startClient(context);
       } else {
         for (const entry of clients.values()) {
-          if (['fscript', 'files.exclude', 'search.exclude'].some(key => event.affectsConfiguration(key, entry.folder?.uri))) scheduleEnvironmentRestart(entry);
+          if (entry.base) continue;
+          if (['fscript', 'files.exclude', 'search.exclude'].some(key => event.affectsConfiguration(key, entry.folder?.uri))) {
+            if (entry.folder) scheduleFolderRestart(entry); else scheduleEnvironmentRestart(entry);
+          }
         }
       }
     }

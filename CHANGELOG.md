@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Automatically select each script’s nearest containing FFI manifest in VS Code, isolating sibling environments without manual switching.
+
 ## [0.83.1]
 
 
