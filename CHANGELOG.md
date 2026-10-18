@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.82.2]
+
+
 - Show public import aliases instead of internal module names in editor hover signatures.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.82.1...0.82.2
 
 ## [0.82.1]
 
