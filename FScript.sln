@@ -41,6 +41,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Cli.Tests.Fixtures.
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FScript.Cli.Tests.Fixtures.Valid", "tests\FScript.Cli.Tests.Fixtures.Valid\FScript.Cli.Tests.Fixtures.Valid.fsproj", "{D5E47861-ECF0-4678-8B8E-4B30B4FFC52C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FScript.DebugAdapter", "src\FScript.DebugAdapter\FScript.DebugAdapter.csproj", "{FE5D4A9E-1936-489C-B489-8133DB47E063}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -231,6 +233,18 @@ Global
 		{D5E47861-ECF0-4678-8B8E-4B30B4FFC52C}.Release|x64.Build.0 = Release|Any CPU
 		{D5E47861-ECF0-4678-8B8E-4B30B4FFC52C}.Release|x86.ActiveCfg = Release|Any CPU
 		{D5E47861-ECF0-4678-8B8E-4B30B4FFC52C}.Release|x86.Build.0 = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|x64.Build.0 = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Debug|x86.Build.0 = Debug|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|x64.ActiveCfg = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|x64.Build.0 = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|x86.ActiveCfg = Release|Any CPU
+		{FE5D4A9E-1936-489C-B489-8133DB47E063}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -252,5 +266,6 @@ Global
 		{96EF2D25-062D-4918-A15A-8DD634B7B0F2} = {9690432B-97EE-2C44-DC05-BE42F5F4E82F}
 		{CCD6A5F1-38D4-4719-9BB2-B17BB4E2D423} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D5E47861-ECF0-4678-8B8E-4B30B4FFC52C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{FE5D4A9E-1936-489C-B489-8133DB47E063} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

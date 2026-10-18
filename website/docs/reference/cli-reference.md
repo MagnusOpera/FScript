@@ -31,6 +31,8 @@ dotnet run --project src/FScript -- script.fss
 | Option | Meaning |
 | --- | --- |
 | `--help` | Show usage and options |
+| `--debug-adapter` | Run the DAP adapter used by editor integrations |
+| `--debug-capabilities` | Print the debugger protocol capabilities as JSON |
 | `--root <path>`, `-r <path>` | Override filesystem/import root |
 | `--config <path>`, `-c <path>` | Override automatic selection with an explicit environment manifest |
 | `--no-config` | Disable automatic manifest loading |
@@ -117,3 +119,10 @@ The positional script remains the entry point. Without one, terminal input start
 Manifest paths resolve from its directory. Explicit `--root` overrides the configured root; `--no-default-externs` always disables defaults. Configured assemblies and repeated `--extern-assembly` flags combine in that order with normalized duplicates removed. Invalid manifests or failed provider registration stop execution with a nonzero exit.
 
 VS Code can select the same manifest for completion and type checking. See [Environment Configuration](./environment-configuration) for defaults, selection rules, trust, and embedding APIs.
+
+## Debugging
+
+Use the [VS Code debugger](../learn/debugging.md) to launch the installed CLI in an
+integrated terminal. The adapter's protocol uses separate streams from script
+input/output. Debugger modes are standalone invocations and cannot be combined
+with ordinary file-execution flags.

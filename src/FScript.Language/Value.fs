@@ -44,6 +44,7 @@ and TaskHandle =
     { mutable Awaited: bool }
 #else
     { Worker: Task<TaskOutcome>
+      DebugTaskId: int option
       mutable Awaited: bool }
 #endif
 

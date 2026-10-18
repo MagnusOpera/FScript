@@ -5,6 +5,8 @@ const cp = require('child_process');
 const vscode = require('vscode');
 const { selectConfiguration } = require('./config-selection');
 const { scriptLaunch } = require('./script-launch');
+const { debugLaunch } = require('./debug-launch');
+const { cliCommand } = require('./cli-command');
 const clients = new Map();
 let extensionContext;
 let configurationStatus;
@@ -35,6 +37,7 @@ function getConfig(uri) {
   const windowConfig = vscode.workspace.getConfiguration('fscript');
   return {
     configurationPath: (cfg.get('config', '') || '').trim(),
+    cliPath: (cfg.get('cli.path', '') || '').trim(),
     lspEnabled: cfg.get('lsp.enabled', true),
     inlayHintsEnabled: cfg.get('inlayHints.enabled', true),
     hoverHintsEnabled: cfg.get('hoverHints.enabled', true),
@@ -755,7 +758,59 @@ function registerEnvironmentUi(context) {
   }));
 }
 
+function registerDebugger(context) {
+  if (!vscode.debug?.registerDebugConfigurationProvider) return;
+  context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('fscript', {
+    resolveDebugConfiguration(_folder, configuration) {
+      if (!configuration.type) return { ...configuration, type: 'fscript', request: 'launch', name: 'Debug FScript', program: '${file}' };
+      return configuration;
+    },
+    async resolveDebugConfigurationWithSubstitutedVariables(_folder, configuration) {
+      if (vscode.workspace.isTrusted !== true) {
+        vscode.window.showErrorMessage('FScript: trust this workspace before debugging scripts.');
+        return undefined;
+      }
+      try {
+        if (configuration.request !== 'launch') throw new Error('FScript supports launch debugging; attaching is not available.');
+        const requestedProgram = configuration.program || getActiveFscriptEditor()?.document.uri.fsPath;
+        if (!requestedProgram) throw new Error('Open and save an FScript file before debugging.');
+        const program = (path.isAbsolute(requestedProgram) ? requestedProgram : path.resolve(_folder?.uri.fsPath || configuration.cwd || process.cwd(), requestedProgram));
+        const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(program));
+        for (const document of vscode.workspace.textDocuments) {
+          if (!document.isDirty || document.languageId !== 'fscript') continue;
+          const owner = vscode.workspace.getWorkspaceFolder(document.uri);
+          if ((folder ? owner?.uri.toString() === folder.uri.toString() : document.uri.fsPath === program) && !(await document.save())) return undefined;
+        }
+        const entry = { folder };
+        if (folder) await refreshSelection(entry);
+        const cli = cliCommand(getConfig(vscode.Uri.file(program)).cliPath, folder?.uri.fsPath, program);
+        const capability = await new Promise(resolve => {
+          cp.execFile(cli.command, [...cli.args, '--debug-capabilities'], { timeout: 5000, encoding: 'utf8' }, (error, stdout) => {
+            try { resolve(!error && JSON.parse(stdout).protocolVersion === 1); } catch { resolve(false); }
+          });
+        });
+        if (!capability) throw new Error('The selected FScript CLI could not report debugger support. Check fscript.cli.path, or install a CLI supporting debugging on PATH.');
+        return debugLaunch(configuration, program, folder?.uri.fsPath, entry.selection?.path);
+      } catch (error) {
+        vscode.window.showErrorMessage(`FScript: ${error.message}`);
+        return undefined;
+      }
+    }
+  }));
+  context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('fscript', {
+    createDebugAdapterDescriptor(session) {
+      if (vscode.workspace.isTrusted !== true) throw new Error('Trust this workspace before debugging scripts.');
+      const program = session?.configuration?.program;
+      const uri = program ? vscode.Uri.file(program) : undefined;
+      const folder = uri ? vscode.workspace.getWorkspaceFolder(uri) : session?.workspaceFolder;
+      const cli = cliCommand(getConfig(uri || folder?.uri).cliPath, folder?.uri.fsPath, program);
+      return new vscode.DebugAdapterExecutable(cli.command, [...cli.args, '--debug-adapter']);
+    }
+  }));
+}
+
 async function activate(context) {
+  registerDebugger(context);
   extensionContext = context;
   ensureUi(context);
   registerEnvironmentUi(context);
@@ -796,7 +851,7 @@ async function activate(context) {
     // Resolve fresh selection even when language-server features are disabled.
     const entry = { folder };
     if (folder) await refreshSelection(entry);
-    const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path);
+    const launch = scriptLaunch(document.uri.fsPath, folder?.uri.fsPath, entry.selection?.path, getConfig(document.uri).cliPath);
     const task = new vscode.Task({ type: 'fscript', script: document.uri.toString() },
       folder || vscode.TaskScope.Workspace, 'Run Current Script', 'FScript',
       new vscode.ProcessExecution(launch.command, launch.args, { cwd: launch.cwd }), []);

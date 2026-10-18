@@ -6,7 +6,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Learn',
-      items: ['learn/quickstart', 'learn/editor-setup', 'learn/language-tour'],
+      items: ['learn/quickstart', 'learn/editor-setup', 'learn/debugging', 'learn/language-tour'],
     },
     {
       type: 'category',

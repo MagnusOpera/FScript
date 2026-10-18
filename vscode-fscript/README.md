@@ -54,6 +54,7 @@ Follow the repository [release process](../AGENTS.md#release-process-tags-and-gi
 - `fscript.inlayHints.enabled`: toggle inlay hints from the language server.
 - `fscript.hoverHints.enabled`: toggle inferred hover hints.
 - `fscript.config`: explicit folder-relative environment manifest path; overrides persisted UI selection.
+- `fscript.cli.path`: optional executable or `fscript.dll` for Run Current Script and debugging; empty uses `fscript` on PATH.
 - `fscript.server.path`: optional custom path to `FScript.LanguageServer.dll`.
 - `fscript.server.logLevel`: requested server log level (`error`, `warn`, `info`, `debug`).
 - `fscript.repl.command`: shell command used to start REPL in the extension terminal. Default is `auto` (prefer local workspace CLI via `dotnet run`, then fallback to `fscript`).
@@ -103,7 +104,7 @@ Configured DLLs execute registration code and require workspace trust. Changes t
 
 ## Run a script with its selected environment
 
-**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command always uses the installed `fscript` executable from PATH, including inside the FScript repository. Install CLI 0.81.5 or later and make it available to VS Code before running a script. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript.cli.path` when configured, otherwise `fscript` from PATH. Use CLI 0.81.5 or later. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
 
 ### NuGet extension packages
 
@@ -114,3 +115,51 @@ Manifests can also use `[[runtime.packages]]` with required `name` and optional 
 name = "FScript.Numerics.Extensions"
 version = "0.1.0"
 ```
+
+## Debugging
+
+Press F5 in a saved FScript file to debug with the CLI selected by
+`fscript.cli.path`, or `fscript` from PATH when the setting is empty. The
+CLI must support `--debug-capabilities`; upgrade it if launch reports an older
+version. Debugging requires workspace trust and uses the selected workspace
+configuration, matching editor analysis. Script input/output uses an integrated
+terminal.
+
+```json
+{
+  "type": "fscript",
+  "request": "launch",
+  "name": "Debug FScript",
+  "program": "${file}",
+  "stopOnEntry": false
+}
+```
+
+Optional `args` and `cwd` configure script arguments and working directory.
+Breakpoints and stepping operate on expressions, including same-line pipeline
+stages. Call Stack exposes independent logical tasks; pausing one does not pause
+others. Variables are read-only, and watches accept names, visible fields,
+parentheses, and literals without executing functions. Native FScript callbacks
+can be debugged, but their native caller waits while paused. Fable debugging and
+attach are unavailable. Restart to pick up source or provider changes.
+
+### Testing a local CLI build
+
+Build the CLI with `make build`, then set `fscript.cli.path` in user or
+workspace-folder settings to the resulting DLL, for example:
+
+```json
+{
+  "fscript.cli.path": "/absolute/path/to/FScript/src/FScript/bin/Release/net10.0/fscript.dll"
+}
+```
+
+The extension invokes managed DLLs through `dotnet` on PATH. An executable path
+or command name also works. This setting takes one path, without shell quoting
+or extra arguments. Relative file paths resolve from the owning workspace folder,
+or the script's directory for standalone files. The next run or debug launch
+uses the changed setting; rebuild the DLL after source changes. Workspace-defined
+CLI settings require trust.
+
+The language server uses the separate `fscript.server.path` setting. REPL commands
+continue to use `fscript.repl.command`.

@@ -498,3 +498,17 @@ type CliTests() =
         Assert.That(code, Is.Not.EqualTo 0)
         Assert.That(error, Does.Contain("NuGet").And.Contain(fixture.Name))
         Assert.That(output, Does.Not.Contain("42"))
+
+    [<Test>]
+    member _.``Debugger capability probe is standalone and script arguments remain literal`` () =
+        let repo = findRepoRoot ()
+        let code, output, error = runCli repo repo ["--debug-capabilities"] None
+        Assert.That(code,Is.Zero,error)
+        Assert.That(output,Does.Contain("\"protocolVersion\":1"))
+        let script = Path.Combine(Path.GetTempPath(), $"fscript-debug-args-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(script,"Env.Arguments")
+            let code, output, error = runCli repo repo [script;"--";"--debug-adapter"] None
+            Assert.That(code,Is.Zero,error)
+            Assert.That(output.Trim(),Is.EqualTo("[\"--debug-adapter\"]"))
+        finally File.Delete script

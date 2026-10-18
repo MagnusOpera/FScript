@@ -1,13 +1,17 @@
-.PHONY: build test benchmark-inference fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-inference benchmark-evaluation vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
 
 test:
 	dotnet test FScript.sln -c Release
+	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
 
 benchmark-inference:
 	dotnet run --project benchmarks/FScript.Inference.Benchmarks/FScript.Inference.Benchmarks.fsproj -c Release -- $(iterations) $(bindings)
+
+benchmark-evaluation:
+	dotnet run --project benchmarks/FScript.Evaluation.Benchmarks/FScript.Evaluation.Benchmarks.fsproj -c Release -- $(or $(iterations),20) $(or $(size),10000)
 
 fable-build:
 	dotnet tool restore
@@ -24,6 +28,8 @@ smoke-tests:
 	done; \
 	echo "Running samples/basic/basic.fss -- helloworld.bas"; \
 	dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas > /dev/null; \
+	echo "Running samples/debugging/main.fss"; \
+	dotnet run --project src/FScript -- samples/debugging/main.fss > /dev/null; \
 	echo "Running samples/ffi (headless)"; \
 	dotnet build samples/ffi/FfiSample.fsproj -c Release > /dev/null; \
 	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
@@ -80,3 +86,7 @@ website-typecheck:
 
 verify-sdk-provider:
 	.github/scripts/verify-sdk-provider.sh
+
+vscode-debug-smoke: build
+	npm run compile --prefix vscode-fscript
+	.github/scripts/test-vscode-debugger.sh

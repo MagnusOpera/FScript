@@ -14,7 +14,8 @@
     "vscode": "^1.91.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Debuggers"
   ],
   "extensionDependencies": [
     "ms-dotnettools.vscode-dotnet-runtime"
@@ -25,7 +26,8 @@
     "lsp"
   ],
   "activationEvents": [
-    "onLanguage:fscript"
+    "onLanguage:fscript",
+    "onDebugResolve:fscript"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -165,9 +167,81 @@
           "default": "",
           "scope": "resource",
           "description": "Environment configuration path, relative to this workspace folder. Overrides the saved configuration selection."
+        },
+        "fscript.cli.path": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Optional FScript CLI executable or fscript.dll used for Run Current Script and debugging. Empty uses fscript on PATH. Relative file paths resolve from the owning workspace folder, or script directory for standalone files. DLLs run through dotnet on PATH; shell commands and arguments are not accepted."
         }
       }
-    }
+    },
+    "breakpoints": [
+      {
+        "language": "fscript"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "fscript",
+        "label": "FScript",
+        "languages": [
+          "fscript"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "FScript file to debug.",
+                "default": "${file}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "Pause at the first executable user expression."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "description": "Script arguments passed to Env.Arguments."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the terminal-hosted CLI."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "fscript",
+            "request": "launch",
+            "name": "Debug FScript",
+            "program": "${file}",
+            "stopOnEntry": false
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "FScript: Debug current script",
+            "body": {
+              "type": "fscript",
+              "request": "launch",
+              "name": "Debug FScript",
+              "program": "${file}",
+              "stopOnEntry": false
+            }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "test": "node --test ../tests/FScript.LanguageServer.Tests/*Tests.js",
@@ -190,7 +264,8 @@
       "description": "Configured external providers and script execution require workspace trust.",
       "restrictedConfigurations": [
         "fscript.server.path",
-        "fscript.repl.command"
+        "fscript.repl.command",
+        "fscript.cli.path"
       ]
     }
   }

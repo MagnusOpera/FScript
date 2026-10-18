@@ -26,3 +26,20 @@ The [website manual sources](../website/docs/intro.md) separate a guided learnin
 
 - Specifications index: [`specs/README.md`](./specs/README.md)
 - Architecture index: [`architecture/README.md`](./architecture/README.md)
+
+## Debugger development
+
+`make test` includes CLI/DAP integration tests and headless native callbacks.
+`make vscode-debug-smoke` launches an isolated real VS Code Extension Development
+Host and checks a breakpoint, locals, a safe watch, and resumption. Set
+`VSCODE_EXECUTABLE` when VS Code is not at the standard macOS location or on PATH.
+Linux needs a graphical session or Xvfb. The smoke test creates a temporary
+workspace and user-data directory, with `fscript.cli.path` pointing to the
+repository build.
+
+See the [debugger specification](specs/debugger.md) for the runtime API and
+execution model.
+
+`make benchmark-evaluation` measures normal evaluation without a debugger. See the
+[evaluator benchmark](../benchmarks/FScript.Evaluation.Benchmarks/README.md) for
+workloads and comparisons against a published engine.

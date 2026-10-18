@@ -15,6 +15,19 @@ module BuiltinFunctions =
         | Some value -> value
         | None -> failwith $"Missing builtin signature for '{name}'"
 
+    open Execution
+    let private implementations = Collections.Generic.Dictionary<ExternalFunction, (Value -> Value -> Execution<Value>) -> Value list -> Execution<Value>>(HashIdentity.Reference)
+    let private resumable name arity implementation =
+        let descriptor =
+            { Name = name; Scheme = scheme name; Arity = arity
+              Impl = fun context arguments -> implementation (fun f a -> Execution.result(context.Apply f a)) arguments |> Execution.run }
+        implementations.Add(descriptor, implementation)
+        descriptor
+    let internal tryExecution descriptor =
+        match implementations.TryGetValue descriptor with
+        | true, implementation -> Some implementation
+        | false, _ -> None
+
     let private tryParseInt64 (text: string) =
 #if FABLE_COMPILER
         match Int64.TryParse(text) with
@@ -285,75 +298,72 @@ module BuiltinFunctions =
           Impl = (fun _ _ -> VList []) }
 
     let private builtinListMap : ExternalFunction =
-        { Name = "List.map"
-          Scheme = scheme "List.map"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ mapper; VList values ] ->
-                    values |> List.map (fun value -> ctx.Apply mapper value) |> VList
-                | _ -> fail "List.map expects (mapper, values)") }
+        resumable "List.map" 2 (fun apply args -> execution {
+            match args with
+            | [ mapper; VList values ] ->
+                let! results = Execution.map (apply mapper) values
+                return VList results
+            | _ -> return fail "List.map expects (mapper, values)"
+        })
 
     let private builtinListIter : ExternalFunction =
-        { Name = "List.iter"
-          Scheme = scheme "List.iter"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ iterator; VList values ] ->
-                    values |> List.iter (fun value -> ctx.Apply iterator value |> ignore)
-                    VUnit
-                | _ -> fail "List.iter expects (iterator, values)") }
+        resumable "List.iter" 2 (fun apply args -> execution {
+            match args with
+            | [ iterator; VList values ] ->
+                for value in values do
+                    let! _ = apply iterator value
+                    ()
+                return VUnit
+            | _ -> return fail "List.iter expects (iterator, values)"
+        })
 
     let private builtinListChoose : ExternalFunction =
-        { Name = "List.choose"
-          Scheme = scheme "List.choose"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ chooser; VList values ] ->
-                    values
-                    |> List.choose (fun value ->
-                        match ctx.Apply chooser value with
-                        | VOption result -> result
-                        | _ -> fail "List.choose chooser must return option")
-                    |> VList
-                | _ -> fail "List.choose expects (chooser, values)") }
+        resumable "List.choose" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VList values ] ->
+                let! results =
+                    Execution.map (fun value -> execution {
+                        let! result = apply callback value
+                        match result with
+                        | VOption result -> return result
+                        | _ -> return fail "List.choose chooser must return option"
+                    }) values
+                return VList(List.choose id results)
+            | _ -> return fail "List.choose expects (callback, values)"
+        })
 
     let private builtinListCollect : ExternalFunction =
-        { Name = "List.collect"
-          Scheme = scheme "List.collect"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ collector; VList values ] ->
-                    values
-                    |> List.collect (fun value ->
-                        match ctx.Apply collector value with
-                        | VList result -> result
-                        | _ -> fail "List.collect collector must return list")
-                    |> VList
-                | _ -> fail "List.collect expects (collector, values)") }
+        resumable "List.collect" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VList values ] ->
+                let! results =
+                    Execution.map (fun value -> execution {
+                        let! result = apply callback value
+                        match result with
+                        | VList result -> return result
+                        | _ -> return fail "List.collect collector must return list"
+                    }) values
+                return VList(List.concat results)
+            | _ -> return fail "List.collect expects (callback, values)"
+        })
 
     let private builtinListExists : ExternalFunction =
-        { Name = "List.exists"
-          Scheme = scheme "List.exists"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ predicate; VList values ] ->
-                    values
-                    |> List.exists (fun value ->
-                        match ctx.Apply predicate value with
-                        | VBool result -> result
-                        | _ -> fail "List.exists predicate must return bool")
-                    |> VBool
-                | _ -> fail "List.exists expects (predicate, values)") }
+        resumable "List.exists" 2 (fun apply args -> execution {
+            match args with
+            | [ predicate; VList values ] ->
+                let rec find index remaining = execution {
+                    match remaining with
+                    | [] -> return VBool false
+                    | head :: tail ->
+                        let! result = apply predicate head
+                        match result with
+                        | VBool true -> return VBool true
+                        | VBool false -> return! find (index + 1L) tail
+                        | _ -> return fail "List.exists predicate must return bool"
+                }
+                return! find 0L values
+            | _ -> return fail "List.exists expects (predicate, values)"
+        })
 
     let private builtinListContains : ExternalFunction =
         { Name = "List.contains"
@@ -388,32 +398,30 @@ module BuiltinFunctions =
           Impl = (fun _ args -> expectList "List.distinct" args |> distinctValues |> VList) }
 
     let private builtinListFold : ExternalFunction =
-        { Name = "List.fold"
-          Scheme = scheme "List.fold"
-          Arity = 3
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ folder; state; VList values ] ->
-                    values
-                    |> List.fold (fun acc value -> ctx.Apply (ctx.Apply folder acc) value) state
-                | _ -> fail "List.fold expects (folder, state, values)") }
+        resumable "List.fold" 3 (fun apply args -> execution {
+            match args with
+            | [ folder; state; VList values ] ->
+                return! values |> Execution.fold (fun acc value -> execution {
+                    let! next = apply folder acc
+                    return! apply next value
+                }) state
+            | _ -> return fail "List.fold expects (folder, state, values)"
+        })
 
     let private builtinListFilter : ExternalFunction =
-        { Name = "List.filter"
-          Scheme = scheme "List.filter"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ predicate; VList values ] ->
-                    values
-                    |> List.filter (fun value ->
-                        match ctx.Apply predicate value with
-                        | VBool result -> result
-                        | _ -> fail "List.filter predicate must return bool")
-                    |> VList
-                | _ -> fail "List.filter expects (predicate, values)") }
+        resumable "List.filter" 2 (fun apply args -> execution {
+            match args with
+            | [ predicate; VList values ] ->
+                let! results =
+                    values |> Execution.map (fun value -> execution {
+                        let! result = apply predicate value
+                        match result with
+                        | VBool accepted -> return if accepted then Some value else None
+                        | _ -> return fail "List.filter predicate must return bool"
+                    })
+                return VList(List.choose id results)
+            | _ -> return fail "List.filter expects (predicate, values)"
+        })
 
     let private builtinListLength : ExternalFunction =
         { Name = "List.length"
@@ -422,37 +430,40 @@ module BuiltinFunctions =
           Impl = (fun _ args -> expectList "List.length" args |> List.length |> int64 |> VInt) }
 
     let private builtinListTryFind : ExternalFunction =
-        { Name = "List.tryFind"
-          Scheme = scheme "List.tryFind"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ predicate; VList values ] ->
-                    values
-                    |> List.tryFind (fun value ->
-                        match ctx.Apply predicate value with
-                        | VBool result -> result
-                        | _ -> fail "List.tryFind predicate must return bool")
-                    |> VOption
-                | _ -> fail "List.tryFind expects (predicate, values)") }
+        resumable "List.tryFind" 2 (fun apply args -> execution {
+            match args with
+            | [ predicate; VList values ] ->
+                let rec find index remaining = execution {
+                    match remaining with
+                    | [] -> return VOption None
+                    | head :: tail ->
+                        let! result = apply predicate head
+                        match result with
+                        | VBool true -> return VOption(Some head)
+                        | VBool false -> return! find (index + 1L) tail
+                        | _ -> return fail "List.tryFind predicate must return bool"
+                }
+                return! find 0L values
+            | _ -> return fail "List.tryFind expects (predicate, values)"
+        })
 
     let private builtinListTryGet : ExternalFunction =
-        { Name = "List.tryGet"
-          Scheme = scheme "List.tryGet"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ predicate; VList values ] ->
-                    values
-                    |> List.tryFindIndex (fun value ->
-                        match ctx.Apply predicate value with
-                        | VBool result -> result
-                        | _ -> fail "List.tryGet predicate must return bool")
-                    |> Option.map (int64 >> VInt)
-                    |> VOption
-                | _ -> fail "List.tryGet expects (predicate, values)") }
+        resumable "List.tryGet" 2 (fun apply args -> execution {
+            match args with
+            | [ predicate; VList values ] ->
+                let rec find index remaining = execution {
+                    match remaining with
+                    | [] -> return VOption None
+                    | head :: tail ->
+                        let! result = apply predicate head
+                        match result with
+                        | VBool true -> return VOption(Some(VInt index))
+                        | VBool false -> return! find (index + 1L) tail
+                        | _ -> return fail "List.tryGet predicate must return bool"
+                }
+                return! find 0L values
+            | _ -> return fail "List.tryGet expects (predicate, values)"
+        })
 
     let private builtinListTryItem : ExternalFunction =
         { Name = "List.tryItem"
@@ -509,15 +520,12 @@ module BuiltinFunctions =
                 | _ -> fail "Option.defaultValue expects (fallback, value)") }
 
     let private builtinOptionDefaultWith : ExternalFunction =
-        { Name = "Option.defaultWith"
-          Scheme = scheme "Option.defaultWith"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ fallback; VOption (Some current) ] -> current
-                | [ fallback; VOption None ] -> ctx.Apply fallback VUnit
-                | _ -> fail "Option.defaultWith expects (fallback, value)") }
+        resumable "Option.defaultWith" 2 (fun apply args -> execution {
+            match args with
+            | [ _; VOption(Some current) ] -> return current
+            | [ fallback; VOption None ] -> return! apply fallback VUnit
+            | _ -> return fail "Option.defaultWith expects (fallback, value)"
+        })
 
     let private builtinOptionIsNone : ExternalFunction =
         { Name = "Option.isNone"
@@ -542,15 +550,14 @@ module BuiltinFunctions =
                 | _ -> fail "Option.isSome expects (value)") }
 
     let private builtinOptionMap : ExternalFunction =
-        { Name = "Option.map"
-          Scheme = scheme "Option.map"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ mapper; VOption (Some current) ] -> ctx.Apply mapper current |> Some |> VOption
-                | [ _; VOption None ] -> VOption None
-                | _ -> fail "Option.map expects (mapper, value)") }
+        resumable "Option.map" 2 (fun apply args -> execution {
+            match args with
+            | [ mapper; VOption(Some current) ] ->
+                let! result = apply mapper current
+                return VOption(Some result)
+            | [ _; VOption None ] -> return VOption None
+            | _ -> return fail "Option.map expects (mapper, value)"
+        })
 
     let private builtinMapEmpty : ExternalFunction =
         { Name = "Map.empty"
@@ -604,17 +611,16 @@ module BuiltinFunctions =
                 | _ -> fail "Map.ofList expects (pairs)") }
 
     let private builtinMapFold : ExternalFunction =
-        { Name = "Map.fold"
-          Scheme = scheme "Map.fold"
-          Arity = 3
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ folder; state; VMap values ] ->
-                    values
-                    |> Map.fold (fun acc key value ->
-                        ctx.Apply (ctx.Apply (ctx.Apply folder acc) (mapKeyToValue key)) value) state
-                | _ -> fail "Map.fold expects (folder, state, values)") }
+        resumable "Map.fold" 3 (fun apply args -> execution {
+            match args with
+            | [ folder; state; VMap values ] ->
+                return! Map.toList values |> Execution.fold (fun acc (key, value) -> execution {
+                    let! first = apply folder acc
+                    let! second = apply first (mapKeyToValue key)
+                    return! apply second value
+                }) state
+            | _ -> return fail "Map.fold expects (folder, state, values)"
+        })
 
     let private builtinMapCount : ExternalFunction =
         { Name = "Map.count"
@@ -626,64 +632,65 @@ module BuiltinFunctions =
                 values.Count |> int64 |> VInt) }
 
     let private builtinMapFilter : ExternalFunction =
-        { Name = "Map.filter"
-          Scheme = scheme "Map.filter"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ predicate; VMap values ] ->
-                    values
-                    |> Map.fold (fun acc key value ->
-                        match ctx.Apply (ctx.Apply predicate (mapKeyToValue key)) value with
-                        | VBool true -> acc |> Map.add key value
-                        | VBool false -> acc
-                        | _ -> fail "Map.filter predicate must return bool") Map.empty
-                    |> VMap
-                | _ -> fail "Map.filter expects (predicate, values)") }
+        resumable "Map.filter" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VMap values ] ->
+                let! result =
+                    Map.toList values |> Execution.fold (fun acc (key, value) -> execution {
+                        let! next = apply callback (mapKeyToValue key)
+                        let! result = apply next value
+                        match result with
+                        | VBool true -> return Map.add key value acc
+                        | VBool false -> return acc
+                        | _ -> return fail "Map.filter predicate must return bool"
+                    }) Map.empty
+                return VMap result
+            | _ -> return fail "Map.filter expects (callback, values)"
+        })
 
     let private builtinMapChoose : ExternalFunction =
-        { Name = "Map.choose"
-          Scheme = scheme "Map.choose"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ chooser; VMap values ] ->
-                    values
-                    |> Map.fold (fun acc key value ->
-                        match ctx.Apply (ctx.Apply chooser (mapKeyToValue key)) value with
-                        | VOption (Some chosen) -> acc |> Map.add key chosen
-                        | VOption None -> acc
-                        | _ -> fail "Map.choose chooser must return option") Map.empty
-                    |> VMap
-                | _ -> fail "Map.choose expects (chooser, values)") }
+        resumable "Map.choose" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VMap values ] ->
+                let! result =
+                    Map.toList values |> Execution.fold (fun acc (key, value) -> execution {
+                        let! next = apply callback (mapKeyToValue key)
+                        let! result = apply next value
+                        match result with
+                        | VOption(Some chosen) -> return Map.add key chosen acc
+                        | VOption None -> return acc
+                        | _ -> return fail "Map.choose chooser must return option"
+                    }) Map.empty
+                return VMap result
+            | _ -> return fail "Map.choose expects (callback, values)"
+        })
 
     let private builtinMapMap : ExternalFunction =
-        { Name = "Map.map"
-          Scheme = scheme "Map.map"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ mapper; VMap values ] ->
-                    values
-                    |> Map.fold (fun acc key value -> acc |> Map.add key (ctx.Apply mapper value)) Map.empty
-                    |> VMap
-                | _ -> fail "Map.map expects (mapper, values)") }
+        resumable "Map.map" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VMap values ] ->
+                let! result =
+                    Map.toList values |> Execution.fold (fun acc (key, value) -> execution {
+                        let! result = apply callback value
+                        return Map.add key result acc
+                    }) Map.empty
+                return VMap result
+            | _ -> return fail "Map.map expects (callback, values)"
+        })
 
     let private builtinMapIter : ExternalFunction =
-        { Name = "Map.iter"
-          Scheme = scheme "Map.iter"
-          Arity = 2
-          Impl =
-            (fun ctx args ->
-                match args with
-                | [ iterator; VMap values ] ->
-                    values
-                    |> Map.iter (fun key value -> ctx.Apply (ctx.Apply iterator (mapKeyToValue key)) value |> ignore)
-                    VUnit
-                | _ -> fail "Map.iter expects (iterator, values)") }
+        resumable "Map.iter" 2 (fun apply args -> execution {
+            match args with
+            | [ callback; VMap values ] ->
+                let! result =
+                    Map.toList values |> Execution.fold (fun acc (key, value) -> execution {
+                        let! next = apply callback (mapKeyToValue key)
+                        let! result = apply next value
+                        return acc
+                    }) Map.empty
+                return VUnit
+            | _ -> return fail "Map.iter expects (callback, values)"
+        })
 
     let private builtinMapRemove : ExternalFunction =
         { Name = "Map.remove"

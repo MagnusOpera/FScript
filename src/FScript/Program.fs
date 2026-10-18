@@ -230,12 +230,28 @@ let runRepl (registration: ExtensionRegistration) (_rootDirectory: string) =
                 pendingBlankLines <- 0
     0
 
+// Keep the adapter's assembly and protocol dependencies out of ordinary CLI
+// startup. The JIT resolves these calls only when a debugger mode is selected.
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let runDebugAdapter () = FScript.DebugAdapter.DebuggerEntry.RunAdapter()
+
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let runDebugHost port token = FScript.DebugAdapter.DebuggerEntry.RunHost(port, token)
+
 [<EntryPoint>]
 let main argv =
     let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
     let cliArgv, scriptArguments = splitScriptArguments argv
     try
-        if scriptArguments.IsEmpty && cliArgv.Length = 1 && String.Equals(cliArgv.[0], "version", StringComparison.OrdinalIgnoreCase) then
+        if argv = [| "--debug-adapter" |] then runDebugAdapter ()
+        elif argv.Length = 3 && argv[0] = "--debug-host" then runDebugHost (Int32.Parse argv[1]) argv[2]
+        elif argv = [| "--debug-capabilities" |] then
+            Console.WriteLine("{\"protocolVersion\":1,\"transport\":\"stdio\",\"terminal\":true}")
+            0
+        elif cliArgv |> Array.exists (fun value -> value = "--debug-adapter" || value = "--debug-capabilities" || value = "--debug-host") then
+            Console.Error.WriteLine("Debugger modes must be invoked separately from ordinary CLI arguments.")
+            1
+        elif scriptArguments.IsEmpty && cliArgv.Length = 1 && String.Equals(cliArgv.[0], "version", StringComparison.OrdinalIgnoreCase) then
             Console.WriteLine(printVersion ())
             0
         else

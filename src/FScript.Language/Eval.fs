@@ -2,6 +2,7 @@ namespace FScript.Language
 
 module Eval =
     open HostInterop
+    open Execution
 #if FABLE_COMPILER
 #else
     open System.Threading.Tasks
@@ -14,9 +15,14 @@ module Eval =
 
     type private RuntimeState =
         { SyncRoot: obj
-          mutable Active: bool
+          Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
-          mutable BackgroundFailure: EvalError option }
+          BackgroundFailure: EvalError option ref
+#if !FABLE_COMPILER
+          Debug: IDebugObserver option
+          TaskId: int
+#endif
+        }
 
     let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
 
@@ -28,7 +34,7 @@ module Eval =
         { Message = $"Task failed: {ex.Message}"
           Span = unknownSpan }
 
-    let private withRuntimeLock (runtime: RuntimeState) f =
+    let inline private withRuntimeLock (runtime: RuntimeState) ([<InlineIfLambda>] f) =
 #if FABLE_COMPILER
         f ()
 #else
@@ -36,8 +42,11 @@ module Eval =
 #endif
 
     let private raiseIfBackgroundFailed (runtime: RuntimeState) =
+#if !FABLE_COMPILER
+        match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
+#endif
         withRuntimeLock runtime (fun () ->
-            match runtime.BackgroundFailure with
+            match runtime.BackgroundFailure.Value with
             | Some error -> raise (EvalException error)
             | None -> ())
 
@@ -357,43 +366,116 @@ module Eval =
             if valueMatchesTypeRef typeDefs tref v then Some Map.empty else None
         | _ -> None
 
+    let private binaryOperator span op av bv =
+        let arith fInt fFloat =
+            match av, bv with
+            | VInt x, VInt y -> VInt (fInt x y)
+            | VFloat x, VFloat y -> VFloat (fFloat x y)
+            | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
+        match op with
+        | "+" -> arith ( + ) ( + )
+        | "-" -> arith ( - ) ( - )
+        | "*" -> arith ( * ) ( * )
+        | "/" ->
+            match av, bv with
+            | VInt x, VInt y -> VInt (x / y)
+            | VFloat x, VFloat y -> VFloat (x / y)
+            | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
+        | "%" ->
+            match av, bv with
+            | VInt x, VInt y -> VInt (x % y)
+            | _ -> raise (EvalException { Message = "Integer operands required"; Span = span })
+        | "=" -> VBool (valueEquals av bv)
+        | "<" | ">" | "<=" | ">=" ->
+            match av, bv with
+            | VInt x, VInt y ->
+                let res =
+                    match op with
+                    | "<" -> x < y
+                    | ">" -> x > y
+                    | "<=" -> x <= y
+                    | ">=" -> x >= y
+                    | _ -> false
+                VBool res
+            | VFloat x, VFloat y ->
+                let res =
+                    match op with
+                    | "<" -> x < y
+                    | ">" -> x > y
+                    | "<=" -> x <= y
+                    | ">=" -> x >= y
+                    | _ -> false
+                VBool res
+            | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
+        | "&&" | "||" ->
+            match av, bv with
+            | VBool x, VBool y ->
+                let res = if op = "&&" then x && y else x || y
+                VBool res
+            | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
+        | "::" ->
+            match bv with
+            | VList xs -> VList (av :: xs)
+            | _ -> raise (EvalException { Message = "Right side of '::' must be list"; Span = span })
+        | "@" ->
+            match av, bv with
+            | VList xs, VList ys -> VList (xs @ ys)
+            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
+        | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
+
+#if !FABLE_COMPILER
+    let private debugPoint runtime expression environment phase =
+        match runtime.Debug with
+        | Some observer ->
+            observer.CheckCancellation()
+            Execution.awaitUnit(observer.Expression(runtime.TaskId,expression,environment,phase))
+        | None -> Execution.result ()
+#endif
+
     let rec private createExternContext (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) : ExternalCallContext =
         { Session = runtime.SyncRoot
-          IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active)
-          Apply = applyFunctionValue runtime evalExpr typeDefs span
+          IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active.Value)
+          Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
           SpawnTask = spawnTaskValue runtime typeDefs
           AwaitTask = awaitTaskValue runtime
-          CheckRuntime = fun () -> raiseIfBackgroundFailed runtime }
+          CheckRuntime = fun () ->
+              raiseIfBackgroundFailed runtime
+#if !FABLE_COMPILER
+              match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
+#endif
+        }
 
     and private spawnTaskValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (thunk: Value) : Value =
         raiseIfBackgroundFailed runtime
 #if FABLE_COMPILER
         raise (EvalException { Message = "Task.spawn is not supported in Fable builds"; Span = unknownSpan })
 #else
-        let worker =
-            try
-                Task.Run(fun () ->
+        let child =
+            match runtime.Debug with
+            | Some observer -> { runtime with TaskId = observer.TaskStarted(Some runtime.TaskId) }
+            | None -> runtime
+        let scheduler = match runtime.Debug with Some observer -> observer.Scheduler | None -> TaskScheduler.Default
+        let worker = Execution.runTask scheduler (fun () ->
+            execution {
+                let mutable failure = None
+                try
                     try
-                        let result = applyFunctionValue runtime evalExpr typeDefs unknownSpan thunk VUnit
-                        TaskSucceeded result
-                    with
-                    | EvalException error ->
-                        let taskError = wrapTaskFailure error
+                        let! result = applyFunctionValue child typeDefs unknownSpan thunk VUnit
+                        return TaskSucceeded result
+                    with error ->
+                        failure <- Some error
+                        match child.Debug with
+                        | Some observer -> do! Execution.awaitUnit(observer.Fault(child.TaskId,error))
+                        | None -> ()
+                        let taskError = match error with EvalException e -> wrapTaskFailure e | _ -> wrapUnexpectedTaskFailure error
                         withRuntimeLock runtime (fun () ->
-                            if runtime.BackgroundFailure.IsNone then
-                                runtime.BackgroundFailure <- Some taskError)
-                        TaskFailed taskError
-                    | ex ->
-                        let taskError = wrapUnexpectedTaskFailure ex
-                        withRuntimeLock runtime (fun () ->
-                            if runtime.BackgroundFailure.IsNone then
-                                runtime.BackgroundFailure <- Some taskError)
-                        TaskFailed taskError)
-            with
-            | ex ->
-                raise (EvalException (wrapUnexpectedTaskFailure ex))
+                            if runtime.BackgroundFailure.Value.IsNone then runtime.BackgroundFailure.Value <- Some taskError)
+                        return TaskFailed taskError
+                finally
+                    match child.Debug with Some observer -> observer.TaskExited(child.TaskId, failure) | None -> ()
+            })
 
-        let handle = { Worker = worker; Awaited = false }
+        let handle = { Worker = worker; DebugTaskId = (if runtime.Debug.IsSome then Some child.TaskId else None); Awaited = false }
         withRuntimeLock runtime (fun () -> runtime.PendingTasks.Add(handle))
         VTask handle
 #endif
@@ -412,355 +494,344 @@ module Eval =
                 value
             | TaskFailed error ->
                 withRuntimeLock runtime (fun () ->
-                    if runtime.BackgroundFailure.IsNone then
-                        runtime.BackgroundFailure <- Some error)
+                    if runtime.BackgroundFailure.Value.IsNone then
+                        runtime.BackgroundFailure.Value <- Some error)
                 raise (EvalException error)
         | _ ->
             raise (EvalException { Message = "Task.await expects a task"; Span = unknownSpan })
 #endif
 
-    and private applyFunctionValue
-        (runtime: RuntimeState)
-        (eval: RuntimeState -> Map<string, Type> -> Env -> Expr -> Value)
-        (typeDefs: Map<string, Type>)
-        (span: Span)
-        (fnValue: Value)
-        (argValue: Value)
-        : Value =
+    and private applyFunctionValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) (fnValue: Value) (argValue: Value) : Execution<Value> = execution {
         raiseIfBackgroundFailed runtime
         match fnValue with
-        | VClosure (argName, body, closureEnv) ->
-            let env' = closureEnv.Value |> Map.add argName argValue
-            eval runtime typeDefs env' body
-        | VUnionCtor (typeName, caseName) ->
-            VUnionCase(typeName, caseName, Some argValue)
-        | VExternal (ext, args) ->
-            let args' = argValue :: args
-            if args'.Length = ext.Arity then
-                HostInterop.invoke typeDefs ext (createExternContext runtime typeDefs span) (args' |> List.rev)
-            elif args'.Length < ext.Arity then
-                VExternal (ext, args')
-            else
-                raise (EvalException { Message = sprintf "External function '%s' received too many arguments" ext.Name; Span = span })
-        | _ -> raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
+        | VClosure(argName, ELambda(parameter,body,_), closureEnv) ->
+            return VClosure(parameter.Name,body,ref (closureEnv.Value.Add(argName,argValue)))
+        | VClosure(argName, body, closureEnv) ->
+            let scope = closureEnv.Value.Add(argName, argValue)
+#if !FABLE_COMPILER
+            match runtime.Debug with
+            | None -> return! evalExpr runtime typeDefs scope body
+            | Some observer ->
+                let name = closureEnv.Value |> Map.toSeq |> Seq.tryPick (fun (name, value) -> if obj.ReferenceEquals(value, fnValue) then Some name else None) |> Option.defaultValue "<lambda>"
+                observer.EnterFrame(runtime.TaskId, name, Ast.spanOfExpr body, Map.ofList [argName, argValue], closureEnv.Value)
+                try
+                    try return! evalExpr runtime typeDefs scope body
+                    with error ->
+                        match runtime.Debug with
+                        | Some observer -> observer.RecordFault(runtime.TaskId,error)
+                        | None -> ()
+                        return raise error
+                finally
+                    match runtime.Debug with Some observer -> observer.LeaveFrame(runtime.TaskId) | None -> ()
+#else
+            return! evalExpr runtime typeDefs scope body
+#endif
+        | VUnionCtor(typeName, caseName) -> return VUnionCase(typeName, caseName, Some argValue)
+        | VExternal(ext, args) ->
+            let arguments = argValue :: args
+            if arguments.Length = ext.Arity then
+                return! invokeExternal runtime typeDefs span ext (List.rev arguments)
+            elif arguments.Length < ext.Arity then return VExternal(ext, arguments)
+            else return raise (EvalException { Message = $"External function '{ext.Name}' received too many arguments"; Span = span })
+        | _ -> return raise (EvalException { Message = "Attempted to apply non-function"; Span = span })
+    }
 
-    and private evalExpr (runtime: RuntimeState) (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Value =
+    and private invokeExternal runtime typeDefs span (ext: ExternalFunction) args : Execution<Value> = execution {
+        let (Forall(_,signature)) = ext.Scheme
+        let validateResult = HostInterop.prepareCall typeDefs signature args
+        let! result = invokeExternalUnchecked runtime typeDefs span ext args
+        return validateResult result
+    }
+
+    and private invokeExternalUnchecked runtime typeDefs span ext args : Execution<Value> = execution {
+        if obj.ReferenceEquals(ext, TaskFunctions.spawn) then
+            return spawnTaskValue runtime typeDefs args.Head
+        elif obj.ReferenceEquals(ext, TaskFunctions.awaitTask) then
+#if FABLE_COMPILER
+            return awaitTaskValue runtime args.Head
+#else
+            match args.Head with
+            | VTask handle ->
+                handle.Awaited <- true
+                match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,true) | None -> ()
+                let! outcome = execution {
+                    try return! Execution.awaitTask handle.Worker
+                    finally
+                        match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,false) | None -> ()
+                }
+                match outcome with
+                | TaskSucceeded value ->
+                    raiseIfBackgroundFailed runtime
+                    return value
+                | TaskFailed error -> return raise (EvalException error)
+            | _ -> return raise (EvalException { Message = "Task.await expects a task"; Span = span })
+#endif
+        else
+          match BuiltinFunctions.tryExecution ext with
+          | Some implementation ->
+              return! implementation (applyFunctionValue runtime typeDefs span) args
+          | None ->
+#if !FABLE_COMPILER
+              match runtime.Debug with
+              | Some observer ->
+                  return! Execution.awaitTask(observer.InvokeHost(runtime.TaskId, fun () -> ext.Impl (createExternContext runtime typeDefs span) args))
+              | None ->
+#endif
+                  return ext.Impl (createExternContext runtime typeDefs span) args
+    }
+
+#if !FABLE_COMPILER
+    // Isolate debug-only continuations so ordinary expression evaluation does not
+    // compile frame/stop orchestration into its hot application path.
+    and private debugApplication runtime typeDefs span expression environment fnValue argument : Execution<Value> = execution {
+        do! debugPoint runtime expression environment "before"
+        let! value = applyFunctionValue runtime typeDefs span fnValue argument
+        do! debugPoint runtime expression (environment.Add("$result",value)) "after"
+        return value
+    }
+#endif
+
+    and private updateRecord runtime typeDefs env target updates span structural : Execution<Value> = execution {
+        let! targetValue = evalExpr runtime typeDefs env target
+        match targetValue with
+        | VRecord fields ->
+            let mutable result = fields
+            for (name, expression) in updates do
+                if not structural && not (Map.containsKey name result) then
+                    raise (EvalException { Message = sprintf "Record field '%s' not found" name; Span = span })
+                let! value = evalExpr runtime typeDefs env expression
+                result <- Map.add name value result
+            return VRecord result
+        | _ ->
+            let message = if structural then "Structural record update requires a record value" else "Record update requires a record value"
+            return raise (EvalException { Message = message; Span = span })
+    }
+
+    and private evalExpr (runtime: RuntimeState) (typeDefs: Map<string,Type>) (env: Env) (expr: Expr) : Execution<Value> =
         raiseIfBackgroundFailed runtime
+        let immediate value =
+#if !FABLE_COMPILER
+            if runtime.Debug.IsSome then execution {
+                do! debugPoint runtime expr env "before"
+                return value
+            }
+            else
+#endif
+                Execution.result value
         match expr with
-        | EUnit _ -> VUnit
-        | ELiteral (lit, _) -> literalToValue lit
-        | EVar (name, span) ->
-            match env |> Map.tryFind name with
-            | Some v -> v
-            | None -> raise (EvalException { Message = sprintf "Unbound variable '%s'" name; Span = span })
-        | EParen (inner, _) ->
-            evalExpr runtime typeDefs env inner
-        | ELambda (param, body, _) -> VClosure (param.Name, body, ref env)
-        | EApply (fn, arg, span) ->
-            let fVal = evalExpr runtime typeDefs env fn
-            let aVal = evalExpr runtime typeDefs env arg
-            applyFunctionValue runtime evalExpr typeDefs span fVal aVal
-        | EIf (cond, tExpr, fExpr, span) ->
-            match evalExpr runtime typeDefs env cond with
-            | VBool true -> evalExpr runtime typeDefs env tExpr
-            | VBool false -> evalExpr runtime typeDefs env fExpr
-            | _ -> raise (EvalException { Message = "Condition must be bool"; Span = span })
-        | ERaise (valueExpr, span) ->
-            match evalExpr runtime typeDefs env valueExpr with
-            | VString message -> raise (EvalException { Message = message; Span = span })
-            | _ -> raise (EvalException { Message = "raise expects a string"; Span = span })
-        | EFor (name, source, body, span) ->
-            match evalExpr runtime typeDefs env source with
+        | EUnit _ -> immediate VUnit
+        | ELiteral(literal,_) -> immediate (literalToValue literal)
+        | EVar(name,span) ->
+            match env.TryFind name with
+            | Some value -> immediate value
+            | None -> raise (EvalException { Message = $"Unbound variable '{name}'"; Span = span })
+        | ELambda(parameter,body,_) -> immediate (VClosure(parameter.Name,body,ref env))
+        | ENone _ -> immediate (VOption None)
+        | ETypeOf(name,span) ->
+            match typeDefs.TryFind name with Some t -> immediate (VTypeToken t) | None -> raise (EvalException { Message = $"Unknown type '{name}'"; Span = span })
+        | ENameOf(name,span) ->
+            if env.ContainsKey name then immediate (VString name)
+            else raise (EvalException { Message = $"Unbound variable '{name}'"; Span = span })
+        | _ -> evalCompound runtime typeDefs env expr
+
+    and private evalCompound (runtime: RuntimeState) (typeDefs: Map<string, Type>) (env: Env) (expr: Expr) : Execution<Value> = execution {
+#if !FABLE_COMPILER
+        if runtime.Debug.IsSome then
+            match expr with
+            | EApply _ | EBinOp("|>",_,_,_) -> ()
+            | _ -> do! debugPoint runtime expr env "before"
+#endif
+        match expr with
+        | EParen(inner,_) -> return! evalExpr runtime typeDefs env inner
+        | EApply(fn, arg, span) ->
+            let! f = evalExpr runtime typeDefs env fn
+            let! a = evalExpr runtime typeDefs env arg
+#if !FABLE_COMPILER
+            let partial = runtime.Debug.IsNone || (match f with VExternal(ext,args) -> args.Length + 1 < ext.Arity | VClosure(_,ELambda _,_) -> true | _ -> false)
+            if not partial then
+                return! debugApplication runtime typeDefs span expr env f a
+            else
+                return! applyFunctionValue runtime typeDefs span f a
+#else
+            return! applyFunctionValue runtime typeDefs span f a
+#endif
+        | EIf(cond, yes, no, span) ->
+            let! value = evalExpr runtime typeDefs env cond
+            match value with
+            | VBool true -> return! evalExpr runtime typeDefs env yes
+            | VBool false -> return! evalExpr runtime typeDefs env no
+            | _ -> return raise (EvalException { Message = "Condition must be bool"; Span = span })
+        | ERaise(valueExpr, span) ->
+            let! value = evalExpr runtime typeDefs env valueExpr
+            match value with
+            | VString message -> return raise (EvalException { Message = message; Span = span })
+            | _ -> return raise (EvalException { Message = "raise expects a string"; Span = span })
+        | EFor(name, source, body, span) ->
+            let! value = evalExpr runtime typeDefs env source
+            match value with
             | VList items ->
                 for item in items do
-                    let env' = env |> Map.add name item
-                    evalExpr runtime typeDefs env' body |> ignore
-                VUnit
-            | _ -> raise (EvalException { Message = "For loop source must be list"; Span = span })
-        | ELet (name, value, body, isRec, _, span) ->
+                    let! _ = evalExpr runtime typeDefs (env.Add(name, item)) body
+                    ()
+                return VUnit
+            | _ -> return raise (EvalException { Message = "For loop source must be list"; Span = span })
+        | ELet(name, value, body, isRec, _, span) ->
             if isRec then
                 match value with
-                | ELambda (param, lambdaBody, _) ->
+                | ELambda(param, lambdaBody, _) ->
                     let recEnv = ref env
-                    let selfValue : Value = VClosure (param.Name, lambdaBody, recEnv)
-                    recEnv.Value <- env |> Map.add name selfValue
-                    evalExpr runtime typeDefs recEnv.Value body
-                | _ ->
-                    raise (EvalException { Message = "let rec requires a function binding"; Span = span })
+                    let self = VClosure(param.Name, lambdaBody, recEnv)
+                    recEnv.Value <- env.Add(name, self)
+                    return! evalExpr runtime typeDefs recEnv.Value body
+                | _ -> return raise (EvalException { Message = "let rec requires a function binding"; Span = span })
             else
-                let v = evalExpr runtime typeDefs env value
-                let env' = env |> Map.add name v
-                evalExpr runtime typeDefs env' body
-        | ELetPattern (pattern, value, body, span) ->
-            let v = evalExpr runtime typeDefs env value
-            match patternMatch typeDefs pattern v with
-            | Some bindings ->
-                let env' = Map.fold (fun acc k value -> Map.add k value acc) env bindings
-                evalExpr runtime typeDefs env' body
-            | None ->
-                raise (EvalException { Message = "Let pattern did not match value"; Span = span })
-        | ELetRecGroup (bindings, body, span) ->
-            if bindings.IsEmpty then
-                evalExpr runtime typeDefs env body
-            else
-                let recEnv = ref env
-                let recEntries =
-                    bindings
-                    |> List.map (fun (name, args, _, valueExpr, bindingSpan) ->
-                        if args.IsEmpty then
-                            raise (EvalException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
-                        let folded = Seq.foldBack (fun arg accExpr -> ELambda(arg, accExpr, bindingSpan)) args valueExpr
-                        match folded with
-                        | ELambda (param, lambdaBody, _) ->
-                            name, VClosure (param.Name, lambdaBody, recEnv)
-                        | _ ->
-                            raise (EvalException { Message = "let rec requires a function binding"; Span = span }))
-                let finalEnv = recEntries |> List.fold (fun acc (name, value) -> Map.add name value acc) env
-                recEnv.Value <- finalEnv
-                evalExpr runtime typeDefs finalEnv body
-        | EMatch (scrutinee, cases, span) ->
-            let v = evalExpr runtime typeDefs env scrutinee
-            let rec tryCases cs =
-                match cs with
-                | [] -> raise (EvalException { Message = "No match cases matched"; Span = span })
-                | (pat, guard, body, _) :: rest ->
-                    match patternMatch typeDefs pat v with
+                let! result = evalExpr runtime typeDefs env value
+                return! evalExpr runtime typeDefs (env.Add(name, result)) body
+        | ELetPattern(pattern, value, body, span) ->
+            let! result = evalExpr runtime typeDefs env value
+            match patternMatch typeDefs pattern result with
+            | Some bindings -> return! evalExpr runtime typeDefs (Map.fold (fun state k v -> Map.add k v state) env bindings) body
+            | None -> return raise (EvalException { Message = "Let pattern did not match value"; Span = span })
+        | ELetRecGroup(bindings, body, span) ->
+            let recEnv = ref env
+            let entries = bindings |> List.map (fun (name, args, _, value, bindingSpan) ->
+                if args.IsEmpty then raise (EvalException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
+                match Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args value with
+                | ELambda(param, lambdaBody, _) -> name, VClosure(param.Name, lambdaBody, recEnv)
+                | _ -> raise (EvalException { Message = "let rec requires a function binding"; Span = span }))
+            recEnv.Value <- List.fold (fun state (name, value) -> Map.add name value state) env entries
+            return! evalExpr runtime typeDefs recEnv.Value body
+        | EMatch(scrutinee, cases, span) ->
+            let! value = evalExpr runtime typeDefs env scrutinee
+            let rec tryCases cases = execution {
+                match cases with
+                | [] -> return raise (EvalException { Message = "No match cases matched"; Span = span })
+                | (pattern, guard, body, _) :: rest ->
+                    match patternMatch typeDefs pattern value with
+                    | None -> return! tryCases rest
                     | Some bindings ->
-                        let env' = Map.fold (fun acc k v -> Map.add k v acc) env bindings
-                        match guard with
-                        | Some guardExpr ->
-                            match evalExpr runtime typeDefs env' guardExpr with
-                            | VBool true -> evalExpr runtime typeDefs env' body
-                            | VBool false -> tryCases rest
-                            | _ -> raise (EvalException { Message = "Match guard must evaluate to bool"; Span = span })
-                        | None ->
-                            evalExpr runtime typeDefs env' body
-                    | None -> tryCases rest
-            tryCases cases
-        | EList (items, _) ->
-            items |> List.map (evalExpr runtime typeDefs env) |> VList
-        | ERange (startExpr, endExpr, span) ->
-            let startValue = evalExpr runtime typeDefs env startExpr
-            let endValue = evalExpr runtime typeDefs env endExpr
-            match startValue, endValue with
+                        let scope = Map.fold (fun state k v -> Map.add k v state) env bindings
+                        let! accepted = match guard with Some g -> evalExpr runtime typeDefs scope g | None -> Execution.result(VBool true)
+                        match accepted with
+                        | VBool true -> return! evalExpr runtime typeDefs scope body
+                        | VBool false -> return! tryCases rest
+                        | _ -> return raise (EvalException { Message = "Match guard must evaluate to bool"; Span = span })
+            }
+            return! tryCases cases
+        | EList(items, _) ->
+            let! values = Execution.map (evalExpr runtime typeDefs env) items
+            return VList values
+        | ETuple(items, _) ->
+            let! values = Execution.map (evalExpr runtime typeDefs env) items
+            return VTuple values
+        | ERange(first, last, span) ->
+            let! a = evalExpr runtime typeDefs env first
+            let! b = evalExpr runtime typeDefs env last
+            match a, b with
             | VInt s, VInt e ->
                 let step = if s <= e then 1L else -1L
                 let rec build acc current =
-                    if (step > 0L && current > e) || (step < 0L && current < e) then
-                        List.rev acc
-                    else
-                        build (VInt current :: acc) (current + step)
-                VList (build [] s)
-            | _ -> raise (EvalException { Message = "Range endpoints must be int"; Span = span })
-        | ETuple (items, _) ->
-            items |> List.map (evalExpr runtime typeDefs env) |> VTuple
-        | ERecord (fields, _) ->
-            fields
-            |> List.map (fun (name, valueExpr) -> name, evalExpr runtime typeDefs env valueExpr)
-            |> Map.ofList
-            |> VRecord
-        | EStructuralRecord (fields, _) ->
-            fields
-            |> List.map (fun (name, valueExpr) -> name, evalExpr runtime typeDefs env valueExpr)
-            |> Map.ofList
-            |> VRecord
-        | EMap (entries, _) ->
-            let mergeWithLeftPrecedence (left: Map<MapKey, Value>) (right: Map<MapKey, Value>) =
-                right
-                |> Map.fold (fun (state: Map<MapKey, Value>) key value ->
-                    if state.ContainsKey key then state else Map.add key value state) left
-
-            let evaluated =
-                entries
-                |> List.fold (fun (acc: Map<MapKey, Value>) entry ->
+                    if (step > 0L && current > e) || (step < 0L && current < e) then List.rev acc
+                    else build (VInt current :: acc) (current + step)
+                return VList(build [] s)
+            | _ -> return raise (EvalException { Message = "Range endpoints must be int"; Span = span })
+        | ERecord(fields, _) | EStructuralRecord(fields, _) ->
+            let! values =
+                fields |> Execution.map (fun (name, value) -> execution {
+                    let! result = evalExpr runtime typeDefs env value
+                    return name, result
+                })
+            return VRecord(Map.ofList values)
+        | EMap(entries, _) ->
+            let! result =
+                entries |> Execution.fold (fun acc entry -> execution {
                     match entry with
-                    | MEKeyValue (keyExpr, valueExpr) ->
-                        let keyValue = evalExpr runtime typeDefs env keyExpr
-                        match keyValue with
-                        | VString _
-                        | VInt _
-                        | VBool _
-                        | VUnionCase (_, _, None) ->
-                            let key = valueToMapKey (Ast.spanOfExpr keyExpr) keyValue
-                            let value = evalExpr runtime typeDefs env valueExpr
-                            acc.Add(key, value)
-                        | _ ->
-                            raise (EvalException { Message = "Unsupported map literal key"; Span = Ast.spanOfExpr keyExpr })
-                    | MESpread spreadExpr ->
-                        match evalExpr runtime typeDefs env spreadExpr with
-                        | VMap spreadMap -> mergeWithLeftPrecedence acc spreadMap
-                        | _ ->
-                            // Type checker guarantees spread operands are maps.
-                            raise (EvalException { Message = "Map spread value must be a map"; Span = Ast.spanOfExpr spreadExpr }))
-                    (Map.empty<MapKey, Value>)
-            VMap evaluated
-        | ERecordUpdate (target, updates, span) ->
-            match evalExpr runtime typeDefs env target with
-            | VRecord fields ->
-                let updated =
-                    updates
-                    |> List.fold (fun acc (name, valueExpr) ->
-                        if Map.containsKey name acc then
-                            Map.add name (evalExpr runtime typeDefs env valueExpr) acc
-                        else
-                            raise (EvalException { Message = sprintf "Record field '%s' not found" name; Span = span })) fields
-                VRecord updated
-            | _ -> raise (EvalException { Message = "Record update requires a record value"; Span = span })
-        | EStructuralRecordUpdate (target, updates, span) ->
-            match evalExpr runtime typeDefs env target with
-            | VRecord fields ->
-                let updated =
-                    updates
-                    |> List.fold (fun acc (name, valueExpr) ->
-                        Map.add name (evalExpr runtime typeDefs env valueExpr) acc) fields
-                VRecord updated
-            | _ -> raise (EvalException { Message = "Structural record update requires a record value"; Span = span })
-        | EFieldGet (target, fieldName, span) ->
-            let rec qualifiedTarget = function
-                | EVar (name, _) when not (env.ContainsKey name) -> Some name
-                | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
+                    | MEKeyValue(keyExpr, valueExpr) ->
+                        let! key = evalExpr runtime typeDefs env keyExpr
+                        match key with
+                        | VString _ | VInt _ | VBool _ | VUnionCase(_, _, None) ->
+                            let converted = valueToMapKey (Ast.spanOfExpr keyExpr) key
+                            let! value = evalExpr runtime typeDefs env valueExpr
+                            return Map.add converted value acc
+                        | _ -> return raise (EvalException { Message = "Unsupported map literal key"; Span = Ast.spanOfExpr keyExpr })
+                    | MESpread spread ->
+                        let! value = evalExpr runtime typeDefs env spread
+                        match value with
+                        | VMap fields -> return Map.fold (fun state k v -> if Map.containsKey k state then state else Map.add k v state) acc fields
+                        | _ -> return raise (EvalException { Message = "Map spread value must be a map"; Span = Ast.spanOfExpr spread })
+                }) Map.empty
+            return VMap result
+        | ERecordUpdate(target, updates, span) -> return! updateRecord runtime typeDefs env target updates span false
+        | EStructuralRecordUpdate(target, updates, span) -> return! updateRecord runtime typeDefs env target updates span true
+        | EFieldGet(target, field, span) ->
+            let rec qualified = function
+                | EVar(name, _) when not (env.ContainsKey name) -> Some name
+                | EFieldGet(parent, name, _) -> qualified parent |> Option.map (fun prefix -> prefix + "." + name)
                 | _ -> None
-            match qualifiedTarget target with
-            | Some moduleName ->
-                let qualifiedName = $"{moduleName}.{fieldName}"
-                match env.TryFind qualifiedName with
-                | Some value -> value
-                | None ->
-                    match evalExpr runtime typeDefs env target with
-                    | VRecord fields
-                    | VHostManaged { Fields = fields } ->
-                        match fields.TryFind fieldName with
-                        | Some fieldValue -> fieldValue
-                        | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-                    | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
-            | _ ->
-                match evalExpr runtime typeDefs env target with
-                | VRecord fields
-                | VHostManaged { Fields = fields } ->
-                    match fields.TryFind fieldName with
-                    | Some value -> value
-                    | None -> raise (EvalException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
-                | _ -> raise (EvalException { Message = "Field access requires a record value"; Span = span })
-        | EIndexGet (target, keyExpr, span) ->
-            let targetValue = evalExpr runtime typeDefs env target
-            let keyValue = evalExpr runtime typeDefs env keyExpr
-            match targetValue, keyValue with
+            let direct = qualified target |> Option.bind (fun prefix -> env.TryFind(prefix + "." + field))
+            match direct with
+            | Some value -> return value
+            | None ->
+                let! value = evalExpr runtime typeDefs env target
+                match value with
+                | VRecord fields | VHostManaged { Fields = fields } ->
+                    match fields.TryFind field with
+                    | Some result -> return result
+                    | None -> return raise (EvalException { Message = $"Record field '{field}' not found"; Span = span })
+                | _ -> return raise (EvalException { Message = "Field access requires a record value"; Span = span })
+        | EIndexGet(target, keyExpr, span) ->
+            let! targetValue = evalExpr runtime typeDefs env target
+            let! key = evalExpr runtime typeDefs env keyExpr
+            match targetValue, key with
             | VList values, VInt index ->
-                let rec loop remaining current =
-                    match remaining with
-                    | [] -> None
-                    | head :: tail ->
-                        if current = index then Some head else loop tail (current + 1L)
-
-                if index < 0L then VOption None else loop values 0L |> VOption
-            | VMap mapValue, (VString _ | VInt _ | VBool _ | VUnionCase (_, _, None)) ->
-                let key = valueToMapKey span keyValue
-                VOption (mapValue.TryFind key)
-            | VMap _, _ ->
-                raise (EvalException { Message = "Map index key must be string, int, bool, or a payload-free union case"; Span = span })
-            | VList _, _ ->
-                raise (EvalException { Message = "List index must be int"; Span = span })
-            | _ ->
-                raise (EvalException { Message = "Index access requires a list or map value"; Span = span })
-        | ECons (head, tail, span) ->
-            let h = evalExpr runtime typeDefs env head
-            let t = evalExpr runtime typeDefs env tail
-            match t with
-            | VList xs -> VList (h :: xs)
-            | _ -> raise (EvalException { Message = "Right side of '::' must be list"; Span = span })
-        | EAppend (a, b, span) ->
-            let av = evalExpr runtime typeDefs env a
-            let bv = evalExpr runtime typeDefs env b
-            match av, bv with
-            | VList xs, VList ys -> VList (xs @ ys)
-            | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
-        | EBinOp (op, a, b, span) ->
-            let av = evalExpr runtime typeDefs env a
-            let bv = evalExpr runtime typeDefs env b
-            let arith fInt fFloat =
-                match av, bv with
-                | VInt x, VInt y -> VInt (fInt x y)
-                | VFloat x, VFloat y -> VFloat (fFloat x y)
-                | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
-            match op with
-            | "|>" ->
-                applyFunctionValue runtime evalExpr typeDefs span bv av
-            | "+" -> arith ( + ) ( + )
-            | "-" -> arith ( - ) ( - )
-            | "*" -> arith ( * ) ( * )
-            | "/" ->
-                match av, bv with
-                | VInt x, VInt y -> VInt (x / y)
-                | VFloat x, VFloat y -> VFloat (x / y)
-                | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
-            | "%" ->
-                match av, bv with
-                | VInt x, VInt y -> VInt (x % y)
-                | _ -> raise (EvalException { Message = "Integer operands required"; Span = span })
-            | "=" -> VBool (valueEquals av bv)
-            | "<" | ">" | "<=" | ">=" ->
-                match av, bv with
-                | VInt x, VInt y ->
-                    let res =
-                        match op with
-                        | "<" -> x < y
-                        | ">" -> x > y
-                        | "<=" -> x <= y
-                        | ">=" -> x >= y
-                        | _ -> false
-                    VBool res
-                | VFloat x, VFloat y ->
-                    let res =
-                        match op with
-                        | "<" -> x < y
-                        | ">" -> x > y
-                        | "<=" -> x <= y
-                        | ">=" -> x >= y
-                        | _ -> false
-                    VBool res
-                | _ -> raise (EvalException { Message = "Numeric operands required"; Span = span })
-            | "&&" | "||" ->
-                match av, bv with
-                | VBool x, VBool y ->
-                    let res = if op = "&&" then x && y else x || y
-                    VBool res
-                | _ -> raise (EvalException { Message = "Boolean operands required"; Span = span })
-            | "::" ->
-                match bv with
-                | VList xs -> VList (av :: xs)
-                | _ -> raise (EvalException { Message = "Right side of '::' must be list"; Span = span })
-            | "@" ->
-                match av, bv with
-                | VList xs, VList ys -> VList (xs @ ys)
-                | _ -> raise (EvalException { Message = "Both sides of '@' must be lists"; Span = span })
-            | _ -> raise (EvalException { Message = sprintf "Unknown operator %s" op; Span = span })
-        | ESome (value, _) -> VOption (Some (evalExpr runtime typeDefs env value))
-        | ENone _ -> VOption None
-        | ETypeOf (name, span) ->
-            match typeDefs.TryFind name with
-            | Some t -> VTypeToken t
-            | None -> raise (EvalException { Message = $"Unknown type '{name}'"; Span = span })
-        | ENameOf (name, span) ->
-            if env.ContainsKey name then
-                VString name
-            else
-                raise (EvalException { Message = $"Unbound variable '{name}'"; Span = span })
-        | EInterpolatedString (parts, span) ->
+                let rec find items current =
+                    match items with [] -> None | head :: tail -> if current = index then Some head else find tail (current + 1L)
+                return VOption(if index < 0L then None else find values 0L)
+            | VMap values, (VString _ | VInt _ | VBool _ | VUnionCase(_, _, None)) -> return VOption(values.TryFind(valueToMapKey span key))
+            | VMap _, _ -> return raise (EvalException { Message = "Map index key must be string, int, bool, or a payload-free union case"; Span = span })
+            | VList _, _ -> return raise (EvalException { Message = "List index must be int"; Span = span })
+            | _ -> return raise (EvalException { Message = "Index access requires a list or map value"; Span = span })
+        | ECons(a, b, span) | EAppend(a, b, span) | EBinOp(_, a, b, span) ->
+            let! av = evalExpr runtime typeDefs env a
+            let! bv = evalExpr runtime typeDefs env b
+            let op = match expr with ECons _ -> "::" | EAppend _ -> "@" | EBinOp(op, _, _, _) -> op | _ -> ""
+            if op = "|>" then
+#if !FABLE_COMPILER
+                if runtime.Debug.IsSome then
+                    return! debugApplication runtime typeDefs span expr env bv av
+                else
+                    return! applyFunctionValue runtime typeDefs span bv av
+#else
+                return! applyFunctionValue runtime typeDefs span bv av
+#endif
+            else return binaryOperator span op av bv
+        | ESome(value, _) ->
+            let! result = evalExpr runtime typeDefs env value
+            return VOption(Some result)
+        | EInterpolatedString(parts, _) ->
             let sb = System.Text.StringBuilder()
             for part in parts do
                 match part with
                 | IPText text -> sb.Append(text) |> ignore
-                | IPExpr pexpr ->
-                    let rendered = evalExpr runtime typeDefs env pexpr |> valueToInterpolationString
-                    sb.Append(rendered) |> ignore
-            VString (sb.ToString())
+                | IPExpr expression ->
+                    let! value = evalExpr runtime typeDefs env expression
+                    sb.Append(valueToInterpolationString value) |> ignore
+            return VString(sb.ToString())
+        | EUnit _ | ELiteral _ | EVar _ | ELambda _ | ENone _ | ETypeOf _ | ENameOf _ ->
+            return invalidOp "Immediate expressions are handled before compound evaluation."
+    }
 
     let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
         let runtime =
             { SyncRoot = obj ()
-              Active = true
+              Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = None }
+              BackgroundFailure = ref None
+#if !FABLE_COMPILER
+              Debug = None
+              TaskId = 1
+#endif
+            }
 
         let applyExternal (ext: ExternalFunction) (existingArgsRev: Value list) (newArgs: Value list) =
             let allArgs = (existingArgsRev |> List.rev) @ newArgs
@@ -787,14 +858,14 @@ module Eval =
                         envAcc, exprAcc, argsAcc
 
                 let boundEnv, boundBody, argsLeft = bindLambdaChain initialEnv body tailArgs
-                let evaluated = evalExpr runtime typeDefs boundEnv boundBody
+                let evaluated = evalExpr runtime typeDefs boundEnv boundBody |> Execution.run
                 applyMany evaluated argsLeft
             | value, nextArg :: tailArgs ->
-                let next = applyFunctionValue runtime evalExpr typeDefs unknownSpan value nextArg
+                let next = applyFunctionValue runtime typeDefs unknownSpan value nextArg |> Execution.run
                 applyMany next tailArgs
 
         try applyMany fnValue args
-        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
+        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
 
     let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -837,10 +908,10 @@ module Eval =
                     | _ ->
                         raise (EvalException { Message = "let rec requires a function binding"; Span = span })
                 else
-                    let v = evalExpr runtime typeDefs env expr
+                    let v = evalExpr runtime typeDefs env expr |> Execution.run
                     env <- env |> Map.add name v
             | TypeInfer.TSLetPattern(pattern, expr, _, _, span) ->
-                let v = evalExpr runtime typeDefs env expr
+                let v = evalExpr runtime typeDefs env expr |> Execution.run
                 match patternMatch typeDefs pattern v with
                 | Some bindings ->
                     env <- Map.fold (fun acc k value -> Map.add k value acc) env bindings
@@ -861,7 +932,7 @@ module Eval =
                     recEnv.Value <- finalEnv
                     env <- finalEnv
             | TypeInfer.TSExpr texpr ->
-                lastValue <- evalExpr runtime typeDefs env texpr.Expr
+                lastValue <- evalExpr runtime typeDefs env texpr.Expr |> Execution.run
 
         raiseIfBackgroundFailed runtime
 
@@ -881,21 +952,35 @@ module Eval =
     let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
         let runtime =
             { SyncRoot = obj ()
-              Active = true
+              Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = None }
+              BackgroundFailure = ref None
+#if !FABLE_COMPILER
+              Debug = None
+              TaskId = 1
+#endif
+            }
 
         try evaluateStatements runtime state.TypeDefs state.Env program
-        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
+        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
 
-    let evalProgramWithRegistrationState (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
+    let private evaluateRegistered
+#if !FABLE_COMPILER
+        (debugger: IDebugObserver option)
+#endif
+        (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
         let externs = registration.Functions
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
             { SyncRoot = obj ()
-              Active = true
+              Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = None }
+              BackgroundFailure = ref None
+#if !FABLE_COMPILER
+              Debug = debugger
+              TaskId = (match debugger with Some observer -> observer.TaskStarted None | None -> 1)
+#endif
+            }
 
         externs
         |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
@@ -1011,8 +1096,36 @@ module Eval =
             env <-
                 constructorValues
                 |> List.fold (fun acc (name, value) -> acc.Add(name, value)) env
-            evaluateStatements runtime typeDefs env program
-        finally withRuntimeLock runtime (fun () -> runtime.Active <- false)
+#if !FABLE_COMPILER
+            match debugger with Some observer -> observer.EnterFrame(runtime.TaskId, "<main>", unknownSpan, Map.empty, Map.empty) | None -> ()
+#endif
+            try
+                let result = evaluateStatements runtime typeDefs env program
+#if !FABLE_COMPILER
+                match debugger with Some observer -> observer.TaskExited(runtime.TaskId, None) | None -> ()
+#endif
+                result
+            with error ->
+#if !FABLE_COMPILER
+                match debugger with
+                | Some observer ->
+                    observer.Fault(runtime.TaskId, error).GetAwaiter().GetResult()
+                    observer.TaskExited(runtime.TaskId, Some error)
+                | None -> ()
+#endif
+                reraise ()
+        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+
+    let evalProgramWithRegistrationState registration program =
+        evaluateRegistered
+#if !FABLE_COMPILER
+            None
+#endif
+            registration program
+
+#if !FABLE_COMPILER
+    let internal evalProgramWithDebugger debugger registration program = evaluateRegistered (Some debugger) registration program
+#endif
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =
         (evalProgramWithRegistrationState (HostInterop.ofExterns externs) program).LastValue

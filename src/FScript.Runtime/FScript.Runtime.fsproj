@@ -38,6 +38,7 @@
     <Compile Include="EnvironmentLoader.fs" />
     <Compile Include="ExportSignatures.fs" />
     <Compile Include="ScriptHost.fs" />
+    <Compile Include="DebugSession.fs" />
   </ItemGroup>
 
   <ItemGroup>

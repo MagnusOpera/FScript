@@ -436,3 +436,20 @@ Provider trust, atomic loading, configuration selection, and reload rules are un
 `[[runtime.packages]]` declares a required package `name` and optional exact `version`; an omitted version selects latest stable. The shared Runtime loader restores dependencies without the .NET SDK and discovers the existing SDK `[FScriptExternProvider]` methods in explicitly requested package runtime assemblies. Providers return the same SDK registrations used by local DLLs. `EnvironmentLoader.loadWithInfo` additionally exposes resolved package versions and concrete assembly paths; `load` retains its registration-only result. Parsing settings does not restore or execute packages. See [environment configuration](environment-configuration.md) for cache, dependency selection, trust, and failure rules.
 
 NuGet environments isolate their managed dependencies as one graph, unifying only SDK/FSharp.Core contracts with the host. All providers in that graph can exchange shared CLR numerical payloads. Host applications that reference provider CLR libraries directly should register those libraries through their typed APIs rather than casting private NuGet-context payloads to a default-context type.
+
+## Debug sessions (.NET)
+
+`FScript.Runtime.DebugSession` accepts a language registration, parsed program,
+and `stopOnEntry`. Subscribe to `Events`, configure breakpoints, then call `Run`
+on a dedicated execution thread (or the process main thread for native GUI
+extensions). Event handlers should enqueue work and return promptly; the adapter
+uses an asynchronous event queue so protocol I/O never blocks interpreter hooks.
+A control thread uses `Threads`, `StackTrace`, `Scopes`, `Variables`,
+`Evaluate`, `Resume`, `Pause`, and `Cancel`. Inspection returns safe DTOs, not raw
+`Value` instances. Dispose the session after execution. An optional task scheduler
+lets hosts control scheduling of background FScript continuations.
+
+`DebugLaunch.create` prepares a file session with the shared manifest loader and
+CLI environment binding. See [debugger behavior](debugger.md) for callback affinity,
+watch restrictions, reference lifetime, and cancellation. The Extensibility SDK
+contract is unchanged, and Fable has no debugger support.

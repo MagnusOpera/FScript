@@ -208,3 +208,18 @@ For development, `/p:UseLocalFScriptExtensibility=true` selects the sibling SDK 
 Runtime owns `NuGetEnvironment`, backed by the netstandard-compatible NuGet.Commands 6.14.3 client and an embedded portable RID graph from .NET SDK 10.0.401 (MIT; see Runtime's third-party notice). Environment parsing records package IDs/optional versions without I/O. Loading resolves the full graph against the manifest's NuGet.Config hierarchy, chooses framework/RID runtime assets, stages them atomically in the manifest-local `.fscript` cache, and applies existing attributed SDK provider discovery once per compatible assembly, including marked provider dependencies. No SDK installation, MSBuild subprocess, package targets, or scripts are involved. A per-environment filesystem lock protects concurrent restores. Selected package versions and staged assembly paths are returned by `loadWithInfo`; `load` delegates and returns only the registration.
 
 CLI and LSP share this pipeline. LSP invokes it only after workspace trust, exposes resolved packages through environment-info and the configuration tooltip, and watches staged DLLs using existing restart handling. Failed restoration never exposes a partial registration. One non-collectible `ExtensionLoadContext` owns the complete resolved NuGet environment, with SDK and FSharp.Core types unified to the host. All package providers share one copy of their numerical core dependencies, while host implementation dependencies remain separate. Consumers can reference an owner’s script descriptor in their schemes without registering it twice. Explicit and transitive provider references are deduplicated. Local DLL injection retains `Assembly.LoadFrom`. This follows the [shared-contract plugin model](https://learn.microsoft.com/en-us/dotnet/core/tutorials/creating-app-with-plugin-support). Runtime owns all NuGet dependencies; Language/Fable and the independent Extensibility SDK remain unchanged.
+
+## Debugger execution
+
+Language owns the shared evaluator with eager completion and resumable continuations and .NET-only low-level debug
+hooks. Runtime owns `DebugSession`: logical tasks, frames, breakpoint policy, safe
+inspection, and watch validation. `FScript.DebugAdapter` translates DAP without
+implementing language semantics. The CLI hosts adapter and script-process modes;
+VS Code selects the environment and launches the installed CLI. Script terminal
+I/O and authenticated debugger IPC are separate.
+
+The main task preserves its process main thread. Background script continuations
+release scheduler workers on pause/await; synchronous native calls use task-owned
+threads, allowing callback suspension without scheduler starvation. Fable uses
+the synchronous continuation driver and contains no debugger API. See the
+[debugger specification](../specs/debugger.md).

@@ -48,6 +48,9 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
+      - name: Test CLI debugger adapter
+        run: node --test tests/FScript.DebugAdapter.Tests/*Tests.js
+
       - name: Test VS Code extension
         working-directory: vscode-fscript
         run: |

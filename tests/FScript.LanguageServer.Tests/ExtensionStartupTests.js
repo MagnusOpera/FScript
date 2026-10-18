@@ -6,7 +6,7 @@ const { test } = require('node:test');
 
 const extensionPath = path.resolve(__dirname, '../../vscode-fscript');
 
-function loadExtension({ initialize = async () => {}, enabled = true, folders, candidates = [], trusted = true, settings = {}, development = false, buildDotnet = async () => {} } = {}) {
+function loadExtension({ initialize = async () => {}, enabled = true, folders, candidates = [], trusted = true, settings = {}, development = false, debugCli = false, cliPaths = {}, buildDotnet = async () => {} } = {}) {
   const disposable = () => ({ dispose() {} });
   const errors = [];
   const clients = [];
@@ -20,6 +20,9 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const information = [];
   const searches = [];
   const processCalls = [];
+  const processCommands = [];
+  const debugProviders = [];
+  const debugFactories = [];
   let choice;
 
   const selections = new Map();
@@ -27,6 +30,11 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const rootFolders = folders?.map(file => ({ name: path.basename(file), uri: uri(file) }));
   const workspaceFolder = value => rootFolders?.filter(folder => value?.fsPath === folder.uri.fsPath || value?.fsPath?.startsWith(`${folder.uri.fsPath}/`)).sort((a,b) => b.uri.fsPath.length-a.uri.fsPath.length)[0];
   const vscode = {
+    debug: {
+      registerDebugConfigurationProvider(type, provider) { debugProviders.push({type,provider}); return disposable(); },
+      registerDebugAdapterDescriptorFactory(type, factory) { debugFactories.push({type,factory}); return disposable(); }
+    },
+    DebugAdapterExecutable: class { constructor(command,args) { this.command = command; this.args = args; } },
     ExtensionMode: { Production: 1, Development: 2, Test: 3 },
     StatusBarAlignment: { Left: 1 },
     Uri: { file: uri },
@@ -54,7 +62,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
       showWarningMessage: message => errors.push(message)
     },
     workspace: {
-      getConfiguration: (section, resource) => ({ get: (key, fallback) => key === 'lsp.enabled' ? enabled : (section === 'fscript' && key === 'config' ? settings[resource?.fsPath] || '' : fallback) }),
+      getConfiguration: (section, resource) => ({ get: (key, fallback) => key === 'cli.path' ? cliPaths[resource?.fsPath] || '' : key === 'lsp.enabled' ? enabled : (section === 'fscript' && key === 'config' ? settings[resource?.fsPath] || '' : fallback) }),
       workspaceFolders: rootFolders,
       getWorkspaceFolder: workspaceFolder,
       isTrusted: trusted,
@@ -104,14 +112,18 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   const sandbox = {
     module: { exports: {} },
     require(id) {
+      if (id === './cli-command') return require(path.join(extensionPath, 'cli-command.js'));
+      if (id === './debug-launch') return require(path.join(extensionPath, 'debug-launch.js'));
       if (id === './script-launch') return require(path.join(extensionPath, 'script-launch.js'));
       if (id === './config-selection') return require(path.join(extensionPath, 'config-selection.js'));
       if (id === 'vscode') return vscode;
       if (id === 'vscode-languageclient/node') return { LanguageClient, TransportKind: { stdio: 0 } };
       if (id === 'fs') return { ...fs, existsSync: file => !development || !file.includes('/server/') };
-      if (id === 'child_process' && development) return {
+      if (id === 'child_process' && (development || debugCli)) return {
         execFile(command, args, options, callback) {
           processCalls.push(args);
+          processCommands.push(command);
+          if (args.at(-1) === '--debug-capabilities') { callback(null, '{"protocolVersion":1}'); return; }
           (args[0] === '--list-sdks' ? Promise.resolve() : buildDotnet()).then(() => callback(null, '10.0.401', ''));
         }
       };
@@ -129,7 +141,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   };
   return {
     extension: sandbox.module.exports, context, errors, clients, channels, status,
-    watchers, vscode, selections, commands, information, searches, processCalls,
+    watchers, vscode, selections, commands, information, searches, processCalls, processCommands, debugProviders, debugFactories,
     replLaunch: () => sandbox.resolveReplLaunchCommand(),
     pick: label => { choice = label; },
     grantTrust: () => { vscode.workspace.isTrusted = true; grantTrust(); },
@@ -368,4 +380,53 @@ test('run script is blocked in untrusted workspaces', async () => {
 test('automatic REPL launch preserves the default environment without CLI discovery', () => {
   assert.equal(loadExtension().replLaunch(), 'fscript --no-config');
   assert.ok(loadExtension({ folders: ['/work'] }).replLaunch().endsWith('-- --no-config'));
+});
+
+
+test('F5 resolves nested folder configuration, saves sources and starts installed CLI adapter', async () => {
+  const harness = loadExtension({ folders: ['/workspace', '/workspace/nested'], settings: { '/workspace/nested': 'config/fscript.toml' }, debugCli: true });
+  await harness.extension.activate(harness.context);
+  let saved = false;
+  harness.vscode.workspace.textDocuments = [{ isDirty: true, languageId: 'fscript', uri: harness.vscode.Uri.file('/workspace/nested/main.fss'), save: async () => { saved = true; return true; } }];
+  const config = await harness.debugProviders[0].provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {type:'fscript',request:'launch',program:'/workspace/nested/main.fss'});
+  assert.equal(saved,true);
+  assert.equal(config.configurationPath,'/workspace/nested/config/fscript.toml');
+  assert.equal(config.rootDirectory,'/workspace/nested');
+  const executable = harness.debugFactories[0].factory.createDebugAdapterDescriptor();
+  assert.equal(executable.command,'fscript');
+  assert.deepEqual(Array.from(executable.args),['--debug-adapter']);
+  await harness.extension.deactivate();
+});
+
+test('F5 refuses execution in Restricted Mode before probing CLI or providers', async () => {
+  const harness = loadExtension({ trusted: false, debugCli: true });
+  await harness.extension.activate(harness.context);
+  const result = await harness.debugProviders[0].provider.resolveDebugConfigurationWithSubstitutedVariables(undefined,{request:'launch',program:'/workspace/main.fss'});
+  assert.equal(result,undefined);
+  assert.match(harness.errors.at(-1),/trust this workspace/);
+  assert.equal(harness.processCalls.length,0);
+  await harness.extension.deactivate();
+});
+
+test('F5 probes and launches the CLI selected for the owning nested folder', async () => {
+  const program = '/workspace/nested/main.fss';
+  const harness = loadExtension({ folders: ['/workspace', '/workspace/nested'], debugCli: true, cliPaths: { [program]: './bin/fscript preview.dll' } });
+  await harness.extension.activate(harness.context);
+  harness.vscode.workspace.textDocuments = [];
+  const config = await harness.debugProviders[0].provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {type:'fscript',request:'launch',program});
+  assert.ok(config);
+  assert.equal(harness.processCommands.at(-1), 'dotnet');
+  assert.deepEqual(Array.from(harness.processCalls.at(-1)), ['/workspace/nested/bin/fscript preview.dll', '--debug-capabilities']);
+  const executable = harness.debugFactories[0].factory.createDebugAdapterDescriptor({configuration: config});
+  assert.equal(executable.command,'dotnet');
+  assert.deepEqual(Array.from(executable.args), ['/workspace/nested/bin/fscript preview.dll', '--debug-adapter']);
+  await harness.extension.deactivate();
+});
+
+test('debug adapter factory also refuses execution in Restricted Mode', async () => {
+  const harness = loadExtension({ trusted: false, debugCli: true });
+  await harness.extension.activate(harness.context);
+  assert.throws(() => harness.debugFactories[0].factory.createDebugAdapterDescriptor(), /Trust this workspace/);
+  assert.equal(harness.processCalls.length, 0);
+  await harness.extension.deactivate();
 });

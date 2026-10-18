@@ -78,7 +78,7 @@ module HostInterop =
         | _ -> fail $"Expected host-managed type '{typeName}'"
 
     /// Validate a call with one set of type-variable bindings, including polymorphic round trips.
-    let validateCall definitions signature arguments action =
+    let internal prepareCall definitions signature arguments =
         let mutable bindings : Map<int, Type> = Map.empty
         let variables = Types.ftvType signature
         let mutable nextVariable = if Set.isEmpty variables then -1 else min -1 (Set.minElement variables - 1)
@@ -163,9 +163,11 @@ module HostInterop =
             | resultType, [] -> resultType
             | _ -> fail "Invalid argument count for host call"
         let resultType = check signature arguments
-        let result = action ()
-        observe resultType result
-        result
+        fun result -> observe resultType result; result
+
+    let validateCall definitions signature arguments action =
+        let validateResult = prepareCall definitions signature arguments
+        validateResult (action ())
 
     let invoke definitions (externalFunction: ExternalFunction) context arguments =
         let (Forall (_, signature)) = externalFunction.Scheme

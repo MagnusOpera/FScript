@@ -1,0 +1,9 @@
+// Break inside transform to inspect a parameter, a local, and a captured value.
+export let run label values =
+    let increment = 10
+    let transform value =
+        let adjusted = value + increment
+        adjusted * 2
+    let result = values |> List.map transform |> List.fold (fun total value -> total + value) 0
+    Console.writeLine label
+    result

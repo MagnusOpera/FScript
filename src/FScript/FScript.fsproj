@@ -40,6 +40,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
+    <ProjectReference Include="../FScript.DebugAdapter/FScript.DebugAdapter.csproj" />
   </ItemGroup>
 
 </Project>

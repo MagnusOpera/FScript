@@ -15,6 +15,7 @@ Defaults below are shipped by the extension. Resource settings resolve in the ow
 | `fscript.lsp.enabled` | `true` | Enable the FScript language server features (completion, navigation, diagnostics, inlay hints). |
 | `fscript.inlayHints.enabled` | `true` | Enable inlay hints provided by the FScript language server. |
 | `fscript.hoverHints.enabled` | `true` | Enable hover hints provided by the FScript language server. |
+| `fscript.cli.path` | `""` | CLI executable or `fscript.dll` for Run Current Script and debugging. Empty uses `fscript` on PATH. Relative file paths use the owning workspace folder, or script directory for standalone files. DLLs run through `dotnet` on PATH. |
 | `fscript.server.path` | `""` | Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the workspace folder, or extension directory for standalone files. |
 | `fscript.server.logLevel` | `"info"` | Requested language server log level sent through initialization options. |
 | `fscript.repl.command` | `"auto"` | Shell command used to launch the FScript REPL terminal. Use 'auto' to prefer local workspace CLI via dotnet run, then fallback to 'fscript'. |
@@ -22,7 +23,7 @@ Defaults below are shipped by the extension. Resource settings resolve in the ow
 
 `fscript.server.logLevel` accepts `error`, `warn`, `info`, or `debug`. `fscript.config` is a manifest path, not an executable. A nonempty setting overrides persisted UI selection; clear it to use the selection command again.
 
-Workspace trust is required for REPL execution and configured providers. Workspace-defined executable server/REPL settings are restricted in untrusted workspaces. Default static analysis remains available. The REPL commands do not forward the selected manifest; execute the CLI with `--config` to use that environment.
+Workspace trust is required for REPL execution and configured providers. Workspace-defined CLI/server/REPL settings are restricted in untrusted workspaces. Default static analysis remains available. The REPL commands do not forward the selected manifest; execute the CLI with `--config` to use that environment.
 
 ## Commands
 
@@ -42,4 +43,13 @@ The configuration status item shows the effective selection and its source or fa
 
 ## Run a script with its selected environment
 
-**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command always uses the installed `fscript` executable from PATH, including inside the FScript repository. Install CLI 0.81.5 or later and make it available to VS Code before running a script. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
+**FScript: Run Current Script** saves the active file and starts a fresh CLI process using that document's workspace-folder configuration selection (including explicit none, setting overrides, and missing selected paths). It requires workspace trust and a saved file. The command uses `fscript.cli.path` when configured, otherwise `fscript` from PATH. Use CLI 0.81.5 or later. Arguments are passed directly without shell interpolation. Imports resolve through normal CLI file loading; CLI root defaults apply. With no selected editor environment, the command passes `--no-config` so CLI discovery cannot override the editor’s default or explicit-none choice. REPL execution commands remain separate and do not forward configuration. Automatic REPL launch passes `--no-config` to preserve its default environment; custom REPL commands execute exactly as configured.
+
+## Debugger
+
+F5 launches the CLI selected by `fscript.cli.path` (default: `fscript` on PATH)
+with the owning folder's selected environment.
+Debugging supports source/inline breakpoints, expression stepping, logical task
+control, read-only variables, and safe watches. It requires workspace trust and
+saved source. See [Debugging](../learn/debugging.md) for launch configuration,
+native callback behavior, and limitations.

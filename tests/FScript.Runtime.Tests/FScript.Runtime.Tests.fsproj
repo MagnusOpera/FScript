@@ -26,6 +26,7 @@
     <Compile Include="HostUnionTests.fs" />
     <Compile Include="EnvironmentConfigurationTests.fs" />
     <Compile Include="NuGetEnvironmentTests.fs" />
+    <Compile Include="DebugSessionTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

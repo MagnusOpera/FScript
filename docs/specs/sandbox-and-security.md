@@ -78,3 +78,15 @@ Provider trust, atomic loading, configuration selection, and reload rules are un
 ## NuGet extension environments
 
 CLI manifest selection can restore and execute NuGet providers as well as local DLLs. These providers and native dependencies are trusted host code, outside script filesystem/runtime-limit enforcement. `--no-config` disables automatic manifest providers. VS Code gates both NuGet restoration and provider execution on workspace trust; parsing and discovery remain available in Restricted Mode. Package build targets/scripts are not run. Restore/source/provider errors fail the environment atomically.
+
+## Debugger inspection
+
+VS Code gates debug launch on workspace trust before probing the CLI or executing
+providers. Script execution retains the normal environment and sandbox policy.
+Debug adapter stdio is separate from terminal script I/O; a random per-launch
+token authenticates the loopback control connection.
+
+Debugger variables and watches expose only registered visible host fields. They
+never reflect over opaque payloads or execute functions to render values. Watches
+use a syntactic inspection allowlist; unclassified expressions are rejected.
+Debugging grants no variable-editing or arbitrary-evaluation capability.
