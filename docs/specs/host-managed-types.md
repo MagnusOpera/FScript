@@ -57,7 +57,7 @@ Existing `[FScriptExternProvider]` methods may return `ExtensionRegistration` wi
 
 External calls and embedded exported-function invocation validate declared argument and result types. Per-call type-variable bindings also prevent polymorphic round trips from replacing a host-managed argument, including one nested in containers, with an ordinary record. Plain records and values of another host type cannot satisfy a required host-managed type. Runtime record updates reject host-managed operands even when inference is bypassed.
 
-The JavaScript tagged-value facade does not expose host-managed payloads; attempting to export such a value fails explicitly. There is no native ABI, pointer representation, disposal protocol, package resolution, or automatic CLR method registration.
+The JavaScript facade exports authentic opaque handles with frozen visible fields, retaining payloads in private weak-key storage. JavaScript hosts use explicit descriptors and registration-aware entry points; see [JavaScript embedding](./embedding-fscript-language.md#javascript-host-registrations). There is no native ABI, pointer representation, disposal protocol, package resolution, or automatic CLR method registration.
 
 ## Optional CLR projection helpers
 
@@ -69,7 +69,7 @@ The JavaScript tagged-value facade does not expose host-managed payloads; attemp
 
 Mappings are `Int32`/`Int64` to script `int`, `Double` to `float`, `Boolean`, `String`, F# `unit`, F# lists, sets, and one-dimensional arrays to lists, F# options, F# tuples/struct tuples, string-keyed F# maps, and nested attributed types to named host types. Container conversion copies visible values. Null roots/fields fail except F# option `None` and boxed unit. Unsupported types fail at description time with the CLR property path; there is no string/object fallback or numeric narrowing. Annotated static properties, private/nonexistent getters, indexers, invalid names, duplicate visible names, colliding CLR projections, and recursive visible type graphs fail clearly. Missing nested registrations fail even when a container has no actual nested values.
 
-These helpers live in the independently versioned Extensibility SDK; Language stays reflection-free and has no SDK dependency. The JavaScript facade does not support authoring or exporting host-managed payloads. `HostFunctions.create` reuses the same conversion path to derive closed function schemes and synchronous handler invocation. Arbitrary CLR method discovery, native layouts, and resource lifetime management remain outside these helpers. See [typed host functions](./host-functions.md).
+These helpers live in the independently versioned Extensibility SDK; Language stays reflection-free and has no SDK dependency. The JavaScript facade provides explicit `HostTypes` descriptors and payload handles without CLR reflection. `HostFunctions.create` reuses the same conversion path to derive closed function schemes and synchronous handler invocation. Arbitrary CLR method discovery, native layouts, and resource lifetime management remain outside these helpers. See [typed host functions](./host-functions.md).
 
 ## Script-constructible provided types
 

@@ -49,3 +49,7 @@ Manual `ExternalFunction` records remain available for authoritative custom sche
 ## Executable graphics example
 
 The [`samples/ffi`](../../samples/ffi/README.md) sample applies these adapters to geometry, lighting, camera, and rendering functions. Script-constructible records carry scene data; opaque `Window` and `Mesh` values retain backend ownership and resource handles. The provider is discoverable without creating native resources. The script entry point calls `Graphics.run` or `Graphics.runHeadless`. These callback-based externs use explicit descriptors and `ExternalCallContext.Apply`; typed adapters remain responsible for data-only calls. The provider owns the main-thread window/render loop and releases GPU resources on exit. Headless integration tests run the actual geometry-generation and scene scripts through the same registration and adapters.
+
+## JavaScript typed declarations
+
+The Fable facade provides `HostFunctions.create({name, parameters, result, invoke})` with explicit closed `T` descriptors; JavaScript has no CLR function reflection. It derives arity and the curried scheme and uses tagged arguments/results. Both this helper and `extern` supply an invocation context for script callbacks. See [JavaScript hosting contracts](./embedding-fscript-language.md#javascript-host-registrations).

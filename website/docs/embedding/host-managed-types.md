@@ -159,7 +159,7 @@ Use `ScriptHost.loadFileWithRegistration` for files, `loadSourceWithIncludesAndR
 
 [Assembly providers](./register-externs#assembly-providers-for-cli-and-editor) can return the same registration for CLI execution and VS Code type checking. The [environment configuration](../reference/environment-configuration) selects those assemblies.
 
-The JavaScript facade does not support authoring or exporting host-managed payloads. Attributed descriptor generation and snapshot conversion are optional .NET runtime helpers; there is no automatic CLR method registration or native ABI mapping.
+The [JavaScript facade](./fable-javascript#register-host-types-and-functions) supports explicit descriptors, opaque payload handles, constructible records, and registered unions. Attributed descriptor generation and snapshot conversion are optional .NET runtime helpers; there is no automatic CLR method registration or native ABI mapping.
 
 ## Host-provided unions
 

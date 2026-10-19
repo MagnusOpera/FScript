@@ -54,6 +54,8 @@ Responsibilities:
 - Expose stable JS entry points such as `run`, `parse`, `infer`, `evaluate`, `load`, and `invoke`.
 - Provide a small stateful session API for browser sandbox and REPL-like JavaScript hosts.
 - Convert between FScript runtime values and tagged JavaScript objects.
+- Carry complete type/union/function registrations through compilation, evaluation, exports, and sessions.
+- Provide JavaScript type/function descriptor helpers with explicit types; preserve opaque payloads through authenticated weak-key handles and bind script callbacks to active runtimes.
 - Accept JavaScript-provided externs with explicit type schemes.
 - Resolve imports through host-provided virtual source maps or resolver callbacks.
 

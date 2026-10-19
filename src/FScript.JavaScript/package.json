@@ -7,6 +7,7 @@
   "exports": "./dist/Library.js",
   "files": [
     "dist",
+    "examples",
     "README.md"
   ],
   "scripts": {

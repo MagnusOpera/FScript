@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Add JavaScript host-type and union registrations, opaque payload round trips, typed function helpers, and script callbacks.
+
 ## [0.83.2]
 
 

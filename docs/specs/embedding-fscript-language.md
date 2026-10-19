@@ -29,8 +29,8 @@ JavaScript hosts should use the Fable-compiled package surface instead of raw F#
 
 - `run(source, options?)`
 - `parse(source, options?)`
-- `infer(program, externs?)`
-- `evaluate(typedProgram, externs?)`
+- `infer(program, registrationOrExterns?)`
+- `evaluate(typedProgram, registrationOrExterns?)`
 - `load(source, options?)`
 - `invoke(loaded, name, args)`
 - `listFunctions(loaded)`
@@ -42,7 +42,10 @@ JavaScript hosts should use the Fable-compiled package surface instead of raw F#
 - `createSession(options?)`
 - `submit(session, source)`
 - `resetSession(session)`
-- `T` type and scheme builders
+- `HostTypes` explicit type/union descriptors, snapshot wrapping, and payload retrieval
+- `HostFunctions.create({name, parameters, result, invoke})` closed typed function declarations
+- `registration({types?, unions?, functions?})` complete environments
+- `T` type and scheme builders, including `T.named(name)`
 - `extern({ name, arity, scheme, invoke })`
 
 The JavaScript package targets Node and browser-compatible ESM hosts. It embeds `FScript.Language` through Fable and does not include the .NET `FScript.Runtime` extern catalog.
@@ -122,10 +125,25 @@ JavaScript values crossing the host boundary use tagged objects:
 - `{ kind: "union", typeName, caseName, value: null | taggedValue }`
 - `{ kind: "type", name }`
 - `{ kind: "opaque", valueType }`
+- Authentic `{ kind: "host", typeName, fields }` handles with private payload storage
 
 `int` values are emitted as JavaScript `bigint`. Inputs may use `bigint`, safe integer `number`, string, or tagged `{ kind: "int", value }` forms. Functions, externals, tasks, and union constructors are opaque values; exported functions are invoked through `invoke`.
 
 JavaScript errors thrown by the facade have `kind: "fscript-error"`, `phase` (`parse`, `type`, `eval`, or `host`), `message`, and span data when the underlying language stage provides it.
+
+### JavaScript host registrations
+
+`registration({types?, unions?, functions?})` produces an opaque validated handle. Its record descriptors have `name`, `fields` (a field-name to `T` object), and optional `scriptConstructible` (default `false`); union descriptors have `name` and nonempty `cases` (case-name to payload `T`, or `null`). `HostTypes.describe` / `describeUnion` snapshot these descriptors without reflecting on JavaScript classes. All descriptor field/payload types are closed; named references must resolve in the complete registration. Duplicate or reserved names, malformed descriptors, unbound scheme variables, and arity mismatches fail before script execution.
+
+`HostTypes.wrap(registration, name, fields, payload?)` validates exact fields and creates either an opaque value with a private JavaScript payload or an ordinary constructible record. Constructible records reject non-null payloads. `HostTypes.unwrap(registration, name, value)` validates the descriptor and returns either the original opaque payload or an object of tagged record fields. `HostTypes.fields(value)` reads visible snapshots. `wrapUnion(registration, name, caseName, payload?)` and `unwrapUnion(registration, name, value)` validate nominal union cases and return ordinary tagged unions.
+
+Opaque host tags expose only `kind: "host"`, `typeName`, and frozen tagged `fields`. Private weak maps retain complete interpreter values and payloads; forged/cloned/serialized tags cannot manufacture values. Visible equality and formatting ignore payloads. Host mutation is explicit; wrapping snapshots the supplied visible data. No CLR mapping or automatic JavaScript class reflection is performed.
+
+`options.registration` is honored by `run`, `parse`, `load`, and `createSession`. Imports, inference, evaluation, exported invocation, and interactive reset retain the complete environment. `options.externs` adds functions with duplicate-name validation. The optional second argument to `infer`/`evaluate` accepts a full registration replacement or a legacy function-list override that retains existing types/unions. Exported invocation validates values against inferred signatures, including opaque types nested in generic containers.
+
+`HostFunctions.create({name, parameters, result, invoke})` derives a closed scheme and arity from a nonempty explicit parameter-type array; use `[T.unit]` for unit-input functions. Handlers use the same tagged calling convention as `extern`. Dynamic JavaScript functions do not provide sufficient reflection to infer script types. Polymorphism uses explicit `extern` schemes instead.
+
+Both function helpers pass a second invocation-context argument with `apply(callable, arguments)`, `checkRuntime()`, `spawnTask(callable)`, and `awaitTask(task)`. Callback application requires a closed declared function type; open polymorphic callback types fail explicitly. Callback handles authenticate their origin and fail when foreign or expired, recursively in containers; callback language exceptions preserve spans. Exported callable descriptions remain output-only outside an invocation; authentic type tokens can round-trip. The Fable evaluator explicitly rejects task operations. The facade is synchronous and rejects Promise results. Neither NuGet/assembly provider discovery nor TOML environment loading is added to JavaScript hosts.
 
 ### JavaScript sessions
 
