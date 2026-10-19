@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.83.3]
+
+
 - Add JavaScript host-type and union registrations, opaque payload round trips, typed function helpers, and script callbacks.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.83.2...0.83.3
 
 ## [0.83.2]
 
