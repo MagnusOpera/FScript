@@ -18,6 +18,7 @@ and TypeRef =
     | TRTuple of TypeRef list
     | TRFun of TypeRef * TypeRef
     | TRPostfix of TypeRef * string
+    | TRMap of TypeRef * TypeRef
     | TRRecord of (string * TypeRef) list
     | TRStructuralRecord of (string * TypeRef) list
 

@@ -4,7 +4,7 @@ title: Common Script Patterns
 slug: /examples/common-patterns
 ---
 
-## Parse + validate + transform
+## Normalize an optional value
 
 ```fsharp
 let normalize maybeText =

@@ -4,15 +4,15 @@ title: Regex Module
 slug: /stdlib/regex
 ---
 
-The default runtime exposes one regular-expression helper:
+`Regex` is provided by the default .NET runtime extern registry and uses .NET regular-expression syntax.
 
-- `Regex.matchGroups : string -> string -> string list option`
+## `Regex.matchGroups : string -> string -> string list option`
 
-It returns captured groups, excluding the complete match, or `None` when the input does not match or the expression is invalid.
+Argument order is `pattern -> input`. Returns the capture-group strings from the **first** match, in group-number order. Group zero (the entire match) is excluded. A successful match without capture groups returns `Some []`; no match or an invalid pattern returns `None`. An unmatched optional group contributes an empty string.
 
 ```fsharp
-Regex.matchGroups "^name:(.*)$" "name:Ada"
-// Some ["Ada"]
+let parts = Regex.matchGroups "([a-z]+)-([0-9]+)" "build-42"
+// Some ["build"; "42"]
 ```
 
-The .NET host uses .NET regular expressions. Generated Go uses Go regular expressions and translates non-capturing groups `(?:...)` while preserving the returned capture ordering. Go-unsupported constructs such as lookbehind return `None`.
+The API does not set a match timeout. Hosts processing untrusted patterns or large inputs should expose a bounded alternative or enforce execution limits outside the interpreter.

@@ -52,8 +52,13 @@ module GoBackend =
             |> Option.orElseWith (fun () -> program.Entry |> Option.bind unsupportedExpression))
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
+        let clrImport = program.Declarations |> List.tryFind (fun declaration ->
+            match declaration.Value.Node with Lir.TargetImport(path, _) -> path.StartsWith("clr:", StringComparison.Ordinal) | _ -> false)
         match LirValidation.validate program with
         | Error diagnostics -> Error diagnostics
+        | Ok _ when clrImport.IsSome ->
+            let declaration = clrImport.Value
+            Error [ diagnostic "FSB4010" $".NET FFI binding '{declaration.Name}' cannot be emitted by the Go backend." (Some declaration.Span) ]
         | Ok validated ->
             match GoMonomorphization.specialize validated with
             | Error diagnostics -> Error diagnostics

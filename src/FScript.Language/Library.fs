@@ -10,6 +10,8 @@ module FScript =
     let inferWithExterns = TypeInfer.inferProgramWithExterns
     let inferResolved = TypeInfer.inferResolvedProgram
     let inferResolvedWithExterns = TypeInfer.inferResolvedProgramWithExterns
+    let inferWithRegistration = TypeInfer.inferProgramWithRegistration
+    let evalWithRegistration = Eval.evalProgramWithRegistration
     let eval = Eval.evalProgram
     let evalWithExterns = Eval.evalProgramWithExterns
 

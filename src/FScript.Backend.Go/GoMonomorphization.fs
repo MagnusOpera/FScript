@@ -402,7 +402,15 @@ module GoMonomorphization =
                         Lir.TailPipeClosure(recurseAs concreteArgument argument, transformedFunction)
                     | Lir.Branch(condition, whenTrue, whenFalse) ->
                         Lir.Branch(recurseAs TBool condition, recurseAs concreteType whenTrue, recurseAs concreteType whenFalse)
-                    | Lir.Operation(operation, values) -> Lir.Operation(operation, List.map recurse values)
+                    | Lir.Operation(operation, values) ->
+                        let operation =
+                            match operation, concreteType with
+                            | Lir.NumericAdd, TInt -> Lir.IntAdd | Lir.NumericAdd, TFloat -> Lir.FloatAdd
+                            | Lir.NumericSubtract, TInt -> Lir.IntSubtract | Lir.NumericSubtract, TFloat -> Lir.FloatSubtract
+                            | Lir.NumericMultiply, TInt -> Lir.IntMultiply | Lir.NumericMultiply, TFloat -> Lir.FloatMultiply
+                            | Lir.NumericDivide, TInt -> Lir.IntDivide | Lir.NumericDivide, TFloat -> Lir.FloatDivide
+                            | value, _ -> value
+                        Lir.Operation(operation, List.map recurse values)
                     | Lir.Tuple values ->
                         let itemTypes = match concreteType with TTuple items -> items | _ -> List.map (fun (value: Lir.Expression) -> value.Type) values
                         Lir.Tuple(List.map2 (fun itemType (value: Lir.Expression) ->

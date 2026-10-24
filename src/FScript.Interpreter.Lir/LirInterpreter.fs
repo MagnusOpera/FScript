@@ -353,15 +353,15 @@ module LirInterpreter =
         | Lir.Operation(op, _) ->
             binary (fun left right ->
                 match op, left, right with
-                | Lir.IntAdd, VInt a, VInt b -> Ok(VInt(a + b))
-                | Lir.FloatAdd, VFloat a, VFloat b -> Ok(VFloat(a + b))
-                | Lir.IntSubtract, VInt a, VInt b -> Ok(VInt(a - b))
-                | Lir.FloatSubtract, VFloat a, VFloat b -> Ok(VFloat(a - b))
-                | Lir.IntMultiply, VInt a, VInt b -> Ok(VInt(a * b))
-                | Lir.FloatMultiply, VFloat a, VFloat b -> Ok(VFloat(a * b))
-                | Lir.IntDivide, VInt _, VInt 0L -> fail "FSI3005" expression.Span "Division by zero."
-                | Lir.IntDivide, VInt a, VInt b -> Ok(VInt(a / b))
-                | Lir.FloatDivide, VFloat a, VFloat b -> Ok(VFloat(a / b))
+                | (Lir.IntAdd | Lir.NumericAdd), VInt a, VInt b -> Ok(VInt(a + b))
+                | (Lir.FloatAdd | Lir.NumericAdd), VFloat a, VFloat b -> Ok(VFloat(a + b))
+                | (Lir.IntSubtract | Lir.NumericSubtract), VInt a, VInt b -> Ok(VInt(a - b))
+                | (Lir.FloatSubtract | Lir.NumericSubtract), VFloat a, VFloat b -> Ok(VFloat(a - b))
+                | (Lir.IntMultiply | Lir.NumericMultiply), VInt a, VInt b -> Ok(VInt(a * b))
+                | (Lir.FloatMultiply | Lir.NumericMultiply), VFloat a, VFloat b -> Ok(VFloat(a * b))
+                | (Lir.IntDivide | Lir.NumericDivide), VInt _, VInt 0L -> fail "FSI3005" expression.Span "Division by zero."
+                | (Lir.IntDivide | Lir.NumericDivide), VInt a, VInt b -> Ok(VInt(a / b))
+                | (Lir.FloatDivide | Lir.NumericDivide), VFloat a, VFloat b -> Ok(VFloat(a / b))
                 | Lir.IntRemainder, VInt _, VInt 0L -> fail "FSI3005" expression.Span "Division by zero."
                 | Lir.IntRemainder, VInt a, VInt b -> Ok(VInt(a % b))
                 | Lir.StructuralEqual, a, b -> Ok(VBool(equal a b))

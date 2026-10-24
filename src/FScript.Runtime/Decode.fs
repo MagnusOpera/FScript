@@ -5,6 +5,7 @@ open System.Globalization
 open System.Text.Json
 open System.Xml.Linq
 open FScript.Language
+open FScript.Language.HostInterop
 
 module internal HostDecode =
     let private missingFieldValue (target: Type) : Value option =
@@ -18,6 +19,10 @@ module internal HostDecode =
         | TInt ->
             match Int64.TryParse(raw) with
             | true, value -> Some (MKInt value)
+            | _ -> None
+        | TBool ->
+            match Boolean.TryParse(raw) with
+            | true, value -> Some (MKBool value)
             | _ -> None
         | _ -> None
 
@@ -75,12 +80,15 @@ module internal HostDecode =
                     | Some v -> map <- map.Add(name, v)
                     | None -> ok <- false
             if ok then Some (VRecord map) else None
+        | THostManaged _
+        | TRecordShape _
         | TNamed _
         | TUnion _
         | TTypeToken
         | TTask _
         | TFun _
-        | TVar _ -> None
+        | TVar _
+        | TNumeric _ -> None
         | _ -> None
 
     let rec decodeXmlValue (target: Type) (el: XElement) : Value option =
@@ -135,12 +143,15 @@ module internal HostDecode =
                     | None -> ok <- false
             if ok then Some (VRecord map) else None
         | TTuple _
+        | THostManaged _
+        | TRecordShape _
         | TNamed _
         | TUnion _
         | TTypeToken
         | TTask _
         | TFun _
-        | TVar _ -> None
+        | TVar _
+        | TNumeric _ -> None
 
 module internal HostEncode =
     let private quoted (value: string) = JsonSerializer.Serialize(value)
@@ -149,6 +160,8 @@ module internal HostEncode =
         match key with
         | MKString value -> Some value
         | MKInt value -> Some (string value)
+        | MKBool value -> Some (if value then "true" else "false")
+        | MKUnionCase _ -> None
 
     let rec private encodeJsonValue (value: Value) : string option =
         match value with
@@ -167,7 +180,8 @@ module internal HostEncode =
                 | Some xs, Some x -> Some (x :: xs)
                 | _ -> None) (Some [])
             |> Option.map (fun encoded -> "[" + (encoded |> List.rev |> String.concat ",") + "]")
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             fields
             |> Map.toList
             |> List.map (fun (name, fieldValue) ->
@@ -226,7 +240,8 @@ module internal HostEncode =
                     else
                         ok <- false
             ok
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             let mutable ok = true
             for KeyValue(name, fieldValue) in fields do
                 if ok then
@@ -250,7 +265,7 @@ module internal HostEncode =
 
     let encodeXml (value: Value) : string option =
         match value with
-        | VRecord _ ->
+        | RecordFields _ ->
             let root = XElement(XName.Get("root"))
             if populateXmlElement root value then
                 Some (XDocument(root).ToString(SaveOptions.DisableFormatting))

@@ -30,7 +30,7 @@ FScript currently includes:
 - optional type annotations on parameters,
 - type declarations: records and unions (including recursive forms),
 - interpolation, pipeline operator, `typeof` type tokens, and `nameof` identifier tokens for host workflows.
-- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string`.
+- unified brace literals for records/maps (`{ Field = value }`, `{ [key] = value }`, `{}` for empty map), with map keys typed as `string`, `int`, `bool`, or a union whose cases all have no payload. Optional key annotations use postfix syntax such as `string map[int]`.
 
 ## Getting Started Tutorial
 
@@ -66,6 +66,7 @@ brew install magnusopera/tap/fscript
 ### Embeddable language via NuGet
 - `MagnusOpera.FScript.Language`
 - `MagnusOpera.FScript.Runtime`
+- `MagnusOpera.FScript.Extensibility` (independent SDK for extension authors)
 
 ## VS Code Extension
 
@@ -114,6 +115,15 @@ Disable default runtime externs (`Registry.all`):
 dotnet run --project src/FScript -- --no-default-externs samples/types-showcase.fss
 ```
 
+Share a configured external-function environment with VS Code:
+```sh
+fscript scripts/build.fss
+# Override automatic selection when the manifest is elsewhere:
+fscript --config ./fscript.toml scripts/build.fss
+```
+
+The CLI loads `fscript.toml` beside the script automatically; explicit `--config` selects a different location. See [environment configuration](docs/specs/environment-configuration.md) for the schema, flag precedence, workspace selection, and trust rules.
+
 Load user extern providers from an assembly (repeatable):
 ```bash
 dotnet run --project src/FScript -- --extern-assembly ./MyExterns.dll samples/types-showcase.fss
@@ -144,7 +154,11 @@ Start REPL:
 dotnet run --project src/FScript --
 ```
 
+The CLI automatically loads `fscript.toml` beside the entry script, or in the working directory for stdin/REPL. It does not search parent directories. Use `--config` to select another manifest or `--no-config` to skip discovery.
+
 Useful samples:
+
+- [`samples/ffi`](samples/ffi/README.md): a rotating OpenGL teapot with FScript-generated geometry, lighting, and camera, typed host functions, and opaque GPU resources.
 - [`samples/types-showcase.fss`](samples/types-showcase.fss)
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
 - [`samples/quicksort.fss`](samples/quicksort.fss)
@@ -166,7 +180,7 @@ Host integration lives in `src/FScript.Runtime`.
 
 ## Extensibility Model
 
-FScript is extended through host-provided externs.
+FScript is extended through host-provided externs. Registrations can also expose [host-managed types](docs/specs/host-managed-types.md) with immutable visible fields and opaque host state; scripts can read and transport them but cannot construct or update them. See the [embedding guide](website/docs/embedding/host-managed-types.md) for a complete example.
 
 Each extern declares:
 - a public name (for script calls),
@@ -192,9 +206,11 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 
 ## Documentation
 
-- Documentation website: `https://magnusopera.github.io/FScript/`
+- Documentation website: `https://fscript.magnusopera.io/`
 - Documentation portal: [`docs/README.md`](docs/README.md)
 - Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
+- [Complete standard-library signature index](website/docs/reference/stdlib-reference.md)
+- [Syntax and operators](website/docs/reference/syntax-reference.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
 - FScript vs F# / OCaml: [`docs/guides/fsharp-ocaml-differences.md`](docs/guides/fsharp-ocaml-differences.md)
@@ -204,7 +220,7 @@ Website development commands:
 ```bash
 make website-install
 make website-build
-make website-serve
+make website
 make website-version version=X.Y.Z
 ```
 

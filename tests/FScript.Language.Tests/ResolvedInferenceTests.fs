@@ -62,9 +62,9 @@ type ResolvedInferenceTests() =
         let expressions = resolved.ResolvedStatements |> List.collect _.Expressions |> List.collect flatten
         Assert.That(expressions, Is.Not.Empty)
         Assert.That(expressions |> List.forall (fun expression -> expression.Type <> TVar -1), Is.True)
-        Assert.That(expressions |> List.exists (fun expression -> expression.Primitive = Some TypeInfer.IntegerAddition), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> expression.Primitive = Some TypeInfer.NumericAddition), Is.True)
         Assert.That(expressions |> List.exists (fun expression -> expression.Reference |> Option.exists (fun reference -> reference.Name = "add")), Is.True)
-        Assert.That(expressions |> List.exists (fun expression -> match expression.Node with TypeInfer.ResolvedPrimitive(TypeInfer.IntegerAddition, _) -> true | _ -> false), Is.True)
+        Assert.That(expressions |> List.exists (fun expression -> match expression.Node with TypeInfer.ResolvedPrimitive(TypeInfer.NumericAddition, _) -> true | _ -> false), Is.True)
         Assert.That(expressions |> List.exists (fun expression -> match expression.Node with TypeInfer.ResolvedReference reference when reference.Name = "add" && reference.Kind = TypeInfer.DeclarationSymbol -> true | _ -> false), Is.True)
 
     [<Test>]
@@ -134,20 +134,18 @@ type ResolvedInferenceTests() =
         Assert.That((references = declarations), Is.True)
 
     [<Test>]
-    member _.``Resolved applications retain structural width coercion evidence`` () =
+    member _.``Resolved structural readers retain the whole argument shape`` () =
         let source = "let city (value: {| City: string |}) = value.City\ncity {| City = \"Paris\"; Zip = 75000 |}"
         let resolved = Helpers.parse source |> TypeInfer.inferResolvedProgram
-        let evidence =
+        let argument =
             resolved.ResolvedStatements
             |> List.collect _.Expressions
             |> List.collect flatten
-            |> List.choose _.RecordCoercion
+            |> List.choose (fun expression -> match expression.Node with TypeInfer.ResolvedApply(_, argument) -> Some argument | _ -> None)
             |> List.exactlyOne
-        match evidence.SourceType, evidence.TargetType with
-        | TRecord sourceFields, TRecord targetFields ->
-            Assert.That(sourceFields.Count, Is.EqualTo(2))
-            Assert.That(targetFields.Count, Is.EqualTo(1))
-        | _ -> Assert.Fail("Expected structural record width coercion")
+        match argument.Type with
+        | TRecord fields -> Assert.That(fields.Count, Is.EqualTo(2))
+        | _ -> Assert.Fail("Expected the complete structural argument")
 
     [<Test>]
     member _.``Resolved statements preserve structured export metadata`` () =

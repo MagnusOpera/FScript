@@ -1,0 +1,8 @@
+import "worker.fss" as Worker
+
+// A breakpoint in one worker leaves the other worker free to complete.
+// Select individual tasks in VS Code's Call Stack to inspect or resume them.
+let first = Task.spawn (fun () -> Worker.run "First worker completed" [1..5])
+let second = Task.spawn (fun () -> Worker.run "Second worker completed" [6..10])
+
+(Task.await first, Task.await second)

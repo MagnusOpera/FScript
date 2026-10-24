@@ -1,6 +1,7 @@
 namespace FScript.Language
 
 module Pretty =
+    open HostInterop
     open Eval
 
     let private closureParameters (firstArg: string) (body: Expr) =
@@ -29,7 +30,8 @@ module Pretty =
             xs |> List.map valueToString |> String.concat ";" |> sprintf "[%s]"
         | VTuple xs ->
             xs |> List.map valueToString |> String.concat ", " |> sprintf "(%s)"
-        | VRecord fields ->
+        | VRecord fields
+        | VHostManaged { Fields = fields } ->
             fields
             |> Map.toList
             |> List.map (fun (name, value) -> sprintf "%s = %s" name (valueToString value))
@@ -40,6 +42,8 @@ module Pretty =
                 match key with
                 | MKString s -> $"\"{escapeStringLiteral s}\""
                 | MKInt i -> string i
+                | MKBool b -> if b then "true" else "false"
+                | MKUnionCase (typeName, caseName) -> $"{typeName}.{caseName}"
             fields
             |> Map.toList
             |> List.map (fun (key, value) -> sprintf "%s => %s" (mapKeyToString key) (valueToString value))

@@ -60,3 +60,33 @@ Filesystem extern behavior:
 - Keep capability scope narrow.
 - Model recoverable operational failures with `option` values.
 - Add tests for allow/deny paths and edge cases.
+
+## Configured providers in editor workspaces
+
+Environment manifests do not sandbox provider code. VS Code Restricted Mode permits discovery and parsing, but blocks configured assembly execution on both sides of the language-client boundary. Default static analysis remains available. Executing a script also trusts providers from its automatically discovered manifest; `--no-config` opts out. See [environment configuration](./environment-configuration.md#trust-and-boundaries).
+
+## Native provider dependencies on macOS
+
+The signed CLI allows JIT and disables hardened-runtime library validation so explicitly configured providers can load native dependencies signed by other teams (for example GLFW in the FFI sample). Providers execute only through assembly flags or a selected manifest, including CLI manifest discovery beside the entry script or in the stdin/REPL working directory. `--no-config` disables manifest discovery; the editor gates configured provider execution on workspace trust. Provider code and its native dependencies execute with the host process's permissions and must be trusted.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.
+
+## NuGet extension environments
+
+CLI manifest selection can restore and execute NuGet providers as well as local DLLs. These providers and native dependencies are trusted host code, outside script filesystem/runtime-limit enforcement. `--no-config` disables automatic manifest providers. VS Code gates both NuGet restoration and provider execution on workspace trust; parsing and discovery remain available in Restricted Mode. Package build targets/scripts are not run. Restore/source/provider errors fail the environment atomically.
+
+## Debugger inspection
+
+VS Code gates debug launch on workspace trust before probing the CLI or executing
+providers. Script execution retains the normal environment and sandbox policy.
+Debug adapter stdio is separate from terminal script I/O; a random per-launch
+token authenticates the loopback control connection.
+
+Debugger variables and watches expose only registered visible host fields. They
+never reflect over opaque payloads or execute functions to render values. Watches
+use a syntactic inspection allowlist; unclassified expressions are rejected.
+Debugging grants no variable-editing or arbitrary-evaluation capability.

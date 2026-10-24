@@ -11,10 +11,11 @@
     "url": "https://github.com/MagnusOpera/FScript.git"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Debuggers"
   ],
   "extensionDependencies": [
     "ms-dotnettools.vscode-dotnet-runtime"
@@ -25,7 +26,8 @@
     "lsp"
   ],
   "activationEvents": [
-    "onLanguage:fscript"
+    "onLanguage:fscript",
+    "onDebugResolve:fscript"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -79,6 +81,21 @@
         "command": "fscript.executeCurrentScriptInRepl",
         "title": "Execute Current Script in REPL",
         "category": "FScript"
+      },
+      {
+        "command": "fscript.selectConfiguration",
+        "title": "Select Configuration",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.runScript",
+        "title": "Run Current Script",
+        "category": "FScript"
+      },
+      {
+        "command": "fscript.debugScript",
+        "title": "Debug Current Script",
+        "category": "FScript"
       }
     ],
     "menus": {
@@ -92,6 +109,16 @@
           "command": "fscript.executeCurrentScriptInRepl",
           "when": "editorLangId == fscript",
           "group": "navigation@51"
+        },
+        {
+          "command": "fscript.runScript",
+          "when": "editorLangId == fscript",
+          "group": "navigation@49"
+        },
+        {
+          "command": "fscript.debugScript",
+          "when": "editorLangId == fscript",
+          "group": "navigation@48"
         }
       ]
     },
@@ -102,25 +129,29 @@
           "type": "boolean",
           "default": true,
           "order": 1,
-          "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints)."
+          "description": "Enable the FScript language server features (completion, navigation, diagnostics, inlay hints).",
+          "scope": "resource"
         },
         "fscript.inlayHints.enabled": {
           "type": "boolean",
           "default": true,
           "order": 2,
-          "description": "Enable inlay hints provided by the FScript language server."
+          "description": "Enable inlay hints provided by the FScript language server.",
+          "scope": "resource"
         },
         "fscript.hoverHints.enabled": {
           "type": "boolean",
           "default": true,
           "order": 3,
-          "description": "Enable hover hints provided by the FScript language server."
+          "description": "Enable hover hints provided by the FScript language server.",
+          "scope": "resource"
         },
         "fscript.server.path": {
           "type": "string",
           "default": "",
           "order": 4,
-          "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the first workspace folder."
+          "description": "Optional path to a custom FScript.LanguageServer.dll. Relative paths are resolved from the workspace folder, or extension directory for standalone files.",
+          "scope": "resource"
         },
         "fscript.server.logLevel": {
           "type": "string",
@@ -132,18 +163,98 @@
             "info",
             "debug"
           ],
-          "description": "Requested language server log level sent through initialization options."
+          "description": "Requested language server log level sent through initialization options.",
+          "scope": "resource"
         },
         "fscript.repl.command": {
           "type": "string",
           "default": "auto",
           "order": 6,
           "description": "Shell command used to launch the FScript REPL terminal. Use 'auto' to prefer local workspace CLI via dotnet run, then fallback to 'fscript'."
+        },
+        "fscript.config": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Environment configuration path, relative to this workspace folder. Overrides the saved configuration selection."
+        },
+        "fscript.cli.path": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Optional FScript CLI executable or fscript.dll used for Run Current Script and debugging. Empty uses fscript on PATH. Relative file paths resolve from the owning workspace folder, or script directory for standalone files. DLLs run through dotnet on PATH; shell commands and arguments are not accepted."
         }
       }
-    }
+    },
+    "breakpoints": [
+      {
+        "language": "fscript"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "fscript",
+        "label": "FScript",
+        "languages": [
+          "fscript"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "FScript file to debug.",
+                "default": "${file}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "Pause at the first executable user expression."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "description": "Script arguments passed to Env.Arguments."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the terminal-hosted CLI."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "fscript",
+            "request": "launch",
+            "name": "Debug FScript",
+            "program": "${file}",
+            "stopOnEntry": false
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "FScript: Debug current script",
+            "body": {
+              "type": "fscript",
+              "request": "launch",
+              "name": "Debug FScript",
+              "program": "${file}",
+              "stopOnEntry": false
+            }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
+    "test": "node --test ../tests/FScript.LanguageServer.Tests/*Tests.js",
     "lint": "echo \"No lint configured\"",
     "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
     "vscode:prepublish": "npm run compile",
@@ -151,10 +262,21 @@
     "postinstall": "npm run compile"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.2.2",
-    "esbuild": "^0.25.9"
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Configured external providers and script execution require workspace trust.",
+      "restrictedConfigurations": [
+        "fscript.server.path",
+        "fscript.repl.command",
+        "fscript.cli.path"
+      ]
+    }
   }
 }

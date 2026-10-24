@@ -1,0 +1,30 @@
+import "teapot.fss" as Teapot
+
+// These are script-created instances of types supplied by the graphics module.
+let background = { R = 0.055; G = 0.075; B = 0.11 }
+let camera =
+    { Eye = { X = 6.0; Y = 3.0; Z = 7.0 }
+      Target = { X = 0.0; Y = 0.0; Z = 0.0 }
+      FieldOfView = 0.65 }
+let light =
+    { Position = { X = 4.0; Y = 6.0; Z = 5.0 }
+      Color = { R = 1.0; G = 0.94; B = 0.85 }
+      Ambient = 0.22 }
+let copper =
+    { Color = { R = 0.78; G = 0.30; B = 0.12 }
+      Shininess = 56.0 }
+
+export let initialize (window: Window) =
+    // Generate and upload only once. The returned Mesh retains hidden GPU state.
+    let geometry = Teapot.generate 8
+    Graphics.uploadMesh window geometry
+
+export let render (window: Window) (mesh: Mesh) (seconds: float) =
+    Graphics.clear window background
+    Graphics.setCamera window camera
+    Graphics.setLight window light
+    let rotation =
+        { X = 0.12 * Math.sin seconds
+          Y = seconds * 0.45
+          Z = 0.0 }
+    Graphics.draw window mesh rotation copper

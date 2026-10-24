@@ -11,8 +11,10 @@
     <Compile Include="Providers.fs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\FScript.Runtime\FScript.Runtime.fsproj" />
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
+    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />
   </ItemGroup>
-
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' == 'true'">
+    <ProjectReference Include="$(FScriptExtensibilityProject)" />
+  </ItemGroup>
 </Project>

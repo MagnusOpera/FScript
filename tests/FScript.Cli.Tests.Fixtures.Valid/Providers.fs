@@ -1,7 +1,6 @@
 namespace FScript.Cli.Tests.Fixtures.Valid
 
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 type ValidExternProvider =
     [<FScriptExternProvider>]
@@ -14,8 +13,37 @@ type ValidExternProvider =
 type ValidHostContextProvider =
     [<FScriptExternProvider>]
     static member Provide(ctx: HostContext) : ExternalFunction list =
+        let marker = System.IO.Path.Combine(ctx.RootDirectory, "provider-registration.requested")
+        if System.IO.File.Exists(marker) then
+            System.IO.File.WriteAllText(System.IO.Path.Combine(ctx.RootDirectory, "provider-registration.executed"), "registered")
+            System.Console.WriteLine("fixture provider registration")
         [ { Name = "Ext.rootDirectory"
             Scheme = Forall([], TString)
             Arity = 0
             Impl = (fun _ _ -> VString ctx.RootDirectory) } ]
 
+
+[<FScriptHostType("Node")>]
+type ProviderNode =
+    { [<FScriptVisible>] Value: int64
+      Context: HostContext }
+
+[<FScriptHostType("Point", ScriptConstructible = true)>]
+type ProviderPoint = { [<FScriptVisible>] X: int64 }
+
+[<FScriptHostType("Protocol.Mode", ScriptConstructible = true)>]
+type ProviderMode = Disabled | Enabled of int64
+
+type HostManagedProvider =
+    [<FScriptExternProvider>]
+    static member Provide(ctx: HostContext) : ExtensionRegistration =
+        let descriptor = HostTypes.describe<ProviderNode>()
+        let registration = { HostInterop.empty with Types = [descriptor; HostTypes.describe<ProviderPoint>()]; Unions = [HostTypes.describeUnion<ProviderMode>()] }
+        { registration with
+            Functions =
+                [ HostFunctions.create registration "Ext.mode" (fun (mode: ProviderMode) -> mode)
+                  HostFunctions.create registration "Ext.node" (fun (n: int64) -> { Value = n; Context = ctx })
+                  HostFunctions.create registration "Ext.acceptNode" (fun (node: ProviderNode) ->
+                      if node.Context = ctx then node.Value
+                      else failwith "Host state was lost")
+                  HostFunctions.create registration "Ext.acceptPoint" (fun (point: ProviderPoint) -> point.X) ] }

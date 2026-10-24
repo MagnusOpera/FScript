@@ -1,11 +1,11 @@
-function @0 %78 x captures=[]: 'a -> ('a -> int)
-  make-closure @1 captures=[78] : ('a -> int)
-function @1 %79 y captures=[78]: 'a -> int
-  operation IntAdd : int
+function @0 %78 x captures=[]: 'a -> ('a -> 'a)
+  make-closure @1 captures=[78] : ('a -> 'a)
+function @1 %79 y captures=[78]: 'a -> 'a
+  operation NumericAdd : 'a
     load %78 : 'a
     load %79 : 'a
-decl %77 add: ('a -> ('a -> int))
-  make-closure @0 captures=[] : ('a -> ('a -> int))
+decl %77 add: ('a -> ('a -> 'a))
+  make-closure @0 captures=[] : ('a -> ('a -> 'a))
 decl %80 $expression80: int
   call-closure : int
     call-closure : (int -> int)

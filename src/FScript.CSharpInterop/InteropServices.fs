@@ -39,3 +39,9 @@ let Env = asEnvironment { ScriptName = None; Arguments = [] }
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypeInfer.TypedProgram * TypeInfer.LocalVariableTypeInfo list =
         TypeInfer.inferProgramWithExternsAndLocalVariableTypes externs (withLspEnvironmentPrelude program)
+
+    let inferProgramWithRegistration registration program =
+        TypeInfer.inferProgramWithRegistration registration (withLspEnvironmentPrelude program)
+
+    let inferProgramWithRegistrationAndLocalVariableTypes registration program =
+        TypeInfer.inferProgramWithRegistrationAndLocalVariableTypes registration (withLspEnvironmentPrelude program)

@@ -1,23 +1,16 @@
 # FScript Stdlib Functions
 
 ## Purpose
-This document lists the functions available in the embedded FScript prelude (stdlib).
-
-The stdlib is loaded automatically by `FScript.Language` before user scripts.
+This document lists core standard-library functions and the optional default .NET runtime extern catalog. Core functions are loaded automatically by `FScript.Language`. Runtime functions require host registration through `FScript.Runtime.Registry.all`; the CLI enables them by default. `Env` is a CLI/REPL-injected value, not an always-injected language value.
 
 ## Modules
-- `Task`
-- `List`
-- `Option`
-- `Map`
-- `Int`
-- `Float`
-- `Bool`
-- `String`
 
-## Top-level built-ins
-- `Env : Environment`
-- `ignore : 'a -> unit`
+- Core: `List`, `Option`, `Map`, `Int`, `Float`, `Bool`, `String`.
+- Default .NET runtime: `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
+
+## Top-level surface
+- `ignore : 'a -> unit` is an always-available core function.
+- `Env : Environment` is injected by CLI/REPL hosts.
 
 ## Host-provided console externs
 - `Console.writeLine : string -> unit`
@@ -33,7 +26,7 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 
 ## Notes
 - Functions are curried.
-- The stdlib is part of the language runtime and is always available.
+- Core functions remain available when default runtime externs are disabled.
 - Top-level script bindings cannot collide with reserved stdlib names.
 - `ignore` is a built-in language function.
 - Console I/O is host-provided through runtime externs.
@@ -52,11 +45,11 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 
 ### Maps
 - Indexer: `values[key] : 'v option`
-- Signature: `'v map -> string -> 'v option`
+- Signature: `'v map['key] -> 'key -> 'v option`
 - Description:
-  - optional lookup by string key
+  - optional lookup by a key matching the map's key type
   - missing keys return `None`
-  - map keys are string-only
+  - map keys may be `string`, `int`, `bool`, or a union whose cases all have no payload
 
 ### Options
 - Constructors:
@@ -115,21 +108,20 @@ The stdlib is loaded automatically by `FScript.Language` before user scripts.
 - `Task.await : 'a task -> 'a`
 
 ## Map
-- `Map.empty : 'v map`  
-  Alias of `{}`.
-- `Map.tryGet : string -> 'v map -> 'v option`
-- `Map.containsKey : string -> 'v map -> bool`
-- `Map.add : string -> 'v -> 'v map -> 'v map`
-- `Map.ofList : (string * 'v) list -> 'v map`
-- `Map.fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state`
-- `Map.count : 'v map -> int`
-- `Map.filter : (string -> 'v -> bool) -> 'v map -> 'v map`
-- `Map.choose : (string -> 'v -> 'u option) -> 'v map -> 'u map`
-- `Map.map : ('v -> 'u) -> 'v map -> 'u map`
-- `Map.iter : (string -> 'v -> unit) -> 'v map -> unit`
-- `Map.remove : string -> 'v map -> 'v map`
+- `Map.empty : 'v map['key]` (alias of `{}`).
+- `Map.tryGet : 'key -> 'v map['key] -> 'v option`
+- `Map.containsKey : 'key -> 'v map['key] -> bool`
+- `Map.add : 'key -> 'v -> 'v map['key] -> 'v map['key]`
+- `Map.ofList : ('key * 'v) list -> 'v map['key]`
+- `Map.fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state`
+- `Map.count : 'v map['key] -> int`
+- `Map.filter : ('key -> 'v -> bool) -> 'v map['key] -> 'v map['key]`
+- `Map.choose : ('key -> 'v -> 'u option) -> 'v map['key] -> 'u map['key]`
+- `Map.map : ('v -> 'u) -> 'v map['key] -> 'u map['key]`
+- `Map.iter : ('key -> 'v -> unit) -> 'v map['key] -> unit`
+- `Map.remove : 'key -> 'v map['key] -> 'v map['key]`
 
-Map keys in FScript are string-only.
+Map keys may be `string`, `int`, `bool`, or a union whose cases all have no payload.
 
 ## Int
 - `Int.tryParse : string -> int option`
@@ -157,6 +149,42 @@ Map keys in FScript are string-only.
   - argument order: `separator -> source`
 - `String.endsWith : string -> string -> bool`
   - argument order: `suffix -> source`
+
+## Core edge behavior
+
+- `List.tail []` raises an evaluation error.
+- `List.contains` compares scalar values only; for composite data use `List.exists (fun item -> item = expected)`.
+- `List.distinct` preserves first occurrence order and compares composite data recursively, including visible host-managed fields.
+- `Map.ofList` keeps the final value for a duplicate key; map traversal follows key order.
+- `String.split` preserves empty entries; text searching is ordinal and case-sensitive.
+
+## Default runtime catalog
+
+The following functions require runtime registration. See [external functions](./external-functions.md) for argument order, filesystem policy, serialization constraints, and provider behavior.
+
+- `Console.readLine : unit -> string option`
+- `Console.writeLine : string -> unit`
+- `Fs.combinePath : string -> string -> string`
+- `Fs.createDirectory : string -> bool`
+- `Fs.enumerateFiles : string -> string -> string list option`
+- `Fs.exists : string -> bool`
+- `Fs.extension : string -> string option`
+- `Fs.fileNameWithoutExtension : string -> string`
+- `Fs.glob : string -> string list option`
+- `Fs.kind : string -> FsKind`
+- `Fs.parentDirectory : string -> string option`
+- `Fs.readText : string -> string option`
+- `Fs.writeText : string -> string -> bool`
+- `Guid.new : 'a -> string option`
+- `Hash.md5 : string -> string option`
+- `Json.deserialize : type -> string -> 'a option`
+- `Json.serialize : 'a -> string option`
+- `Regex.matchGroups : string -> string -> string list option`
+- `Task.await : 'a task -> 'a`
+- `Task.spawn : (unit -> 'a) -> 'a task`
+- `Xml.queryValues : string -> string -> string list option`
+
+`Json.deserialize` selects a decoder from a runtime token; its generic scheme does not statically associate the token and output. `Guid.new` ignores its argument; scripts conventionally pass `()`. Filesystem and serialization options represent supported absence/conversion failure, not a universal exception boundary.
 
 ## Quick examples
 ```fsharp

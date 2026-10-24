@@ -41,7 +41,7 @@ This document specifies type annotations for function parameters and returns in 
   - `let value : int = 1` is not valid.
 
 ## Supported annotation type syntax
-- Named/basic: `int`, `string`, `Node`
+- Named/basic: `int`, `float`, `numeric`, `string`, `Node`
 - Postfix containers:
   - `int list`
   - `Node option`
@@ -64,6 +64,8 @@ This document specifies type annotations for function parameters and returns in 
 - A return annotation constrains the inferred function result type.
 - Body usage unifies against the declared annotation.
 - Inferred function types include annotated parameter and return constraints.
+- `numeric` annotations introduce fresh constrained variables, accepting only `int` or `float`. Body usage establishes relationships between them; `let add (x: numeric) (y: numeric) : numeric = x + y` ties both arguments and the result to one concrete type per application.
+- A concrete numeric annotation narrows a shared numeric relationship without conversion: `let add x (y: int) = x + y` infers `(x: int) -> (y: int) -> int` and rejects float arguments.
 
 ## Practical use
 - Annotations are useful for making function argument intent explicit.

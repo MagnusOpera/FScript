@@ -8,6 +8,45 @@ namespace FScript.LanguageServer.Tests;
 public sealed class CSharpServerCoreTests
 {
     [Test]
+    public void CSharp_server_inlay_hints_show_non_string_map_key_types()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-map-key-inlay-test.fss";
+            var source = "type Color = | Red | Blue\nlet byColor = { [Red] = 1 }\nlet byId = { [1] = 2 }\nlet byFlag = { [true] = 3 }\nlet byName = { [\"name\"] = 4 }\n";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            LspClient.SendRequest(client, 902, "textDocument/inlayHint", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["range"] = new JsonObject
+                {
+                    ["start"] = new JsonObject { ["line"] = 0, ["character"] = 0 },
+                    ["end"] = new JsonObject { ["line"] = 5, ["character"] = 0 }
+                }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue id && id.TryGetValue<int>(out var value) && value == 902);
+            var labels = (response["result"] as JsonArray ?? new JsonArray())
+                .OfType<JsonObject>().Select(item => item["label"]?.GetValue<string>() ?? string.Empty).ToList();
+            Assert.That(labels, Does.Contain(": int map[Color]"));
+            Assert.That(labels, Does.Contain(": int map[int]"));
+            Assert.That(labels, Does.Contain(": int map[bool]"));
+            Assert.That(labels, Does.Contain(": int map"));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_keeps_inlay_hints_after_a_type_error()
     {
         var client = LspClient.StartCSharp();
@@ -350,6 +389,46 @@ public sealed class CSharpServerCoreTests
                 msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 142);
 
             Assert.That(definitionResponse["result"], Is.Null);
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [TestCase("let add x y = x + y\n(add 1 2, add 1.5 2.6)\n", "add: (x: numeric) -> (y: numeric) -> numeric")]
+    [TestCase("let add x (y: int) = x + y\n", "add: (x: int) -> (y: int) -> int")]
+    [TestCase("let apply f x = f x\n", "apply: (f: ('a -> 'b)) -> (x: 'a) -> 'b")]
+    public void CSharp_server_hover_preserves_polymorphic_function_variables(string source, string expected)
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-polymorphic-hover-test.fss";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000,
+                msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            Assert.That((diagnostics["params"]?["diagnostics"] as JsonArray)?.Count, Is.EqualTo(0));
+            LspClient.SendRequest(client, 144, "textDocument/hover", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 0, ["character"] = 5 }
+            });
+            var response = LspClient.ReadUntil(client, 10_000,
+                msg => msg["id"] is JsonValue id && id.TryGetValue<int>(out var value) && value == 144);
+            var hoverText = response["result"]?["contents"]?["value"]?.GetValue<string>() ?? string.Empty;
+            Assert.That(hoverText, Does.Contain(expected));
         }
         finally
         {
@@ -712,6 +791,97 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_semantic_tokens_classify_export_contextually()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-contextual-export.fss";
+            var source = "let export = 42\nexport let run export = export\nlet read (value: {| export: int |}) = value.export\nrun export";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source
+                }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            Assert.That((diagnostics["params"]?["diagnostics"] as JsonArray)?.Count, Is.EqualTo(0));
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var tokens = DecodeSemanticTokens((response["result"]?["data"] as JsonArray) ?? new JsonArray());
+            var lines = source.Split('\n');
+            var exportTokens = tokens.Where(token => lines[token.line].Substring(token.start, token.length) == "export").ToList();
+            Assert.That(exportTokens.Count, Is.EqualTo(6));
+            foreach (var token in exportTokens)
+            {
+                Assert.That(token.tokenType, Is.EqualTo(token.line == 1 && token.start == 0 ? 0 : 5));
+            }
+            var field = tokens.Single(token => lines[token.line].Substring(token.start, token.length) == "value.export");
+            Assert.That(field.tokenType, Is.Not.EqualTo(0), "Field access must not become a keyword.");
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_semantic_tokens_classify_numeric_annotations_as_types()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+
+            var uri = "file:///tmp/csharp-semantic-numeric-test.fss";
+            var source = "let id (numericValue: numeric) = numericValue\n";
+            var didOpenParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+
+            var semanticParams = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            };
+
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", semanticParams);
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var data = ((response["result"] as JsonObject)?["data"] as JsonArray) ?? new JsonArray();
+            var tokens = DecodeSemanticTokens(data);
+
+            var numericTypeToken = tokens.FirstOrDefault(token =>
+                token.line == 0 &&
+                token.start == source.IndexOf("numeric)", StringComparison.Ordinal) &&
+                token.length == "numeric".Length);
+
+            Assert.That(numericTypeToken.tokenType, Is.EqualTo(4), "Expected numeric annotation to be a type token.");
+            var parameterToken = tokens.Single(token => token.line == 0 &&
+                token.start == source.IndexOf("numericValue", StringComparison.Ordinal));
+            Assert.That(parameterToken.tokenType, Is.EqualTo(5), "Expected numericValue to remain a variable token.");
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_inlayHints_do_not_pollute_type_declaration_lines()
     {
         var client = LspClient.StartCSharp();
@@ -834,6 +1004,49 @@ let mapPreview =
         }
     }
 
+    [TestCase("render", "Scene.render: (window: int) -> (mesh: int) -> (seconds: float) -> unit")]
+    [TestCase("answer", "Scene.answer : int")]
+    public void Imported_symbol_hover_uses_the_source_alias(string member, string expected)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"fscript-import-hover-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var client = LspClient.StartCSharp();
+        try
+        {
+            var scenePath = Path.Combine(directory, "scene.fss");
+            File.WriteAllText(scenePath, "export let render (window: int) (mesh: int) (seconds: float) = ()\nexport let answer = 42\n");
+            var source = $"import \"scene.fss\" as Scene\nScene.{member}\n";
+            var mainPath = Path.Combine(directory, "main.fss");
+            File.WriteAllText(mainPath, source);
+            var uri = new Uri(mainPath).AbsoluteUri;
+            LspTestFixture.Initialize(client);
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000, message =>
+                message["method"]?.ToString() == "textDocument/publishDiagnostics" && message["params"]?["uri"]?.ToString() == uri);
+            Assert.That(diagnostics["params"]?["diagnostics"]?.AsArray(), Is.Empty);
+            var position = new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = 1, ["character"] = 8 }
+            };
+            LspClient.SendRequest(client, 840, "textDocument/hover", position);
+            var hover = LspClient.ReadUntil(client, 10_000, message => message["id"]?.ToString() == "840");
+            var text = hover["result"]?["contents"]?["value"]?.GetValue<string>() ?? "";
+            Assert.That(text, Does.Contain(expected).And.Not.Contain("__imp"));
+            LspClient.SendRequest(client, 841, "textDocument/definition", position.DeepClone());
+            var definition = LspClient.ReadUntil(client, 10_000, message => message["id"]?.ToString() == "841");
+            Assert.That(definition["result"]?["uri"]?.GetValue<string>(), Is.EqualTo(new Uri(scenePath).AbsoluteUri));
+        }
+        finally
+        {
+            LspClient.Stop(client);
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Test]
     public void CSharp_server_displays_alias_types_and_navigates_alias_qualified_type_annotations()
     {
@@ -850,7 +1063,7 @@ let mapPreview =
             var source = """
 import "common.fss" as Common
 
-[<export>] let summary (project: Common.ProjectInfo) =
+export let summary (project: Common.ProjectInfo) =
     project.Name
 """;
             File.WriteAllText(mainPath, source);
@@ -1393,7 +1606,7 @@ first + second
 
             var mainPath = Path.Combine(tempDir, "main.fss");
             var source = """
-[<export>] let restore (context: Protocol.ActionContext) (locked: bool option) (evaluate: bool option) (args: string option) =
+export let restore (context: Protocol.ActionContext) (locked: bool option) (evaluate: bool option) (args: string option) =
   let locked = locked |> Helpers.map_true_default true "--locked-mode"
   let force_evaluate = evaluate |> Helpers.map_true "--force-evaluate"
   let args = args |> Helpers.with_args
@@ -1537,7 +1750,7 @@ let with_batch_projects context create_command =
   | Some _ -> [create_command ""]
   | _ -> [create_command ""]
 
-[<export>] let restore context =
+export let restore context =
   let create_command project_file =
     project_file
 
@@ -1615,7 +1828,7 @@ let with_batch_projects context create_command =
 let with_batch_projects context create_command =
   [create_command ""]
 
-[<export>] let restore context (locked: bool option) (evaluate: bool option) (args: string option) =
+export let restore context (locked: bool option) (evaluate: bool option) (args: string option) =
   let locked = locked
   let force_evaluate = evaluate
   let args = args
@@ -1698,7 +1911,7 @@ let with_batch_projects context create_command =
 
             var mainPath = Path.Combine(tempDir, "main.fss");
             var source = """
-[<export>] let defaults (context: Protocol.ActionContext) =
+export let defaults (context: Protocol.ActionContext) =
   let dependencies =
     context.Directory
     |> first_project_file

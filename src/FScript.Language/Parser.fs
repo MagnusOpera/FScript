@@ -290,7 +290,12 @@ module Parser =
                     t <- TRPostfix(t, "option")
                 | Ident "map" ->
                     stream.Next() |> ignore
-                    t <- TRPostfix(t, "map")
+                    if stream.Match(LBracket) then
+                        let keyType = parseTypeRef()
+                        stream.Expect(RBracket, "Expected ']' after map key type") |> ignore
+                        t <- TRMap(keyType, t)
+                    else
+                        t <- TRPostfix(t, "map")
                 | Ident "task" ->
                     stream.Next() |> ignore
                     t <- TRPostfix(t, "task")
@@ -732,6 +737,8 @@ module Parser =
             | InterpString raw ->
                 let t = stream.Next()
                 parseInterpolatedString raw t.Span
+            | Ident "export" when stream.PeekAt(1).Kind = Let ->
+                raise (ParseException { Message = "'export let' is only supported at top level"; Span = t.Span })
             | Ident name ->
                 let t = stream.Next()
                 match name with
@@ -1448,7 +1455,7 @@ module Parser =
                 | Module ->
                     raise (ParseException { Message = "'module' declarations were removed; module names are derived from imported filenames"; Span = stream.Peek().Span })
                 | LBracket when stream.PeekAt(1).Kind = Less ->
-                    raise (ParseException { Message = "'[<export>]' is only supported at top level"; Span = stream.Peek().Span })
+                    raise (ParseException { Message = "Attributes are not supported in scripts"; Span = stream.Peek().Span })
                 | _ ->
                     if blockStatementColumn.IsNone then
                         blockStatementColumn <- Some ((stream.Peek()).Span.Start.Column)
@@ -1616,7 +1623,12 @@ module Parser =
             stream.SkipNewlines()
 
             if stream.Peek().Kind = Ident "export" && stream.PeekAt(1).Kind = Let then
-                raise (ParseException { Message = "'export let' is no longer supported; use '[<export>] let ...'"; Span = stream.Peek().Span })
+                stream.Next() |> ignore
+                parseLetStmt true
+            else
+                parseAttributedStmt ()
+
+        and parseAttributedStmt () : Stmt =
 
             let mutable isExported = false
             let mutable hasAttributes = false

@@ -46,11 +46,14 @@ match firstEven with
 ## Type label formatting
 
 Formatting follows LSP-friendly type rendering rules:
-- unknown inferred variable: `unknown`
-- map value type when key domain is unresolved: `unknown map`
+- unresolved variables in complete inferred function signatures use stable names (`'a`, `'b`, etc.) assigned in first-occurrence order; repeated variables share the same name across parameters and the result. For example, `let apply f x = f x` preserves distinct argument and result variables.
+- unresolved numeric variables: `numeric` in hover, signatures, and inlay hints; `let add x y = x + y` displays `add: (x: numeric) -> (y: numeric) -> numeric`, specializing to `int` or `float` when constrained.
+- unknown inferred variable outside a complete function signature: `unknown`
+- unresolved map key and value types remain distinct: `unknown map[unknown]` outside a function signature, or named variables such as `'a map['b]` within a signature
+- maps with a known non-string key type: `Value map[Key]` (for example `int map[bool]` or `string map[Priority]`)
 
 Examples:
-- `: unknown map`
+- `: unknown map[unknown]`
 
 ## Configuration
 
@@ -65,7 +68,7 @@ Behavior:
 
 - Hints are inference-driven; if inference is incomplete or blocked by errors, hints may be missing.
 - When whole-document inference fails, each recoverable top-level declaration is inferred once against previously accepted binding schemes so hints remain available without repeatedly inferring the entire valid prefix.
-- Labels are concise and intentionally avoid full generic-style displays beyond FScript surface semantics.
+- Labels use the FScript map type spelling for inferred key types.
 
 ## Injected Function Signature and Definition Behavior
 
@@ -102,3 +105,15 @@ Behavior:
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)
 - Supported types: [`supported-types.md`](./supported-types.md)
 - Map matching: [`map-matching-reference.md`](./map-matching-reference.md)
+
+## VS Code Syntax Highlighting
+
+The VS Code extension requires VS Code 1.91 or later, matching its language client dependency.
+
+The extension supplies a VS Code logging output channel for language-client logs and trace events. Activation awaits language-server initialization before showing the ready status; asynchronous startup failures show an error status and a user-facing message. The language client is stopped during deactivation and configuration restarts; its startup promise is not registered as a disposable.
+
+The language server classifies `numeric` as a type in semantic tokens. The extension also recognizes `numeric` annotations as `storage.type.fscript`, alongside built-in types, even when the language server is inactive. Identifier substrings such as `numericValue` do not receive this type scope.
+
+## Imported symbol hover names
+
+Hover signatures for imported functions and values display the document's public module alias, for example `Scene.render`, instead of resolver-generated names such as `__imp1.render`. This applies to named-parameter, ordinary typed-value, and fallback signature formatting. Parameter and type information is preserved. Internal symbol names remain the lookup keys for inference and definition navigation.

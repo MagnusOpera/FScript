@@ -16,6 +16,7 @@ This chapter is example-first: each section includes complete code you can copy 
 | Model recursive domain data | [Recursive records and traversal](#4-recursive-records-and-traversal) |
 | Split a script into modules | [Imports + exports](#5-imports--exports-multi-file) |
 | Call a script from an application | [An embedded pricing rule](#6-an-embedded-pricing-rule) |
+| Explore typed FFI with graphics and opaque resources | [A rotating teapot](./ffi-graphics.md) |
 
 ## 1) Hello with script arguments
 
@@ -149,7 +150,7 @@ explore displayNode root
 This example introduces:
 
 - `import "..." as Alias`,
-- top-level `[<export>]` bindings,
+- top-level `export let` bindings,
 - using imported record types in exported functions.
 
 ### File: `includes/common.fss`
@@ -172,9 +173,9 @@ let join_with_comma items =
 ```fsharp
 import "includes/common.fss" as Common
 
-[<export>] let extension_name = "demo"
+export let extension_name = "demo"
 
-[<export>] let summary (project: Common.ProjectInfo) =
+export let summary (project: Common.ProjectInfo) =
   let steps = [ "build"; "test"; "publish" ] |> List.map Common.describe_command
   $"{Common.describe_project project}: {Common.join_with_comma steps}"
 
@@ -197,7 +198,7 @@ type Customer =
   { Plan: string
     Seats: int }
 
-[<export>] let quote (customer: Customer) =
+export let quote (customer: Customer) =
   let pricePerSeat =
     match customer.Plan with
     | "scale" -> 29
@@ -237,3 +238,5 @@ The script owns the changeable rule. The host owns loading, input, output, and e
 4. Run example 5 when you are ready for multi-file scripts and host-facing exports.
 5. Run example 6 when you are ready to cross the script/host boundary.
 6. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.
+
+Continue with [FFI Graphics — A Rotating Teapot](./ffi-graphics.md) to generate a 3D model in FScript and send geometry, camera, and lighting through a typed .NET provider.

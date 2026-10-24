@@ -13,6 +13,8 @@ import {
   infer,
   evaluate,
   formatValue,
+  fromJs,
+  toJs,
   createSession,
   resetSession,
   submit
@@ -24,8 +26,17 @@ test("run returns tagged primitive values", () => {
   assert.equal(result.value, 42n);
 });
 
+test("map keys round-trip through tagged JavaScript values", () => {
+  const value = run("type Color = | Red | Blue\n{ [Red] = 1; [Blue] = 2 }");
+  assert.equal(value.kind, "map");
+  assert.deepEqual(value.entries.map(entry => entry.key.caseName).sort(), ["Blue", "Red"]);
+  assert.deepEqual(toJs(fromJs(value)), value);
+  const boolMap = run("{ [true] = 3 }");
+  assert.deepEqual(toJs(fromJs(boolMap)), boolMap);
+});
+
 test("load and invoke exported functions repeatedly", () => {
-  const script = "[<export>] let add x y = x + y\n[<export>] let answer = 42";
+  const script = "export let add x y = x + y\nexport let answer = 42";
   const loaded = load(script);
   assert.deepEqual(listFunctions(loaded), ["add"]);
   assert.deepEqual(listValues(loaded), ["answer"]);
@@ -35,7 +46,7 @@ test("load and invoke exported functions repeatedly", () => {
 });
 
 test("virtual imports resolve from an in-memory source map", () => {
-  const loaded = load("import \"shared.fss\" as Shared\n[<export>] let value = Shared.inc 41", {
+  const loaded = load("import \"shared.fss\" as Shared\nexport let value = Shared.inc 41", {
     rootDirectory: "/",
     entryFile: "/main.fss",
     sources: {
@@ -70,6 +81,20 @@ test("session submissions retain declarations", () => {
   });
 });
 
+test("numeric constraints persist across session applications", () => {
+  const session = createSession();
+  submit(session, "let add x y = x + y");
+  assert.equal(submit(session, "add 1 2").value.value, 3n);
+  assert.equal(submit(session, "add 1.5 2.6").value.value, 4.1);
+  for (const call of ['add "toto" "titi"', "add true false", "add 1 2.6"]) {
+    assert.throws(() => submit(session, call), error => {
+      assert.equal(error.phase, "type");
+      return true;
+    });
+  }
+  assert.equal(submit(session, "add 3 4").value.value, 7n);
+});
+
 test("errors are structured and span-aware", () => {
   assert.throws(
     () => run("let = 1"),
@@ -95,4 +120,20 @@ test("JavaScript externs round-trip typed arguments and results", () => {
   });
   const result = run("Host.shout \"fable\"", { externs: [shout] });
   assert.deepEqual(result, { kind: "string", value: "fable!" });
+});
+
+
+test("postfix map annotations preserve numeric key inference", () => {
+  assert.equal(run('let get (m: string map[int]) = m[0]\nget { [0] = "ok" }').value.value, "ok");
+  const result = run('let make k = { [k + k] = "ok" }\nmake 2');
+  assert.deepEqual(result.entries[0].key, { kind: "int", value: 4n });
+  assert.throws(() => run('let make k = { [k + k] = "ok" }\nmake 2.5'), error => error.phase === "type");
+});
+
+
+test("export is a contextual declaration prefix rather than a reserved identifier", () => {
+  const loaded = load("let export = 40\nexport let answer = export + 2\nexport let export export = export");
+  assert.equal(getValue(loaded, "answer").value, 42n);
+  assert.equal(invoke(loaded, "export", [7]).value, 7n);
+  assert.throws(() => run("[<export>] let answer = 42"), error => error.phase === "parse");
 });

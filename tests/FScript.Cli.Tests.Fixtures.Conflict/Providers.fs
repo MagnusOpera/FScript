@@ -1,7 +1,6 @@
 namespace FScript.Cli.Tests.Fixtures.Conflict
 
-open FScript.Language
-open FScript.Runtime
+open FScript.Extensibility
 
 type ConflictExternProvider =
     [<FScriptExternProvider>]

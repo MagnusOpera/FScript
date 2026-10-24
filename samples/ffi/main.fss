@@ -1,0 +1,15 @@
+import "scene.fss" as Scene
+
+// The script owns startup and retains the mesh in a render closure.
+let start (window: Window) =
+    let mesh = Scene.initialize window
+    fun seconds -> Scene.render window mesh seconds
+
+let parseFrames text = Int.tryParse text |> Option.defaultValue (0 - 1)
+
+match Env.Arguments with
+| [] -> Graphics.run 0 start
+| ["--headless"] -> Graphics.runHeadless 3 start
+| ["--headless"; count] -> Graphics.runHeadless (parseFrames count) start
+| ["--frames"; count] -> Graphics.run (parseFrames count) start
+| _ -> Graphics.run (0 - 1) start

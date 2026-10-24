@@ -1,8 +1,8 @@
 import "includes/common.fss" as Common
 
-[<export>] let extension_name = "demo"
+export let extension_name = "demo"
 
-[<export>] let summary (project: Common.ProjectInfo) =
+export let summary (project: Common.ProjectInfo) =
     let steps = [ "build"; "test"; "publish" ] |> List.map Common.describe_command
     $"{Common.describe_project project}: {Common.join_with_comma steps}"
 

@@ -14,6 +14,7 @@ module Lir =
         | String of string
 
     type Operation =
+        | NumericAdd | NumericSubtract | NumericMultiply | NumericDivide
         | IntAdd | FloatAdd | IntSubtract | FloatSubtract
         | IntMultiply | FloatMultiply | IntDivide | FloatDivide | IntRemainder
         | StructuralEqual
@@ -235,6 +236,8 @@ module LirLowering =
     let private symbol (Hir.SymbolId value) = Lir.SymbolId value
 
     let private operation = function
+        | Hir.NumericAdd -> Lir.NumericAdd | Hir.NumericSubtract -> Lir.NumericSubtract
+        | Hir.NumericMultiply -> Lir.NumericMultiply | Hir.NumericDivide -> Lir.NumericDivide
         | Hir.IntAdd -> Lir.IntAdd | Hir.FloatAdd -> Lir.FloatAdd
         | Hir.IntSubtract -> Lir.IntSubtract | Hir.FloatSubtract -> Lir.FloatSubtract
         | Hir.IntMultiply -> Lir.IntMultiply | Hir.FloatMultiply -> Lir.FloatMultiply
@@ -448,6 +451,7 @@ module LirValidation =
         let knownTypes = typeDefinitions |> Map.keys |> Set.ofSeq
         let resolve = function
             | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
+            | TRecordShape(_, fields, _) -> TRecord fields
             | value -> value
         let compatible left right =
             let rec loop visited left right =
@@ -462,6 +466,9 @@ module LirValidation =
                     | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 (loop visited) left right
                     | TList left, TList right | TOption left, TOption right | TTask left, TTask right -> loop visited left right
                     | TMap(lk, lv), TMap(rk, rv) -> loop visited lk rk && loop visited lv rv
+                    | TRecord leftFields, TRecord rightFields when (match left, right with TRecordShape _, _ | _, TRecordShape _ -> true | _ -> false) ->
+                        let required, actual = if leftFields.Count <= rightFields.Count then leftFields, rightFields else rightFields, leftFields
+                        required |> Map.forall (fun name item -> actual |> Map.tryFind name |> Option.exists (loop visited item))
                     | TRecord left, TRecord right ->
                         left.Count = right.Count
                         && (left |> Map.forall (fun name item -> right |> Map.tryFind name |> Option.exists (loop visited item)))
@@ -499,7 +506,7 @@ module LirValidation =
             || program.Types |> List.exists (fun declaration ->
                 not (validSpan declaration.Span) || not (validType declaration.Definition)
                 || match declaration.Definition with
-                   | TRecord _ -> false
+                   | TRecord _ | THostManaged _ -> false
                    | TUnion(name, _) -> name <> declaration.Name
                    | _ -> true)
         if invalidTypes then
@@ -601,6 +608,7 @@ module LirValidation =
                     arguments |> List.iter check
                     let expected =
                         match operation with
+                        | Lir.NumericAdd | Lir.NumericSubtract | Lir.NumericMultiply | Lir.NumericDivide -> Some(expression.Type, expression.Type)
                         | Lir.IntAdd | Lir.IntSubtract | Lir.IntMultiply | Lir.IntDivide | Lir.IntRemainder -> Some(TInt, TInt)
                         | Lir.FloatAdd | Lir.FloatSubtract | Lir.FloatMultiply | Lir.FloatDivide -> Some(TFloat, TFloat)
                         | Lir.BooleanAnd | Lir.BooleanOr -> Some(TBool, TBool)
@@ -614,7 +622,7 @@ module LirValidation =
                 | Lir.FieldGet(target, name) ->
                     check target
                     match resolve target.Type, name with
-                    | TRecord fields, _ when Map.tryFind name fields |> Option.exists (compatible expression.Type) -> ()
+                    | TRecord fields, _ | THostManaged(_, fields), _ when Map.tryFind name fields |> Option.exists (compatible expression.Type) -> ()
                     | TNamed "Environment", "ScriptName" when compatible expression.Type (TOption TString) -> ()
                     | TNamed "Environment", "Arguments" when compatible expression.Type (TList TString) -> ()
                     | _ -> report "FSL2004" $"LIR field projection '{name}' is inconsistent." expression.Span
@@ -681,7 +689,7 @@ module LirOptimization =
         | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
         | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.TailCallClosure _ | Lir.TailPipeClosure _
         | Lir.Fail _ | Lir.ForEach _ -> Observable
-        | Lir.Operation((Lir.IntDivide | Lir.IntRemainder), _) -> Observable
+        | Lir.Operation((Lir.IntDivide | Lir.IntRemainder | Lir.NumericDivide), _) -> Observable
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> combine
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> combine
         | Lir.Record fields -> fields |> List.map (snd >> child) |> combine

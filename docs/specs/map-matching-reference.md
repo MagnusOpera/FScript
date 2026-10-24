@@ -12,7 +12,22 @@ match values with
 | _ -> ""
 ```
 
-Keys must be `string`.
+Keys may be `string`, `int`, `bool`, or cases of a union with no payload-bearing cases. All keys in one map share one type.
+
+Captured keys have the map's actual key type. A captured union key is a union value, rather than its case name as a string.
+
+```fsharp
+type Priority = | Low | High
+
+let describe values =
+  match values with
+  | { [High] = message } -> message
+  | _ -> "no high-priority entry"
+
+let message = { [High] = "now"; [Low] = "later" } |> describe
+```
+
+`describe` infers `string map[Priority] -> string`. Map patterns match the requested entries and permit additional entries.
 
 ## Supported forms
 

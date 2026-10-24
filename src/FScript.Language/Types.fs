@@ -20,6 +20,20 @@ type Type =
     | TUnion of string * Map<string, Type option>
     | TTypeToken
     | TVar of int
+    | TNumeric of int
+    | THostManaged of name: string * fields: Map<string, Type>
+    // The witness retains the whole argument type through structural readers.
+    | TRecordShape of id: int * fields: Map<string, Type> * requiresConstruction: bool
+
+type HostTypeDescriptor =
+    { Name: string
+      Fields: Map<string, Type>
+      HostManaged: bool }
+
+/// Script-constructible union supplied by a host; payloads use ordinary script types.
+type HostUnionDescriptor =
+    { Name: string
+      Cases: Map<string, Type option> }
 
 [<StructuralEquality; StructuralComparison>]
 type Scheme = Forall of int list * Type
@@ -36,18 +50,25 @@ module Types =
 #endif
         TVar id
 
+    let freshNumeric () =
+        match freshVar () with
+        | TVar id -> TNumeric id
+        | _ -> failwith "Expected fresh type variable"
+
     let rec ftvType t =
         match t with
         | TUnit | TInt | TFloat | TBool | TString -> Set.empty
         | TList t1 -> ftvType t1
         | TTask t1 -> ftvType t1
         | TTuple ts -> ts |> List.map ftvType |> List.fold Set.union Set.empty
+        | THostManaged _ -> Set.empty
+        | TRecordShape (id, fields, _) -> Set.add id (fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty)
         | TRecord fields -> fields |> Map.values |> Seq.map ftvType |> Seq.fold Set.union Set.empty
         | TMap (tk, tv) -> Set.union (ftvType tk) (ftvType tv)
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
         | TNamed _ | TUnion _ | TTypeToken -> Set.empty
-        | TVar v -> Set.singleton v
+        | TVar v | TNumeric v -> Set.singleton v
 
     let ftvScheme (Forall (vars, t)) =
         Set.difference (ftvType t) (Set.ofList vars)
@@ -74,6 +95,8 @@ module Types =
             | TList t1 -> sprintf "%s list" (postfixArg t1)
             | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
+            | THostManaged (name, _) -> name
+            | TRecordShape (_, fields, _) -> go (TRecord fields)
             | TRecord fields ->
                 fields
                 |> Map.toList
@@ -83,12 +106,13 @@ module Types =
             | TMap (tk, tv) ->
                 match tk with
                 | TString -> sprintf "%s map" (postfixArg tv)
-                | _ -> sprintf "map<%s, %s>" (go tk) (go tv)
+                | _ -> sprintf "%s map[%s]" (postfixArg tv) (go tk)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
+            | TNumeric _ -> "numeric"
             | TVar v ->
                 let letter = char (int 'a' + (v % 26))
                 let suffix = v / 26

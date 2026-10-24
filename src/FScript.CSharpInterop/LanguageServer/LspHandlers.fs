@@ -2,6 +2,7 @@ namespace FScript.LanguageServer
 
 open System
 open System.IO
+open System.Text.RegularExpressions
 open System.Text.Json.Nodes
 open FScript.Language
 open FScript.CSharpInterop
@@ -50,6 +51,8 @@ module LspHandlers =
                     requestedLogLevel.Equals("debug", StringComparison.OrdinalIgnoreCase)
             | None -> ()
         | None -> ()
+
+        LspRuntimeExterns.initialize (paramsObj |> Option.bind (fun p -> tryGetObject p "initializationOptions"))
 
         if debugLoggingEnabled then
             logInfo "debug logging enabled"
@@ -109,11 +112,11 @@ module LspHandlers =
     let private keywordSet =
         [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
           "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some"
-          "fun"; "raise"; "import"; "export"; "qualified" ]
+          "fun"; "raise"; "import"; "qualified" ]
         |> Set.ofList
 
     let private builtinTypeTokenSet =
-        [ "unit"; "int"; "float"; "bool"; "string"
+        [ "unit"; "int"; "float"; "numeric"; "bool"; "string"
           "list"; "option"; "map"; "task"
           "Environment"; "FsKind" ]
         |> Set.ofList
@@ -125,7 +128,11 @@ module LspHandlers =
                 i <- i + 1
             i < line.Length && line[i] = '('
 
-        if keywordSet.Contains(token) then 0
+        let isExportPrefix =
+            token = "export"
+            && Regex.IsMatch(line.Substring(startIndex + token.Length), @"^\s+let\b", RegexOptions.CultureInvariant)
+
+        if isExportPrefix || keywordSet.Contains(token) then 0
         elif builtinTypeTokenSet.Contains(token) then 4
         elif token.Length > 1 && token.StartsWith("\"") && token.EndsWith("\"") then 1
         elif token |> Seq.forall Char.IsDigit then 2
@@ -305,7 +312,7 @@ module LspHandlers =
         else
             typeText
 
-    let private displayTypeName (doc: DocumentState) (name: string) =
+    let private displayQualifiedName (doc: DocumentState) (name: string) =
         if String.IsNullOrWhiteSpace(name) then name
         else
             let parts = name.Split('.') |> Array.toList
@@ -318,6 +325,7 @@ module LspHandlers =
             | _ -> name
 
     let private formatFunctionSignature (doc: DocumentState) (sym: TopLevelSymbol) =
+        let displayName = displayQualifiedName doc sym.Name
         let paramNames = doc.FunctionParameters |> Map.tryFind sym.Name |> Option.defaultValue []
 
         match sym.TypeText with
@@ -327,7 +335,7 @@ module LspHandlers =
                 let effectiveParts =
                     match sym.TypeTargetName with
                     | Some returnName when parts.Length > 0 ->
-                        (parts |> List.take (parts.Length - 1)) @ [ displayTypeName doc returnName ]
+                        (parts |> List.take (parts.Length - 1)) @ [ displayQualifiedName doc returnName ]
                     | _ -> parts
                 let arrowText =
                     if effectiveParts.Length = (paramNames.Length + 1) then
@@ -337,11 +345,11 @@ module LspHandlers =
                         String.concat " -> " (args @ [ effectiveParts[effectiveParts.Length - 1] ])
                     else
                         String.concat " -> " effectiveParts
-                $"{sym.Name}: {arrowText}"
+                $"{displayName}: {arrowText}"
             else
-                $"{sym.Name} : {typeText}"
+                $"{displayName} : {typeText}"
         | Some typeText ->
-            $"{sym.Name} : {typeText}"
+            $"{displayName} : {typeText}"
         | None when sym.Kind = 12 && not paramNames.IsEmpty ->
             match doc.FunctionAnnotationTypes |> Map.tryFind sym.Name with
             | Some annotated when annotated.Length = paramNames.Length ->
@@ -349,7 +357,7 @@ module LspHandlers =
                     doc.FunctionDeclaredReturnTargets
                     |> Map.tryFind sym.Name
                     |> Option.defaultValue "unknown"
-                    |> displayTypeName doc
+                    |> displayQualifiedName doc
                 let parts = annotated @ [ returnType ]
                 let arrowText =
                     if parts.Length = (paramNames.Length + 1) then
@@ -359,12 +367,12 @@ module LspHandlers =
                         String.concat " -> " (args @ [ parts[parts.Length - 1] ])
                     else
                         String.concat " -> " parts
-                $"{sym.Name}: {arrowText}"
+                $"{displayName}: {arrowText}"
             | _ ->
                 let args = paramNames |> List.map (fun name -> $"({name})") |> String.concat " "
-                $"{sym.Name} {args}"
+                $"{displayName} {args}"
         | None ->
-            sym.Name
+            displayName
 
     let private formatInjectedFunctionSignature (doc: DocumentState) (name: string) (typeText: string) =
         match doc.InjectedFunctionParameterNames |> Map.tryFind name with
@@ -588,7 +596,7 @@ module LspHandlers =
                     | Some sourceText ->
                         let program = InteropServices.parseProgramFromSourceWithIncludes sourcePath sourceText
                         let runtimeExterns = LspRuntimeExterns.forSourcePath sourcePath
-                        let typedProgram = InteropServices.inferProgramWithExterns runtimeExterns program
+                        let typedProgram = InteropServices.inferProgramWithRegistration runtimeExterns program
                         let response = JsonObject()
                         response["ok"] <- JsonValue.Create(true)
                         response["data"] <- AstJson.typedProgramToJson sourcePath typedProgram
@@ -624,65 +632,88 @@ module LspHandlers =
             match tryGetUriFromTextDocument paramsObj, tryGetPosition paramsObj with
             | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
                 let doc = documents[uri]
-                match tryGetRecordFieldHoverInfo doc line character with
-                | Some (fieldName, fieldType) ->
+                let hostDescription =
+                    tryGetWordAtPosition doc.Text line character
+                    |> Option.bind (fun word ->
+                        (LspRuntimeExterns.descriptors doc.SourcePath |> List.tryFind (fun d -> d.Name = word)
+                         |> Option.map (fun descriptor ->
+                            let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
+                            let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
+                            $"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}"))
+                        |> Option.orElseWith (fun () ->
+                            LspRuntimeExterns.unions doc.SourcePath |> List.tryFind (fun d -> d.Name = word || d.Cases.ContainsKey word || (d.Cases |> Map.exists (fun caseName _ -> d.Name + "." + caseName = word)))
+                            |> Option.map (fun descriptor ->
+                                let cases = descriptor.Cases |> Map.toList |> List.map (fun (name, payload) ->
+                                    match payload with None -> name | Some ty -> name + " of " + Types.typeToString ty) |> String.concat " | "
+                                $"```fscript\ntype {descriptor.Name} = {cases}\n```\nscript-constructible host union")))
+                match hostDescription with
+                | Some description ->
                     let contents = JsonObject()
                     contents["kind"] <- JsonValue.Create("markdown")
-                    contents["value"] <- JsonValue.Create($"```fscript\n{fieldName} : {fieldType}\n```\nrecord-field")
+                    contents["value"] <- JsonValue.Create(description)
                     let result = JsonObject()
                     result["contents"] <- contents
                     LspProtocol.sendResponse idNode (Some result)
                 | None ->
-                    match tryGetLocalVariableHoverInfo doc line character with
-                    | Some (name, typeText) ->
+                    match tryGetRecordFieldHoverInfo doc line character with
+                    | Some (fieldName, fieldType) ->
                         let contents = JsonObject()
                         contents["kind"] <- JsonValue.Create("markdown")
-                        contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\nlocal-variable")
+                        contents["value"] <- JsonValue.Create($"```fscript\n{fieldName} : {fieldType}\n```\nrecord-field")
                         let result = JsonObject()
                         result["contents"] <- contents
                         LspProtocol.sendResponse idNode (Some result)
                     | None ->
-                        match tryResolveSymbol doc line character with
-                        | Some sym ->
-                            let signature = formatFunctionSignature doc sym
-
+                        match tryGetLocalVariableHoverInfo doc line character with
+                        | Some (name, typeText) ->
                             let contents = JsonObject()
                             contents["kind"] <- JsonValue.Create("markdown")
-                            let kindLine = symbolKindLabel sym.Kind
-                            let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
-                            contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
-
+                            contents["value"] <- JsonValue.Create($"```fscript\n{name} : {typeText}\n```\nlocal-variable")
                             let result = JsonObject()
                             result["contents"] <- contents
                             LspProtocol.sendResponse idNode (Some result)
                         | None ->
-                            match tryGetWordAtPosition doc.Text line character with
-                            | Some word ->
-                                let candidates =
-                                    if word.Contains('.') then
-                                        [ word
-                                          word.Split('.') |> Array.last ]
-                                    else
-                                        [ word ]
-                                let injectedMatch =
-                                    candidates
-                                    |> List.tryPick (fun candidate ->
-                                        doc.InjectedFunctionSignatures
-                                        |> Map.tryFind candidate
-                                        |> Option.map (fun t -> candidate, t))
-                                match injectedMatch with
-                                | Some (name, typeText) ->
-                                    let contents = JsonObject()
-                                    contents["kind"] <- JsonValue.Create("markdown")
-                                    let signature = formatInjectedFunctionSignature doc name typeText
-                                    contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\ninjected-function")
-                                    let result = JsonObject()
-                                    result["contents"] <- contents
-                                    LspProtocol.sendResponse idNode (Some result)
+                            match tryResolveSymbol doc line character with
+                            | Some sym ->
+                                let signature = formatFunctionSignature doc sym
+
+                                let contents = JsonObject()
+                                contents["kind"] <- JsonValue.Create("markdown")
+                                let kindLine = symbolKindLabel sym.Kind
+                                let locationLine = $"defined at L{sym.Span.Start.Line}:C{sym.Span.Start.Column}"
+                                contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\n{kindLine}\n\n{locationLine}")
+
+                                let result = JsonObject()
+                                result["contents"] <- contents
+                                LspProtocol.sendResponse idNode (Some result)
+                            | None ->
+                                match tryGetWordAtPosition doc.Text line character with
+                                | Some word ->
+                                    let candidates =
+                                        if word.Contains('.') then
+                                            [ word
+                                              word.Split('.') |> Array.last ]
+                                        else
+                                            [ word ]
+                                    let injectedMatch =
+                                        candidates
+                                        |> List.tryPick (fun candidate ->
+                                            doc.InjectedFunctionSignatures
+                                            |> Map.tryFind candidate
+                                            |> Option.map (fun t -> candidate, t))
+                                    match injectedMatch with
+                                    | Some (name, typeText) ->
+                                        let contents = JsonObject()
+                                        contents["kind"] <- JsonValue.Create("markdown")
+                                        let signature = formatInjectedFunctionSignature doc name typeText
+                                        contents["value"] <- JsonValue.Create($"```fscript\n{signature}\n```\ninjected-function")
+                                        let result = JsonObject()
+                                        result["contents"] <- contents
+                                        LspProtocol.sendResponse idNode (Some result)
+                                    | None ->
+                                        LspProtocol.sendResponse idNode None
                                 | None ->
                                     LspProtocol.sendResponse idNode None
-                            | None ->
-                                LspProtocol.sendResponse idNode None
             | _ ->
                 LspProtocol.sendResponse idNode None
 

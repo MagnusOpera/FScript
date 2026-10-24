@@ -39,7 +39,7 @@ module GoSpecialization =
         | Observable
 
     let rec containsVariable = function
-        | TVar _ -> true
+        | TVar _ | TNumeric _ | TRecordShape _ -> true
         | TFun(argument, result) | TMap(argument, result) -> containsVariable argument || containsVariable result
         | TTuple items -> List.exists containsVariable items
         | TList item | TOption item | TTask item -> containsVariable item
@@ -48,7 +48,9 @@ module GoSpecialization =
         | _ -> false
 
     let rec apply (substitution: Substitution) = function
-        | TVar variable as value -> substitution |> Map.tryFind variable |> Option.defaultValue value
+        | (TVar variable | TNumeric variable) as value -> substitution |> Map.tryFind variable |> Option.defaultValue value
+        | TRecordShape(id, fields, constructible) ->
+            substitution |> Map.tryFind id |> Option.defaultValue (TRecordShape(id, Map.map (fun _ -> apply substitution) fields, constructible))
         | TFun(argument, result) -> TFun(apply substitution argument, apply substitution result)
         | TTuple items -> TTuple(List.map (apply substitution) items)
         | TList item -> TList(apply substitution item)
@@ -62,7 +64,7 @@ module GoSpecialization =
     let unifyInstantiation template concrete : Result<Substitution, string> =
         let rec loop substitution template concrete =
             match apply substitution template, concrete with
-            | TVar variable, value ->
+            | TRecordShape(variable, _, _), value | TVar variable, value | TNumeric variable, value ->
                 match substitution |> Map.tryFind variable with
                 | None -> Ok(Map.add variable value substitution)
                 | Some existing when existing = value -> Ok substitution
@@ -95,6 +97,9 @@ module GoSpecialization =
             | TString -> Ok String
             | TTypeToken -> Ok TypeToken
             | TVar variable -> Error $"Open type variable '{variable}' has no Go representation."
+            | TNumeric variable -> Error $"Open numeric type '{variable}' has no Go representation."
+            | THostManaged(name, _) -> Error $"Host-managed type '{name}' requires a platform binding."
+            | TRecordShape _ -> Error "An unresolved structural witness has no Go representation."
             | TTask item -> representation item |> Result.map Task
             | TFun(argument, result) -> map2 (fun a r -> Function(a, r)) (representation argument) (representation result)
             | TTuple items -> items |> List.map representation |> List.fold (fun state item -> map2 (fun values value -> values @ [ value ]) state item) (Ok []) |> Result.map Tuple

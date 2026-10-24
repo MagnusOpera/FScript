@@ -1,11 +1,10 @@
 ---
 id: stdlib-builtins
-title: Built-ins
+title: Built-ins and Execution Metadata
 slug: /stdlib/builtins
 ---
 
-This page covers the top-level built-ins that are always in scope even though they are not module members.
-For host console I/O, see the separate [Console module](./console).
+`ignore` belongs to the core language library. `Env` is execution metadata supplied by the CLI/REPL; embedding hosts decide whether to inject it. The `Environment` and `FsKind` type declarations are built into the language. For host console I/O, see the [Console module](./console).
 
 ## Values and functions
 
@@ -24,7 +23,7 @@ type Environment =
 
 The host exposes `Env` with this shape:
 
-- `Env.ScriptName` is `Some "path/to/script.fss"` for file execution.
+- `Env.ScriptName` is `Some "script.fss"` for file execution.
 - `Env.ScriptName` is `None` for stdin execution and the REPL.
 - `Env.Arguments` contains arguments passed after `--`.
 
@@ -54,8 +53,9 @@ match Fs.kind "samples" with
 
 ## `ignore : 'a -> unit`
 
-Use `ignore` when an expression returns a value you intentionally do not need.
+Use `ignore` when an expression returns a value you intentionally do not need. It evaluates its argument and returns `()`. It is a normal, always-available core function, not special syntax or a provider-supplied capability.
 
 ```fsharp
+42 |> ignore
 String.indexOf "x" "text" |> ignore
 ```

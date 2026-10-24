@@ -43,6 +43,7 @@
     <ProjectReference Include="..\FScript.Interpreter.Lir\FScript.Interpreter.Lir.fsproj" />
     <ProjectReference Include="..\FScript.Backend.Go\FScript.Backend.Go.fsproj" />
     <ProjectReference Include="..\FScript.Runtime\FScript.Runtime.fsproj" />
+    <ProjectReference Include="../FScript.DebugAdapter/FScript.DebugAdapter.csproj" />
   </ItemGroup>
 
 </Project>

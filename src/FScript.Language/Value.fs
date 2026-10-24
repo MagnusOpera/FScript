@@ -8,6 +8,8 @@ open System.Threading.Tasks
 type MapKey =
     | MKString of string
     | MKInt of int64
+    | MKBool of bool
+    | MKUnionCase of string * string
 
 type Value =
     | VUnit
@@ -26,6 +28,12 @@ type Value =
     | VTask of TaskHandle
     | VClosure of string * Expr * Env ref
     | VExternal of ExternalFunction * Value list
+    | VHostManaged of HostManagedValue
+
+and HostManagedValue =
+    { Descriptor: HostTypeDescriptor
+      Fields: Map<string, Value>
+      Payload: obj }
 
 and TaskOutcome =
     | TaskSucceeded of Value
@@ -36,11 +44,14 @@ and TaskHandle =
     { mutable Awaited: bool }
 #else
     { Worker: Task<TaskOutcome>
+      DebugTaskId: int option
       mutable Awaited: bool }
 #endif
 
 and ExternalCallContext =
-    { Apply: Value -> Value -> Value
+    { Session: obj
+      IsActive: unit -> bool
+      Apply: Value -> Value -> Value
       SpawnTask: Value -> Value
       AwaitTask: Value -> Value
       CheckRuntime: unit -> unit }
@@ -52,3 +63,8 @@ and ExternalFunction =
       Arity: int }
 
 and Env = Map<string, Value>
+
+type ExtensionRegistration =
+    { Types: HostTypeDescriptor list
+      Unions: HostUnionDescriptor list
+      Functions: ExternalFunction list }

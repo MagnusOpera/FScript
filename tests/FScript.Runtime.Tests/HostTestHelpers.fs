@@ -16,7 +16,9 @@ module HostTestHelpers =
 
     let invoke (ext: ExternalFunction) (args: Value list) =
         ext.Impl
-            { Apply = noApply
+            { Session = obj()
+              IsActive = fun () -> true
+              Apply = noApply
               SpawnTask = noSpawnTask
               AwaitTask = noAwaitTask
               CheckRuntime = fun () -> () }

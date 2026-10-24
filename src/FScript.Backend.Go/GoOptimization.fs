@@ -89,7 +89,7 @@ module GoOptimization =
             | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
             | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn) -> combine [ child argument; callee fn ]
             | Lir.Fail _ | Lir.ForEach _ -> Observable
-            | Lir.Operation((Lir.IntDivide | Lir.IntRemainder), _) -> Observable
+            | Lir.Operation((Lir.IntDivide | Lir.IntRemainder | Lir.NumericDivide), _) -> Observable
             | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> values |> List.map child |> combine
             | Lir.Branch(a, b, c) -> combine [ child a; child b; child c ]
             | Lir.Record fields -> fields |> List.map (snd >> child) |> combine

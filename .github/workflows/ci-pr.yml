@@ -33,7 +33,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.201
+          dotnet-version: 10.0.401
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -49,12 +49,24 @@ jobs:
       - name: Test
         run: dotnet test FScript.sln --configuration Release --no-build --logger "trx" --results-directory TestResults
 
+      - name: Verify independently versioned SDK provider
+        run: make verify-sdk-provider
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: website/package-lock.json
+
+      - name: Test CLI debugger adapter
+        run: node --test tests/FScript.DebugAdapter.Tests/*Tests.js
+
+      - name: Test VS Code extension
+        working-directory: vscode-fscript
+        run: |
+          npm ci
+          npm test
 
       - name: Run Fable JS tests
         run: make fable-test

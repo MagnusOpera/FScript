@@ -2,6 +2,8 @@
 
 This folder contains the Docusaurus-powered FScript documentation website.
 
+Keep all `@docusaurus/*` packages on the same version, including `@docusaurus/faster` for the enabled build optimizations. TypeScript stays on 5.9 because Docusaurus 3.10.2 uses the `baseUrl` compiler option, which TypeScript 7 removes.
+
 ## Commands
 
 ```bash

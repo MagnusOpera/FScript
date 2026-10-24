@@ -247,7 +247,7 @@ type GoBackendTests() =
         Assert.That(generatedProgram, Does.Not.Contain("patternsMatch := true"), generatedProgram)
         Assert.That(generatedProgram, Does.Not.Contain("if true {"), generatedProgram)
         Assert.That(Regex.IsMatch(generatedProgram, @"_ = pattern\d+"), Is.False, generatedProgram)
-        Assert.That(generatedProgram, Does.Contain("pattern178 := (matchValue).Field_Id"), generatedProgram)
+        Assert.That(Regex.IsMatch(generatedProgram, @"pattern\d+ := \(matchValue\).Field_Id"), Is.True, generatedProgram)
         Assert.That(generatedProgram, Does.Not.Contain("_ = matchValue"), generatedProgram)
         Assert.That(generatedProgram, Does.Not.Contain("matchClause"), generatedProgram)
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-showcase-{Guid.NewGuid():N}")
@@ -326,12 +326,12 @@ type GoBackendTests() =
             | Ok files -> files |> List.find (fun file -> file.RelativePath.EndsWith("program.go")) |> _.Content
         let projected =
             generate "type Contact = { City: string; Zip: int; Country: string }\nlet describe (value: {| City: string; Zip: int |}) = value.City\nlet contact = { City = \"Paris\"; Zip = 75000; Country = \"FR\" }\ndescribe contact"
-        Assert.That(Regex.IsMatch(projected, @"func raised\d+_repr_[a-f0-9]+\(arg\d+ named_Contact\) string"), Is.True, projected)
-        Assert.That(Regex.IsMatch(projected, @"raised\d+_repr_[a-f0-9]+\(value\d+\)"), Is.True, projected)
+        Assert.That(Regex.IsMatch(projected, @"func raised\d+(?:_repr_[a-f0-9]+)?\(arg\d+ named_Contact\) string"), Is.True, projected)
+        Assert.That(Regex.IsMatch(projected, @"raised\d+(?:_repr_[a-f0-9]+)?\(value\d+\)"), Is.True, projected)
         Assert.That(projected, Does.Not.Contain("converted :="), projected)
         let retainedConversion =
             generate "type Contact = { City: string; Zip: int; Country: string }\nlet keep (value: {| City: string; Zip: int |}) = value\nlet contact = { City = \"Paris\"; Zip = 75000; Country = \"FR\" }\nkeep contact"
-        Assert.That(retainedConversion, Does.Contain("converted :="), retainedConversion)
+        Assert.That(retainedConversion, Does.Not.Contain("converted :="), retainedConversion)
 
     [<Test>]
     member _.``Portable console writes use direct Go calls`` () =

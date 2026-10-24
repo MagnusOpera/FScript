@@ -15,6 +15,21 @@ type HirTests() =
         | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
+    member _.``Host types and foreign union metadata survive compiler artifacts`` () =
+        let fields = Map.ofList [ "Name", TString ]
+        let registration =
+            { Types = [ { Name = "Handle"; Fields = fields; HostManaged = true } ]
+              Unions = [ { Name = "State"; Cases = Map.ofList [ "Ready", None; "Value", Some TInt ] } ]
+              Functions = [ { Name = "Native.open"; Scheme = Forall([], TFun(TUnit, TNamed "Handle")); Arity = 1; Impl = fun _ _ -> VUnit } ] }
+        match Compiler.compileWithRegistration registration { Program = Parser.parseProgram "let handle = Native.open ()\nhandle.Name"; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            Assert.That(compiled.Hir.Types |> List.exists (fun t -> t.Definition = THostManaged("Handle", fields)), Is.True)
+            match IrArtifact.deserialize (IrArtifact.serialize compiled.Lir) with
+            | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+            | Ok program -> Assert.That(program.Types |> List.exists (fun t -> t.Definition = THostManaged("Handle", fields)), Is.True)
+
+    [<Test>]
     member _.``Compiler catalog describes every default runtime external without delegates`` () =
         let expected =
             [ "Console.readLine"; "Console.writeLine"; "Env"
@@ -44,7 +59,7 @@ type HirTests() =
         | Ok compiled ->
             let actual = Hir.format compiled.Hir
             Assert.That(actual, Does.Contain("decl %"))
-            Assert.That(actual, Does.Contain("primitive IntAdd"))
+            Assert.That(actual, Does.Contain("primitive NumericAdd"))
             Assert.That(actual, Does.Contain("entry"))
             Assert.That(Hir.format compiled.Hir, Is.EqualTo(actual))
 
@@ -144,7 +159,7 @@ type HirTests() =
         | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
         | Ok hir ->
             Assert.That(hir.Declarations |> List.exists (fun declaration -> declaration.Name = "add"), Is.True)
-            Assert.That(Hir.format hir, Does.Contain("primitive IntAdd"))
+            Assert.That(Hir.format hir, Does.Contain("primitive NumericAdd"))
 
     [<Test>]
     member _.``HIR attaches structured export and import attributes`` () =

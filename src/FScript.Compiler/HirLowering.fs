@@ -29,6 +29,9 @@ module HirLowering =
         |> Option.defaultWith (fun () -> claimSymbol state kind name span)
 
     let rec private representationType state = function
+        | TNumeric id -> TVar id
+        | TRecordShape(id, fields, constructible) -> TRecordShape(id, Map.map (fun _ -> representationType state) fields, constructible)
+        | THostManaged(name, fields) -> THostManaged(name, Map.map (fun _ -> representationType state) fields)
         | TFun(argument, result) -> TFun(representationType state argument, representationType state result)
         | TTuple items -> TTuple(List.map (representationType state) items)
         | TList item -> TList(representationType state item)
@@ -41,6 +44,10 @@ module HirLowering =
         | value -> value
 
     let private resolvedOperation = function
+        | TypeInfer.NumericAddition -> Hir.NumericAdd
+        | TypeInfer.NumericSubtraction -> Hir.NumericSubtract
+        | TypeInfer.NumericMultiplication -> Hir.NumericMultiply
+        | TypeInfer.NumericDivision -> Hir.NumericDivide
         | TypeInfer.IntegerAddition -> Hir.IntAdd
         | TypeInfer.FloatingAddition -> Hir.FloatAdd
         | TypeInfer.IntegerSubtraction -> Hir.IntSubtract
@@ -125,7 +132,12 @@ module HirLowering =
                     let targetType = representationType state evidence.TargetType
                     ({ Type = targetType; Span = loweredArgument.Span; Node = Hir.RecordConvert(loweredArgument, targetType) }: Hir.Expression))
                 |> Option.defaultValue loweredArgument
-            make (Hir.Apply(lower fn, argumentWithEvidence))
+            let loweredFunction = lower fn
+            let loweredFunction =
+                match expression.RecordCoercion, loweredFunction.Type with
+                | Some _, TFun(_, result) -> { loweredFunction with Type = TFun(argumentWithEvidence.Type, result) }
+                | _ -> loweredFunction
+            make (Hir.Apply(loweredFunction, argumentWithEvidence))
         | TypeInfer.ResolvedPipe(argument, fn) ->
             let loweredArgument = lower argument
             let argumentWithEvidence =
@@ -134,7 +146,12 @@ module HirLowering =
                     let targetType = representationType state evidence.TargetType
                     ({ Type = targetType; Span = loweredArgument.Span; Node = Hir.RecordConvert(loweredArgument, targetType) }: Hir.Expression))
                 |> Option.defaultValue loweredArgument
-            make (Hir.Pipe(argumentWithEvidence, lower fn))
+            let loweredFunction = lower fn
+            let loweredFunction =
+                match expression.RecordCoercion, loweredFunction.Type with
+                | Some _, TFun(_, result) -> { loweredFunction with Type = TFun(argumentWithEvidence.Type, result) }
+                | _ -> loweredFunction
+            make (Hir.Pipe(argumentWithEvidence, loweredFunction))
         | TypeInfer.ResolvedIf(condition, whenTrue, whenFalse) -> make (Hir.If(lower condition, lower whenTrue, lower whenFalse))
         | TypeInfer.ResolvedPrimitive(operation, arguments) -> make (Hir.Primitive(resolvedOperation operation, List.map lower arguments))
         | TypeInfer.ResolvedTuple items -> make (Hir.Tuple(List.map lower items))

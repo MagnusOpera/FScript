@@ -10,7 +10,6 @@
     { "include": "#keywords" },
     { "include": "#types" },
     { "include": "#directives" },
-    { "include": "#attributes" },
     { "include": "#constructors" },
     { "include": "#operators" },
     { "include": "#variables" }
@@ -74,13 +73,31 @@
     "types": {
       "patterns": [
         {
+          "name": "meta.type.map.fscript",
+          "begin": "\\b(map)(\\s*\\[)",
+          "beginCaptures": {
+            "1": { "name": "storage.type.fscript" },
+            "2": { "name": "punctuation.definition.map.begin.fscript" }
+          },
+          "end": "\\]",
+          "endCaptures": { "0": { "name": "punctuation.definition.map.end.fscript" } },
+          "patterns": [
+            { "include": "#types" },
+            { "name": "entity.name.type.fscript", "match": "\\b[A-Z][A-Za-z0-9_.]*\\b" }
+          ]
+        },
+        {
           "name": "storage.type.fscript",
-          "match": "\\b(int|float|string|bool|unit|list|option|map)\\b"
+          "match": "\\b(int|float|numeric|string|bool|unit|list|option|map)\\b"
         }
       ]
     },
     "declarations": {
       "patterns": [
+        {
+          "name": "keyword.control.fscript",
+          "match": "\\bexport\\b(?=[ \\t]+let\\b)"
+        },
         {
           "name": "meta.let.binding.fscript",
           "match": "\\b(let)\\s+(rec\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
@@ -118,28 +135,6 @@
             "1": { "name": "keyword.control.directive.fscript" },
             "2": { "name": "string.quoted.double.fscript" }
           }
-        }
-      ]
-    },
-    "attributes": {
-      "patterns": [
-        {
-          "name": "meta.attribute.fscript",
-          "begin": "(\\[<)\\s*([A-Za-z_][A-Za-z0-9_]*)",
-          "beginCaptures": {
-            "1": { "name": "punctuation.definition.attribute.begin.fscript" },
-            "2": { "name": "entity.other.attribute-name.fscript" }
-          },
-          "end": "(>\\])",
-          "endCaptures": {
-            "1": { "name": "punctuation.definition.attribute.end.fscript" }
-          },
-          "patterns": [
-            { "include": "#strings" },
-            { "include": "#numbers" },
-            { "include": "#variables" },
-            { "include": "#operators" }
-          ]
         }
       ]
     },

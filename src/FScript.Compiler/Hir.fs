@@ -13,6 +13,7 @@ module Hir =
         | String of string
 
     type PrimitiveOperation =
+        | NumericAdd | NumericSubtract | NumericMultiply | NumericDivide
         | IntAdd
         | FloatAdd
         | IntSubtract

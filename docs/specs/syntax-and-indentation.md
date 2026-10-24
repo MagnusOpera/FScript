@@ -9,8 +9,7 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - `import "relative/path/file.fss" as Alias` directives
   - `type` / `type rec` declarations
   - `let` / `let rec` bindings
-  - `[<export>] let` / `[<export>] let rec` bindings
-  - bodyless `[<Import("module/path", "Member")>] let name : complete -> signature` declarations
+  - `export let` / `export let rec` bindings
   - expressions
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
 - Comments use `//` line-comment syntax.
@@ -32,9 +31,9 @@ Backend `Import` requires exactly a target module path and member name, a comple
   - `let rec f x = ... and g y = ...`
   - nested via blocks
   - tuple destructuring is supported for non-`rec` `let` bindings only
-  - `[<export>] let` requires a single identifier binding (tuple patterns are rejected)
-  - `[<export>]` is only valid on top-level `let` bindings
-  - ordinary attribute names are case-sensitive; `export` and `Export` are accepted aliases for the built-in export marker
+  - `export let` requires a single identifier binding (tuple patterns are rejected)
+  - `export let` is only valid on top-level `let` bindings
+  - `export` is a contextual, case-sensitive modifier recognized only immediately before top-level `let`; it remains a valid ordinary binding, parameter, and field name. Script attributes are unsupported.
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`
@@ -67,7 +66,7 @@ Backend `Import` requires exactly a target module path and member name, a comple
   - map entries always use bracketed keys (`[expr] = value`)
   - record entries use field assignments (`Field = value`)
   - when braces are empty (`{}`), the literal is a map
-  - keys are bracketed expressions (`[expr]`) and must infer to `string`
+  - keys are bracketed expressions (`[expr]`) and must infer to `string`, `int`, `bool`, or a payload-free union
   - multiline map literals keep `{` on the same line as the first entry and `}` on the same line as the last entry
   - multiline example:
   ```fsharp
@@ -208,6 +207,7 @@ let ops =
 ```
 
 ## Type declaration forms
+- Map key annotations use `value map[key]` (for example `string map[int]` or `int map[Priority]`); `value map` remains the string-keyed shorthand.
 - Non-recursive:
   - `type Person = { Name: string; Age: int }`
 - Explicit recursive:

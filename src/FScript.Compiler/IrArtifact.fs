@@ -62,8 +62,20 @@ module IrArtifact =
             | TMap(key, item) -> "map", [ key; item ], None | TFun(argument, result) -> "function", [ argument; result ], None
             | TNamed typeName -> "named", [], Some typeName
             | TVar id -> "variable", [], Some(string id)
-            | TRecord fields ->
-                writer.WriteString("kind", "record")
+            | TNumeric id -> "numeric", [], Some(string id)
+            | TRecordShape(id, fields, constructible) ->
+                writer.WriteString("kind", "record-shape")
+                writer.WriteNumber("id", id); writer.WriteBoolean("constructible", constructible)
+                writer.WriteStartArray("fields")
+                for fieldName, fieldType in fields |> Map.toList do
+                    writer.WriteStartObject(); writer.WriteString("name", fieldName); writer.WritePropertyName("type")
+                    writeType writer fieldType; writer.WriteEndObject()
+                writer.WriteEndArray(); writer.WriteEndObject()
+                "", [], None
+            | TRecord fields | THostManaged(_, fields) ->
+                match value with
+                | THostManaged(name, _) -> writer.WriteString("kind", "host-managed"); writer.WriteString("name", name)
+                | _ -> writer.WriteString("kind", "record")
                 writer.WriteStartArray("fields")
                 for fieldName, fieldType in fields |> Map.toList do
                     writer.WriteStartObject(); writer.WriteString("name", fieldName); writer.WritePropertyName("type")
@@ -349,6 +361,14 @@ module IrArtifact =
         | "map" -> let values = args() in TMap(values.[0], values.[1])
         | "function" -> let values = args() in TFun(values.[0], values.[1])
         | "named" -> TNamed(stringProperty "name" element) | "variable" -> TVar(Int32.Parse(stringProperty "name" element))
+        | "numeric" -> TNumeric(Int32.Parse(stringProperty "name" element))
+        | "host-managed" ->
+            THostManaged(stringProperty "name" element, property "fields" element |> _.EnumerateArray()
+                |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Map.ofSeq)
+        | "record-shape" ->
+            TRecordShape((property "id" element).GetInt32(), property "fields" element |> _.EnumerateArray()
+                |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Map.ofSeq,
+                (property "constructible" element).GetBoolean())
         | "record" ->
             (property "fields" element).EnumerateArray()
             |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Map.ofSeq |> TRecord
@@ -360,6 +380,8 @@ module IrArtifact =
         | kind -> invalidOp $"Unknown IR type kind '{kind}'."
 
     let private readOperation = function
+        | "NumericAdd" -> Lir.NumericAdd | "NumericSubtract" -> Lir.NumericSubtract
+        | "NumericMultiply" -> Lir.NumericMultiply | "NumericDivide" -> Lir.NumericDivide
         | "IntAdd" -> Lir.IntAdd | "FloatAdd" -> Lir.FloatAdd | "IntSubtract" -> Lir.IntSubtract | "FloatSubtract" -> Lir.FloatSubtract
         | "IntMultiply" -> Lir.IntMultiply | "FloatMultiply" -> Lir.FloatMultiply | "IntDivide" -> Lir.IntDivide | "FloatDivide" -> Lir.FloatDivide
         | "IntRemainder" -> Lir.IntRemainder | "StructuralEqual" -> Lir.StructuralEqual | "NumericLessThan" -> Lir.NumericLessThan

@@ -18,7 +18,7 @@ const demos: Record<DemoKey, {label: string; filename: string; language: string;
     Plan: string
     Seats: int }
 
-[<export>] let quote (customer: Customer) =
+export let quote (customer: Customer) =
   let basePrice =
     match customer.Plan with
     | "scale" -> 29

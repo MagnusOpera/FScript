@@ -30,10 +30,14 @@
     <Compile Include="Parser.fs" />
     <Compile Include="IncludeResolver.fs" />
     <Compile Include="BuiltinTypes.fs" />
+    <Compile Include="HostInterop.fs" />
     <Compile Include="BuiltinSignatures.fs" />
+    <Compile Include="Execution.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="ExportSignatures.fs" />
+    <Compile Include="TaskFunctions.fs" />
+    <Compile Include="DebugHooks.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Interactive.fs" />
     <Compile Include="Pretty.fs" />
@@ -47,7 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Fable.Package.SDK" Version="1.4.0">
+    <PackageReference Include="Fable.Package.SDK" Version="1.4.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Integrated the current FFI frontend and host type metadata with compiler IR while retaining Go compilation for portable scripts.
+
 - Removed unreachable Go range branches when both bounds are compile-time integer constants.
 
 - Added a `go-smoke-tests` Make target that transpiles and verifies every sample under `out/`.
@@ -198,8 +200,151 @@ All notable changes to FScript are documented in this file.
 - Added a reusable compiler assembly with deterministic typed HIR lowering, validation, diagnostics, and debug output.
 - Added a compatibility-preserving resolved inference result with expression-level type information for compiler frontends.
 - Documented the semantic baseline and architecture for typed IR, executable LIR, and compiled backends.
+## [0.83.3]
+
+
+- Add JavaScript host-type and union registrations, opaque payload round trips, typed function helpers, and script callbacks.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.83.2...0.83.3
+
+## [0.83.2]
+
+
+- Automatically select each script’s nearest containing FFI manifest in VS Code, isolating sibling environments without manual switching.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.83.1...0.83.2
+
+## [0.83.1]
+
+
+- Add a Debug Current Script command to the VS Code command palette and editor context menu.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.83.0...0.83.1
+
+## [0.83.0]
+
+
+- Add CLI and VS Code debugging with expression stepping, safe inspection, native callbacks, independent task control, and configurable CLI selection.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.82.2...0.83.0
+
+## [0.82.2]
+
+
+- Show public import aliases instead of internal module names in editor hover signatures.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.82.1...0.82.2
+
+## [0.82.1]
+
+
+- Load NuGet extension packages from fscript.toml, with optional latest-stable versions, local caching, and shared isolated dependencies for CLI and trusted VS Code environments.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.82.0...0.82.1
+
+## [0.82.0]
+
+
+- Move extension authoring to the independent FScript.Extensibility SDK; existing providers must rebuild against its stable 1.x API.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.7...0.82.0
+
+## [0.81.7]
+
+
+- Fix VS Code provider loading by matching bundled server assembly versions to the published FScript packages.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.6...0.81.7
+
+## [0.81.6]
+
+
+- Support host-provided union types and F# sets in typed FFI adapters, including editor completion and hover.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.5...0.81.6
+
+## [0.81.5]
+
+
+- Automatically load fscript.toml beside CLI scripts or in the stdin/REPL working directory, with --no-config to opt out.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.4...0.81.5
+
+## [0.81.4]
+
+
+- Always use the installed FScript CLI for VS Code’s Run Current Script command, including in the FScript repository.
+- Make direct CLI execution the primary path in the FFI graphics walkthrough.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.3...0.81.4
+
+## [0.81.3]
+
+
+- Allow the signed macOS CLI to load native provider dependencies signed by other teams.
+- Run the graphics FFI sample directly from FScript and add a VS Code run command that forwards the selected environment.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.2...0.81.3
+
+## [0.81.2]
+
+
+- Added an OpenGL FFI sample with script-generated teapot geometry, camera, lighting, animation, and an Examples walkthrough.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.1...0.81.2
+
+## [0.81.1]
+
+
+- Added typed F# host function declarations that derive signatures, arity, and value conversions from handlers.
+- Explained host type and function descriptors alongside the embedding helpers.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.81.0...0.81.1
+
+## [0.81.0]
+
+
+- Replaced script export attributes with contextual `export let` declarations while keeping `export` available as an identifier.
+- Completed the standard-library and language reference and improved tutorial order, examples, and core-versus-host guidance.
+- Removed the F# TypeProvider package and its compile-time script projection support.
+- Added script-constructible CLR record projections with complete visible-field validation and typed conversion from script-created records.
+- Added opt-in CLR attributes and helpers to derive host-managed descriptors and snapshot visible properties from real host types.
+- Documented host-managed values, extension providers, and shared CLI and VS Code environments.
+- Added shared FFI environment configuration for CLI execution and trusted, workspace-specific VS Code completion and diagnostics.
+- Added host-managed extension types with visible fields, opaque host state, and safe structural reading and transport.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.80.1...0.81.0
+
+## [0.80.1]
+
+
+- Fixed VS Code language-server startup failing with an output-channel error after the language-client upgrade.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.80.0...0.80.1
+
+## [0.80.0]
+
+
+- Updated website and VS Code extension dependencies; the extension now requires VS Code 1.91 or later.
+
+- Restored build and test compatibility after dependency upgrades by keeping NUnit compatible with FsUnit.
+- Added int, bool, and payload-free union map keys.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.79.0...0.80.0
+
+## [0.79.0]
+
+
+- Added VS Code syntax and semantic highlighting for numeric type annotations.
+- Documented numeric specialization and the language type hierarchy.
+- Added the numeric meta-type so arithmetic functions specialize to int or float and reject nonnumeric or mixed operands.
+- Fixed remainder typing to accept integers only, matching runtime behavior.
+- Restored CI builds on current GitHub runners by removing the obsolete F# parallel-compilation switch.
+- Fixed documentation assets and links for hosting the website at `fscript.magnusopera.io`.
 - Rewrote the website around concrete FScript behavior and removed vague product slogans.
 - Fixed oversized homepage headings to wrap in balanced lines across desktop widths.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.78.1...0.79.0
 
 ## [0.78.1]
 

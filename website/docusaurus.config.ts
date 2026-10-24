@@ -14,8 +14,8 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://magnusopera.github.io',
-  baseUrl: '/FScript/',
+  url: 'https://fscript.magnusopera.io',
+  baseUrl: '/',
 
   organizationName: 'MagnusOpera',
   projectName: 'FScript',
@@ -100,7 +100,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `<span class="footer-brand">© ${new Date().getFullYear()} <a href="https://magnusopera.io"><img src="/FScript/img/magnus-opera-logo.svg" alt="" /> Magnus Opera SAS</a></span>`,
+      copyright: `<span class="footer-brand">© ${new Date().getFullYear()} <a href="https://magnusopera.io"><img src="/img/magnus-opera-logo.svg" alt="" /> Magnus Opera SAS</a></span>`,
     },
     prism: {
       theme: prismThemes.github,

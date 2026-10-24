@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <Compile Include="Types.fs" />
-    <Compile Include="ExternProvider.fs" />
     <Compile Include="Common.fs" />
     <Compile Include="Decode.fs" />
     <Compile Include="FsExterns.fs" />
@@ -32,11 +31,19 @@
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
     <Compile Include="Registry.fs" />
+    <Compile Include="ExtensionBridge.fs" />
+    <Compile Include="EnvironmentConfiguration.fs" />
+    <Compile Include="NuGetEnvironment.fs" />
+    <Compile Include="ExtensionLoadContext.fs" />
+    <Compile Include="EnvironmentLoader.fs" />
     <Compile Include="ExportSignatures.fs" />
     <Compile Include="ScriptHost.fs" />
+    <Compile Include="DebugSession.fs" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="/" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="PortableRuntimeIdentifierGraph.json" LogicalName="FScript.Runtime.PortableRuntimeIdentifierGraph.json" />
     <Content Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\NUGET.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\FScriptIcon.png" Pack="true" PackagePath="\" Link="FScriptIcon.png" />
@@ -47,7 +54,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="10.0.3" />
+    <PackageReference Include="System.Runtime.Loader" Version="4.3.0" />
+    <PackageReference Include="NuGet.Commands" Version="6.14.3" />
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+    <PackageReference Include="System.Text.Json" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
+    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' == 'true'">
+    <ProjectReference Include="$(FScriptExtensibilityProject)" />
+  </ItemGroup>
 </Project>

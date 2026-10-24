@@ -332,6 +332,8 @@ module IncludeResolver =
             TRFun(rewriteTypeRef aliases selfPrefix selfTypeNames a, rewriteTypeRef aliases selfPrefix selfTypeNames b)
         | TRPostfix (inner, suffix) ->
             TRPostfix(rewriteTypeRef aliases selfPrefix selfTypeNames inner, suffix)
+        | TRMap (keyType, valueType) ->
+            TRMap(rewriteTypeRef aliases selfPrefix selfTypeNames keyType, rewriteTypeRef aliases selfPrefix selfTypeNames valueType)
         | TRRecord fields ->
             TRRecord (fields |> List.map (fun (name, t) -> name, rewriteTypeRef aliases selfPrefix selfTypeNames t))
         | TRStructuralRecord fields ->
@@ -691,7 +693,7 @@ module IncludeResolver =
         (entryFile: string)
         (entrySource: string)
         (resolveImportedSource: (string -> string option) option)
-        : Program =
+        : Program * Map<string, string> =
         let rootDirectoryWithSeparator = normalizeDirectoryPath rootDirectory
         let fileSpan path =
             let p = Span.posInFile path 1 1
@@ -752,10 +754,11 @@ module IncludeResolver =
                 let loadRef = ref loadFile
                 expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
-        loadFile [] true entrySandboxedPath None
+        let program = loadFile [] true entrySandboxedPath None
+        program, (pathPrefixes |> Seq.map (fun pair -> pair.Key,pair.Value) |> Map.ofSeq)
 
     let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
-        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource None
+        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource None |> fst
 
     let parseProgramFromSourceWithIncludesResolver
         (rootDirectory: string)
@@ -763,4 +766,8 @@ module IncludeResolver =
         (entrySource: string)
         (resolveImportedSource: string -> string option)
         : Program =
+        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource (Some resolveImportedSource) |> fst
+
+    /// Includes source-module identities for tools which need to display original aliases.
+    let parseProgramFromSourceWithIncludesResolverAndMetadata rootDirectory entryFile entrySource resolveImportedSource =
         parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource (Some resolveImportedSource)

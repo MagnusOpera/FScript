@@ -125,6 +125,8 @@ Unused pure generalized declarations may be omitted. Observable monomorphic top-
 
 Compiler bindings classify names as portable intrinsics, backend runtime primitives, target imports, or unsupported host externs. This metadata is distinct from executable .NET `ExternalFunction` implementations.
 
+The compiler accepts the same `ExtensionRegistration` as the frontend through `Compiler.compileWithRegistration`. Registered structural and host-managed types and union declarations retain deterministic IDs, nominal identity, field types, and constructor metadata in resolved trees, HIR, LIR, and artifacts. Opaque runtime payloads and executable callbacks are never serialized. Host callbacks require a backend binding for source or assembly generation; Go rejects reachable .NET FFI imports.
+
 `CompileInput.Externs` contains `CompilerExtern` descriptors only: name, normalized scheme, arity, and `CompilerExternKind`. Compilation creates private no-op inference shims because the language inference API still consumes `ExternalFunction`, but no executable delegate enters HIR, LIR, artifacts, the interpreter assembly, or a backend assembly.
 
 `Console.writeLine` and `Console.readLine` are portable runtime intrinsics. LIR execution captures output in `ExecutionResult.Stdout` and reads input from process stdin; generated Go dispatches them to stdout and stdin. `readLine` returns `None` at EOF and preserves a final unterminated line. Generated Go also implements every registered `Fs.*` external against the process working directory and operating-system permissions, plus `Regex.matchGroups` through Go regular expressions with preservation of FScript capture-group ordering. The cross-runtime harness separates written lines from the final value when comparing output.

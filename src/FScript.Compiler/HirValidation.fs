@@ -5,6 +5,9 @@ open FScript.Language
 module HirValidation =
     let rec private compatible left right =
         match left, right with
+        | TRecordShape _, TNamed _ | TNamed _, TRecordShape _ -> true
+        | TRecordShape(_, left, _), TRecord right | TRecord right, TRecordShape(_, left, _) ->
+            left |> Map.forall (fun name item -> right |> Map.tryFind name |> Option.exists (compatible item))
         | TVar _, _ | _, TVar _ -> true
         | TFun(la, lr), TFun(ra, rr) -> compatible la ra && compatible lr rr
         | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 compatible left right
@@ -30,7 +33,7 @@ module HirValidation =
             || program.Types |> List.exists (fun declaration ->
                 not (validSpan declaration.Span)
                 || match declaration.Definition with
-                   | TRecord _ -> false
+                   | TRecord _ | THostManaged _ -> false
                    | TUnion(name, _) -> name <> declaration.Name
                    | _ -> true
                 || declaration.Import |> Option.exists (fun imported -> imported.Name <> declaration.Name))

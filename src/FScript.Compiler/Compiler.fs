@@ -12,16 +12,19 @@ type CompiledProgram =
       ExportedFunctions: Map<string, ExportSignatures.ExportedFunctionSignature> }
 
 module Compiler =
-    let compile input =
+    let compileWithRegistration (registration: ExtensionRegistration) input =
         try
             let compilerBindings = CompilerExternCatalog.defaults
             let reserved = compilerBindings |> List.map _.Name |> Set.ofList
-            let externs = compilerBindings @ (input.Externs |> List.filter (fun external -> not (Set.contains external.Name reserved)))
+            let supplied = input.Externs |> List.map _.Name |> Set.ofList
+            let hostBindings = registration.Functions |> List.filter (fun fn -> not (Set.contains fn.Name supplied || Set.contains fn.Name reserved)) |> List.map (fun fn ->
+                { Name = fn.Name; Scheme = fn.Scheme; Arity = fn.Arity; Kind = UnsupportedHostExtern })
+            let externs = compilerBindings @ (input.Externs |> List.filter (fun external -> not (Set.contains external.Name reserved))) @ hostBindings
             let inferenceExterns =
                 externs
                 |> List.map (fun external ->
                     ({ Name = external.Name; Scheme = external.Scheme; Arity = external.Arity; Impl = fun _ _ -> VUnit }: ExternalFunction))
-            let resolved = TypeInfer.inferResolvedProgramWithExterns inferenceExterns input.Program
+            let resolved = TypeInfer.inferResolvedProgramWithRegistration { registration with Functions = inferenceExterns } input.Program
             let exportedFunctions = ExportSignatures.fromTypedProgram resolved.TypedProgram
             resolved
             |> HirLowering.lower externs
@@ -39,3 +42,5 @@ module Compiler =
                     Stage = Hir
                     Message = error.Message
                     Span = Some error.Span } ]
+
+    let compile input = compileWithRegistration HostInterop.empty input

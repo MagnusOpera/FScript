@@ -52,7 +52,7 @@ total`,
     label: 'Imports',
     source: `import "shared.fss" as Shared
 
-[<export>] let answer = Shared.inc 41
+export let answer = Shared.inc 41
 answer`,
     shared: `let inc x = x + 1`,
   },

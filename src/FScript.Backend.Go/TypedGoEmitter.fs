@@ -34,6 +34,10 @@ module TypedGoEmitter =
         else rendered
 
     let private fieldName value = "Field_" + identifier value
+    let private mapKeyLess keyType left right =
+        match keyType with
+        | TBool -> $"!{left} && {right}"
+        | _ -> $"{left} < {right}"
     let private tryStaticRangeDirection (first: Lir.Expression) (last: Lir.Expression) =
         match first.Node, last.Node with
         | Lir.Constant(Lir.Int firstValue), Lir.Constant(Lir.Int lastValue) -> Some(firstValue <= lastValue)
@@ -99,7 +103,7 @@ module TypedGoEmitter =
         | TRecord fields -> fields |> Map.forall (fun _ value -> supportedType value)
         | TMap(keyType, valueType) -> supportedType keyType && supportedType valueType
         | TUnion(_, cases) -> cases |> Map.forall (fun _ value -> Option.forall supportedType value)
-        | TVar _ -> false
+        | TVar _ | TNumeric _ | TRecordShape _ | THostManaged _ -> false
 
     let private typedIntrinsics =
         set [ "ignore"; "Int.tryParse"; "Float.tryParse"; "Bool.tryParse"; "Int.toString"; "Float.toString"; "Bool.toString"
@@ -535,7 +539,9 @@ module TypedGoEmitter =
                     $"(func({parameters}) {goType resultType} {{\n\treturn {indent (body names resultType)}\n}})({values})"
             let iife resultType body = $"func() {goType resultType} {{\n\t{indent body}\n}}()"
             let sortedMap resultType setup =
-                iife resultType $"{setup}\nfor outer := 1; outer < len(result.Entries); outer++ {{\n\tfor inner := outer; inner > 0 && result.Entries[inner].Key < result.Entries[inner-1].Key; inner-- {{\n\t\tresult.Entries[inner], result.Entries[inner-1] = result.Entries[inner-1], result.Entries[inner]\n\t}}\n}}\nreturn result"
+                let keyType = match resultType with TMap(keyType, _) -> keyType | _ -> invalidOp "Expected map result."
+                let ordering = mapKeyLess keyType "result.Entries[inner].Key" "result.Entries[inner-1].Key"
+                iife resultType $"{setup}\nfor outer := 1; outer < len(result.Entries); outer++ {{\n\tfor inner := outer; inner > 0 && ({ordering}); inner-- {{\n\t\tresult.Entries[inner], result.Entries[inner-1] = result.Entries[inner-1], result.Entries[inner]\n\t}}\n}}\nreturn result"
             match name, intrinsicType with
             | "List.empty", TList _ -> $"{goType intrinsicType}{{}}"
             | "Map.empty", TMap _ -> $"{goType intrinsicType}{{}}"
@@ -586,9 +592,9 @@ module TypedGoEmitter =
             | "Map.add", TFun(_, TFun(_, TFun(sourceType, resultType))) ->
                 let entryType = $"entry_{suffix resultType}"
                 build (fun args _ -> sortedMap resultType $"result := {goType resultType}{{Entries: append([]{entryType}{{}}, {args.[2]}.Entries...)}}\nfound := false\nfor index := range result.Entries {{\n\tif result.Entries[index].Key == {args.[0]} {{\n\t\tresult.Entries[index].Value = {args.[1]}\n\t\tfound = true\n\t\tbreak\n\t}}\n}}\nif !found {{\n\tresult.Entries = append(result.Entries, {entryType}{{Key: {args.[0]}, Value: {args.[1]}}})\n}}")
-            | "Map.ofList", TFun(TList(TTuple [ TString; valueType ]), resultType) ->
+            | "Map.ofList", TFun(TList(TTuple [ keyType; valueType ]), resultType) ->
                 let entryType = $"entry_{suffix resultType}"
-                build (fun args _ -> sortedMap resultType $"result := {goType resultType}{{}}\nset := func(key string, value {goType valueType}) {{\n\tfor index := range result.Entries {{\n\t\tif result.Entries[index].Key == key {{\n\t\t\tresult.Entries[index].Value = value\n\t\t\treturn\n\t\t}}\n\t}}\n\tresult.Entries = append(result.Entries, {entryType}{{Key: key, Value: value}})\n}}\nfor _, pair := range {args.[0]} {{\n\tset(pair.Item0, pair.Item1)\n}}")
+                build (fun args _ -> sortedMap resultType $"result := {goType resultType}{{}}\nset := func(key {goType keyType}, value {goType valueType}) {{\n\tfor index := range result.Entries {{\n\t\tif result.Entries[index].Key == key {{\n\t\t\tresult.Entries[index].Value = value\n\t\t\treturn\n\t\t}}\n\t}}\n\tresult.Entries = append(result.Entries, {entryType}{{Key: key, Value: value}})\n}}\nfor _, pair := range {args.[0]} {{\n\tset(pair.Item0, pair.Item1)\n}}")
             | "Map.fold", TFun(_, TFun(stateType, TFun(_, resultType))) ->
                 build (fun args _ -> iife resultType $"state := {args.[1]}\nfor _, entry := range {args.[2]}.Entries {{\n\tstate = {args.[0]}(state)(entry.Key)(entry.Value)\n}}\nreturn state")
             | "Map.filter", TFun(_, TFun(TMap(_, valueType), resultType)) ->
@@ -1131,10 +1137,10 @@ module TypedGoEmitter =
                         $"func() bool {{\n\tleftValue := {leftCode}\n\trightValue := {rightCode}\n\treturn {result}\n}}()"
                     | _ -> $"{equality left.Type}({leftCode}, {rightCode})"
                 | Lir.StructuralEqual -> $"{equality left.Type}({leftCode}, {rightCode})"
-                | Lir.IntAdd | Lir.FloatAdd -> $"({leftCode} + {rightCode})"
-                | Lir.IntSubtract | Lir.FloatSubtract -> $"({leftCode} - {rightCode})"
-                | Lir.IntMultiply | Lir.FloatMultiply -> $"({leftCode} * {rightCode})"
-                | Lir.IntDivide | Lir.FloatDivide ->
+                | Lir.IntAdd | Lir.FloatAdd | Lir.NumericAdd -> $"({leftCode} + {rightCode})"
+                | Lir.IntSubtract | Lir.FloatSubtract | Lir.NumericSubtract -> $"({leftCode} - {rightCode})"
+                | Lir.IntMultiply | Lir.FloatMultiply | Lir.NumericMultiply -> $"({leftCode} * {rightCode})"
+                | Lir.IntDivide | Lir.FloatDivide | Lir.NumericDivide ->
                     $"func() {goType expression.Type} {{\n\tleft, right := {indent leftCode}, {indent rightCode}\n\treturn left / right\n}}()"
                 | Lir.IntRemainder ->
                     $"func() int64 {{\n\tleft, right := {indent leftCode}, {indent rightCode}\n\treturn left %% right\n}}()"
@@ -1520,10 +1526,7 @@ module TypedGoEmitter =
                         | Lir.Spread value -> $"for _, entry := range ({emitChild value}).Entries {{\n\t\tset(entry.Key, entry.Value)\n\t}}"
                         | Lir.KeyValue(key, value) -> $"set({emitChild key}, {emitChild value})")
                     |> String.concat "\n\t"
-                let ordering =
-                    match keyType with
-                    | TString | TInt -> "result.Entries[inner].Key < result.Entries[inner-1].Key"
-                    | _ -> "false"
+                let ordering = mapKeyLess keyType "result.Entries[inner].Key" "result.Entries[inner-1].Key"
                 $"func() {resultType} {{\n\tresult := {resultType}{{}}\n\tset := func(key {goType keyType}, value {goType valueType}) {{\n\t\tfor index := range result.Entries {{\n\t\t\tif {keyEqual}(result.Entries[index].Key, key) {{\n\t\t\t\tresult.Entries[index].Value = value\n\t\t\t\treturn\n\t\t\t}}\n\t\t}}\n\t\tresult.Entries = append(result.Entries, {entryType}{{Key: key, Value: value}})\n\t}}\n\t{entryCode}\n\tfor outer := 1; outer < len(result.Entries); outer++ {{\n\t\tfor inner := outer; inner > 0 && {ordering}; inner-- {{\n\t\t\tresult.Entries[inner], result.Entries[inner-1] = result.Entries[inner-1], result.Entries[inner]\n\t\t}}\n\t}}\n\treturn result\n}}()"
             | node -> invalidOp $"Unsupported typed Go node {node}."
 

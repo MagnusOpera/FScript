@@ -29,8 +29,8 @@ JavaScript hosts should use the Fable-compiled package surface instead of raw F#
 
 - `run(source, options?)`
 - `parse(source, options?)`
-- `infer(program, externs?)`
-- `evaluate(typedProgram, externs?)`
+- `infer(program, registrationOrExterns?)`
+- `evaluate(typedProgram, registrationOrExterns?)`
 - `load(source, options?)`
 - `invoke(loaded, name, args)`
 - `listFunctions(loaded)`
@@ -42,7 +42,10 @@ JavaScript hosts should use the Fable-compiled package surface instead of raw F#
 - `createSession(options?)`
 - `submit(session, source)`
 - `resetSession(session)`
-- `T` type and scheme builders
+- `HostTypes` explicit type/union descriptors, snapshot wrapping, and payload retrieval
+- `HostFunctions.create({name, parameters, result, invoke})` closed typed function declarations
+- `registration({types?, unions?, functions?})` complete environments
+- `T` type and scheme builders, including `T.named(name)`
 - `extern({ name, arity, scheme, invoke })`
 
 The JavaScript package targets Node and browser-compatible ESM hosts. It embeds `FScript.Language` through Fable and does not include the .NET `FScript.Runtime` extern catalog.
@@ -101,7 +104,7 @@ const shout = extern({
 const value = run("Host.shout \"fable\"", { externs: [shout] });
 // value = { kind: "string", value: "fable!" }
 
-const loaded = load("[<export>] let add x y = x + y\n[<export>] let answer = 42");
+const loaded = load("export let add x y = x + y\nexport let answer = 42");
 const sum = invoke(loaded, "add", [1, 2]);
 const answer = getValue(loaded, "answer");
 ```
@@ -117,14 +120,30 @@ JavaScript values crossing the host boundary use tagged objects:
 - `{ kind: "tuple", values: [...] }`
 - `{ kind: "record", fields: { ... } }`
 - `{ kind: "map", entries: [{ key, value }] }`
+- Map entry keys may be tagged strings, ints, bools, or payload-free union cases.
 - `{ kind: "option", value: null | taggedValue }`
 - `{ kind: "union", typeName, caseName, value: null | taggedValue }`
 - `{ kind: "type", name }`
 - `{ kind: "opaque", valueType }`
+- Authentic `{ kind: "host", typeName, fields }` handles with private payload storage
 
 `int` values are emitted as JavaScript `bigint`. Inputs may use `bigint`, safe integer `number`, string, or tagged `{ kind: "int", value }` forms. Functions, externals, tasks, and union constructors are opaque values; exported functions are invoked through `invoke`.
 
 JavaScript errors thrown by the facade have `kind: "fscript-error"`, `phase` (`parse`, `type`, `eval`, or `host`), `message`, and span data when the underlying language stage provides it.
+
+### JavaScript host registrations
+
+`registration({types?, unions?, functions?})` produces an opaque validated handle. Its record descriptors have `name`, `fields` (a field-name to `T` object), and optional `scriptConstructible` (default `false`); union descriptors have `name` and nonempty `cases` (case-name to payload `T`, or `null`). `HostTypes.describe` / `describeUnion` snapshot these descriptors without reflecting on JavaScript classes. All descriptor field/payload types are closed; named references must resolve in the complete registration. Duplicate or reserved names, malformed descriptors, unbound scheme variables, and arity mismatches fail before script execution.
+
+`HostTypes.wrap(registration, name, fields, payload?)` validates exact fields and creates either an opaque value with a private JavaScript payload or an ordinary constructible record. Constructible records reject non-null payloads. `HostTypes.unwrap(registration, name, value)` validates the descriptor and returns either the original opaque payload or an object of tagged record fields. `HostTypes.fields(value)` reads visible snapshots. `wrapUnion(registration, name, caseName, payload?)` and `unwrapUnion(registration, name, value)` validate nominal union cases and return ordinary tagged unions.
+
+Opaque host tags expose only `kind: "host"`, `typeName`, and frozen tagged `fields`. Private weak maps retain complete interpreter values and payloads; forged/cloned/serialized tags cannot manufacture values. Visible equality and formatting ignore payloads. Host mutation is explicit; wrapping snapshots the supplied visible data. No CLR mapping or automatic JavaScript class reflection is performed.
+
+`options.registration` is honored by `run`, `parse`, `load`, and `createSession`. Imports, inference, evaluation, exported invocation, and interactive reset retain the complete environment. `options.externs` adds functions with duplicate-name validation. The optional second argument to `infer`/`evaluate` accepts a full registration replacement or a legacy function-list override that retains existing types/unions. Exported invocation validates values against inferred signatures, including opaque types nested in generic containers.
+
+`HostFunctions.create({name, parameters, result, invoke})` derives a closed scheme and arity from a nonempty explicit parameter-type array; use `[T.unit]` for unit-input functions. Handlers use the same tagged calling convention as `extern`. Dynamic JavaScript functions do not provide sufficient reflection to infer script types. Polymorphism uses explicit `extern` schemes instead.
+
+Both function helpers pass a second invocation-context argument with `apply(callable, arguments)`, `checkRuntime()`, `spawnTask(callable)`, and `awaitTask(task)`. Callback application requires a closed declared function type; open polymorphic callback types fail explicitly. Callback handles authenticate their origin and fail when foreign or expired, recursively in containers; callback language exceptions preserve spans. Exported callable descriptions remain output-only outside an invocation; authentic type tokens can round-trip. The Fable evaluator explicitly rejects task operations. The facade is synchronous and rejects Promise results. Neither NuGet/assembly provider discovery nor TOML environment loading is added to JavaScript hosts.
 
 ### JavaScript sessions
 
@@ -150,7 +169,7 @@ Sessions retain submitted declarations, inferred binding schemes, runtime values
 Fable builds do not use the .NET file-backed import resolver. A JavaScript host must supply imports through virtual paths:
 
 ```javascript
-const loaded = load("import \"shared.fss\" as Shared\n[<export>] let value = Shared.inc 41", {
+const loaded = load("import \"shared.fss\" as Shared\nexport let value = Shared.inc 41", {
   rootDirectory: "/",
   entryFile: "/main.fss",
   sources: {
@@ -171,7 +190,7 @@ open FScript.Language
 open FScript.Runtime
 
 let externs = Registry.all { RootDirectory = "."; DeniedPathGlobs = [] }
-let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y"
+let loaded = ScriptHost.loadSource externs "export let add x y = x + y"
 let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
 ```
 
@@ -258,6 +277,7 @@ Host-visible static types are represented by `Type`:
 
 Use `Types.typeToString` for display/diagnostics.
 The postfix script type syntax `'a map` corresponds to `TMap(TString, 'a)`.
+The explicit `Value map[Key]` syntax corresponds to `TMap(Key, Value)`; supported key types are `string`, `int`, `bool`, and unions with no payload-bearing cases. `Json.serialize` encodes string, integer, and boolean map keys as JSON object property names; maps containing union keys return `None`.
 
 ## Runtime values
 
@@ -336,7 +356,7 @@ open FScript.Runtime
 
 let root = "/virtual/workspace"
 let entryFile = Path.Combine(root, "main.fss")
-let entrySource = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.add1 x"
+let entrySource = "import \"shared.fss\" as Shared\nexport let run x = Shared.add1 x"
 
 let normalizeVirtualPath (path: string) =
     Path.GetFullPath(path)
@@ -387,7 +407,7 @@ After inference, get function descriptors to expose callable surface in hosts.
 ```fsharp
 open FScript.Language
 
-let typed = "[<export>] let run x = x" |> FScript.parse |> FScript.infer
+let typed = "export let run x = x" |> FScript.parse |> FScript.infer
 let descriptors = Descriptor.describeFunctions typed Map.empty
 ```
 
@@ -398,6 +418,56 @@ Use `FScript.Runtime.ExportSignatures.fromTypedProgram` when a host needs export
 open FScript.Language
 open FScript.Runtime
 
-let typed = "[<export>] let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
+let typed = "export let add (x: int) (y: int) = x + y" |> FScript.parse |> FScript.infer
 let signatures = ExportSignatures.fromTypedProgram typed
 ```
+
+## Registering host-managed types
+
+Use `ExtensionRegistration` and the registration-aware inference/evaluation, `ScriptHost`, or `Interactive` entry points to provide host type descriptors alongside extern functions. `HostInterop.create` validates visible field snapshots; `HostInterop.unwrap` gives trusted host functions access to the opaque payload. Existing extern-list APIs retain their empty-type-registration behavior. See [host-managed types](./host-managed-types.md) for the complete contract and API names.
+
+## Environment initialization
+
+`FScript.Runtime.EnvironmentConfiguration` parses/normalizes manifests and merges caller defaults and overrides into `EnvironmentSettings`, without loading providers. `EnvironmentLoader.load` creates an atomic `ExtensionRegistration` through the existing provider protocol. Embedders can inspect effective settings before deciding to load executable assemblies. `EnvironmentConfiguration.resolveForCli` adds CLI-only beside-entry discovery and `--no-config` handling; the existing `resolve` API remains explicit for embedders/editor environments. Existing explicit-registration APIs remain unchanged. Registration-aware inference with local-variable telemetry is also available to editor hosts. See [environment configuration](./environment-configuration.md).
+
+## CLR-backed host type descriptors
+
+For host-managed values backed by real CLR types, use the independent SDK's `[<FScriptHostType("Name")>]` and `[<FScriptVisible>]` attributes with `HostTypes.describe<'T>()`, `wrap registration value`, and `unwrap<'T> value`. The same mapping derives field types and snapshots property values; hidden state remains the original CLR payload. Descriptor creation does not execute getters. See [host-managed types](./host-managed-types.md#optional-clr-projection-helpers) for mappings, registration requirements, and failures. The lower-level Language helpers remain available for custom descriptors/payloads.
+
+Set `ScriptConstructible = true` on fully visible F# record types to accept ordinary script-created records. Descriptor initialization rejects hidden constructor fields. `HostTypes.wrap` then emits `VRecord`, and `unwrap<'T>` constructs a CLR record from the fields instead of retrieving an opaque payload. The default opaque mode remains available for hidden host state. See [provided record construction](./host-managed-types.md#script-constructible-provided-types).
+
+
+## Typed host function declaration
+
+Use `HostFunctions.create registration name handler` for concrete synchronous F# handlers. It returns an SDK `ExternalFunction`; adapt its containing registration with `ExtensionBridge.toLanguageRegistration` for native embedding entry points, deriving the monomorphic scheme, arity, and conversions from the handler signature. Register all referenced host types explicitly; use the manual record API for script callbacks, polymorphic schemes, or runtime call-context access. See [host function adapters](./host-functions.md).
+
+Registrations also expose `Unions: HostUnionDescriptor list`; inference, evaluation, and interactive sessions retain these named union definitions and constructors across submissions. Qualified constructors such as `Protocol.Mode.Enabled 42` resolve through the same environment as external functions.
+
+## Independent extension contract
+
+Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
+
+Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.
+
+## NuGet-distributed extensions
+
+`[[runtime.packages]]` declares a required package `name` and optional exact `version`; an omitted version selects latest stable. The shared Runtime loader restores dependencies without the .NET SDK and discovers the existing SDK `[FScriptExternProvider]` methods in explicitly requested package runtime assemblies. Providers return the same SDK registrations used by local DLLs. `EnvironmentLoader.loadWithInfo` additionally exposes resolved package versions and concrete assembly paths; `load` retains its registration-only result. Parsing settings does not restore or execute packages. See [environment configuration](environment-configuration.md) for cache, dependency selection, trust, and failure rules.
+
+NuGet environments isolate their managed dependencies as one graph, unifying only SDK/FSharp.Core contracts with the host. All providers in that graph can exchange shared CLR numerical payloads. Host applications that reference provider CLR libraries directly should register those libraries through their typed APIs rather than casting private NuGet-context payloads to a default-context type.
+
+## Debug sessions (.NET)
+
+`FScript.Runtime.DebugSession` accepts a language registration, parsed program,
+and `stopOnEntry`. Subscribe to `Events`, configure breakpoints, then call `Run`
+on a dedicated execution thread (or the process main thread for native GUI
+extensions). Event handlers should enqueue work and return promptly; the adapter
+uses an asynchronous event queue so protocol I/O never blocks interpreter hooks.
+A control thread uses `Threads`, `StackTrace`, `Scopes`, `Variables`,
+`Evaluate`, `Resume`, `Pause`, and `Cancel`. Inspection returns safe DTOs, not raw
+`Value` instances. Dispose the session after execution. An optional task scheduler
+lets hosts control scheduling of background FScript continuations.
+
+`DebugLaunch.create` prepares a file session with the shared manifest loader and
+CLI environment binding. See [debugger behavior](debugger.md) for callback affinity,
+watch restrictions, reference lifetime, and cancellation. The Extensibility SDK
+contract is unchanged, and Fable has no debugger support.

@@ -12,10 +12,18 @@ module TypeInfer =
         else
             let rec apply current =
                 match current with
-                | TVar v ->
+                | TVar v
+                | TNumeric v ->
                     match s |> Map.tryFind v with
-                    | Some mapped -> apply mapped
+                    | Some mapped when mapped <> current -> apply mapped
+                    | Some _ -> current
                     | None -> current
+                | TRecordShape (id, fields, constructible) ->
+                    match s.TryFind id with
+                    | Some (TRecordShape (other, mappedFields, mappedConstructible)) when other = id ->
+                        TRecordShape(id, mappedFields |> Map.map (fun _ t -> apply t), mappedConstructible)
+                    | Some mapped when mapped <> current -> apply mapped
+                    | _ -> TRecordShape(id, fields |> Map.map (fun _ t -> apply t), constructible)
                 | TList t1 -> TList (apply t1)
                 | TTask t1 -> TTask (apply t1)
                 | TTuple ts -> TTuple (ts |> List.map apply)
@@ -50,11 +58,13 @@ module TypeInfer =
     let private occurs (v: int) (t: Type) =
         let rec loop current =
             match current with
-            | TVar currentVar -> currentVar = v
+            | TVar currentVar | TNumeric currentVar -> currentVar = v
             | TList item
             | TTask item
             | TOption item -> loop item
             | TTuple items -> items |> List.exists loop
+            | TRecordShape (id, fields, _) -> id = v || (fields |> Map.exists (fun _ t -> loop t))
+            | THostManaged _ -> false
             | TRecord fields -> fields |> Map.exists (fun _ fieldType -> loop fieldType)
             | TMap (keyType, valueType)
             | TFun (keyType, valueType) -> loop keyType || loop valueType
@@ -92,6 +102,40 @@ module TypeInfer =
                     |> List.fold (fun sAcc (x, y) ->
                         let s1 = uni seen' (applyType sAcc x) (applyType sAcc y)
                         compose s1 sAcc) emptySubst
+                | TVar v, t
+                | t, TVar v ->
+                    if t = TVar v then emptySubst
+                    elif t = TNumeric v then Map.ofList [ v, t ]
+                    elif occurs v t then raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    else Map.ofList [ v, t ]
+                | TRecordShape (id, xf, xc), TRecordShape (other, yf, yc) ->
+                    let shared = xf |> Map.filter (fun name _ -> yf.ContainsKey name)
+                    let s = uni seen' (TRecord shared) (TRecord (yf |> Map.filter (fun name _ -> shared.ContainsKey name)))
+                    let fields = Map.fold (fun acc name t -> Map.add name t acc) xf yf |> Map.map (fun _ t -> applyType s t)
+                    if fields |> Map.exists (fun _ t -> occurs id t || occurs other t) then
+                        raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    let merged = TRecordShape(other, fields, xc || yc)
+                    let mergedSubst =
+                        if id = other then Map.ofList [other, merged]
+                        else Map.ofList [id, merged; other, merged]
+                    compose mergedSubst s
+                | TRecordShape (id, required, constructible), concrete
+                | concrete, TRecordShape (id, required, constructible) ->
+                    let rec fieldsOf t =
+                        match t with
+                        | TNamed name -> typeDefs.TryFind name |> Option.bind fieldsOf
+                        | TRecord fields -> Some fields
+                        | THostManaged (_, fields) when not constructible -> Some fields
+                        | _ -> None
+                    if occurs id concrete then
+                        raise (TypeException { Message = "Occurs check failed"; Span = span })
+                    match fieldsOf concrete with
+                    | Some fields when required |> Map.forall (fun name _ -> fields.ContainsKey name) ->
+                        let selected = fields |> Map.filter (fun name _ -> required.ContainsKey name)
+                        let s = uni seen' (TRecord required) (TRecord selected)
+                        compose (Map.ofList [id, applyType s concrete]) s
+                    | _ -> raise (TypeException { Message = "Record constraint requires compatible fields and a constructible value for updates"; Span = span })
+                | THostManaged (x, _), THostManaged (y, _) when x = y -> emptySubst
                 | TRecord xf, TRecord yf ->
                     let fieldsToCheck, otherFields =
                         if xf.Count <= yf.Count then xf, yf
@@ -115,11 +159,6 @@ module TypeInfer =
                     let s1 = uni seen' a1 a2
                     let s2 = uni seen' (applyType s1 b1) (applyType s1 b2)
                     compose s2 s1
-                | TVar v, t
-                | t, TVar v ->
-                    if t = TVar v then emptySubst
-                    elif occurs v t then raise (TypeException { Message = "Occurs check failed"; Span = span })
-                    else Map.ofList [ v, t ]
                 | TNamed name, t ->
                     match typeDefs.TryFind name with
                     | Some expanded when expanded <> TNamed name -> uni seen' expanded t
@@ -134,6 +173,12 @@ module TypeInfer =
                         match t with
                         | TNamed other when other = name -> emptySubst
                         | _ -> raise (TypeException { Message = sprintf "Type mismatch: %s vs %s" (Types.typeToString a) (Types.typeToString b); Span = span })
+                | TNumeric v, TNumeric w ->
+                    if v = w then emptySubst else Map.ofList [ v, TNumeric w ]
+                | TNumeric v, (TInt | TFloat as concrete)
+                | (TInt | TFloat as concrete), TNumeric v -> Map.ofList [ v, concrete ]
+                | TNumeric _, other | other, TNumeric _ ->
+                    raise (TypeException { Message = sprintf "Expected numeric type, got %s" (Types.typeToString other); Span = span })
                 | _ ->
                     raise (TypeException { Message = sprintf "Type mismatch: %s vs %s" (Types.typeToString a) (Types.typeToString b); Span = span })
         uni Set.empty t1 t2
@@ -143,6 +188,13 @@ module TypeInfer =
         let rec subst t =
             match t with
             | TVar v -> freshMap |> Map.tryFind v |> Option.defaultValue t
+            | TNumeric v ->
+                match freshMap |> Map.tryFind v with
+                | Some (TVar fresh) -> TNumeric fresh
+                | _ -> t
+            | TRecordShape (id, fields, constructible) ->
+                let fresh = match freshMap.TryFind id with Some (TVar v) -> v | _ -> id
+                TRecordShape(fresh, fields |> Map.map (fun _ t -> subst t), constructible)
             | TList a -> TList (subst a)
             | TTask a -> TTask (subst a)
             | TTuple ts -> TTuple (ts |> List.map subst)
@@ -189,6 +241,7 @@ module TypeInfer =
           Scheme: Scheme option }
 
     type ResolvedPrimitiveOperation =
+        | NumericAddition | NumericSubtraction | NumericMultiplication | NumericDivision
         | IntegerAddition | FloatingAddition
         | IntegerSubtraction | FloatingSubtraction
         | IntegerMultiplication | FloatingMultiplication
@@ -465,6 +518,7 @@ module TypeInfer =
         | "unit" -> Some TUnit
         | "int" -> Some TInt
         | "float" -> Some TFloat
+        | "numeric" -> Some (Types.freshNumeric())
         | "bool" -> Some TBool
         | "string" -> Some TString
         | _ -> None
@@ -540,6 +594,7 @@ module TypeInfer =
         | TRName "unit" -> TUnit
         | TRName "int" -> TInt
         | TRName "float" -> TFloat
+        | TRName "numeric" -> Types.freshNumeric()
         | TRName "bool" -> TBool
         | TRName "string" -> TString
         | TRName name ->
@@ -551,6 +606,10 @@ module TypeInfer =
         | TRPostfix (inner, "task") -> TTask (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "option") -> TOption (annotationTypeFromRef typeDefs span inner)
         | TRPostfix (inner, "map") -> TMap (TString, annotationTypeFromRef typeDefs span inner)
+        | TRMap (keyType, valueType) ->
+            let key = annotationTypeFromRef typeDefs span keyType
+            let resolvedKey = match key with | TNumeric _ -> TInt | _ -> key
+            TMap(resolvedKey, annotationTypeFromRef typeDefs span valueType)
         | TRPostfix (_, suffix) ->
             raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = span })
         | TRRecord fields ->
@@ -563,7 +622,10 @@ module TypeInfer =
             fields
             |> List.map (fun (name, t) -> name, annotationTypeFromRef typeDefs span t)
             |> Map.ofList
-            |> TRecord
+            |> fun fields ->
+                match Types.freshVar() with
+                | TVar id -> TRecordShape(id, fields, false)
+                | _ -> failwith "Expected type variable"
 
     let rec private functionReturnType (t: Type) : Type =
         match t with
@@ -608,6 +670,10 @@ module TypeInfer =
             | "option" -> TOption resolved
             | "map" -> TMap (TString, resolved)
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
+        | TRMap (keyType, valueType) ->
+            let key = typeFromRef decls stack keyType
+            let resolvedKey = match key with | TNumeric _ -> TInt | _ -> key
+            TMap(resolvedKey, typeFromRef decls stack valueType)
         | TRRecord fields ->
             fields
             |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
@@ -618,6 +684,34 @@ module TypeInfer =
             |> List.map (fun (name, t) -> name, typeFromRef decls stack t)
             |> Map.ofList
             |> TRecord
+
+    let private ensureSupportedMapKeyType (typeDefs: Map<string, Type>) (span: Span) (t: Type) =
+        match t with
+        | TString | TInt | TBool | TVar _ | TNumeric _ -> ()
+        | TNamed name ->
+            match typeDefs.TryFind name with
+            | Some (TUnion (_, cases)) when cases |> Map.forall (fun _ payload -> payload.IsNone) -> ()
+            | _ -> raise (TypeException { Message = $"Map key type must be string, int, bool, or a payload-free union, got {Types.typeToString t}"; Span = span })
+        | _ -> raise (TypeException { Message = $"Map key type must be string, int, bool, or a payload-free union, got {Types.typeToString t}"; Span = span })
+
+    let private constrainMapKeyTypes typeDefs span t =
+        let mutable subst = emptySubst
+        let rec loop current =
+            match applyType subst current with
+            | TMap (keyType, valueType) ->
+                match keyType with
+                | TNumeric _ -> subst <- compose (unify typeDefs keyType TInt span) subst
+                | _ -> ensureSupportedMapKeyType typeDefs span keyType
+                loop valueType
+            | TList inner | TTask inner | TOption inner -> loop inner
+            | TTuple items -> List.iter loop items
+            | TRecord fields
+            | TRecordShape (_, fields, _)
+            | THostManaged (_, fields) -> fields |> Map.values |> Seq.iter loop
+            | TFun (arg, result) -> loop arg; loop result
+            | _ -> ()
+        loop t
+        subst
 
     let rec private inferPattern (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (pat: Pattern) : Map<string, Type> * Type =
         match pat with
@@ -660,15 +754,14 @@ module TypeInfer =
                     let envPart, tPart = inferPattern telemetry typeDefs constructors p
                     let merged = Map.fold (fun acc k v -> Map.add k v acc) envAcc envPart
                     merged, Map.add name tPart fieldAcc) (Map.empty, Map.empty)
-            env, TRecord fieldTypes
+            let shape =
+                match Types.freshVar() with
+                | TVar id -> TRecordShape(id, fieldTypes, false)
+                | _ -> failwith "Expected type variable"
+            env, shape
         | PMap (clauses, tailPattern, span) ->
             let startIndex = currentTelemetryCaptureCount telemetry
-            let ensureSupportedMapKeyType (t: Type) =
-                match t with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+            let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
 
             let mapKeyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -736,33 +829,42 @@ module TypeInfer =
         | PTypeRef (tref, span) ->
             Map.empty, annotationTypeFromRef typeDefs span tref
 
-    let private numericResult (t: Type) (span: Span) =
+    let private constrainNumeric (typeDefs: Map<string, Type>) (t: Type) (span: Span) =
         match t with
-        | TInt | TFloat -> t
-        | TVar _ -> TInt
-        | _ -> raise (TypeException { Message = "Expected numeric type"; Span = span })
+        | TInt | TFloat | TNumeric _ -> emptySubst, t
+        | _ ->
+            let numeric = Types.freshNumeric()
+            let subst = unify typeDefs t numeric span
+            subst, applyType subst numeric
 
-    let private validateMapKeyTypes (span: Span) (t: Type) : unit =
+    let private validateMapKeyTypes (typeDefs: Map<string, Type>) (span: Span) (t: Type) : unit =
         let rec loop t =
             match t with
             | TMap (keyType, valueType) ->
                 loop keyType
                 loop valueType
-                match keyType with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString keyType}"; Span = span })
+                ensureSupportedMapKeyType typeDefs span keyType
             | TList inner -> loop inner
             | TTask inner -> loop inner
             | TTuple items -> items |> List.iter loop
-            | TRecord fields -> fields |> Map.values |> Seq.iter loop
+            | TRecord fields
+            | TRecordShape (_, fields, _)
+            | THostManaged (_, fields) -> fields |> Map.values |> Seq.iter loop
             | TOption inner -> loop inner
             | TFun (a, b) -> loop a; loop b
             | _ -> ()
         loop t
 
     let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+        let expressionStart = match telemetry with Some t -> t.ExpressionTypes.Count | None -> 0
+        let subst, inferred, _ = inferExprRaw telemetry typeDefs constructors env expr
+        let keySubst = constrainMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType subst inferred)
+        let combined = compose keySubst subst
+        let resolved = applyType combined inferred
+        applySubstToCapturedExpressions telemetry expressionStart combined
+        combined, resolved, { Expr = expr; Type = resolved; Span = Ast.spanOfExpr expr }
+
+    and private inferExprRaw (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
         match expr with
         | EUnit _ ->
             emptySubst, TUnit, asTyped telemetry expr TUnit
@@ -822,7 +924,9 @@ module TypeInfer =
             let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 arg
             let tv = Types.freshVar()
             let s3 = unify typeDefs (applyType s2 t1) (TFun (t2, tv)) span
-            let s = compose s3 (compose s2 s1)
+            let combined = compose s3 (compose s2 s1)
+            let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(t2, tv)))
+            let s = compose keySubst combined
             let tRes = applyType s tv
             s, tRes, asTyped telemetry expr tRes
         | EIf (cond, tExpr, fExpr, span) ->
@@ -983,34 +1087,7 @@ module TypeInfer =
             let mutable resultTypeOpt : Type option = None
             for (pat, guard, body, caseSpan) in cases do
                 let envPat, tPat = inferPattern telemetry typeDefs constructors pat
-                let sPat =
-                    match pat, applyType sAcc tScrut, tPat with
-                    | PRecord _, TRecord scrutFields, TRecord patFields ->
-                        patFields
-                        |> Map.fold (fun sLocal field patTy ->
-                            match scrutFields.TryFind field with
-                            | Some scrutTy ->
-                                let sField = unify typeDefs (applyType sLocal scrutTy) (applyType sLocal patTy) caseSpan
-                                compose sField sLocal
-                            | None ->
-                                raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
-                    | PRecord _, TNamed typeName, TRecord patFields ->
-                        match typeDefs.TryFind typeName with
-                        | Some (TRecord scrutFields) ->
-                            patFields
-                            |> Map.fold (fun sLocal field patTy ->
-                                match scrutFields.TryFind field with
-                                | Some scrutTy ->
-                                    let sField = unify typeDefs (applyType sLocal scrutTy) (applyType sLocal patTy) caseSpan
-                                    compose sField sLocal
-                                | None ->
-                                    raise (TypeException { Message = sprintf "Record field '%s' not found" field; Span = caseSpan })) emptySubst
-                        | _ ->
-                            raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
-                    | PRecord _, _, _ ->
-                        raise (TypeException { Message = "Record pattern requires a concrete record scrutinee type"; Span = caseSpan })
-                    | _ ->
-                        unify typeDefs (applyType sAcc tScrut) tPat caseSpan
+                let sPat = unify typeDefs (applyType sAcc tScrut) tPat caseSpan
                 let envCase = applyEnv (compose sPat sAcc) env
                 let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
                 let caseBoundNames = envPat |> Map.toList |> List.map fst
@@ -1086,12 +1163,7 @@ module TypeInfer =
             let tRes = TRecord inferred
             sAcc, tRes, asTyped telemetry expr tRes
         | EMap (entries, span) ->
-            let ensureSupportedMapKeyType (t: Type) =
-                match t with
-                | TString
-                | TVar _ -> ()
-                | _ ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+            let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
 
             let keyType = Types.freshVar()
             let valueType = Types.freshVar()
@@ -1122,13 +1194,19 @@ module TypeInfer =
             let tRes = TMap (applyType sAcc keyType, applyType sAcc valueType)
             sAcc, tRes, asTyped telemetry expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sBase =
+                match applyType sInitial tBase with
+                | TRecordShape (id, fields, _) -> compose (Map.ofList [id, TRecordShape(id, fields, true)]) sInitial
+                | _ -> sInitial
             let baseFields =
                 match applyType sBase tBase with
-                | TRecord fields -> fields
+                | TRecord fields
+                | TRecordShape (_, fields, _) -> fields
                 | TNamed name ->
                     match typeDefs.TryFind name with
                     | Some (TRecord fields) -> fields
+                    | Some (THostManaged _) -> raise (TypeException { Message = $"Host-managed type '{name}' cannot be updated"; Span = span })
                     | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
                 | _ -> raise (TypeException { Message = "Record update requires a record value"; Span = span })
             let mutable sAcc = sBase
@@ -1146,13 +1224,19 @@ module TypeInfer =
             let tRes = TRecord resultFields
             sAcc, tRes, asTyped telemetry expr tRes
         | EStructuralRecordUpdate (baseExpr, updates, span) ->
-            let sBase, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
+            let sBase =
+                match applyType sInitial tBase with
+                | TRecordShape (id, fields, _) -> compose (Map.ofList [id, TRecordShape(id, fields, true)]) sInitial
+                | _ -> sInitial
             let baseFields =
                 match applyType sBase tBase with
-                | TRecord fields -> fields
+                | TRecord fields
+                | TRecordShape (_, fields, _) -> fields
                 | TNamed name ->
                     match typeDefs.TryFind name with
                     | Some (TRecord fields) -> fields
+                    | Some (THostManaged _) -> raise (TypeException { Message = $"Host-managed type '{name}' cannot be updated"; Span = span })
                     | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
                 | _ -> raise (TypeException { Message = "Structural record update requires a record value"; Span = span })
             let mutable sAcc = sBase
@@ -1173,26 +1257,43 @@ module TypeInfer =
         | EFieldGet (target, fieldName, span) ->
             let inferRecordField s1 tTarget =
                 match applyType s1 tTarget with
-                | TRecord fields ->
+                | TRecordShape (id, fields, constructible) ->
+                    match fields.TryFind fieldName with
+                    | Some tField -> s1, tField
+                    | None ->
+                        let tField = Types.freshVar()
+                        let s = compose (Map.ofList [id, TRecordShape(id, fields.Add(fieldName, tField), constructible)]) s1
+                        s, tField
+                | TRecord fields
+                | THostManaged (_, fields) ->
                     match fields.TryFind fieldName with
                     | Some tField -> s1, tField
                     | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                 | TNamed name ->
                     match typeDefs.TryFind name with
-                    | Some (TRecord fields) ->
+                    | Some (TRecord fields)
+                    | Some (THostManaged (_, fields)) ->
                         match fields.TryFind fieldName with
                         | Some tField -> s1, tField
                         | None -> raise (TypeException { Message = sprintf "Record field '%s' not found" fieldName; Span = span })
                     | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
                 | TVar _ as tv ->
                     let tField = Types.freshVar()
-                    let sField = unify typeDefs tv (TRecord (Map.ofList [ fieldName, tField ])) span
+                    let shape =
+                        match Types.freshVar() with
+                        | TVar id -> TRecordShape(id, Map.ofList [fieldName, tField], false)
+                        | _ -> failwith "Expected type variable"
+                    let sField = unify typeDefs tv shape span
                     let s = compose sField s1
                     s, applyType s tField
                 | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
 
-            match target with
-            | EVar (moduleName, _) when not (env.ContainsKey moduleName) ->
+            let rec qualifiedTarget = function
+                | EVar (name, _) when not (env.ContainsKey name) -> Some name
+                | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
+                | _ -> None
+            match qualifiedTarget target with
+            | Some moduleName ->
                 let qualifiedName = $"{moduleName}.{fieldName}"
                 match env.TryFind qualifiedName with
                 | Some scheme ->
@@ -1221,11 +1322,7 @@ module TypeInfer =
             | TMap (mapKeyType, valueType), _ ->
                 let s3 = unify typeDefs keyType mapKeyType span
                 let s = compose s3 (compose s2 s1)
-                match applyType s mapKeyType with
-                | TString
-                | TVar _ -> ()
-                | t ->
-                    raise (TypeException { Message = $"Map key type must be string, got {Types.typeToString t}"; Span = span })
+                ensureSupportedMapKeyType typeDefs span (applyType s mapKeyType)
                 let tRes = TOption (applyType s valueType)
                 s, tRes, asTyped telemetry expr tRes
             | TVar _, TInt ->
@@ -1234,14 +1331,15 @@ module TypeInfer =
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s itemType)
                 s, tRes, asTyped telemetry expr tRes
-            | TVar _, TString ->
+            | TVar _, (TString | TBool | TNamed _) ->
                 let valueType = Types.freshVar()
-                let s3 = unify typeDefs targetType (TMap (TString, valueType)) span
+                ensureSupportedMapKeyType typeDefs span keyType
+                let s3 = unify typeDefs targetType (TMap (keyType, valueType)) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s valueType)
                 s, tRes, asTyped telemetry expr tRes
             | TVar _, TVar _ ->
-                raise (TypeException { Message = "Ambiguous index access: use a list with int index or a map with string key"; Span = span })
+                raise (TypeException { Message = "Ambiguous index access: annotate the list or map target"; Span = span })
             | _ ->
                 let expectedKind =
                     match keyType with
@@ -1258,7 +1356,9 @@ module TypeInfer =
                 let s2, tRight, _ = inferExpr telemetry typeDefs constructors env2 b
                 let tv = Types.freshVar()
                 let s3 = unify typeDefs (applyType s2 tRight) (TFun (applyType s2 tLeft, tv)) span
-                let s = compose s3 (compose s2 s1)
+                let combined = compose s3 (compose s2 s1)
+                let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(tLeft, tv)))
+                let s = compose keySubst combined
                 let tRes = applyType s tv
                 s, tRes, asTyped telemetry expr tRes
             | "::" ->
@@ -1285,18 +1385,18 @@ module TypeInfer =
                 let s2, t2, _ = inferExpr telemetry typeDefs constructors env2 b
                 let s3 = unify typeDefs (applyType s2 t1) t2 span
                 let t = applyType s3 t2
-                let resultType =
+                let sOp, resultType =
                     match op with
-                    | "+" | "-" | "*" | "/" | "%" -> numericResult t span
-                    | "=" -> TBool
+                    | "+" | "-" | "*" | "/" ->
+                        constrainNumeric typeDefs t span
+                    | "%" -> unify typeDefs t TInt span, TInt
+                    | "=" -> emptySubst, TBool
                     | "<" | ">" | "<=" | ">=" ->
-                        let _ = numericResult t span
-                        TBool
-                    | "&&" | "||" ->
-                        let _ = unify typeDefs t TBool span
-                        TBool
+                        let constraintSubst, _ = constrainNumeric typeDefs t span
+                        constraintSubst, TBool
+                    | "&&" | "||" -> unify typeDefs t TBool span, TBool
                     | _ -> raise (TypeException { Message = sprintf "Unknown operator %s" op; Span = span })
-                let s = compose s3 (compose s2 s1)
+                let s = compose sOp (compose s3 (compose s2 s1))
                 s, resultType, asTyped telemetry expr resultType
         | ESome (value, _) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
@@ -1371,8 +1471,12 @@ module TypeInfer =
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
-    let private inferProgramWithExternsRawAndLocals (captureTelemetry: bool) (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list * ResolvedExpressionType list =
+    let private inferProgramWithExternsRawAndLocals (captureTelemetry: bool) (registration: ExtensionRegistration) (program: Program) : TypedProgram * LocalVariableTypeInfo list * ResolvedExpressionType list =
         let _, program = unwrapProgramAttributes program
+        let externs = registration.Functions
+        let hostDefinitions =
+            try HostInterop.typeDefinitions registration (program |> List.choose (function SType d -> Some d.Name | _ -> None))
+            with EvalException error -> raise (TypeException { Message = error.Message; Span = error.Span })
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
             @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
@@ -1393,6 +1497,8 @@ module TypeInfer =
                     |> Map.ofList
                     |> TRecord)
 
+        let typeDefs = Map.fold (fun acc name t -> Map.add name t acc) typeDefs hostDefinitions
+
         let constructors =
             decls
             |> Map.toList
@@ -1403,6 +1509,10 @@ module TypeInfer =
                     let sigInfo = { UnionName = typeName; Payload = payloadType }
                     [ caseName, sigInfo
                       $"{typeName}.{caseName}", sigInfo ]))
+            |> List.append (registration.Unions |> List.collect (fun descriptor ->
+                descriptor.Cases |> Map.toList |> List.collect (fun (caseName, payload) ->
+                    let info = { UnionName = descriptor.Name; Payload = payload }
+                    [caseName, info; $"{descriptor.Name}.{caseName}", info])))
             |> Map.ofList
 
         let constructorSchemes =
@@ -1469,7 +1579,7 @@ module TypeInfer =
                         applySubstToCapturedExpressions telemetry expressionStartIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
-                        validateMapKeyTypes span inferred
+                        validateMapKeyTypes typeDefs span inferred
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
@@ -1487,7 +1597,7 @@ module TypeInfer =
                         applySubstToCapturedExpressions telemetry expressionStartIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
-                        validateMapKeyTypes span inferred
+                        validateMapKeyTypes typeDefs span inferred
                         let scheme = Types.generalize env' inferred
                         env <- env' |> Map.add name scheme
                         typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
@@ -1506,7 +1616,7 @@ module TypeInfer =
                     let envBase = applyEnv s env
                     let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
                     typedBindings
-                    |> Map.iter (fun _ ty -> validateMapKeyTypes span ty)
+                    |> Map.iter (fun _ ty -> validateMapKeyTypes typeDefs span ty)
                     env <-
                         typedBindings
                         |> Map.fold (fun state name bindingType ->
@@ -1561,7 +1671,7 @@ module TypeInfer =
                         foldedBindings
                         |> List.map (fun (name, _, _, _) ->
                             let inferred = applyType sRec freshByName.[name]
-                            validateMapKeyTypes span inferred
+                            validateMapKeyTypes typeDefs span inferred
                             name, Types.generalize envGeneralize inferred)
 
                     let typedBindings =
@@ -1588,7 +1698,7 @@ module TypeInfer =
                     let s = compose sDiscard s1
                     applySubstToCapturedLocals telemetry startIndex s
                     applySubstToCapturedExpressions telemetry expressionStartIndex s
-                    validateMapKeyTypes (Ast.spanOfExpr expr) (applyType s t1)
+                    validateMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType s t1)
                     env <- applyEnv s env
                     typed.Add(TSExpr typedExpr)
 
@@ -1601,7 +1711,7 @@ module TypeInfer =
             reraise ()
 
     let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        let typed, _, _ = inferProgramWithExternsRawAndLocals false externs program
+        let typed, _, _ = inferProgramWithExternsRawAndLocals false (HostInterop.ofExterns externs) program
         typed
 
     let private validateProgramBindings (externs: ExternalFunction list) (program: Program) =
@@ -1619,13 +1729,14 @@ module TypeInfer =
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         validateProgramBindings externs program
-        let typed, locals, _ = inferProgramWithExternsRawAndLocals true externs program
+        let typed, locals, _ = inferProgramWithExternsRawAndLocals true (HostInterop.ofExterns externs) program
         typed, locals
 
-    let inferResolvedProgramWithExterns (externs: ExternalFunction list) (program: Program) : ResolvedProgram =
+    let inferResolvedProgramWithRegistration (registration: ExtensionRegistration) (program: Program) : ResolvedProgram =
+        let externs = registration.Functions
         validateProgramBindings externs program
         let statementAttributes, semanticProgram = unwrapProgramAttributes program
-        let typed, _, expressions = inferProgramWithExternsRawAndLocals true externs semanticProgram
+        let typed, _, expressions = inferProgramWithExternsRawAndLocals true registration semanticProgram
         let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
         let mutable nextSymbol = 0
         let symbols = ResizeArray<ResolvedSymbol>()
@@ -1635,6 +1746,8 @@ module TypeInfer =
             let mapping = variables |> List.mapi (fun index variable -> variable, index) |> Map.ofList
             let rec normalize = function
                 | TVar variable -> TVar(mapping |> Map.tryFind variable |> Option.defaultValue variable)
+                | TNumeric variable -> TVar(mapping |> Map.tryFind variable |> Option.defaultValue variable)
+                | TRecordShape(id, fields, constructible) -> TRecordShape(mapping |> Map.tryFind id |> Option.defaultValue id, Map.map (fun _ -> normalize) fields, constructible)
                 | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
                 | TTuple items -> TTuple(List.map normalize items)
                 | TRecord fields -> TRecord(Map.map (fun _ value -> normalize value) fields)
@@ -1647,7 +1760,7 @@ module TypeInfer =
             let mutable next = 0
             let mutable mapping = Map.empty
             let rec normalize = function
-                | TVar variable ->
+                | TVar variable | TNumeric variable ->
                     match Map.tryFind variable mapping with
                     | Some normalized -> TVar normalized
                     | None ->
@@ -1655,6 +1768,9 @@ module TypeInfer =
                         next <- next + 1
                         mapping <- Map.add variable normalized mapping
                         TVar normalized
+                | TRecordShape(id, fields, constructible) ->
+                    let witness = match normalize (TVar id) with TVar value -> value | _ -> id
+                    TRecordShape(witness, Map.map (fun _ -> normalize) fields, constructible)
                 | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
                 | TTuple items -> TTuple(List.map normalize items)
                 | TRecord fields -> TRecord(Map.map (fun _ item -> normalize item) fields)
@@ -1679,6 +1795,15 @@ module TypeInfer =
             for caseName, _ in definition.Cases do
                 let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
                 globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+        let hostDefinitions = HostInterop.typeDefinitions registration []
+        for name, definition in hostDefinitions |> Map.toList do
+            globalEnvironment <- Map.add name (allocate name TypeSymbol syntheticSpan None) globalEnvironment
+            match definition with
+            | TUnion(_, cases) ->
+                for caseName, _ in cases |> Map.toList do
+                    let id = allocate $"{name}.{caseName}" UnionCaseSymbol syntheticSpan None
+                    globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{name}.{caseName}" id
+            | _ -> ()
         let builtinEnvironment = globalEnvironment
         for statement in typed do
             match statement with
@@ -1828,6 +1953,7 @@ module TypeInfer =
                     |> List.map (fun (caseName, payload) -> caseName, Option.map (typeFromRef declarations [ name ]) payload)
                     |> Map.ofList
                     |> fun cases -> TUnion(name, cases))
+            |> fun definitions -> Map.fold (fun state name definition -> Map.add name definition state) definitions hostDefinitions
         let resolvedLiteral = function
             | LInt value -> ResolvedInt value
             | LFloat value -> ResolvedFloat value
@@ -1919,10 +2045,10 @@ module TypeInfer =
                 match expression with
                 | EBinOp(op, left, _, _) ->
                     match op, expressionType with
-                    | "+", TInt -> Some IntegerAddition | "+", TFloat -> Some FloatingAddition
-                    | "-", TInt -> Some IntegerSubtraction | "-", TFloat -> Some FloatingSubtraction
-                    | "*", TInt -> Some IntegerMultiplication | "*", TFloat -> Some FloatingMultiplication
-                    | "/", TInt -> Some IntegerDivision | "/", TFloat -> Some FloatingDivision
+                    | "+", TFloat -> Some FloatingAddition | "+", TInt -> Some IntegerAddition | "+", _ -> Some NumericAddition
+                    | "-", TFloat -> Some FloatingSubtraction | "-", TInt -> Some IntegerSubtraction | "-", _ -> Some NumericSubtraction
+                    | "*", TFloat -> Some FloatingMultiplication | "*", TInt -> Some IntegerMultiplication | "*", _ -> Some NumericMultiplication
+                    | "/", TFloat -> Some FloatingDivision | "/", TInt -> Some IntegerDivision | "/", _ -> Some NumericDivision
                     | "%", TInt -> Some IntegerRemainder | "=", _ -> Some StructuralEquality
                     | ("<" | ">" | "<=" | ">="), _ -> Some(NumericComparison op)
                     | ("&&" | "||"), _ -> Some(BooleanOperation op)
@@ -2031,15 +2157,21 @@ module TypeInfer =
                               TargetType = targetType
                               TargetName = match targetType with TNamed name -> Some name | _ -> None }
                     | _ -> None
+                let callParameter (fn: ResolvedExpression) =
+                    let inferred = match fn.Type with TFun(argument, _) -> Some argument | _ -> None
+                    match fn.Node with
+                    | ResolvedReference reference ->
+                        symbols |> Seq.tryFind (fun symbol -> symbol.SymbolId = reference.SymbolId)
+                        |> Option.bind _.Scheme
+                        |> Option.bind (fun (Forall(_, signature)) ->
+                            match signature with TFun(TRecord fields, _) -> Some(TRecord fields) | _ -> None)
+                        |> Option.orElse inferred
+                    | _ -> inferred
                 match node with
                 | ResolvedApply(fn, argument) ->
-                    match fn.Type with
-                    | TFun(targetType, _) -> conversion targetType argument.Type
-                    | _ -> None
+                    callParameter fn |> Option.bind (fun targetType -> conversion targetType argument.Type)
                 | ResolvedPipe(argument, fn) ->
-                    match fn.Type with
-                    | TFun(targetType, _) -> conversion targetType argument.Type
-                    | _ -> None
+                    callParameter fn |> Option.bind (fun targetType -> conversion targetType argument.Type)
                 | _ -> None
             { Type = expressionType; Span = Ast.spanOfExpr expression; Reference = reference
               Primitive = primitive; RecordCoercion = coercion; Node = node; Children = children }
@@ -2138,11 +2270,23 @@ module TypeInfer =
                   Node = node
                   Patterns = patterns
                   Expressions = resolvedRoots })
+        let hostStatements =
+            hostDefinitions |> Map.toList |> List.map (fun (name, definition) ->
+                { Span = syntheticSpan; Attributes = []; Export = None; Patterns = []; Expressions = []
+                  Node = ResolvedTypeDeclaration
+                    { Binding = bindingAt TypeSymbol name syntheticSpan (TNamed name)
+                      IsRecursive = false; Definition = definition
+                      Fields = match definition with TRecord fields | THostManaged(_, fields) -> Map.toList fields | _ -> []
+                      Cases = match definition with TUnion(_, cases) -> Map.toList cases | _ -> []
+                      Import = None } })
         { TypedProgram = typed
-          ResolvedStatements = resolvedStatements
+          ResolvedStatements = hostStatements @ resolvedStatements
           ExpressionTypes = expressions
           Symbols = symbols |> Seq.toList
           SymbolReferences = resolvedReferences }
+
+    let inferResolvedProgramWithExterns externs program =
+        inferResolvedProgramWithRegistration (HostInterop.ofExterns externs) program
 
     let inferResolvedProgram (program: Program) : ResolvedProgram =
         inferResolvedProgramWithExterns [] program
@@ -2151,10 +2295,30 @@ module TypeInfer =
     /// result, so both compiler consumers and existing evaluators observe the
     /// same inference pass and substitutions.
     let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        (inferResolvedProgramWithExterns externs program).TypedProgram
+        validateProgramBindings externs program
+        inferProgramWithExternsRaw externs program
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program
 
     let inferProgram (program: Program) : TypedProgram =
         inferProgramWithExterns [] program
+
+    let inferProgramWithRegistration (registration: ExtensionRegistration) program =
+        // Preserve the existing reserved-name checks before the registration-aware inference pass.
+        let reserved = BuiltinSignatures.builtinReservedNames
+        if registration.Functions |> List.exists (fun ext -> Set.contains ext.Name reserved) then
+            raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
+        if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
+            raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
+        let typed, _, _ = inferProgramWithExternsRawAndLocals false registration program
+        typed
+
+    let inferProgramWithRegistrationAndLocalVariableTypes (registration: ExtensionRegistration) program =
+        let reserved = BuiltinSignatures.builtinReservedNames
+        if registration.Functions |> List.exists (fun ext -> Set.contains ext.Name reserved) then
+            raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
+        if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
+            raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
+        let typed, locals, _ = inferProgramWithExternsRawAndLocals true registration program
+        typed, locals

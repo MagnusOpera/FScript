@@ -7,6 +7,7 @@
   "exports": "./dist/Library.js",
   "files": [
     "dist",
+    "examples",
     "README.md"
   ],
   "scripts": {
@@ -21,7 +22,7 @@
     "interpreter"
   ],
   "license": "MIT",
-  "homepage": "https://magnusopera.github.io/FScript/manual/embedding/fable-javascript",
+  "homepage": "https://fscript.magnusopera.io/manual/embedding/fable-javascript",
   "bugs": {
     "url": "https://github.com/MagnusOpera/FScript/issues"
   },

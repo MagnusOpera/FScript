@@ -49,7 +49,7 @@ let result =
   [0..9]
   |> List.map (fun i ->
       i + 1)
-  |> List.filter (fun i -> i % 2 == 0)
+  |> List.filter (fun i -> i % 2 = 0)
 ```
 
 ## 4) `match` case alignment
@@ -68,6 +68,7 @@ let label value =
 ### Single-line record and map
 
 ```fsharp
+type Person = { Name: string; Age: int }
 let person = { Name = "Ada"; Age = 37 }
 let ports = { ["http"] = 80; ["https"] = 443 }
 ```
@@ -78,6 +79,7 @@ Opening `{` stays on the line of the first field/entry.
 Closing `}` stays on the line of the last field/entry.
 
 ```fsharp
+type Person = { Name: string; Age: int }
 let person = { Name = "Ada"
                Age = 37 }
 
@@ -141,3 +143,5 @@ let xs =
 ```
 
 Use compact list/map/record multiline styles instead.
+
+Next: [Control Flow](./control-flow).

@@ -80,18 +80,18 @@ let map : ('a -> 'b) -> 'a option -> 'b option
     let private mapStdlibDoc =
         stdlibDoc "Map.fss" """module Map
 
-let empty : 'v map
-let tryGet : string -> 'v map -> 'v option
-let containsKey : string -> 'v map -> bool
-let add : string -> 'v -> 'v map -> 'v map
-let ofList : (string * 'v) list -> 'v map
-let fold : ('state -> string -> 'v -> 'state) -> 'state -> 'v map -> 'state
-let count : 'v map -> int
-let filter : (string -> 'v -> bool) -> 'v map -> 'v map
-let choose : (string -> 'v -> 'u option) -> 'v map -> 'u map
-let map : ('v -> 'u) -> 'v map -> 'u map
-let iter : (string -> 'v -> unit) -> 'v map -> unit
-let remove : string -> 'v map -> 'v map
+let empty : 'v map['key]
+let tryGet : 'key -> 'v map['key] -> 'v option
+let containsKey : 'key -> 'v map['key] -> bool
+let add : 'key -> 'v -> 'v map['key] -> 'v map['key]
+let ofList : ('key * 'v) list -> 'v map['key]
+let fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state
+let count : 'v map['key] -> int
+let filter : ('key -> 'v -> bool) -> 'v map['key] -> 'v map['key]
+let choose : ('key -> 'v -> 'u option) -> 'v map['key] -> 'u map['key]
+let map : ('v -> 'u) -> 'v map['key] -> 'u map['key]
+let iter : ('key -> 'v -> unit) -> 'v map['key] -> unit
+let remove : 'key -> 'v map['key] -> 'v map['key]
 """
 
     let private stringStdlibDoc =
@@ -300,6 +300,19 @@ let queryValues : string -> string -> string list option
         stdlibVirtualSources |> Map.tryFind (normalizeStdlibUri uri)
 
     let private lspTypeToString (t: Type) =
+        // Keep variable identities visible across a complete function signature.
+        let showTypeVariables = match t with | TFun _ -> true | _ -> false
+        let variableNames = Dictionary<int, string>()
+        let variableName id =
+            match variableNames.TryGetValue(id) with
+            | true, name -> name
+            | _ ->
+                let index = variableNames.Count
+                let letter = char (int 'a' + index % 26)
+                let suffix = if index < 26 then "" else string (index / 26)
+                let name = $"'{letter}{suffix}"
+                variableNames[id] <- name
+                name
         let rec go t =
             match t with
             | TUnit -> "unit"
@@ -310,20 +323,25 @@ let queryValues : string -> string -> string list option
             | TList t1 -> sprintf "%s list" (postfixArg t1)
             | TTask t1 -> sprintf "%s task" (postfixArg t1)
             | TTuple ts -> ts |> List.map go |> String.concat " * " |> sprintf "(%s)"
+            | THostManaged (name, _) -> name
+            | TRecordShape (_, fields, _) -> go (TRecord fields)
             | TRecord fields ->
                 fields
                 |> Map.toList
                 |> List.map (fun (name, fieldType) -> sprintf "%s: %s" name (go fieldType))
                 |> String.concat "; "
                 |> sprintf "{ %s }"
-            | TMap (_, tv) ->
-                sprintf "%s map" (postfixArg tv)
+            | TMap (tk, tv) ->
+                match tk with
+                | TString -> sprintf "%s map" (postfixArg tv)
+                | _ -> sprintf "%s map[%s]" (postfixArg tv) (go tk)
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
-            | TVar _ -> "unknown"
+            | TNumeric _ -> "numeric"
+            | TVar id -> if showTypeVariables then variableName id else "unknown"
         and postfixArg t =
             match t with
             | TFun _ | TTuple _ | TRecord _ -> sprintf "(%s)" (go t)
@@ -463,6 +481,14 @@ let queryValues : string -> string -> string list option
         | TRTuple parts -> parts |> List.map typeRefToString |> String.concat " * " |> sprintf "(%s)"
         | TRFun (a, b) -> sprintf "%s -> %s" (typeRefToString a) (typeRefToString b)
         | TRPostfix (inner, suffix) -> sprintf "%s %s" (typeRefToString inner) suffix
+        | TRMap (keyType, valueType) ->
+            let valueText =
+                match valueType with
+                | TRFun _ -> sprintf "(%s)" (typeRefToString valueType)
+                | _ -> typeRefToString valueType
+            match keyType with
+            | TRName "string" -> sprintf "%s map" valueText
+            | _ -> sprintf "%s map[%s]" valueText (typeRefToString keyType)
         | TRRecord fields ->
             fields
             |> List.map (fun (name, t) -> sprintf "%s: %s" name (typeRefToString t))
@@ -670,6 +696,7 @@ let queryValues : string -> string -> string list option
 
             let rec typeTargetFromType (t: Type) =
                 match t with
+                | THostManaged (name, _) -> Some name
                 | TNamed name -> Some name
                 | TUnion (name, _) -> Some name
                 | TRecord _ -> tryResolveRecordTarget t
@@ -800,6 +827,7 @@ let queryValues : string -> string -> string list option
 
         let rec resolveTypeTarget (t: Type) =
             match t with
+            | THostManaged (name, _) -> Some name
             | TNamed name -> Some name
             | TUnion (name, _) -> Some name
             | TRecord _ ->
@@ -811,7 +839,7 @@ let queryValues : string -> string -> string list option
 
         resolveTypeTarget
 
-    let private inferBestEffort (externs: ExternalFunction list) (program: Program) : Map<string, Type> * TypeInfer.LocalVariableTypeInfo list =
+    let private inferBestEffort (registration: ExtensionRegistration) (program: Program) : Map<string, Type> * TypeInfer.LocalVariableTypeInfo list =
         let rec collectPatternNames (pat: Pattern) : string list =
             match pat with
             | PVar (name, _) -> [ name ]
@@ -856,9 +884,9 @@ let queryValues : string -> string -> string list option
 
         let tryInfer statement =
             try
-                let inferenceExterns = externs @ (acceptedBindings |> Map.values |> Seq.toList)
+                let inferenceRegistration = { registration with Functions = registration.Functions @ (acceptedBindings |> Map.values |> Seq.toList) }
                 let candidate = typeDeclarations @ [ statement ]
-                let typed, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes inferenceExterns candidate
+                let typed, localTypes = InteropServices.inferProgramWithRegistrationAndLocalVariableTypes inferenceRegistration candidate
                 Some(typed, localTypes)
             with
             | _ -> None
@@ -2241,6 +2269,11 @@ let queryValues : string -> string -> string list option
         let mutable injectedFunctionParameterNames : Map<string, string list> = Map.empty
         let mutable injectedFunctionDefinitions : Map<string, (string * Span)> = Map.empty
 
+        let initialSignatures, initialParameterNames, initialDefinitions = buildInjectedFunctionData runtimeExterns.Functions
+        injectedFunctionSignatures <- initialSignatures
+        injectedFunctionParameterNames <- initialParameterNames
+        injectedFunctionDefinitions <- initialDefinitions
+
         let mutable parsedProgram : Program option = None
 
         try
@@ -2250,10 +2283,6 @@ let queryValues : string -> string -> string list option
                 else
                     FScript.parseWithSourceName (Some sourceName) text
             parsedProgram <- Some program
-            let signatures, parameterNames, definitions = buildInjectedFunctionData runtimeExterns
-            injectedFunctionSignatures <- signatures
-            injectedFunctionParameterNames <- parameterNames
-            injectedFunctionDefinitions <- definitions
             occurrences <- collectVariableOccurrences program
             resolvedLocalDefinitions <- buildResolvedLocalDefinitions program
             recordParamFields <- buildRecordParameterFields program
@@ -2264,7 +2293,7 @@ let queryValues : string -> string -> string list option
             callArgumentHints <- buildCallArgumentHints program functionParameters
             localBindings <- buildLocalBindings program
             try
-                let typed, localTypes = InteropServices.inferProgramWithExternsAndLocalVariableTypes runtimeExterns program
+                let typed, localTypes = InteropServices.inferProgramWithRegistrationAndLocalVariableTypes runtimeExterns program
                 symbols <- buildSymbolsFromProgram program (Some typed)
                 parameterTypeHints <- buildParameterTypeHints program (Some typed)
                 functionReturnTypeHints <- buildFunctionReturnTypeHints program (Some typed)
@@ -2497,12 +2526,23 @@ let queryValues : string -> string -> string list option
             |> List.tryFind (fun s -> s.Name = qualifier || s.Name = normalized)
 
         let tryFromTypeName (typeName: string) =
-            doc.Symbols
-            |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName)
-            |> Option.bind (fun s -> s.TypeText)
-            |> Option.bind tryParseRecordFields
+            let hostFields =
+                LspRuntimeExterns.descriptors doc.SourcePath
+                |> List.tryFind (fun d -> d.Name = typeName)
+                |> Option.map (fun d -> d.Fields |> Map.toList |> List.map (fun (name, ty) -> name, lspTypeToString ty))
+            hostFields
+            |> Option.orElseWith (fun () ->
+                BuiltinTypes.typeDefs
+                |> List.tryFind (fun definition -> definition.Name = typeName && not definition.Fields.IsEmpty)
+                |> Option.map (fun definition -> definition.Fields |> List.map (fun (name, fieldType) -> name, typeRefToString fieldType)))
+            |> Option.orElseWith (fun () ->
+                doc.Symbols
+                |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName)
+                |> Option.bind (fun s -> s.TypeText)
+                |> Option.bind tryParseRecordFields)
 
         match sym with
+        | None when qualifier = "Env" -> tryFromTypeName "Environment"
         | None -> None
         | Some s ->
             match s.TypeText |> Option.bind tryParseRecordFields with
@@ -2515,7 +2555,14 @@ let queryValues : string -> string -> string list option
                     s.TypeText |> Option.bind tryFromTypeName
         |> function
             | Some fields -> Some fields
-            | None -> doc.RecordParameterFields |> Map.tryFind normalized
+            | None ->
+                doc.RecordParameterFields |> Map.tryFind normalized
+                |> Option.orElseWith (fun () ->
+                    doc.ParameterTypeTargets |> Map.tryFind normalized |> Option.bind tryFromTypeName)
+                |> Option.orElseWith (fun () ->
+                    doc.LocalVariableTypeHints
+                    |> List.tryPick (fun (_, name, typeText) ->
+                        if name = normalized then tryFromTypeName typeText else None))
 
     let private tryResolveNamedRecordTypeByFields (doc: DocumentState) (fields: (string * string) list) =
         let wanted = canonicalRecordSignatureFromFields fields
@@ -3074,7 +3121,21 @@ let queryValues : string -> string -> string list option
                     else None
                 | _ -> None
 
-            let symbols = doc.Symbols
+            let hostSymbols =
+                LspRuntimeExterns.descriptors doc.SourcePath
+                |> List.map (fun d ->
+                    { Name = d.Name; Kind = 5; TypeText = Some d.Name; TypeTargetName = Some d.Name
+                      Span = Span.mk (Span.pos 1 1) (Span.pos 1 1) })
+            let unionSymbols =
+                LspRuntimeExterns.unions doc.SourcePath |> List.collect (fun descriptor ->
+                    let location = Span.mk (Span.pos 1 1) (Span.pos 1 1)
+                    let typeSymbol = { Name = descriptor.Name; Kind = 5; TypeText = Some descriptor.Name; TypeTargetName = Some descriptor.Name; Span = location }
+                    let cases = descriptor.Cases |> Map.toList |> List.collect (fun (name, payload) ->
+                        let text = match payload with None -> descriptor.Name | Some ty -> Types.typeToString ty + " -> " + descriptor.Name
+                        [name; descriptor.Name + "." + name] |> List.map (fun name ->
+                            { Name = name; Kind = 22; TypeText = Some text; TypeTargetName = Some descriptor.Name; Span = location }))
+                    typeSymbol :: cases)
+            let symbols = doc.Symbols @ hostSymbols @ unionSymbols
             let keywords =
                 [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
                   "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some" ]

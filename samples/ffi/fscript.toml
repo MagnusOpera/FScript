@@ -1,0 +1,4 @@
+# Build first: dotnet build samples/ffi/FfiSample.fsproj -c Release
+# Select this configuration in VS Code to get Graphics/Math functions and host types.
+[runtime]
+extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]

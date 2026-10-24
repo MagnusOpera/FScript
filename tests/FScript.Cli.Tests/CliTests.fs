@@ -71,6 +71,14 @@ type CliTests() =
         Path.Combine(repoRoot, "samples", "basic")
 
     [<Test>]
+    member _.``Provider binaries reference SDK without interpreter implementation`` () =
+        let assembly = typeof<FScript.Cli.Tests.Fixtures.Valid.ValidExternProvider>.Assembly
+        let references = assembly.GetReferencedAssemblies() |> Array.map (fun reference -> reference.Name)
+        Assert.That(references, Does.Contain("FScript.Extensibility"))
+        Assert.That(references, Does.Not.Contain("FScript.Language"))
+        Assert.That(references, Does.Not.Contain("FScript.Runtime"))
+
+    [<Test>]
     member _.``Runs script file from positional path`` () =
         let repoRoot = findRepoRoot ()
         let tempScript = Path.Combine(Path.GetTempPath(), $"fscript-cli-{Guid.NewGuid():N}.fss")
@@ -384,3 +392,188 @@ type CliTests() =
 
         Assert.That(code, Is.EqualTo(0), $"stderr: {stderr}")
         Assert.That(normalized, Is.EqualTo("WHAT IS YOUR NAME?\nHELLO Ada\n()"))
+
+    [<Test>]
+    member _.``Provider unions support qualified construction and matching in CLI`` () =
+        let repoRoot = findRepoRoot ()
+        let source = "match Ext.mode (Protocol.Mode.Enabled 42) with | Enabled n -> n | Disabled -> 0"
+        let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
+        Assert.That(code, Is.EqualTo(0), stderr)
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Host-managed extension works in stdin mode`` () =
+        let repoRoot = findRepoRoot ()
+        let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath ()] (Some "let retain x =\n    let v = x.Value\n    x\nExt.acceptNode (retain (Ext.node 42))")
+        Assert.That(code, Is.EqualTo(0), stderr)
+        Assert.That(stdout.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Host-managed extension works in file mode and rejects construction`` () =
+        let repoRoot = findRepoRoot ()
+        let path = Path.Combine(Path.GetTempPath(), $"fscript-host-managed-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(path, "Ext.acceptNode (Ext.node 42)")
+            let code, stdout, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath (); path] None
+            Assert.That(code, Is.EqualTo(0), stderr)
+            Assert.That(stdout.Trim(), Is.EqualTo("42"))
+            File.WriteAllText(path, "Ext.acceptNode {| Value = 42 |}")
+            let code, _, stderr = runCli repoRoot repoRoot ["--extern-assembly"; validProviderAssemblyPath (); path] None
+            Assert.That(code, Is.EqualTo(2), stderr)
+        finally
+            if File.Exists path then File.Delete path
+
+    [<Test>]
+    member _.``Configuration loads providers in file and stdin modes from a different directory`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-environment-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            let assembly = validProviderAssemblyPath ()
+            let relativeAssembly = Path.GetRelativePath(dir, assembly).Replace("\\", "/")
+            File.WriteAllText(manifest, $"[runtime]\nroot = '.'\nextern-assemblies = ['{relativeAssembly}']")
+            let script = Path.Combine(dir, "script.fss")
+            File.WriteAllText(script, "Ext.acceptNode (Ext.node Ext.answer)")
+            for args, input in [ ["--config"; manifest; script], None
+                                 ["-c"; manifest], Some "Ext.acceptNode (Ext.node Ext.answer)"
+                                 ["-c"; manifest; "--extern-assembly"; assembly], Some "Ext.answer" ] do
+                let code, output, error = runCli repo repo args input
+                Assert.That(code, Is.EqualTo(0), error)
+                Assert.That(output.Trim(), Is.EqualTo("42"))
+            let code, output, error = runCli repo repo ["-c"; manifest] (Some "Ext.rootDirectory")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output, Does.Contain(dir))
+            let code, output, error = runCli repo repo ["-c"; manifest; "--root"; repo] (Some "Ext.rootDirectory")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output, Does.Contain(repo))
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Discovered invalid manifests fail before execution and can be disabled`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-environment-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            File.WriteAllText(manifest, "[project]\nentry = 'unused.fss'")
+            let code, output, error = runCli repo dir [] (Some "42")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain("project"))
+            let code, output, error = runCli repo dir ["--no-config"] (Some "42")
+            Assert.That(code, Is.EqualTo(0), error)
+            Assert.That(output.Trim(), Is.EqualTo("42"))
+            let code, _, error = runCli repo dir ["--config"; manifest] (Some "42")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(error, Does.Contain("project"))
+            File.WriteAllText(manifest, "[runtime]\ndefault-externs = false")
+            let code, _, error = runCli repo dir ["-c"; manifest] (Some "Console.writeLine \"test\"")
+            Assert.That(code, Is.Not.EqualTo(0))
+            Assert.That(error, Does.Contain("Console"))
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Provider data records can be constructed and updated by scripts`` () =
+        let repo = findRepoRoot ()
+        let source = "let point = { X = 1 }\nExt.acceptPoint { point with X = 42 }"
+        let code, output, error = runCli repo repo ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
+        Assert.That(code, Is.EqualTo(0), error)
+        Assert.That(output.Trim(), Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Automatic configuration is beside the script or in stdin cwd`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-discovery-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(dir) |> ignore
+        try
+            let manifest = Path.Combine(dir, "fscript.toml")
+            File.Copy(validProviderAssemblyPath (), Path.Combine(dir, "provider.dll"))
+            File.WriteAllText(manifest, "[runtime]\nextern-assemblies = ['provider.dll']")
+            let script = Path.Combine(dir, "main.fss")
+            File.WriteAllText(script, "Ext.acceptNode (Ext.node Ext.answer)")
+            for cwd, args, input in [repo, [script], None; dir, [], Some "Ext.answer"] do
+                let code, output, error = runCli repo cwd args input
+                Assert.That(code, Is.Zero, error)
+                Assert.That(output.Trim(), Is.EqualTo "42")
+            let code, _, error = runCli repo repo ["--no-config"; script] None
+            Assert.That(code, Is.EqualTo 2)
+            Assert.That(error, Does.Contain "Ext")
+            let overrideManifest = Path.Combine(dir, "override.toml")
+            File.WriteAllText(overrideManifest, "[runtime]\ndefault-externs = true")
+            File.WriteAllText(manifest, "[broken]")
+            File.WriteAllText(script, "42")
+            let code, output, error = runCli repo repo [script] None
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain "broken")
+            let code, output, error = runCli repo repo ["-c"; overrideManifest; script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+            let code, _, error = runCli repo dir ["-c"; overrideManifest; "--no-config"] (Some "42")
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(error, Does.Contain "cannot be used together")
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``File discovery ignores parent and working directory manifests`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-discovery-{Guid.NewGuid():N}")
+        let nested = Path.Combine(dir, "scripts")
+        Directory.CreateDirectory(nested) |> ignore
+        try
+            File.WriteAllText(Path.Combine(dir, "fscript.toml"), "[broken]")
+            let script = Path.Combine(nested, "main.fss")
+            File.WriteAllText(script, "42")
+            let code, output, error = runCli repo dir [script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Imported modules do not discover their own environments`` () =
+        let repo = findRepoRoot ()
+        let dir = Path.Combine(Path.GetTempPath(), $"fscript-import-discovery-{Guid.NewGuid():N}")
+        let nested = Path.Combine(dir, "module")
+        Directory.CreateDirectory(nested) |> ignore
+        try
+            File.WriteAllText(Path.Combine(nested, "fscript.toml"), "[broken]")
+            File.WriteAllText(Path.Combine(nested, "helper.fss"), "let answer = 42")
+            let script = Path.Combine(dir, "main.fss")
+            File.WriteAllText(script, "import \"module/helper.fss\" as Helper\nHelper.answer")
+            let code, output, error = runCli repo repo [script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output.Trim(), Is.EqualTo "42")
+        finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``NuGet configuration loads attributed providers in file and stdin modes`` () =
+        use fixture = new NuGetFixture()
+        fixture.AddProvider "1.0.0"
+        fixture.WriteManifest "1.0.0"
+        let repo = findRepoRoot ()
+        let script = Path.Combine(fixture.Directory, "main.fss")
+        File.WriteAllText(script, "Ext.acceptNode (Ext.node 42)")
+        for args, input in [ [script], None; [], Some "Ext.answer" ] do
+            let code, output, error = runCli repo fixture.Directory args input
+            Assert.That(code, Is.EqualTo 0, error)
+            Assert.That(output, Does.Contain("42"))
+        fixture.WriteManifest "9.0.0"
+        let code, output, error = runCli repo fixture.Directory [script] None
+        Assert.That(code, Is.Not.EqualTo 0)
+        Assert.That(error, Does.Contain("NuGet").And.Contain(fixture.Name))
+        Assert.That(output, Does.Not.Contain("42"))
+
+    [<Test>]
+    member _.``Debugger capability probe is standalone and script arguments remain literal`` () =
+        let repo = findRepoRoot ()
+        let code, output, error = runCli repo repo ["--debug-capabilities"] None
+        Assert.That(code,Is.Zero,error)
+        Assert.That(output,Does.Contain("\"protocolVersion\":1"))
+        let script = Path.Combine(Path.GetTempPath(), $"fscript-debug-args-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(script,"Env.Arguments")
+            let code, output, error = runCli repo repo [script;"--";"--debug-adapter"] None
+            Assert.That(code,Is.Zero,error)
+            Assert.That(output.Trim(),Is.EqualTo("[\"--debug-adapter\"]"))
+        finally File.Delete script

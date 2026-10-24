@@ -10,7 +10,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host lists and invokes exported function`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "[<export>] let add x y = x + y\nlet value = 42"
+        let loaded = ScriptHost.loadSource externs "export let add x y = x + y\nlet value = 42"
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
 
         match ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ] with
@@ -20,7 +20,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host invokes exported closure function`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "let makeAdder x = fun y -> x + y\n[<export>] let add2 = makeAdder 2"
+        let loaded = ScriptHost.loadSource externs "let makeAdder x = fun y -> x + y\nexport let add2 = makeAdder 2"
         match ScriptHost.invoke loaded "add2" [ VInt 5L ] with
         | VInt 7L -> ()
         | _ -> Assert.Fail("Expected closure invocation result 7")
@@ -28,7 +28,7 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host exposes exported values separately from functions`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "[<export>] let version = \"1.0\"\n[<export>] let add x y = x + y"
+        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\"\nexport let add x y = x + y"
 
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
         Assert.That(ScriptHost.listValues loaded, Does.Contain("version"))
@@ -40,9 +40,9 @@ type ScriptHostTests () =
     [<Test>]
     member _.``script_host rejects invocation of exported value`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "[<export>] let version = \"1.0\""
+        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\""
         let act () = ScriptHost.invoke loaded "version" [ VUnit ] |> ignore
-        Assert.Throws<EvalException>(TestDelegate act) |> ignore
+        Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
     member _.``script_host hides non-exported functions`` () =
@@ -51,12 +51,12 @@ type ScriptHostTests () =
 
         Assert.That(ScriptHost.listFunctions loaded, Is.Empty)
         let hidden () = ScriptHost.invoke loaded "private_fn" [ VInt 1L ] |> ignore
-        Assert.Throws<EvalException>(TestDelegate hidden) |> ignore
+        Assert.Throws<EvalException>(System.Action hidden) |> ignore
 
     [<Test>]
     member _.``script_host exports recursive groups when marked exported`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let source = "[<export>] let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
+        let source = "export let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
         let loaded = ScriptHost.loadSource externs source
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("even"))
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("odd"))
@@ -72,7 +72,7 @@ type ScriptHostTests () =
             let sharedPath = Path.Combine(tempDir, "shared.fss")
             let mainPath = Path.Combine(tempDir, "main.fss")
             File.WriteAllText(sharedPath, "let increment x = x + 1")
-            File.WriteAllText(mainPath, "import \"shared.fss\" as Shared\n[<export>] let add2 x = Shared.increment (Shared.increment x)")
+            File.WriteAllText(mainPath, "import \"shared.fss\" as Shared\nexport let add2 x = Shared.increment (Shared.increment x)")
             let externs = Registry.all { RootDirectory = tempDir; DeniedPathGlobs = [] }
             let loaded = ScriptHost.loadFile externs mainPath
             match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
@@ -86,7 +86,7 @@ type ScriptHostTests () =
     member _.``script_host loadSource rejects import directives`` () =
         let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSource externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
-        Assert.Throws<EvalException>(TestDelegate act) |> ignore
+        Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
     member _.``script_host loadSourceWithIncludes resolves imports from resolver`` () =
@@ -98,7 +98,7 @@ type ScriptHostTests () =
                 sharedFile, "let increment x = x + 1"
             ]
         let resolve path = sources |> Map.tryFind path
-        let source = "import \"shared.fss\" as Shared\n[<export>] let add2 x = Shared.increment (Shared.increment x)"
+        let source = "import \"shared.fss\" as Shared\nexport let add2 x = Shared.increment (Shared.increment x)"
         let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
         let loaded = ScriptHost.loadSourceWithIncludes externs root entryFile source resolve
 
@@ -111,7 +111,7 @@ type ScriptHostTests () =
         let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-nested-{System.Guid.NewGuid():N}")
         let entryFile = Path.Combine(root, "main.fss")
         let sharedFile = Path.GetFullPath(Path.Combine(root, "shared/validation.fss"))
-        let source = "import \"shared/validation.fss\" as Validation\n[<export>] let run x = Validation.increment x"
+        let source = "import \"shared/validation.fss\" as Validation\nexport let run x = Validation.increment x"
         let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
 
         let mutable resolvedPath : string option = None
@@ -136,7 +136,22 @@ type ScriptHostTests () =
     member _.``script_host loadSourceWithIncludes fails when resolver misses import`` () =
         let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-missing-{System.Guid.NewGuid():N}")
         let entryFile = Path.Combine(root, "main.fss")
-        let source = "import \"shared.fss\" as Shared\n[<export>] let run x = Shared.increment x"
+        let source = "import \"shared.fss\" as Shared\nexport let run x = Shared.increment x"
         let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSourceWithIncludes externs root entryFile source (fun _ -> None) |> ignore
-        Assert.Throws<ParseException>(TestDelegate act) |> ignore
+        Assert.Throws<ParseException>(System.Action act) |> ignore
+
+
+    [<Test>]
+    member _.``script_host contextual export remains usable as an identifier`` () =
+        let loaded = ScriptHost.loadSource [] "let export = 40\nexport let answer = export + 2\nexport let identity export = export"
+        match ScriptHost.getValue loaded "answer", ScriptHost.invoke loaded "identity" [VInt 7L] with
+        | VInt 42L, VInt 7L -> ()
+        | _ -> Assert.Fail("Expected contextual export and ordinary identifier uses")
+
+    [<Test>]
+    member _.``script_host can invoke an exported function named export`` () =
+        let loaded = ScriptHost.loadSource [] "export let export export = export"
+        match ScriptHost.invoke loaded "export" [VString "value"] with
+        | VString "value" -> ()
+        | _ -> Assert.Fail("Expected exported function named export")
