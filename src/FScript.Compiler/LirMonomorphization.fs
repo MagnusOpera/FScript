@@ -181,7 +181,9 @@ module LirMonomorphization =
                             projectionType plan.Checks [] expectedType binding.Projection
                             |> Option.defaultValue (NativeSpecialization.apply substitution binding.Type)
                             |> closedType plan.Span
-                        let replacement = freshSymbol state
+                        let replacement =
+                            scoped |> Map.tryFind binding.Id |> Option.bind (Map.tryFind (bindingKey concrete))
+                            |> Option.map snd |> Option.defaultWith (fun () -> freshSymbol state)
                         scoped <- bind binding.Id concrete replacement scoped
                         { binding with Id = replacement; Type = concrete })
                 let checks =

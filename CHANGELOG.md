@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Matched native JSON, XML, formatting, filesystem traversal, and ordered-map patterns to interpreted behavior, with formatted standalone C# output.
+
 - Compiled existing FFI providers, opaque host values, callbacks, and tasks through SDK adapters without invoking an interpreter.
 
 - Added C# source and standalone .NET assembly compilation with typed functions, collections, pattern matching, tasks, and direct CLR interop.

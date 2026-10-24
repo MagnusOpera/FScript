@@ -33,7 +33,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Compiler',
-      items: ['compiler/compile-to-go', 'compiler/interpret-ir'],
+      items: ['compiler/compile-to-go', 'compiler/compile-to-dotnet', 'compiler/interpret-ir'],
     },
     {
       type: 'category',

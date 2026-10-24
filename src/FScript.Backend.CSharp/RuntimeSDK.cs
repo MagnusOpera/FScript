@@ -48,8 +48,8 @@ internal static class SdkInterop
             case "Fs.parentDirectory": var parent=Path.GetDirectoryName(Text(args[0])); return SV.NewVOption(string.IsNullOrEmpty(parent) ? null : Some(SV.NewVString(parent)));
             case "Fs.extension": var extension=Path.GetExtension(Text(args[0])); return SV.NewVOption(string.IsNullOrEmpty(extension) ? null : Some(SV.NewVString(extension)));
             case "Fs.fileNameWithoutExtension": return SV.NewVString(Path.GetFileNameWithoutExtension(Text(args[0])));
-            case "Fs.glob": return Optional(() => Strings(Directory.GetFiles(Directory.GetCurrentDirectory(),Text(args[0]),SearchOption.AllDirectories).OrderBy(p=>p,StringComparer.Ordinal).ToArray()));
-            case "Fs.enumerateFiles": return Optional(() => Strings(Directory.GetFiles(Text(args[0]),Text(args[1]),SearchOption.TopDirectoryOnly).OrderBy(p=>p,StringComparer.Ordinal).ToArray()));
+            case "Fs.glob": var files=FsRuntime.Files(Directory.GetCurrentDirectory(),Text(args[0]),true); return SV.NewVOption(files.HasValue ? Some(Strings(files.Value)) : null);
+            case "Fs.enumerateFiles": var entries=FsRuntime.Files(Text(args[0]),Text(args[1]),false); return SV.NewVOption(entries.HasValue ? Some(Strings(entries.Value)) : null);
             case "Fs.kind":
                 var path=Text(args[0]); var kind=File.Exists(path) ? "File" : Directory.Exists(path) ? "Directory" : "Missing";
                 return SV.NewVUnionCase("FsKind",kind,kind == "Missing" ? null : Some(SV.NewVString(Path.GetRelativePath(Directory.GetCurrentDirectory(),Path.GetFullPath(path)).Replace('\\','/'))));

@@ -166,6 +166,19 @@ module Lir =
     let symbolNumber (SymbolId value) = value
     let functionNumber (FunctionId value) = value
 
+    let simpleKeyBinding (plan: PatternPlan) =
+        match plan.Checks,plan.Maps,plan.Bindings with
+        | [],[],[binding] when binding.Projection.IsEmpty -> Some binding.Id
+        | _ -> None
+
+    let rec planBindingIds (plan: PatternPlan) =
+        [ yield! plan.Bindings |> List.map _.Id
+          for map in plan.Maps do
+              for clause in map.Clauses do
+                  yield! planBindingIds clause.Key
+                  yield! planBindingIds clause.Value
+              yield! map.Tail |> Option.map planBindingIds |> Option.defaultValue Set.empty ] |> Set.ofList
+
     let format (program: Program) =
         let lines = ResizeArray<string>()
         let typeName = Types.typeToString

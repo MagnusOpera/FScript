@@ -1277,6 +1277,7 @@ module TypedGoEmitter =
                                   yield! allBindings clause.Value
                               yield! mapPlan.Tail |> Option.map allBindings |> Option.defaultValue [] ]
                     let groupedBindings = allBindings case.Plan |> List.groupBy _.Id
+                    let usedPatternSymbols = Set.union usedPatternSymbols (groupedBindings |> List.choose (fun (id,values) -> if values.Length>1 then Some id else None) |> Set.ofList)
                     let mapBindingSymbols =
                         case.Plan.Maps
                         |> List.collect (fun mapPlan ->
@@ -1298,7 +1299,7 @@ module TypedGoEmitter =
                                 let binding = List.head bindings
                                 let variable = symbolName "pattern" id
                                 Some $"var {variable} {goType binding.Type}")
-                    let simplePlan initializeLocals (plan: Lir.PatternPlan) root (rootType: Type) =
+                    let simplePlanWithBound bound initializeLocals (plan: Lir.PatternPlan) root (rootType: Type) =
                         let checks = plan.Checks |> List.map (emitPlanCheck plan root rootType)
                         let grouped = plan.Bindings |> List.groupBy _.Id
                         let repeated =
@@ -1308,22 +1309,50 @@ module TypedGoEmitter =
                                 | first :: rest ->
                                     let firstCode, _ = project plan root rootType [] first.Projection
                                     rest |> List.map (fun binding -> let code, _ = project plan root rootType [] binding.Projection in $"{equality binding.Type}({firstCode}, {code})"))
+                        let existing = grouped |> List.choose (fun (id,bindings) ->
+                            if Set.contains id bound then
+                                let binding=List.head bindings
+                                let code,_=project plan root rootType [] binding.Projection
+                                let variable=symbolName "pattern" id
+                                Some $"{equality binding.Type}({variable}, {code})"
+                            else None)
                         let assignments =
                             grouped
                             |> List.choose (fun (id, bindings) ->
-                                if not (Set.contains id usedPatternSymbols) then None
+                                if Set.contains id bound || not (Set.contains id usedPatternSymbols) then None
                                 else
                                     let binding = List.head bindings
                                     let code, _ = project plan root rootType [] binding.Projection
                                     let variable = symbolName "pattern" id
                                     let assignment = if initializeLocals && not (Set.contains id mapBindingSymbols) then ":=" else "="
                                     Some $"{variable} {assignment} {code}")
-                        let meaningfulChecks = checks @ repeated |> List.filter ((<>) "true")
+                        let meaningfulChecks = checks @ repeated @ existing |> List.filter ((<>) "true")
                         (match meaningfulChecks with [] -> "true" | values -> String.concat " && " values), assignments
-                    let emitMapPlan _ (mapPlan: Lir.MapPlan) =
+                    let simplePlan = simplePlanWithBound Set.empty
+                    let emitMapPlan mapIndex (mapPlan: Lir.MapPlan) =
+                        let incoming =
+                            case.Plan.Maps |> List.take mapIndex |> List.collect (fun map ->
+                                [yield! map.Clauses |> List.collect (fun clause -> [Lir.planBindingIds clause.Key; Lir.planBindingIds clause.Value]); yield! map.Tail |> Option.map Lir.planBindingIds |> Option.toList])
+                            |> fun values -> Set.unionMany ((case.Plan.Bindings |> List.map _.Id |> Set.ofList) :: values)
+                        let beforeClause index =
+                            mapPlan.Clauses |> List.take index |> List.collect (fun clause -> [Lir.planBindingIds clause.Key; Lir.planBindingIds clause.Value]) |> fun values -> Set.unionMany (incoming::values)
                         let mapCode, mapType = project case.Plan targetName target.Type [] mapPlan.Projection
                         let keyType, valueType = match mapType with TMap(keyType, valueType) -> keyType, valueType | _ -> invalidOp "Map pattern projection is not a map."
                         let entryType = $"entry_{suffix mapType}"
+                        let clauseAttempt bound locallyBound (clause: Lir.MapClausePlan) nextBody =
+                            let keyCondition,keyAssignments=simplePlanWithBound bound false clause.Key "entry.Key" keyType
+                            let valueCondition,valueAssignments=simplePlanWithBound (Set.union bound (Lir.planBindingIds clause.Key)) false clause.Value "entry.Value" valueType
+                            let nextBody=String.concat "\n" (valueAssignments @ [nextBody])
+                            match Lir.simpleKeyBinding clause.Key with
+                            | Some id ->
+                                let valueAttempt=if valueCondition="true" then nextBody else $"if {valueCondition} {{\n\t{indent nextBody}\n}}\nreturn false"
+                                let body=String.concat "\n" (keyAssignments @ [valueAttempt])
+                                let attempt=if keyCondition="true" then body else $"if {keyCondition} {{\n\t{indent body}\n}}"
+                                if not (Set.contains id locallyBound) && keyCondition<>"true" then attempt+"\nreturn false" else attempt
+                            | None ->
+                                let conditions=[keyCondition;valueCondition] |> List.filter ((<>) "true")
+                                let body=String.concat "\n" (keyAssignments @ [nextBody])
+                                match conditions with [] -> body | values -> let condition=String.concat " && " values in $"if {condition} {{\n\t{indent body}\n}}"
                         let directPlan =
                             match mapPlan.Clauses with
                             | [] ->
@@ -1331,24 +1360,18 @@ module TypedGoEmitter =
                                 | None when mapPlan.RequireEmptyRemainder -> Some $"len(({mapCode}).Entries) == 0"
                                 | None -> Some "true"
                                 | Some tail ->
-                                    let condition, assignments = simplePlan false tail "remaining" mapType
+                                    let condition, assignments = simplePlanWithBound incoming false tail "remaining" mapType
                                     let success =
                                         if condition = "true" then "return true"
                                         else $"return {condition}"
                                     let body = [ yield $"remaining := {mapCode}"; yield! assignments; yield success ] |> String.concat "\n"
                                     Some $"func() bool {{\n\t{indent body}\n}}()"
                             | [ clause ] ->
-                                let keyCondition, keyAssignments = simplePlan false clause.Key "entry.Key" keyType
-                                let valueCondition, valueAssignments = simplePlan false clause.Value "entry.Value" valueType
-                                let clauseCondition =
-                                    [ keyCondition; valueCondition ]
-                                    |> List.filter ((<>) "true")
-                                    |> function [] -> "true" | values -> String.concat " && " values
                                 let tailBody =
                                     match mapPlan.Tail with
                                     | None -> [ "return true" ]
                                     | Some tail ->
-                                        let tailCondition, tailAssignments = simplePlan false tail "remaining" mapType
+                                        let tailCondition, tailAssignments = simplePlanWithBound (beforeClause 1) false tail "remaining" mapType
                                         if tailAssignments.IsEmpty && tailCondition = "true" then [ "return true" ]
                                         else
                                             [ yield $"nextEntries := make([]{entryType}, 0, len(values.Entries)-1)"
@@ -1357,9 +1380,8 @@ module TypedGoEmitter =
                                               yield $"remaining := {goType mapType}{{Entries: nextEntries}}"
                                               yield! tailAssignments
                                               if tailCondition = "true" then yield "return true"
-                                              else yield $"if {tailCondition} {{\n\treturn true\n}}" ]
-                                let attemptBody = [ yield! keyAssignments; yield! valueAssignments; yield! tailBody ] |> String.concat "\n"
-                                let attempt = if clauseCondition = "true" then attemptBody else $"if {clauseCondition} {{\n\t{indent attemptBody}\n}}"
+                                              else yield $"return {tailCondition}" ]
+                                let attempt=clauseAttempt incoming Set.empty clause (String.concat "\n" tailBody)
                                 let iteration =
                                     match attempt.Contains("entryIndex", StringComparison.Ordinal), attempt.Contains("entry.", StringComparison.Ordinal) with
                                     | true, true -> "entryIndex, entry := range values.Entries"
@@ -1371,23 +1393,15 @@ module TypedGoEmitter =
                         let clauseCases =
                             mapPlan.Clauses
                             |> List.mapi (fun clauseIndex clause ->
-                                let keyCondition, keyAssignments = simplePlan false clause.Key "entry.Key" keyType
-                                let valueCondition, valueAssignments = simplePlan false clause.Value "entry.Value" valueType
-                                let clauseCondition =
-                                    [ keyCondition; valueCondition ]
-                                    |> List.filter ((<>) "true")
-                                    |> function [] -> "true" | values -> String.concat " && " values
+                                let bound=beforeClause clauseIndex
                                 let attemptBody =
-                                    [ yield! keyAssignments
-                                      yield! valueAssignments
-                                      yield $"nextEntries := make([]{entryType}, 0, len(remaining.Entries)-1)"
+                                    [ yield $"nextEntries := make([]{entryType}, 0, len(remaining.Entries)-1)"
                                       yield "nextEntries = append(nextEntries, remaining.Entries[:entryIndex]...)"
                                       yield "nextEntries = append(nextEntries, remaining.Entries[entryIndex+1:]...)"
-                                      yield $"if matchClause(clauseIndex+1, {goType mapType}{{Entries: nextEntries}}) {{\n\treturn true\n}}" ]
+                                      yield $"return matchClause(clauseIndex+1, {goType mapType}{{Entries: nextEntries}})" ]
                                     |> String.concat "\n"
-                                let attempt =
-                                    if clauseCondition = "true" then attemptBody
-                                    else $"if {clauseCondition} {{\n\t{indent attemptBody}\n}}"
+                                let locallyBound=mapPlan.Clauses |> List.take clauseIndex |> List.collect (fun previous -> [Lir.planBindingIds previous.Key;Lir.planBindingIds previous.Value]) |> Set.unionMany
+                                let attempt=clauseAttempt bound locallyBound clause attemptBody
                                 let iteration =
                                     if attempt.Contains("entry.", StringComparison.Ordinal) then "entryIndex, entry := range"
                                     else "entryIndex := range"
@@ -1397,7 +1411,7 @@ module TypedGoEmitter =
                             match mapPlan.Tail with
                             | None -> if mapPlan.RequireEmptyRemainder then "return len(remaining.Entries) == 0" else "return true"
                             | Some tail ->
-                                let condition, assignments = simplePlan false tail "remaining" mapType
+                                let condition, assignments = simplePlanWithBound (beforeClause mapPlan.Clauses.Length) false tail "remaining" mapType
                                 let success = [ yield! assignments; yield "return true" ] |> String.concat "\n"
                                 if condition = "true" then success
                                 else $"if {condition} {{\n\t{indent success}\n}}\nreturn false"

@@ -229,7 +229,7 @@ module LirInterpreter =
             | TList itemType, VList values -> values |> List.forall (matchesType itemType)
             | TOption _, VOption None -> true
             | TOption itemType, VOption(Some value) -> matchesType itemType value
-            | TRecord fields, VRecord values -> fields |> Map.forall (fun name fieldType -> values |> Map.tryFind name |> Option.exists (matchesType fieldType))
+            | (TRecord fields | TRecordShape(_,fields,_) | THostManaged(_,fields)), VRecord values -> fields |> Map.forall (fun name fieldType -> values |> Map.tryFind name |> Option.exists (matchesType fieldType))
             | TMap(keyType, valueType), VMap entries -> entries |> List.forall (fun (key, value) -> matchesType keyType key && matchesType valueType value)
             | TUnion(typeName, _), VUnion(valueType, _, _) | TNamed typeName, VUnion(valueType, _, _) -> typeName = valueType
             | TNamed _, VRecord _ -> true
@@ -276,7 +276,7 @@ module LirInterpreter =
                     project root mapPlan.Projection
                     |> Option.bind (function
                         | VMap entries ->
-                            let rec clauses current remaining (pending: Lir.MapClausePlan list) =
+                            let rec clauses current remaining locallyBound (pending: Lir.MapClausePlan list) =
                                 match pending with
                                 | [] ->
                                     match mapPlan.Tail with
@@ -284,15 +284,20 @@ module LirInterpreter =
                                     | None when not mapPlan.RequireEmptyRemainder || remaining.IsEmpty -> Some current
                                     | None -> None
                                 | clause :: rest ->
-                                    remaining
+                                    let candidates =
+                                        if Lir.simpleKeyBinding clause.Key |> Option.exists (fun id -> not (Set.contains id locallyBound)) then remaining |> List.truncate 1
+                                        else remaining
+                                    candidates
                                     |> List.indexed
                                     |> List.tryPick (fun (index, (key, item)) ->
                                         run clause.Key key current
                                         |> Option.bind (fun withKey -> run clause.Value item withKey)
-                                        |> Option.bind (fun withValue ->
-                                            let next = remaining |> List.indexed |> List.choose (fun (position, entry) -> if position = index then None else Some entry)
-                                            clauses withValue next rest))
-                            clauses env entries mapPlan.Clauses
+                                        |> Option.map (fun withValue -> index,withValue))
+                                    |> Option.bind (fun (index,withValue) ->
+                                        let next = remaining |> List.indexed |> List.choose (fun (position, entry) -> if position=index then None else Some entry)
+                                        let local=Set.union locallyBound (Set.union (Lir.planBindingIds clause.Key) (Lir.planBindingIds clause.Value))
+                                        clauses withValue next local rest)
+                            clauses env entries Set.empty mapPlan.Clauses
                         | _ -> None)
                 currentPlan.Maps |> List.fold (fun state mapPlan -> state |> Option.bind (fun env -> runMap env mapPlan)) withBindings
         run plan value Map.empty

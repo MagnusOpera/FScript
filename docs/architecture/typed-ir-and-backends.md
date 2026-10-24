@@ -8,9 +8,10 @@ source -> parser/includes -> inference + resolved typed tree -> HIR -> LIR
                                                                |      +-> LIR interpreter
                                                                +--------> serialization
                                                                       +-> Go source backend
+                                                                      +-> C# source / .NET assembly backends
 ```
 
-`FScript.Language` remains the parser, type-system, legacy evaluator, and Fable-compatible package. It emits a recursive semantic resolved tree in the same inference pass as its compatibility `TypedProgram`. Resolved statement, expression, and pattern nodes do not contain parser AST nodes; every resolved expression carries its final instantiated type and span plus lexical-reference kind, primitive operation, and structural/named-record conversion evidence. Compatibility inference and evaluation APIs continue to project their existing results; `inferProgramWithExterns` specifically returns the `TypedProgram` from `inferResolvedProgramWithExterns` rather than running a parallel inference path.
+`FScript.Language` remains the parser, type-system, legacy evaluator, and Fable-compatible package. It emits a recursive semantic resolved tree in the same inference pass as its compatibility `TypedProgram`. Resolved statement, expression, and pattern nodes do not contain parser AST nodes; every resolved expression carries its final instantiated type and span plus lexical-reference kind, primitive operation, and structural/named-record conversion evidence. Compatibility inference and evaluation APIs keep the direct inference path used on main, without constructing compiler telemetry or a resolved tree. Compiler inference uses the same inference core and retains the resolved tree and legacy typed result from that pass.
 
 Resolved inference assigns deterministic program-local IDs to builtins, externs, types, union cases, declarations, parameters, pattern bindings, and locals in normalized source traversal. Declaration schemes and instantiated reference types normalize type variables from zero, so results do not depend on the process-global fresh-variable counter. The legacy `TypedProgram` remains a projection with unchanged public entry points.
 
@@ -18,7 +19,7 @@ Top-level reference resolution walks declarations in source order. A non-recursi
 
 `FScript.Compiler` is a reusable, initially non-packaged .NET assembly. It owns HIR, HIR validation, lowering, LIR, LIR validation, and artifact serialization. It depends on `FScript.Language`; the language assembly never depends on the compiler. A compiled program also carries exported function signatures projected from the same typed frontend result used for lowering, so embedded hosts do not need to infer the source a second time before invoking exports.
 
-Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` owns execution and runtime LIR values. `FScript.Backend.Go` owns representation selection, Go emission, and embedded runtime templates. Both reference `FScript.Compiler`, while the compiler references neither consumer. Public modules retain the `FScript.Compiler` namespace so the API surface remains source-compatible while assembly ownership is explicit.
+Validated LIR consumers are separate leaf assemblies. `FScript.Interpreter.Lir` owns execution and runtime LIR values. `FScript.Backend.Go` owns representation selection, Go emission, and embedded runtime templates. The C# and .NET backends are separate leaf assemblies too; all share specialization and simplification in `FScript.Compiler`, while the compiler references no backend. Public modules retain the `FScript.Compiler` namespace so the API surface remains source-compatible while assembly ownership is explicit.
 
 ## IR boundaries
 
@@ -32,13 +33,13 @@ Specialization propagates each enclosing concrete function result, application a
 
 Pattern emission removes representation checks proven true by typing. A single remaining map-pattern decision is used directly as the branch condition; multiple decisions initialize their short-circuit accumulator from the first real check, never from a synthetic constant.
 
-Empty and single-clause ordered-map patterns lower to direct typed length checks or loops. The recursive backtracking matcher is reserved for genuinely multi-clause plans, and remainder allocation occurs only when a tail pattern consumes it.
+Empty and single-clause ordered-map patterns lower to direct typed length checks or loops. A recursive typed decision routine handles multi-clause plans with committed first-match selection, and remainder allocation occurs only when a tail pattern consumes it.
 
-Pattern bindings are emitted only when referenced by the selected guard or body. Ordinary projections initialize their typed locals directly, while map-backtracking bindings are predeclared only when assignment across the recursive matcher boundary requires it. Dummy blank-identifier reads and unreferenced projections, declarations, and assignments are omitted.
+Pattern bindings are emitted only when referenced by the selected guard or body. Ordinary projections initialize their typed locals directly, while map-pattern bindings are predeclared only when assignment across the recursive matcher boundary requires it. Dummy blank-identifier reads and unreferenced projections, declarations, and assignments are omitted.
 
 The tail-position decision-tree emitter follows the same binding liveness rules. Match scrutinees and effectful let bindings receive blank-identifier sinks only when their values are genuinely unused; used tail-pattern projections initialize locals directly.
 
-Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic recursive backtracking, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
+Pattern plans are emitted as concrete checks and projections over those representations. Ordered-map patterns copy a typed remainder and use deterministic committed selection, so the scrutinee is evaluated once and no generic binding dictionary or runtime pattern dispatcher is needed.
 
 When a pattern plan has no representation or repeated-binding checks, Go emission treats its condition as statically true. The emitter writes its bindings and body directly, and an unguarded unconditional case terminates case emission, so generated decision trees contain neither `if true` wrappers nor later unreachable cases.
 

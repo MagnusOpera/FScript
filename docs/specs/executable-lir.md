@@ -76,7 +76,7 @@ Named records and unions retain declarations in the program type table. `RecordC
 
 LIR prescribes semantic values rather than a backend storage strategy. The .NET interpreter may use tagged runtime values; the Go backend must specialize reachable polymorphic uses into closed concrete representations and does not emit Go generics.
 
-Maps are ordered string-key maps according to current FScript semantics. Consumers must not substitute host-language hash-map iteration order.
+Maps use ordered comparable keys (strings, integers, booleans, and supported payload-free unions) according to current FScript semantics. Consumers must not substitute host-language hash-map iteration order.
 
 Structural equality recursively covers primitives, tuples, records, maps, options, lists, unions, and type tokens. Closures, task values, constructors, and extern handles are not structurally equal.
 
@@ -90,6 +90,8 @@ A plan consists of:
 - checks for literals, list shape, tuple arity, record fields, options, union cases, and type shape;
 - symbol bindings associated with deterministic projections;
 - ordered map matching plans, including remainder handling.
+
+Map patterns preserve the evaluator's deterministic selection: a new variable key selects the first remaining entry, while other key/value patterns select their first local match. Later clause or remainder failure does not reconsider that selection. Repeated pattern bindings compare against the original binding.
 
 Consumers execute this plan; the Go backend does not reimplement source-pattern semantics.
 

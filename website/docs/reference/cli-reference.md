@@ -36,6 +36,17 @@ fscript compile program.fss --target go --output ./out
 
 The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, and specialized typed program source. Unsupported features use structured compiler/backend diagnostic codes.
 
+Generate a standalone .NET assembly or an independently buildable C# project:
+
+```bash
+fscript compile program.fss --target dotnet --output ./out/dotnet
+dotnet ./out/dotnet/program.dll
+fscript compile program.fss --target csharp --output ./out/csharp
+dotnet run --project ./out/csharp/Program.csproj
+```
+
+These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET or C#](../compiler/compile-to-dotnet.md).
+
 Continue with [Compile to Go](../compiler/compile-to-go.md) or [Interpret IR](../compiler/interpret-ir.md).
 
 ## From source

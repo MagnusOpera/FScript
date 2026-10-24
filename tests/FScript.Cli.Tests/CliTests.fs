@@ -166,6 +166,34 @@ type CliTests() =
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
+    [<TestCase("dotnet")>]
+    [<TestCase("csharp")>]
+    member _.``Native targets produce independently runnable programs with FFI`` (target: string) =
+        let repoRoot = findRepoRoot ()
+        let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-native-cli-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(tempRoot) |> ignore
+        try
+            let script=Path.Combine(tempRoot,"native.fss")
+            File.WriteAllText(script,"Ext.answer")
+            let output=Path.Combine(tempRoot,"output")
+            let code,_,error=runCli repoRoot tempRoot ["compile";script;"--target";target;"--output";output;"--extern-assembly";validProviderAssemblyPath()] None
+            Assert.That(code,Is.Zero,error)
+            let start=ProcessStartInfo("dotnet",WorkingDirectory=tempRoot,RedirectStandardOutput=true,RedirectStandardError=true)
+            if target="dotnet" then start.ArgumentList.Add(Path.Combine(output,"native.dll"))
+            else
+                start.ArgumentList.Add("run")
+                start.ArgumentList.Add("--project")
+                start.ArgumentList.Add(Path.Combine(output,"Program.csproj"))
+            use proc=new Process(StartInfo=start)
+            proc.Start() |> ignore
+            let stdout=proc.StandardOutput.ReadToEnd()
+            let stderr=proc.StandardError.ReadToEnd()
+            proc.WaitForExit()
+            Assert.That(proc.ExitCode,Is.Zero,stdout+stderr)
+            Assert.That(stdout.Trim(),Is.EqualTo("42"))
+            Assert.That(File.Exists(Path.Combine(output,"FScript.Runtime.dll")),Is.False)
+        finally Directory.Delete(tempRoot,true)
+
     [<Test>]
     member _.``Invalid compile target does not create output`` () =
         let repoRoot = findRepoRoot ()

@@ -126,6 +126,7 @@ type ConformanceTests() =
 
     [<TestCase("[Some 1; None] = [Some 1; None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
+    [<TestCase("type Address = { City: string; Zip: int }\nlet check value = match value with | {| City: string |} -> 1 | _ -> 2\ncheck { City=\"Paris\"; Zip=75000 }")>]
     [<TestCase("type Shape = | Point | Circle of int\nmatch Circle 3 with | Point -> 0 | Circle radius -> radius")>]
     [<TestCase("let identity value = value\nidentity 42")>]
     [<TestCase("(1, 2)")>]
@@ -142,6 +143,8 @@ type ConformanceTests() =
     [<TestCase("let identity value = value\n(identity [1; 2], identity (Some \"ok\"))")>]
     [<TestCase("match [1; 2] with | head::tail when List.length tail = 1 -> head | _ -> 0")>]
     [<TestCase("match { [\"a\"] = \"a\" } with | { [same] = same } -> true | _ -> false")>]
+    [<TestCase("match { [\"a\"] = 1; [\"b\"] = 2 } with | { [k] = 2; ..rest } -> (k, Map.count rest) | _ -> (\"\",0)")>]
+    [<TestCase("match { [1] = 2; [2] = 2 } with | { [x] = x; ..rest } -> (x,Map.containsKey 1 rest) | _ -> (0,false)")>]
     [<TestCase("(Int.tryParse \"42\", Int.tryParse \"x\", Float.tryParse \"1.5\", Bool.tryParse \"TRUE\", Bool.tryParse \"1\", Int.toString 42, Float.toString 1.5, Bool.toString false, String.replace \"a\" \"o\" \"banana\", String.indexOf \"x\" \"éx\", String.toLower \"ABC\", String.toUpper \"abc\", String.substring 1 1 \"aéz\", String.substring 8 1 \"short\", String.concat \",\" [\"a\"; \"b\"], String.split \",\" \"a,b\", String.endsWith \"bar\" \"foobar\")")>]
     [<TestCase("(List.map (fun value -> value + 1) [1; 2], List.iter (fun value -> ignore value) [1; 2], List.choose (fun value -> if value > 1 then Some value else None) [1; 2], List.collect (fun value -> [value; value]) [1; 2], List.exists (fun value -> value = 2) [1; 2], List.contains 2 [1; 2], List.rev [1; 2], List.distinct [1; 1; 2], List.fold (fun state value -> state + value) 0 [1; 2], List.filter (fun value -> value > 1) [1; 2], List.length [1; 2], List.tryFind (fun value -> value > 1) [1; 2], List.tryGet (fun value -> value = 2) [1; 2], List.tryItem 1 [1; 2], List.tryHead [1; 2], List.tail [1; 2], List.append [1] [2])")>]
     [<TestCase("(Option.defaultValue 7 None, Option.defaultWith (fun _ -> 8) None, Option.isNone None, Option.isSome (Some 1), Option.map (fun value -> value + 1) (Some 1))")>]

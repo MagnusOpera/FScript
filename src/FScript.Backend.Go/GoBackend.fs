@@ -53,11 +53,15 @@ module GoBackend =
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         let clrImport = program.Declarations |> List.tryFind (fun declaration ->
             match declaration.Value.Node with Lir.TargetImport(path, _) -> path.StartsWith("clr:", StringComparison.Ordinal) || path.StartsWith("clr-sdk:", StringComparison.Ordinal) | _ -> false)
+        let clrType = program.ImportedRecords |> List.tryFind (fun record -> record.ModulePath.StartsWith("clr:",StringComparison.Ordinal))
         match LirValidation.validate program with
         | Error diagnostics -> Error diagnostics
         | Ok _ when clrImport.IsSome ->
             let declaration = clrImport.Value
             Error [ diagnostic "FSB4010" $".NET FFI binding '{declaration.Name}' cannot be emitted by the Go backend." (Some declaration.Span) ]
+        | Ok _ when clrType.IsSome ->
+            let record = clrType.Value
+            Error [ diagnostic "FSB4010" $".NET type binding '{record.Name}' cannot be emitted by the Go backend." (Some record.Span) ]
         | Ok validated ->
             match LirMonomorphization.specialize validated with
             | Error diagnostics -> Error diagnostics

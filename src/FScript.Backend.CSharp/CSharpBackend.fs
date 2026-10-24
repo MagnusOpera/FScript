@@ -6,6 +6,8 @@ open System.Reflection
 open System.Text
 open System.Text.Json
 open System.Security.Cryptography
+open Microsoft.CodeAnalysis
+open Microsoft.CodeAnalysis.CSharp
 open FScript.Language
 
 type CSharpOptions =
@@ -162,8 +164,11 @@ module CSharpBackend =
             | Lir.String value -> quote value
         let eqName t = "Equal_" + hash t
         let fmtName t = "Format_" + hash t
+        let interpName t = "Interpolate_" + hash t
         let encName t = "Encode_" + hash t
         let decName t = "Decode_" + hash t
+        let jsonEncodeName t = "JsonEncode_" + hash t
+        let jsonDecodeName t = "JsonDecode_" + hash t
         let rec sdkType t =
             let st="global::FScript.Extensibility.ScriptType"
             let unary name item = $"{st}.New{name}({sdkType item})"
@@ -289,13 +294,13 @@ module CSharpBackend =
             | "Fs.parentDirectory", _ -> build (fun a r -> wrap (csType r) $"var path=Path.GetDirectoryName({a.[0]}); return string.IsNullOrEmpty(path) ? default : {csType r}.Some(path);")
             | "Fs.extension", _ -> build (fun a r -> wrap (csType r) $"var extension=Path.GetExtension({a.[0]}); return string.IsNullOrEmpty(extension) ? default : {csType r}.Some(extension);")
             | "Fs.fileNameWithoutExtension", _ -> build (fun a _ -> $"Path.GetFileNameWithoutExtension({a.[0]})")
-            | "Fs.glob", _ -> build (fun a _ -> $"FsRuntime.Try(() => Directory.GetFiles(Directory.GetCurrentDirectory(), {a.[0]}, SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal).ToArray())")
-            | "Fs.enumerateFiles", _ -> build (fun a _ -> $"FsRuntime.Try(() => Directory.GetFiles({a.[0]}, {a.[1]}, SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.Ordinal).ToArray())")
+            | "Fs.glob", _ -> build (fun a _ -> $"FsRuntime.Files(Directory.GetCurrentDirectory(), {a.[0]}, true)")
+            | "Fs.enumerateFiles", _ -> build (fun a _ -> $"FsRuntime.Files({a.[0]}, {a.[1]}, false)")
             | "Regex.matchGroups", _ -> build (fun a _ -> $"FsRuntime.MatchGroups({a.[0]}, {a.[1]})")
             | "Hash.md5", _ -> build (fun a _ -> $"FsRuntime.Try(() => Convert.ToHexString(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes({a.[0]}))).ToLowerInvariant())")
             | "Guid.new", _ -> build (fun _ _ -> "Option<string>.Some(Guid.NewGuid().ToString())")
-            | "Json.serialize", _ -> build (fun a _ -> $"FsRuntime.Try(() => JsonSerializer.Serialize({a.[0]}))")
-            | "Json.deserialize", _ -> build (fun a r -> match r with TOption item -> $"FsRuntime.Try(() => JsonSerializer.Deserialize<{csType item}>({a.[1]})!)" | _ -> invalidOp "Expected option.")
+            | "Json.serialize", _ -> build (fun a _ -> $"FsRuntime.Try(() => {jsonEncodeName parameters.[0]}({a.[0]}))")
+            | "Json.deserialize", _ -> build (fun a r -> match r with TOption item -> $"FsRuntime.ParseJson({a.[1]}, {jsonDecodeName item})" | _ -> invalidOp "Expected option.")
             | "Xml.queryValues", _ -> build (fun a _ -> $"FsRuntime.QueryXml({a.[0]}, {a.[1]})")
             | "Task.spawn", _ -> build (fun a _ -> $"Task.Run(() => {a.[0]}(default(Unit)))")
             | "Task.await", _ -> build (fun a _ -> $"{a.[0]}.GetAwaiter().GetResult()")
@@ -420,8 +425,16 @@ module CSharpBackend =
                     $"new {csType value.Type} {{ {args} }}"
                 | Lir.Record items ->
                     let byName = Map.ofList items
-                    let args = fields value.Type |> Map.toList |> List.map (fun (name,t) -> coerce byName.[name].Type t (emit byName.[name])) |> String.concat comma
-                    $"new {csType value.Type}({args})"
+                    let destination = fields value.Type |> Map.toList
+                    if List.map fst items = List.map fst destination || items |> List.forall (snd >> LirOptimization.effect >> (=) LirOptimization.Pure) then
+                        let args = destination |> List.map (fun (name,t) -> coerce byName.[name].Type t (emit byName.[name])) |> String.concat comma
+                        $"new {csType value.Type}({args})"
+                    else
+                        let temporaries = items |> List.map (fun (name,item) -> name,(fresh "recordField",item))
+                        let setup = temporaries |> List.map (fun (_, (temp,item)) -> $"var {temp}={emit item};") |> String.concat space
+                        let temporaries = Map.ofList temporaries
+                        let args = destination |> List.map (fun (name,t) -> let temp,item=temporaries.[name] in coerce item.Type t temp) |> String.concat comma
+                        wrap (csType value.Type) $"{setup} return new {csType value.Type}({args});"
                 | Lir.FieldGet(target,name) ->
                     let code = readField target.Type name (emit target)
                     let nativeName = match target.Type with TNamed name | THostManaged(name,_) -> Some name | _ -> None
@@ -458,9 +471,14 @@ module CSharpBackend =
                         match changed.TryFind name with Some(source,code) -> coerce source t code | None -> coerce (fields target.Type).[name] t $"{original}.{fieldName target.Type name}") |> String.concat comma
                     wrap (csType value.Type) $"var {original} = {emit target}; {String.concat space setup} return new {csType value.Type}({args});"
                 | Lir.RecordConvert(target,t) -> coerce target.Type t (emit target)
-                | Lir.IndexGet(target,index) -> match target.Type with TList _ -> $"FsRuntime.At({emit index}, {emit target})" | _ -> $"({emit target}).Find({emit index})"
+                | Lir.IndexGet(target,index) ->
+                    match target.Type with
+                    | TList _ ->
+                        let values=fresh "indexedValues"
+                        wrap (csType value.Type) $"var {values}={emit target}; return FsRuntime.At({emit index}, {values});"
+                    | _ -> $"({emit target}).Find({emit index})"
                 | Lir.Interpolate parts ->
-                    parts |> List.map (function Lir.TextPart text -> quote text | Lir.ValuePart item when item.Type = TString -> emit item | Lir.ValuePart item -> $"{fmtName item.Type}({emit item})") |> function [] -> "\"\"" | parts -> "(" + String.concat " + " parts + ")"
+                    parts |> List.map (function Lir.TextPart text -> quote text | Lir.ValuePart item -> $"{interpName item.Type}({emit item})") |> function [] -> "\"\"" | parts -> "(" + String.concat " + " parts + ")"
                 | Lir.UnionCase(_,caseName,payload) ->
                     let cases = match resolve value.Type with TUnion(_,cases) -> cases | _ -> Map.empty
                     if cases |> Map.forall (fun _ -> Option.isNone) then $"{csType value.Type}.{ident caseName}"
@@ -484,6 +502,31 @@ module CSharpBackend =
             code
         and decision target cases resultType =
             let root = fresh "matchValue"
+            let allChecks checks =
+                if List.contains "false" checks then "false"
+                else match List.filter ((<>) "true") checks with [] -> "true" | values -> String.concat " && " (values |> List.map (fun value -> "("+value+")"))
+            let rec typeTest code actual expected =
+                match resolve expected,resolve actual with
+                | (TRecord required | TRecordShape(_,required,_)),(TRecord present | TRecordShape(_,present,_) | THostManaged(_,present)) ->
+                    required |> Map.toList |> List.map (fun (name,t) ->
+                        match Map.tryFind name present with
+                        | Some fieldType -> typeTest (readField actual name code) fieldType t
+                        | None -> "false") |> allChecks
+                | TList required,TList present ->
+                    let item=fresh "typeItem"
+                    match typeTest item present required with
+                    | "true" -> "true"
+                    | "false" -> $"({code}).Length == 0"
+                    | test -> $"({code}).All({item} => {test})"
+                | TOption required,TOption present ->
+                    match typeTest $"({code}).Value" present required with
+                    | "true" -> "true"
+                    | "false" -> $"!({code}).HasValue"
+                    | test -> $"(!({code}).HasValue || ({test}))"
+                | TTuple required,TTuple present when required.Length=present.Length ->
+                    List.zip required present |> List.mapi (fun index (r,p) -> typeTest $"({code}).Item{index}" p r) |> allChecks
+                | TMap _,TMap _ | TTask _,TTask _ -> "true"
+                | required,present -> if required=present then "true" else "false"
             let projection checks root rootType path =
                 let rec loop prefix root rootType path =
                     match path with
@@ -519,36 +562,48 @@ module CSharpBackend =
                         | Lir.UnionCaseCheck(path,_,name,_) -> checkAt path (fun code t ->
                             let allEmpty = match resolve t with TUnion(_,cases) -> cases |> Map.forall (fun _ -> Option.isNone) | _ -> false
                             if allEmpty then $"({code}) == {csType t}.{ident name}" else $"({code}) is {csType t}.{ident name}")
-                        | Lir.TypeCheck(path,expected) -> checkAt path (fun _ actual -> if actual=expected || resolve actual=resolve expected then "true" else "false")
+                        | Lir.TypeCheck(path,expected) -> checkAt path (fun code actual -> typeTest code actual expected)
                         | Lir.TupleArityCheck _ | Lir.RecordFieldCheck _ -> "true")
                     let mutable seen = seen
                     let bindingCode = plan.Bindings |> List.map (fun b ->
                         let projected,sourceType = projection plan.Checks root rootType b.Projection
                         if Set.contains b.Id seen then $"if (!{eqName b.Type}({sym b.Id},{projected})) return false;"
                         else seen <- Set.add b.Id seen; $"{sym b.Id} = {coerce sourceType b.Type projected};") |> String.concat space
-                    let rec maps (remaining: Lir.MapPlan list) =
+                    let boundIds plan = bindings plan |> List.map _.Id |> Set.ofList
+                    let rec maps (remaining: Lir.MapPlan list) seen =
                         match remaining with
                         | [] -> success
                         | map :: rest ->
                             let source,t = projection plan.Checks root rootType map.Projection
                             let keyType,valueType = match t with TMap(k,v) -> k,v | _ -> invalidOp "Expected map pattern."
                             let entries = fresh "entries"
-                            let rec clauses index remainingEntries =
+                            let mapBindings =
+                                [ yield! map.Clauses |> List.collect (fun clause -> [boundIds clause.Key; boundIds clause.Value])
+                                  yield! map.Tail |> Option.map boundIds |> Option.toList ] |> Set.unionMany
+                            let afterMap=Set.union seen mapBindings
+                            let rec clauses index remainingEntries seen locallyBound =
                                 if index = map.Clauses.Length then
-                                    let tail = match map.Tail with Some tail -> planCode $"new {csType t}({remainingEntries})" t tail seen (maps rest) | None -> if map.RequireEmptyRemainder then $"if ({remainingEntries}.Length != 0) return false; {maps rest}" else maps rest
+                                    let remaining=maps rest afterMap
+                                    let tail = match map.Tail with Some tail -> planCode $"new {csType t}({remainingEntries})" t tail seen remaining | None -> if map.RequireEmptyRemainder then $"if ({remainingEntries}.Length != 0) return false; {remaining}" else remaining
                                     tail
                                 else
                                     let candidate = fresh "candidate"
                                     let next = fresh "remaining"
                                     let attempt = fresh "attempt"
                                     let clause = map.Clauses.[index]
-                                    let continuation = $"var {next} = {remainingEntries}.Where((entry,index) => index != {candidate}).ToArray(); {clauses (index+1) next}"
-                                    let code = planCode $"{remainingEntries}[{candidate}].Key" keyType clause.Key seen (planCode $"{remainingEntries}[{candidate}].Value" valueType clause.Value seen continuation)
-                                    $"for (int {candidate}=0; {candidate}<{remainingEntries}.Length; {candidate}++) {{ bool {attempt}() {{ {code} }} if ({attempt}()) return true; }} return false;"
-                            $"var {entries} = ({source}).Entries; {clauses 0 entries}"
+                                    let afterKey=Set.union seen (boundIds clause.Key)
+                                    let afterValue=Set.union afterKey (boundIds clause.Value)
+                                    let local=Set.union locallyBound (Set.union (boundIds clause.Key) (boundIds clause.Value))
+                                    let continuation = $"var {next} = {remainingEntries}.Where((entry,index) => index != {candidate}).ToArray(); {clauses (index+1) next afterValue local}"
+                                    let code = planCode $"{remainingEntries}[{candidate}].Key" keyType clause.Key seen (planCode $"{remainingEntries}[{candidate}].Value" valueType clause.Value afterKey "return true;")
+                                    let firstOnly=Lir.simpleKeyBinding clause.Key |> Option.exists (fun id -> not (Set.contains id locallyBound))
+                                    let limit=if firstOnly then $"Math.Min(1,{remainingEntries}.Length)" else $"{remainingEntries}.Length"
+                                    $"for (int {candidate}=0; {candidate}<{limit}; {candidate}++) {{ bool {attempt}() {{ {code} }} if ({attempt}()) {{ {continuation} }} }} return false;"
+                            $"var {entries} = ({source}).Entries; {clauses 0 entries seen Set.empty}"
                     let checks = checks |> List.filter ((<>) "true")
                     let prefix = if checks.IsEmpty then "" else "if (!(" + String.concat " && " (checks |> List.map (fun c -> "("+c+")")) + ")) return false; "
-                    $"{prefix}{bindingCode} {maps plan.Maps}"
+                    if List.contains "false" checks then "return false;"
+                    else $"{prefix}{bindingCode} {maps plan.Maps seen}"
                 let matcher = fresh "matches"
                 let test = planCode root target.Type case.Plan Set.empty "return true;"
                 let guard = case.Guard |> Option.map expression |> Option.defaultValue "true"
@@ -588,22 +643,22 @@ module CSharpBackend =
                     | TInt -> "a == b","value.ToString(CultureInfo.InvariantCulture)"
                     | TFloat -> "a == b","FsRuntime.FloatText(value)"
                     | TBool -> "a == b","(value ? \"true\" : \"false\")"
-                    | TString -> "a == b","JsonSerializer.Serialize(value)"
-                    | TTypeToken -> "a == b","value.Name"
+                    | TString -> "a == b","FsRuntime.Quote(value)"
+                    | TTypeToken -> "a == b","\"<type \" + value.Name + \">\""
                     | TFun _ -> "false",quote "<fun>"
                     | TTask _ -> "false",quote "<task>"
-                    | TList item -> $"a.Length == b.Length && a.Where((item,index) => !{eqName item}(item,b[index])).Any() == false",$"\"[\" + string.Join(\"; \", value.Select(item => {fmtName item}(item))) + \"]\""
+                    | TList item -> $"a.Length == b.Length && a.Where((item,index) => !{eqName item}(item,b[index])).Any() == false",$"\"[\" + string.Join(\";\", value.Select(item => {fmtName item}(item))) + \"]\""
                     | TOption item -> $"a.HasValue == b.HasValue && (!a.HasValue || {eqName item}(a.Value,b.Value))",$"(value.HasValue ? \"Some \" + {fmtName item}(value.Value) : \"None\")"
                     | TTuple items ->
                         items |> List.mapi (fun i t -> $"{eqName t}(a.Item{i},b.Item{i})") |> joinChecks,
                         "\"(\" + " + (items |> List.mapi (fun i t -> $"{fmtName t}(value.Item{i})") |> String.concat " + \", \" + ") + " + \")\""
                     | TRecord fields | THostManaged(_,fields) ->
                         let checks = fields |> Map.toList |> List.map (fun (field,ft) -> $"{eqName ft}({readField t field aCode},{readField t field bCode})") |> joinChecks
-                        let parts = fields |> Map.toList |> List.map (fun (field,ft) -> quote (field+": ") + " + " + fmtName ft + "(" + readField t field "value" + ")")
+                        let parts = fields |> Map.toList |> List.map (fun (field,ft) -> quote (field+" = ") + " + " + fmtName ft + "(" + readField t field "value" + ")")
                         checks, "\"{ \" + " + (if parts.IsEmpty then "\"\"" else String.concat " + \"; \" + " parts) + " + \" }\""
                     | TMap(k,v) ->
                         $"a.Entries.Length == b.Entries.Length && !a.Entries.Where((e,i) => !{eqName k}(e.Key,b.Entries[i].Key) || !{eqName v}(e.Value,b.Entries[i].Value)).Any()",
-                        $"\"map [\" + string.Join(\"; \",value.Entries.Select(e => {fmtName k}(e.Key) + \" => \" + {fmtName v}(e.Value))) + \"]\""
+                        $"\"map {{ \" + string.Join(\"; \",value.Entries.Select(e => {fmtName k}(e.Key) + \" => \" + {fmtName v}(e.Value))) + \" }}\""
                     | TUnion(_,cases) when cases |> Map.forall (fun _ -> Option.isNone) ->
                         "a == b", "value switch { " + (cases |> Map.toList |> List.map (fun (case,_) -> $"{csType t}.{ident case} => {quote case}") |> String.concat comma) + ", _ => throw new InvalidOperationException() }"
                     | TUnion(_,cases) ->
@@ -617,6 +672,53 @@ module CSharpBackend =
                     | value -> fail "FSC6004" $"Unsupported compiled value '{Types.typeToString value}'." None
                 addHelper $"private static bool {eqName t}({csType t} a, {csType t} b) => {equalBody};"
                 addHelper $"private static string {fmtName t}({csType t} value) => {formatBody};"
+                let interpolation =
+                    match resolve t with
+                    | TString -> "value"
+                    | TMap(k,v) -> $"\"map {{ \" + string.Join(\"; \",value.Entries.Select(e => {fmtName k}(e.Key) + \" => \" + {interpName v}(e.Value))) + \" }}\""
+                    | _ -> Text.RegularExpressions.Regex.Replace(formatBody,@"\bFormat_([0-9a-f]{12})\(","Interpolate_$1(")
+                addHelper $"private static string {interpName t}({csType t} value) => {interpolation};"
+        for t in types |> Seq.sort do
+            if not (NativeSpecialization.containsVariable t) then
+                let unsupported="throw new InvalidOperationException(\"Unsupported JSON value\")"
+                let encode,decode =
+                    match resolve t with
+                    | TUnit -> quote "null","default(Unit)"
+                    | TInt -> "value.ToString(CultureInfo.InvariantCulture)","value.GetInt64()"
+                    | TFloat -> "value.ToString(CultureInfo.InvariantCulture)","value.GetDouble()"
+                    | TBool -> "(value ? \"true\" : \"false\")","value.GetBoolean()"
+                    | TString -> "JsonSerializer.Serialize(value)","value.GetString() ?? throw new InvalidOperationException()"
+                    | TOption item ->
+                        $"(value.HasValue ? {jsonEncodeName item}(value.Value) : \"null\")",
+                        $"(value.ValueKind == JsonValueKind.Null ? default : {csType t}.Some({jsonDecodeName item}(value)))"
+                    | TList item ->
+                        $"\"[\" + string.Join(\",\",value.Select({jsonEncodeName item})) + \"]\"",
+                        $"value.EnumerateArray().Select({jsonDecodeName item}).ToArray()"
+                    | TTuple items ->
+                        let encoded=items |> List.mapi (fun i t -> $"{jsonEncodeName t}(value.Item{i})") |> String.concat " + \",\" + "
+                        let decoded=items |> List.mapi (fun i t -> $"{jsonDecodeName t}(value[{i}])") |> String.concat comma
+                        $"\"[\" + {encoded} + \"]\"",$"(value.GetArrayLength()=={items.Length} ? new {csType t}({decoded}) : throw new InvalidOperationException())"
+                    | TRecord fields | THostManaged(_,fields) ->
+                        let encoded=fields |> Map.toList |> List.map (fun (name,ft) -> quote (quote name+":") + " + " + jsonEncodeName ft + "("+readField t name valueCode+")") |> String.concat " + \",\" + "
+                        let decoded=fields |> Map.toList |> List.mapi (fun i (name,ft) ->
+                            let missing=match ft with TOption _ -> "default" | _ -> "throw new InvalidOperationException()"
+                            $"(value.TryGetProperty({quote name},out var field{i}) ? {jsonDecodeName ft}(field{i}) : {missing})") |> String.concat comma
+                        let encode=if fields.IsEmpty then quote "{}" else $"\"{{\" + {encoded} + \"}}\""
+                        let decode=match resolve t with THostManaged _ -> unsupported | _ -> $"new {csType t}({decoded})"
+                        encode,decode
+                    | TMap(k,v) ->
+                        let keyText,keyParse =
+                            match resolve k with
+                            | TString -> "e.Key","property.Name"
+                            | TInt -> "e.Key.ToString(CultureInfo.InvariantCulture)","long.Parse(property.Name,CultureInfo.InvariantCulture)"
+                            | TBool -> "(e.Key ? \"true\" : \"false\")","bool.Parse(property.Name)"
+                            | _ -> unsupported,unsupported
+                        if keyText=unsupported then unsupported,unsupported else
+                            $"\"{{\" + string.Join(\",\",value.Entries.Select(e=>JsonSerializer.Serialize({keyText})+\":\"+{jsonEncodeName v}(e.Value))) + \"}}\"",
+                            $"value.EnumerateObject().Aggregate(new {csType t}(),(map,property)=>map.Add({keyParse},{jsonDecodeName v}(property.Value)))"
+                    | _ -> unsupported,unsupported
+                addHelper $"private static string {jsonEncodeName t}({csType t} value) => {encode};"
+                addHelper $"private static {csType t} {jsonDecodeName t}(JsonElement value) => {decode};"
         if hasSdk then
             let sv="global::FScript.Extensibility.ScriptValue"
             let mapKey="global::FScript.Extensibility.MapKey"
@@ -745,7 +847,8 @@ module CSharpBackend =
         let runtime = reader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)
         let escapeXml (value: string) = System.Security.SecurityElement.Escape(value) |> nonNull
         let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path |> nonNull)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
-        let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>true</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{references}</ItemGroup></Project>\n"
+        let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "")
+        let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{compileItems}{references}</ItemGroup></Project>\n"
         [ yield { RelativePath = "Program.cs"; Content = source }; yield { RelativePath = "Runtime.cs"; Content = runtime }; yield { RelativePath = "Program.csproj"; Content = project }
           if hasSdk then
               use sdkStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeSDK.cs") |> nonNull
@@ -754,8 +857,10 @@ module CSharpBackend =
 
     let generate options (program: Lir.Program) =
         try
+            for path in options.References do
+                if not (File.Exists path) then fail "FSC6003" $"Reference assembly does not exist: {path}" None
             let options={options with References=ClrBindings.referenceClosure options.References}
-            let validIdentifier (value: string) = not (String.IsNullOrWhiteSpace value) && (Char.IsLetter value.[0] || value.[0]='_') && value |> Seq.forall (fun c -> Char.IsLetterOrDigit c || c='_')
+            let validIdentifier (value: string) = not (String.IsNullOrWhiteSpace value) && SyntaxFacts.IsValidIdentifier(value) && SyntaxFacts.GetKeywordKind(value)=SyntaxKind.None
             if not (validIdentifier options.ClassName && options.Namespace.Split('.') |> Array.forall validIdentifier) then fail "FSC6001" "Namespace and class names must be valid C# identifiers." None
             for path in options.References do
                 if not (File.Exists path) then fail "FSC6003" $"Reference assembly does not exist: {path}" None
@@ -765,6 +870,12 @@ module CSharpBackend =
             |> Result.map LirSimplification.optimize
             |> Result.bind LirValidation.validate
             |> Result.map (emit options)
+            |> Result.map (List.map (fun file ->
+                if not (file.RelativePath.EndsWith(".cs",StringComparison.Ordinal)) then file else
+                    let tree=CSharpSyntaxTree.ParseText(file.Content,CSharpParseOptions(LanguageVersion.Latest))
+                    let errors=tree.GetDiagnostics() |> Seq.filter (fun diagnostic -> diagnostic.Severity=DiagnosticSeverity.Error) |> Seq.map string |> Seq.toList
+                    if not errors.IsEmpty then fail "FSC6008" (String.concat "\n" errors) None
+                    {file with Content=tree.GetRoot().NormalizeWhitespace("    ","\n",false).ToFullString()+"\n"}))
             |> Result.mapError (List.map (fun d -> if d.Stage=GoGeneration then { d with Stage=CSharpGeneration; Code=d.Code.Replace("FSB4","FSC6"); Message=d.Message.Replace("Go specialization","CLR specialization") } else d))
         with
         | Failure diagnostic -> Error [diagnostic]

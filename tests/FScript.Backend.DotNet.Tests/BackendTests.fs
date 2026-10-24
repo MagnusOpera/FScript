@@ -27,6 +27,9 @@ module ProviderFixture =
             {Types=[]; Unions=[]; Functions=[{fn with Name="Sdk.guid"}]}
 
 module private Harness =
+    let legacy source =
+        let registration=HostInterop.ofExterns (FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]})
+        Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration |> Pretty.valueToString
     let compile source =
         match Compiler.compile {Program=Parser.parseProgram source; Externs=[]} with
         | Ok program -> program.Lir
@@ -54,7 +57,7 @@ module private Harness =
 type BackendTests() =
     [<TestCase("let value = Sdk.create \"hello\"\nvalue.Name", "\"hello\"")>]
     [<TestCase("Sdk.apply (fun value -> value+2) 40", "42")>]
-    [<TestCase("Sdk.identity (Some [1;2])", "Some [1; 2]")>]
+    [<TestCase("Sdk.identity (Some [1;2])", "Some [1;2]")>]
     [<TestCase("Sdk.await (Task.spawn (fun () -> 42))", "42")>]
     [<TestCase("type Choice = Number of int | Text of string\nSdk.identity (Text \"hello\")", "Text \"hello\"")>]
     [<TestCase("Sdk.identity (ForeignState.Count 42)", "Count 42")>]
@@ -84,7 +87,7 @@ type BackendTests() =
     [<TestCase("let make n =\n    let x=n+1\n    fun y -> x+y\nmake 1 40", "42")>]
     [<TestCase("let rec fib n = if n <= 1 then n else fib (n-1) + fib (n-2)\nfib 10", "55")>]
     [<TestCase("let rec even n = if n=0 then true else odd (n-1)\nand odd n = if n=0 then false else even (n-1)\neven 20", "true")>]
-    [<TestCase("[3..1] |> List.map (fun n -> n*2)", "[6; 4; 2]")>]
+    [<TestCase("[3..1] |> List.map (fun n -> n*2)", "[6;4;2]")>]
     [<TestCase("(Some [1;2]) = (Some [1;2])", "true")>]
     [<TestCase("false && raise \"unreachable\"", "false")>]
     [<TestCase("true || raise \"unreachable\"", "true")>]
@@ -92,12 +95,58 @@ type BackendTests() =
     [<TestCase("type Choice = Number of int | Text of string\nmatch Text \"ok\" with | Number n -> Int.toString n | Text s -> s", "\"ok\"")>]
     [<TestCase("type Color = Red | Blue\nmatch Red with | Red -> 1 | Blue -> 2", "1")>]
     [<TestCase("let m = { [true] = 1; [false] = 2 }\nm[false]", "Some 2")>]
-    [<TestCase("match { [\"a\"] = 1; [\"b\"] = 2 } with | { [k] = 2; ..rest } -> (k, Map.count rest) | _ -> (\"\",0)", "(\"b\", 1)")>]
+    [<TestCase("match { [\"a\"] = 1; [\"b\"] = 2 } with | { [k] = 2; ..rest } -> (k, Map.count rest) | _ -> (\"\",0)", "(\"\", 0)")>]
     [<TestCase("let x = {| Name = \"Ada\"; Age = 42 |}\n{| x with Age = 43 |}.Age", "43")>]
     [<TestCase("Task.spawn (fun () -> 42) |> Task.await", "42")>]
-    [<TestCase("Regex.matchGroups \"(a)(b)\" \"ab\"", "Some [\"a\"; \"b\"]")>]
+    [<TestCase("Regex.matchGroups \"(a)(b)\" \"ab\"", "Some [\"a\";\"b\"]")>]
+    [<TestCase("match { [1] = 2; [2] = 2 } with | { [x] = x; ..rest } -> (x,Map.containsKey 1 rest) | _ -> (0,false)", "(0, false)")>]
+    [<TestCase("type Address = { City: string }\nmatch { City=\"Paris\" } with | {| City: string |} -> 1 | _ -> 2", "1")>]
+    [<TestCase("type Address = { City: string; Zip: int }\nlet check value = match value with | {| City: string |} -> 1 | _ -> 2\ncheck { City=\"Paris\"; Zip=75000 }", "1")>]
     member _.``Generated assemblies execute core semantics and every closed method JITs`` (source: string, expected: string) =
-        Assert.That(Harness.execute (Harness.compile source), Is.EqualTo(expected))
+        let actual=Harness.execute (Harness.compile source)
+        Assert.That(actual, Is.EqualTo(expected))
+        Assert.That(actual, Is.EqualTo(Harness.legacy source))
+
+    [<TestCase("Json.serialize (Some {| Count=2; Name=\"Ada\" |})")>]
+    [<TestCase("type Person = { Name: string; Age: int option }\nlet person (value: Person option) = value\nJson.deserialize typeof Person \"{\\\"Name\\\":\\\"Ada\\\"}\" |> person")>]
+    [<TestCase("Xml.queryValues \"//item/@name\" \"<root><item name=\\\"a\\\"/><item name=\\\"b\\\"/></root>\"")>]
+    [<TestCase("Xml.queryValues \"root/item/text()\" \"<root><item> x </item><item> </item></root>\"")>]
+    [<TestCase("let values=Some [\"x\";\"y\"]\n$\"{values}\"")>]
+    [<TestCase("{| Z=1; A=2 |}")>]
+    member _.``Generated formatting JSON XML and interpolation conform to the legacy evaluator`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source), Is.EqualTo(Harness.legacy source))
+
+    [<TestCase("let field name =\n    Console.writeLine name\n    1\n{| Z=field \"first\"; A=field \"second\" |}")>]
+    [<TestCase("let values () =\n    Console.writeLine \"first\"\n    [1]\nlet index () =\n    Console.writeLine \"second\"\n    0\n(values ())[index ()]")>]
+    member _.``Aggregate construction and indexing preserve effect order`` (source: string) =
+        let capture action =
+            let previous=Console.Out
+            use output=new StringWriter()
+            try
+                Console.SetOut(output)
+                let result=action ()
+                result,output.ToString()
+            finally Console.SetOut(previous)
+        let expected=capture (fun () -> Harness.legacy source)
+        let actual=capture (fun () -> Harness.execute (Harness.compile source))
+        Assert.That(actual,Is.EqualTo(expected))
+        Assert.That(snd actual,Is.EqualTo("first"+Environment.NewLine+"second"+Environment.NewLine))
+
+    [<Test>]
+    member _.``Filesystem globbing preserves relative paths and recursive selection`` () =
+        let previous=Directory.GetCurrentDirectory()
+        let directory=Path.Combine(Path.GetTempPath(),"fscript-native-fs-"+Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(Path.Combine(directory,"nested")) |> ignore
+        File.WriteAllText(Path.Combine(directory,"root.txt"),"root")
+        File.WriteAllText(Path.Combine(directory,"nested","child.txt"),"child")
+        File.WriteAllText(Path.Combine(directory,"nested","skip.log"),"skip")
+        try
+            Directory.SetCurrentDirectory(directory)
+            let source="(Fs.glob \"**/*.txt\", Fs.enumerateFiles \"nested\" \"*.txt\", Fs.enumerateFiles \"missing\" \"*.txt\")"
+            Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+        finally
+            Directory.SetCurrentDirectory(previous)
+            Directory.Delete(directory,true)
 
     [<Test>]
     member _.``Exact CLR calls survive serialization and Go rejects them`` () =
@@ -125,6 +174,9 @@ type BackendTests() =
         let native=typeof<System.Text.StringBuilder>
         let program=program |> ClrBindings.bindType "Buffer" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor([|typeof<string>|]) |> nonNull) |> ClrBindings.bindMethod "Native.text" (native.GetMethod("ToString",[||]) |> nonNull)
         Assert.That(Harness.execute program, Is.EqualTo("(5, \"hello\")"))
+        match GoBackend.generate {ModuleName="generated"} program with
+        | Error errors -> Assert.That(errors |> List.map _.Code,Does.Contain("FSB4010"))
+        | Ok _ -> Assert.Fail("Go must reject CLR type projections.")
 
     [<Test>]
     member _.``Roslyn produces deterministic portable PE files`` () =
@@ -134,6 +186,13 @@ type BackendTests() =
         Assert.That((first=second), Is.True)
 
     [<Test>]
+    member _.``Missing managed references return diagnostics without emitting files`` () =
+        let program=Harness.compile "42"
+        let missing=Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString("N")+".dll")
+        Assert.That(DotNetBackend.generate {Harness.options with References=[missing]} program |> Result.isError,Is.True)
+        Assert.That(CSharpBackend.generate {Namespace="Generated";ClassName="Program";References=[missing]} program |> Result.isError,Is.True)
+
+    [<Test>]
     member _.``CSharp projects compile independently`` () =
         let source=Harness.compile "[1..3] |> List.map (fun n -> n+1)"
         let files=match CSharpBackend.generate {Namespace="Generated"; ClassName="Program"; References=[]} source with Ok f -> f | Error e -> failwith (String.concat "; " (e |> List.map _.Message))
@@ -141,6 +200,7 @@ type BackendTests() =
         try
             Directory.CreateDirectory directory |> ignore
             for file in files do File.WriteAllText(Path.Combine(directory,file.RelativePath),file.Content)
+            File.WriteAllText(Path.Combine(directory,"Unused.cs"),"This stale file is not part of the generated project.")
             let start=Diagnostics.ProcessStartInfo("dotnet",WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true)
             start.ArgumentList.Add("run")
             start.ArgumentList.Add("--project")
@@ -150,6 +210,6 @@ type BackendTests() =
             let error=proc.StandardError.ReadToEnd()
             Assert.That(proc.WaitForExit(60000),Is.True)
             Assert.That(proc.ExitCode,Is.EqualTo(0),output+error)
-            Assert.That(output.Trim(),Is.EqualTo("[2; 3; 4]"))
+            Assert.That(output.Trim(),Is.EqualTo("[2;3;4]"))
         finally
             if Directory.Exists directory then Directory.Delete(directory,true)
