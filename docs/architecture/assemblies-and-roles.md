@@ -61,18 +61,14 @@ Responsibilities:
 
 `FScript.Interpreter.Lir` depends on `FScript.Compiler`; the core compiler has no dependency on the interpreter.
 
-### `FScript.Backend.Go`
+### `FScript.Backend.CSharp` and `FScript.Backend.DotNet`
 Role:
-- Go 1.25 source backend for validated LIR.
+- Consume validated LIR to emit an independent C# project or optimized .NET assembly.
+- Share concrete HM specialization and simplification in `FScript.Compiler`.
+- Bind FFI calls and external types to the CLR; report target-specific diagnostics.
+- Optionally publish self-contained or Native AOT executables through the .NET SDK.
 
-Responsibilities:
-- Select Go representations for LIR values.
-- Generate deterministic single-package Go projects, including normalized source-owned module files and the embedded FScript Go runtime.
-- Report target-specific `FSB4xxx` diagnostics without adding Go concepts to HIR or LIR.
-
-`FScript.Backend.Go` depends on `FScript.Compiler`; the core compiler has no dependency on the Go backend or a Go installation.
-
-Consumer tests follow the same dependency boundary: `FScript.Interpreter.Lir.Tests` owns executable LIR conformance and `FScript.Backend.Go.Tests` owns generated-project integration. `FScript.Compiler.Tests` references neither consumer and covers HIR, lowering, LIR validation, and artifacts only.
+Consumer tests follow the same boundary: `FScript.Interpreter.Lir.Tests` owns LIR execution; `FScript.Backend.DotNet.Tests` owns native generation. `FScript.Compiler.Tests` covers HIR, lowering, LIR validation, and artifacts.
 
 NuGet:
 - `MagnusOpera.FScript.Language`
@@ -178,13 +174,13 @@ Use this when:
 ## Dependency direction
 - `FScript.Language` has no dependency on `FScript.Runtime`.
 - `FScript.Compiler` depends only on `FScript.Language`.
-- `FScript.Interpreter.Lir` and `FScript.Backend.Go` each depend on `FScript.Compiler`.
+- `FScript.Interpreter.Lir` and `FScript.Backend.CSharp` each depend on `FScript.Compiler`.
 - `FScript.Backend.CSharp` depends on `FScript.Compiler`; `FScript.Backend.DotNet` uses that emitter and Roslyn to produce PE assemblies.
 - `FScript.JavaScript` depends on `FScript.Language` and Fable packages.
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.
 - `FScript.LanguageServer` depends on `FScript.CSharpInterop`.
-- `FScript` depends on `FScript.Language`, `FScript.Runtime`, `FScript.Compiler`, `FScript.Interpreter.Lir`, and `FScript.Backend.Go`.
+- `FScript` depends on `FScript.Language`, `FScript.Runtime`, `FScript.Compiler`, `FScript.Interpreter.Lir`, `FScript.Backend.CSharp`, and `FScript.Backend.DotNet`.
 
 This keeps the language engine reusable while runtime capabilities remain host-configurable. The JavaScript facade is intentionally separate from `.NET` runtime externs: v1 exposes core language hosting, virtual imports, tagged values, and JS-provided externs, while filesystem, console, task, and other runtime modules stay in the .NET runtime layer.
 

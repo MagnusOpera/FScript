@@ -1,8 +1,6 @@
 namespace FScript.Conformance.Tests
 
 open System
-open System.Diagnostics
-open System.IO
 open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
@@ -54,35 +52,6 @@ module private Harness =
         | Ok result -> Ok { Value = formatLir result.Value; Stdout = result.Stdout }
         | Error diagnostic -> Error diagnostic.Code
 
-    let go source =
-        let files = match GoBackend.generate { ModuleName = "fscript.generated/conformance" } (compile source).Lir with Ok value -> value | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
-        let directory = Path.Combine(Path.GetTempPath(), $"fscript-conformance-{Guid.NewGuid():N}")
-        try
-            for file in files do
-                let path = Path.Combine(directory, file.RelativePath)
-                match Path.GetDirectoryName(path) with
-                | null -> ()
-                | parent -> Directory.CreateDirectory(parent) |> ignore
-                File.WriteAllText(path, file.Content)
-            let start = ProcessStartInfo("go")
-            start.WorkingDirectory <- directory; start.ArgumentList.Add("run"); start.ArgumentList.Add(".")
-            start.RedirectStandardOutput <- true; start.RedirectStandardError <- true
-            use proc =
-                match Process.Start(start) with
-                | null -> failwith "Could not start the Go toolchain"
-                | started -> started
-            let output = proc.StandardOutput.ReadToEnd().Trim()
-            let error = proc.StandardError.ReadToEnd()
-            proc.WaitForExit()
-            if proc.ExitCode = 0 then
-                let lines = output.Replace("\r\n", "\n").Split('\n') |> Array.toList
-                match List.rev lines with
-                | value :: reversedOutput -> Ok { Value = value; Stdout = List.rev reversedOutput }
-                | [] -> Ok { Value = ""; Stdout = [] }
-            else Error error
-        finally
-            if Directory.Exists directory then Directory.Delete(directory, true)
-
     let legacyFailure source =
         try
             legacy source |> ignore
@@ -101,29 +70,8 @@ module private Harness =
         | Error "FSI3022" -> Some Raised
         | Error code -> failwith $"Unexpected LIR failure category {code}"
 
-    let goFailure source =
-        match go source with
-        | Ok _ -> None
-        | Error error when error.Contains("integer divide by zero") || error.Contains("division by zero") -> Some DivisionByZero
-        | Error error when error.Contains("Match failure.") -> Some MatchFailure
-        | Error _ -> Some Raised
-
 [<TestFixture>]
 type ConformanceTests() =
-    [<OneTimeSetUp>]
-    member _.``Require Go toolchain`` () =
-        try
-            use proc =
-                match Process.Start(ProcessStartInfo("go", "version", RedirectStandardOutput = true)) with
-                | null -> raise (InvalidOperationException("Could not start go"))
-                | value -> value
-            proc.WaitForExit()
-            if proc.ExitCode <> 0 then raise (InvalidOperationException("go version failed"))
-        with ex ->
-            if String.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase) then
-                Assert.Fail($"Go is required in CI: {ex.Message}")
-            else Assert.Ignore($"Go is not installed: {ex.Message}")
-
     [<TestCase("[Some 1; None] = [Some 1; None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Address = { City: string; Zip: int }\nlet check value = match value with | {| City: string |} -> 1 | _ -> 2\ncheck { City=\"Paris\"; Zip=75000 }")>]
@@ -161,18 +109,13 @@ type ConformanceTests() =
     [<TestCase("[1; 2] = [1; 3]")>]
     [<TestCase("(1.5 < 2.0, 2.0 > 1.5, 1.5 <= 1.5, 2.0 >= 2.0)")>]
     [<TestCase("(1.0, [2.0], 1.0 / 0.0, 0.0 / 0.0)")>]
-    member _.``Legacy LIR artifact and Go results conform`` (source: string) =
+    member _.``Legacy and LIR artifact results conform`` (source: string) =
         let expected = Harness.legacy source
         match Harness.lir source with
         | Ok actual ->
             Assert.That(actual.Value, Is.EqualTo(expected.Value), source)
             Assert.That(System.String.Join("\n", actual.Stdout), Is.EqualTo(System.String.Join("\n", expected.Stdout)), source)
         | Error code -> Assert.Fail($"LIR failed with {code}: {source}")
-        match Harness.go source with
-        | Ok actual ->
-            Assert.That(actual.Value, Is.EqualTo(expected.Value), source)
-            Assert.That(System.String.Join("\n", actual.Stdout), Is.EqualTo(System.String.Join("\n", expected.Stdout)), source)
-        | Error error -> Assert.Fail($"Go failed with {error}: {source}")
 
     [<TestCase("raise \"boom\"")>]
     [<TestCase("match 1 with | 2 -> 0")>]
@@ -182,4 +125,3 @@ type ConformanceTests() =
         let expected = Harness.legacyFailure source
         Assert.That(expected.IsSome, Is.True, source)
         Assert.That(Harness.lirFailure source, Is.EqualTo(expected), source)
-        Assert.That(Harness.goFailure source, Is.EqualTo(expected), source)

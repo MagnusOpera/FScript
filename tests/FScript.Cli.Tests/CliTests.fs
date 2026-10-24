@@ -139,33 +139,6 @@ type CliTests() =
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
-    [<Test>]
-    member _.``Compiles a whole program to a Go project`` () =
-        let repoRoot = findRepoRoot ()
-        let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-compile-go-{Guid.NewGuid():N}")
-        let script = Path.Combine(tempRoot, "program.fss")
-        let output = Path.Combine(tempRoot, "out")
-        try
-            Directory.CreateDirectory(tempRoot) |> ignore
-            File.WriteAllText(script, "let add x y = x + y\nadd 1 2")
-            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
-            Assert.That(code, Is.EqualTo(0), stderr)
-            Assert.That(File.Exists(Path.Combine(output, "go.mod")), Is.True)
-            let programFile = Path.Combine(output, "internal", "fscriptprogram", "program.go")
-            Assert.That(File.Exists(programFile), Is.True)
-            let moduleFile = Path.Combine(output, "internal", "fscriptprogram", "module_program.go")
-            Assert.That(File.Exists(moduleFile), Is.True)
-            let expected = File.ReadAllText(programFile)
-            File.WriteAllText(programFile, "stale")
-            let staleModule = Path.Combine(output, "internal", "fscriptprogram", "module_stale.go")
-            File.WriteAllText(staleModule, "package fscriptprogram")
-            let secondCode, _, secondError = runCli repoRoot repoRoot [ "compile"; script; "--target"; "go"; "--output"; output ] None
-            Assert.That(secondCode, Is.EqualTo(0), secondError)
-            Assert.That(File.ReadAllText(programFile), Is.EqualTo(expected), "Go compilation must deterministically replace generated files")
-            Assert.That(File.Exists(staleModule), Is.False, "Go compilation must remove stale generated module files")
-        finally
-            if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
-
     [<TestCase("dotnet")>]
     [<TestCase("csharp")>]
     member _.``Native targets produce independently runnable programs with FFI`` (target: string) =
@@ -194,8 +167,10 @@ type CliTests() =
             Assert.That(File.Exists(Path.Combine(output,"FScript.Runtime.dll")),Is.False)
         finally Directory.Delete(tempRoot,true)
 
-    [<Test>]
-    member _.``Invalid compile target does not create output`` () =
+    [<TestCase("unknown")>]
+    [<TestCase("go")>]
+    [<TestCase("GO")>]
+    member _.``Invalid compile target does not create output`` (target: string) =
         let repoRoot = findRepoRoot ()
         let tempRoot = Path.Combine(Path.GetTempPath(), $"fscript-compile-invalid-{Guid.NewGuid():N}")
         let script = Path.Combine(tempRoot, "program.fss")
@@ -203,14 +178,14 @@ type CliTests() =
         try
             Directory.CreateDirectory(tempRoot) |> ignore
             File.WriteAllText(script, "1")
-            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "unknown"; "--output"; output ] None
+            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; target; "--output"; output ] None
             Assert.That(code, Is.EqualTo(1))
             Assert.That(stderr, Does.Contain("Usage: fscript compile"))
             Assert.That(Directory.Exists(output), Is.False)
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
-    [<TestCase("go", "--single-file")>]
+    [<TestCase("csharp", "--single-file")>]
     [<TestCase("csharp", "--aot")>]
     [<TestCase("ir", "--single-file")>]
     [<TestCase("dotnet", "--runtime")>]

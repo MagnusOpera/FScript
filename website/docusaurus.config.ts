@@ -7,7 +7,7 @@ const latestReleasedVersion = versions[0] ?? 'current';
 
 const config: Config = {
   title: 'FScript',
-  tagline: 'A typed language for embedded rules, executable IR, and Go.',
+  tagline: 'A typed language for embedded rules, executable IR, and native .NET programs.',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -87,8 +87,8 @@ const config: Config = {
           position: 'left',
         },
         {
-          to: '/manual/compiler/go',
-          label: 'Compile to Go',
+          to: '/manual/compiler/dotnet',
+          label: 'Compile to .NET',
           position: 'left',
         },
         {

@@ -11,7 +11,6 @@ This folder is organized into three layers:
 - Tutorial: [`guides/getting-started-tutorial.md`](./guides/getting-started-tutorial.md)
 - REPL guide: [`guides/repl.md`](./guides/repl.md)
 - Compiler CLI: [`guides/compiler-cli.md`](./guides/compiler-cli.md)
-- Compile to Go: [`guides/compile-to-go.md`](./guides/compile-to-go.md)
 - Compile to .NET or C#: [`guides/compile-to-dotnet.md`](./guides/compile-to-dotnet.md)
 - Compile and interpret IR: [`guides/interpret-ir.md`](./guides/interpret-ir.md)
 - FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)

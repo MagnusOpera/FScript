@@ -1080,7 +1080,7 @@ module CSharpBackend =
                     let errors=tree.GetDiagnostics() |> Seq.filter (fun diagnostic -> diagnostic.Severity=DiagnosticSeverity.Error) |> Seq.map string |> Seq.toList
                     if not errors.IsEmpty then fail "FSC6008" (String.concat "\n" errors) None
                     {file with Content=tree.GetRoot().NormalizeWhitespace("    ","\n",false).ToFullString()+"\n"}))
-            |> Result.mapError (List.map (fun d -> if d.Stage=GoGeneration then { d with Stage=CSharpGeneration; Code=d.Code.Replace("FSB4","FSC6"); Message=d.Message.Replace("Go specialization","CLR specialization") } else d))
+            |> Result.mapError (List.map (fun d -> if d.Code.StartsWith("FSL21",StringComparison.Ordinal) then { d with Stage=CSharpGeneration; Code=d.Code.Replace("FSL21","FSC60") } else d))
         with
         | Failure diagnostic -> Error [diagnostic]
         | ex -> Error [{ Code="FSC6000"; Stage=CSharpGeneration; Message=ex.Message; Span=None }]

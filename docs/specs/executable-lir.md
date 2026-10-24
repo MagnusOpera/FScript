@@ -14,7 +14,7 @@ Hir.Program
   -> Lir.Program
 ```
 
-The optimization pass performs conservative effect analysis, constant Boolean control-flow simplification, unused pure-local elimination, and whole-program reachability pruning. Observable top-level initializers and exports remain ordered roots; calls, failures, loops, and potentially failing integer division/remainder are never discarded. Closure captures are recomputed and surviving function IDs are deterministically compacted before validation. Backends may specialize representation-neutral control flow further; the Go backend, for example, emits only the reachable loop direction for ranges whose integer bounds are both constant. LIR and the JSON DTO schema used by `.fsir` are internal versioned contracts, not stable public interchange standards.
+The optimization pass performs conservative effect analysis, constant Boolean control-flow simplification, unused pure-local elimination, and whole-program reachability pruning. Observable top-level initializers and exports remain ordered roots; calls, failures, loops, and potentially failing integer division/remainder are never discarded. Closure captures are recomputed and surviving function IDs are deterministically compacted before validation. Backends may specialize representation-neutral control flow further. LIR and the JSON DTO schema used by `.fsir` are internal versioned contracts, not stable public interchange standards.
 
 ## Program model
 
@@ -44,7 +44,7 @@ Every source lambda is lifted into a `Lir.Function` containing:
 
 `LetRecursiveGroup` establishes all recursive values before their bodies run. Lifted functions validate their capture list against the ordered free-symbol set of their body.
 
-Tail position propagates through selected branch and decision-tree bodies and through the body of lexical binding nodes, but never through operands, guards, aggregate construction, or a call whose result is subsequently consumed. The LIR interpreter trampolines explicit tail calls across closures, so deep proper-tail recursion does not consume the host stack. After concrete specialization, the Go backend converts proven direct self-tail application chains into native loops with simultaneous typed parameter reassignment. Compatible mutually tail-recursive top-level strongly connected components use a typed state-machine loop; each transition evaluates arguments in language order before changing the state. Calls outside those proven cases retain ordinary call semantics.
+Tail position propagates through selected branch and decision-tree bodies and through the body of lexical binding nodes, but never through operands, guards, aggregate construction, or a call whose result is subsequently consumed. The LIR interpreter trampolines explicit tail calls across closures, so deep proper-tail recursion does not consume the host stack. Native backends may lower proven tail calls to loops while retaining ordinary calls in other cases.
 
 ## Operations and control flow
 
@@ -74,7 +74,7 @@ LIR directly constructs and projects:
 
 Named records and unions retain declarations in the program type table. `RecordConvert` carries frontend-proven structural conversion evidence between distinct representations.
 
-LIR prescribes semantic values rather than a backend storage strategy. The .NET interpreter may use tagged runtime values; the Go backend must specialize reachable polymorphic uses into closed concrete representations and does not emit Go generics.
+LIR prescribes semantic values rather than a backend storage strategy. The .NET interpreter may use tagged runtime values; native backends specialize reachable polymorphic uses into closed concrete representations.
 
 Maps use ordered comparable keys (strings, integers, booleans, and supported payload-free unions) according to current FScript semantics. Consumers must not substitute host-language hash-map iteration order.
 
@@ -93,7 +93,7 @@ A plan consists of:
 
 Map patterns preserve the evaluator's deterministic selection: a new variable key selects the first remaining entry, while other key/value patterns select their first local match. Later clause or remainder failure does not reconsider that selection. Repeated pattern bindings compare against the original binding.
 
-Consumers execute this plan; the Go backend does not reimplement source-pattern semantics.
+Consumers execute this plan rather than reimplementing source-pattern semantics.
 
 Cases are attempted in source order. Bindings become visible only after a plan succeeds. Guards run after bindings and before the body. Exhausting every case produces the standard match failure.
 
@@ -106,7 +106,7 @@ LIR retains the same explicit linkage categories as HIR:
 - `HostExternal` handles;
 - `TargetImport` handles.
 
-The LIR interpreter rejects a reachable fully-applied target import, Task operation, or unsupported host external with an `FSI3xxx` diagnostic. The Go backend rejects reachable Task or unsupported host-external linkage with `FSB4xxx`. Unused unsupported declarations remain inert.
+The LIR interpreter rejects a reachable fully-applied target import, Task operation, or unsupported host external with an `FSI3xxx` diagnostic. Unused unsupported declarations remain inert.
 
 ## Validation
 
@@ -125,7 +125,7 @@ The LIR interpreter rejects a reachable fully-applied target import, Task operat
 
 LIR/lowering diagnostics use `FSL2xxx` codes.
 
-Both `LirInterpreter.execute` and `GoBackend.generate` validate caller-provided LIR before consuming it.
+`LirInterpreter.execute`, `CSharpBackend.generate`, and `DotNetBackend.generate` validate caller-provided LIR before consuming it.
 
 ## Artifact format
 

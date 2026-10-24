@@ -2,33 +2,9 @@ namespace FScript.Compiler
 
 open FScript.Language
 
-/// Closed storage shapes consumed by the Go source emitter. This is deliberately
-/// backend-private in purpose even though its helpers are visible to the test assembly.
+/// Shared concrete type substitution, specialization identity, and effect analysis.
 module NativeSpecialization =
-    let private map2 mapper left right =
-        match left, right with
-        | Ok leftValue, Ok rightValue -> Ok(mapper leftValue rightValue)
-        | Error error, _ | _, Error error -> Error error
-
     type Substitution = Map<int, Type>
-
-    type Representation =
-        | Unit
-        | Int
-        | Float
-        | Bool
-        | String
-        | TypeToken
-        | Function of Representation * Representation
-        | Tuple of Representation list
-        | List of Representation
-        | Option of Representation
-        | Task of Representation
-        | OrderedMap of Representation * Representation
-        | StructuralRecord of (string * Representation) list
-        | Named of name: string * recursive: bool
-        | Union of name: string * recursive: bool
-        | Bottom
 
     type SpecializationKey =
         { Symbol: int
@@ -86,41 +62,6 @@ module NativeSpecialization =
     let specializationKey symbol concreteType =
         { Symbol = symbol
           ConcreteType = typeKey concreteType }
-
-    let tryRepresentation (types: Lir.TypeDeclaration list) value : Result<Representation, string> =
-        let declarations = types |> List.map (fun item -> item.Name, item) |> Map.ofList
-        let rec representation = function
-            | TUnit -> Ok Unit
-            | TInt -> Ok Int
-            | TFloat -> Ok Float
-            | TBool -> Ok Bool
-            | TString -> Ok String
-            | TTypeToken -> Ok TypeToken
-            | TVar variable -> Error $"Open type variable '{variable}' has no Go representation."
-            | TNumeric variable -> Error $"Open numeric type '{variable}' has no Go representation."
-            | THostManaged(name, _) -> Error $"Host-managed type '{name}' requires a platform binding."
-            | TRecordShape _ -> Error "An unresolved structural witness has no Go representation."
-            | TTask item -> representation item |> Result.map Task
-            | TFun(argument, result) -> map2 (fun a r -> Function(a, r)) (representation argument) (representation result)
-            | TTuple items -> items |> List.map representation |> List.fold (fun state item -> map2 (fun values value -> values @ [ value ]) state item) (Ok []) |> Result.map Tuple
-            | TList item -> representation item |> Result.map List
-            | TOption item -> representation item |> Result.map Option
-            | TMap(key, value) -> map2 (fun k v -> OrderedMap(k, v)) (representation key) (representation value)
-            | TRecord fields ->
-                fields |> Map.toList |> List.map (fun (name, item) -> representation item |> Result.map (fun value -> name, value))
-                |> List.fold (fun state item -> map2 (fun values value -> values @ [ value ]) state item) (Ok [])
-                |> Result.map StructuralRecord
-            | TNamed name ->
-                match declarations |> Map.tryFind name with
-                | Some declaration ->
-                    match declaration.Definition with
-                    | TUnion _ -> Ok(Union(name, declaration.IsRecursive))
-                    | _ -> Ok(Named(name, declaration.IsRecursive))
-                | None -> Error $"Unknown named Go representation '{name}'."
-            | TUnion(name, _) ->
-                let recursive = declarations |> Map.tryFind name |> Option.exists _.IsRecursive
-                Ok(Union(name, recursive))
-        representation value
 
     let rec effect (expression: Lir.Expression) =
         let combine values = if List.exists ((=) Observable) values then Observable else Pure

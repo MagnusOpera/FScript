@@ -75,8 +75,6 @@ dotnet out/graphics-dotnet/main.dll --headless
 
 Generated adapters call existing providers through the extension SDK and transport records, collections, unions, opaque payloads, callbacks, and tasks. `ExternalCallContext.Apply` invokes compiled functions. Provider factories run during compilation for metadata and once in the generated process when needed.
 
-Go cannot call .NET providers: reachable CLR FFI bindings produce `FSB4010`.
-
 ## Prunable typed FFI bindings
 
 Existing interpreter providers remain unchanged. To make compiled calls direct and suitable for Native AOT, a provider class can additionally expose these public static parameterless metadata methods:

@@ -265,7 +265,7 @@ type BackendTests() =
             Directory.Delete(directory,true)
 
     [<Test>]
-    member _.``Exact CLR calls survive serialization and Go rejects them`` () =
+    member _.``Exact CLR calls survive serialization`` () =
         let external: CompilerExtern = {Name="Native.abs"; Scheme=Forall([],TFun(TInt,TInt)); Arity=1; Kind=UnsupportedHostExtern}
         let compiled =
             match Compiler.compile {Program=Parser.parseProgram "Native.abs (0-42)"; Externs=[external]} with
@@ -275,9 +275,6 @@ type BackendTests() =
         let linked=ClrBindings.bindMethod "Native.abs" method compiled
         let linked=match IrArtifact.deserialize (IrArtifact.serialize linked) with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         Assert.That(Harness.execute linked, Is.EqualTo("42"))
-        match GoBackend.generate {ModuleName="generated"} linked with
-        | Error errors -> Assert.That(errors |> List.map _.Code, Does.Contain("FSB4010"))
-        | Ok _ -> Assert.Fail("Go must reject CLR FFI.")
 
     [<Test>]
     member _.``Host managed CLR values support constructors properties and instance methods`` () =
@@ -290,9 +287,6 @@ type BackendTests() =
         let native=typeof<System.Text.StringBuilder>
         let program=program |> ClrBindings.bindType "Buffer" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor([|typeof<string>|]) |> nonNull) |> ClrBindings.bindMethod "Native.text" (native.GetMethod("ToString",[||]) |> nonNull)
         Assert.That(Harness.execute program, Is.EqualTo("(5, \"hello\")"))
-        match GoBackend.generate {ModuleName="generated"} program with
-        | Error errors -> Assert.That(errors |> List.map _.Code,Does.Contain("FSB4010"))
-        | Ok _ -> Assert.Fail("Go must reject CLR type projections.")
 
     [<Test>]
     member _.``Roslyn produces deterministic portable PE files`` () =

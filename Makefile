@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-inference benchmark-evaluation vscode-debug-smoke fable-build fable-test smoke-tests go-smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-inference benchmark-evaluation vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
@@ -35,19 +35,6 @@ smoke-tests:
 	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
 	echo "All smoke tests passed."
 
-go-smoke-tests: build
-	@set -e; \
-	for script in samples/*.fss; do \
-		name=$$(basename "$$script" .fss); \
-		output="$(PWD)/out/$$name"; \
-		echo "Transpiling $$script -> out/$$name"; \
-		dotnet run --project src/FScript -c Release --no-build -- compile "$$script" --target go --output "$$output"; \
-		(cd "$$output" && go test ./...); \
-	done; \
-	echo "Transpiling samples/basic/basic.fss -> out/basic"; \
-	dotnet run --project src/FScript -c Release --no-build -- compile samples/basic/basic.fss --target go --output "$(PWD)/out/basic"; \
-	(cd "$(PWD)/out/basic" && go test ./...); \
-	echo "All Go smoke-test projects generated and verified under out/."
 
 verify-changelog:
 	REQUIRE_CHANGELOG_ALWAYS=true .github/scripts/check-unreleased-changelog.sh

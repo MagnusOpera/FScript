@@ -2,7 +2,7 @@
 
 `FScript.Backend.CSharp` emits a C# project from validated LIR. `FScript.Backend.DotNet` has a separate assembly optimization pipeline and uses Roslyn for verified PE emission. Generated code contains ordinary compiled methods and typed delegates where functions escape, and depends on BCL support helpers rather than the AST evaluator, LIR interpreter, or ScriptHost.
 
-Both backends share `LirMonomorphization` and `LirSimplification` with Go. Reachable polymorphic uses receive concrete instantiations; reachable open results and effectful generalized initializers receive diagnostics. The Go emitter retains its target-specific arity raising, tail loops, and collection fusion.
+Both backends share `LirMonomorphization` and `LirSimplification`. Reachable polymorphic uses receive concrete instantiations; reachable open results and effectful generalized initializers receive diagnostics.
 
 ## Assembly optimization
 
@@ -14,7 +14,7 @@ Known list callbacks use typed loops and direct calls for mapping, iteration, fo
 
 Reachability starts at `Run`, result formatting, exported bindings, and the executable entry point. Unused generated methods, fields, and support types are removed. Reached constructors and interface implementations remain available. Native aggregates use immutable classes/structs without synthesized CLR record printing, equality, cloning, or deconstruction; FScript equality and formatting use dedicated reachable helpers. Ordinary assembly generation preserves provider assemblies; executable publishing can trim them as described below.
 
-These passes apply only to `DotNetBackend.generate`. The C# target, serialized LIR, LIR interpreter, and Go backend retain their existing optimization policy. Roslyn remains the final IL emitter; FScript makes the optimization decisions before emission.
+These passes apply only to `DotNetBackend.generate`. The C# target, serialized LIR, and LIR interpreter retain their existing optimization policy. Roslyn remains the final IL emitter; FScript makes the optimization decisions before emission.
 
 Namespace qualification is not a reachability edge to a namespace's syntax body. Reaching a generated type or method through its fully qualified name retains that declaration and its actual dependencies, without retaining unrelated stdlib members in the same namespace. This rule applies to both libraries and executables.
 
@@ -26,7 +26,7 @@ Namespace qualification is not a reachability edge to a namespace's syntax body.
 - `ClrBindings.bindMethod : string -> MethodBase -> Lir.Program -> Lir.Program`
 - `ClrBindings.bindType : string -> System.Type -> Lir.Program -> Lir.Program`
 
-CLR linkage is serializable. Exact public overloads, instance receivers, and constructors are explicit. Native type projections use their actual CLR type. Existing extension providers use `ClrBindings.bindProvider`: generated typed adapters marshal values through `FScript.Extensibility`, invoke the provider directly, and service compiled callbacks and tasks through `ExternalCallContext`. Opaque values retain their SDK payload and immutable field snapshots. Providers taking `HostContext` receive the process working directory and compiled default functions. The CLI preserves provider metadata from environment loading rather than executing provider factories twice during compilation. No interpreter or ScriptHost participates in generated execution. Go rejects CLR function imports with `FSB4010`.
+CLR linkage is serializable. Exact public overloads, instance receivers, and constructors are explicit. Native type projections use their actual CLR type. Existing extension providers use `ClrBindings.bindProvider`: generated typed adapters marshal values through `FScript.Extensibility`, invoke the provider directly, and service compiled callbacks and tasks through `ExternalCallContext`. Opaque values retain their SDK payload and immutable field snapshots. Providers taking `HostContext` receive the process working directory and compiled default functions. The CLI preserves provider metadata from environment loading rather than executing provider factories twice during compilation. No interpreter or ScriptHost participates in generated execution.
 
 ## Representation and execution
 

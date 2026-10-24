@@ -23,7 +23,7 @@ Callers normally use `Compiler.compile`, which performs this pipeline and also p
 `Hir.Program` contains, in source-semantic order:
 
 - `Types`: named record and union declarations;
-- `ImportedRecords`: Go-imported record representation declarations;
+- `ImportedRecords`: backend-imported record representation declarations;
 - `Declarations`: top-level values and functions;
 - `Entry`: the optional final top-level expression.
 

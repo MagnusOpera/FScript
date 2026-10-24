@@ -120,13 +120,13 @@ function HomepageHeader() {
       <div className={styles.orbTwo} aria-hidden="true" />
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}><span>Open source</span> · Embed in .NET and JavaScript · Compile to Go</div>
+          <div className={styles.eyebrow}><span>Open source</span> · Embed in .NET and JavaScript · Compile to .NET</div>
           <Heading as="h1" className={styles.heroTitle}>
             Change the rules.<br /><em>Keep the host.</em>
           </Heading>
           <p className={styles.heroLead}>
             Load <code>.fss</code> files, check their types, and run them inside your process. Or compile
-            them into a standalone Go project.
+            them into a standalone .NET program.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
@@ -144,7 +144,7 @@ function HomepageHeader() {
             <span>Static type inference</span>
             <span>Pattern matching</span>
             <span>Versioned IR</span>
-            <span>Go backend</span>
+            <span>.NET backend</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
@@ -158,7 +158,7 @@ function HomepageHeader() {
       <div className={styles.heroTicker} aria-label="How FScript runs">
         <div>
           <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>BUILD HIR</span><i>✦</i>
-          <span>EXECUTE LIR</span><i>✦</i><span>GENERATE GO</span><i>✦</i><span>LOAD .FSS</span><i>✦</i>
+          <span>EXECUTE LIR</span><i>✦</i><span>COMPILE .NET</span><i>✦</i><span>LOAD .FSS</span><i>✦</i>
         </div>
       </div>
     </header>
@@ -168,8 +168,8 @@ function HomepageHeader() {
 export default function Home() {
   return (
     <Layout
-      title="FScript: embed typed rules or compile them to Go"
-      description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone Go source.">
+      title="FScript: embed typed rules or compile them to .NET"
+      description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone .NET programs.">
       <HomepageHeader />
       <main className={styles.main}>
         <section className={styles.languageScene}>
@@ -222,24 +222,6 @@ export default function Home() {
               </p>
               <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Load rules from JavaScript <Arrow /></Link>
             </div>
-          </div>
-        </section>
-
-        <section className={styles.goScene}>
-          <div className={`container ${styles.goIntro}`}>
-            <div>
-              <p className={styles.sectionLabel}>Go support</p>
-              <Heading as="h2">A script goes in.<br /><em>A native program walks out.</em></Heading>
-            </div>
-            <p>
-              The Go backend does not drag an interpreter into the binary. It closes the inferred types across the
-              whole program, removes unreachable work, simplifies calls, and turns proven tail recursion into loops.
-              What remains is direct, typed Go.
-            </p>
-          </div>
-          <div className={`container ${styles.goFooter}`}>
-            <p>Concrete slices. Concrete structs. Native functions. Separate source files, one optimized package.</p>
-            <Link className={styles.darkLink} to="/manual/compiler/go">Compile your first Go project <Arrow /></Link>
           </div>
         </section>
 

@@ -14,23 +14,9 @@ let writeGeneratedFile (root: string) (file: FScript.Compiler.GeneratedFile) =
     | directory -> Directory.CreateDirectory(directory) |> ignore
     File.WriteAllText(path, file.Content)
 
-let removeStaleGoModuleFiles (root: string) (files: FScript.Compiler.GeneratedFile list) =
-    let moduleDirectory = Path.Combine(root, "internal", "fscriptprogram")
-    if Directory.Exists moduleDirectory then
-        let retained =
-            files
-            |> List.filter (fun file ->
-                let relative = file.RelativePath.Replace('\\', '/')
-                relative.StartsWith("internal/fscriptprogram/module_", StringComparison.Ordinal)
-                && relative.EndsWith(".go", StringComparison.Ordinal))
-            |> List.map (fun file -> Path.GetFullPath(Path.Combine(root, file.RelativePath)))
-            |> Set.ofList
-        for path in Directory.GetFiles(moduleDirectory, "module_*.go", SearchOption.TopDirectoryOnly) do
-            if not (Set.contains (Path.GetFullPath path) retained) then File.Delete(path)
-
 let runCompileCommand (argv: string array) =
     let usage () =
-        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>]")
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>]")
         1
     if argv.Length < 2 then usage ()
     else
@@ -45,7 +31,7 @@ let runCompileCommand (argv: string array) =
             let aot=Array.contains "--aot" argv
             let executable=singleFile || aot
             let runtime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
-            if not (List.contains normalizedTarget ["ir"; "go"; "csharp"; "dotnet"]) then usage ()
+            if not (List.contains normalizedTarget ["ir"; "csharp"; "dotnet"]) then usage ()
             elif normalizedTarget<>"dotnet" && (executable || Array.contains "--runtime" argv) then
                 Console.Error.WriteLine("--single-file, --aot, and --runtime are only supported with --target dotnet.")
                 usage ()
@@ -87,15 +73,6 @@ let runCompileCommand (argv: string array) =
                             let name = baseName + ".fsir"
                             File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize lir)
                             0
-                        | "go" ->
-                            match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } lir with
-                            | Error diagnostics ->
-                                diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
-                                4
-                            | Ok files ->
-                                removeStaleGoModuleFiles outputDirectory files
-                                files |> List.iter (writeGeneratedFile outputDirectory)
-                                0
                         | "csharp" ->
                             match FScript.Compiler.CSharpBackend.generate {Namespace="FScript.Generated"; ClassName="Program"; References=references} lir with
                             | Error diagnostics ->

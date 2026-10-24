@@ -303,8 +303,7 @@
   text-transform: uppercase;
 }
 
-.inlineLink,
-.darkLink {
+.inlineLink {
   display: inline-flex;
   gap: .55rem;
   align-items: center;
@@ -314,7 +313,6 @@
 }
 
 .inlineLink { color: #16533a; }
-.darkLink { color: #11150f; }
 
 /* The type system is drawn as a field of relationships, not a feature card. */
 .languageScene {
@@ -340,8 +338,7 @@
 .sceneIntro { display: grid; grid-template-columns: .34fr 1.05fr .72fr; gap: clamp(2rem, 5vw, 5.5rem); align-items: start; }
 .sceneIntro .sectionLabel { padding-top: .85rem; }
 .sceneIntro h2,
-.javascriptCopy h2,
-.goIntro h2 {
+.javascriptCopy h2 {
   margin: 0;
   font-size: clamp(3rem, 5.7vw, 6.2rem);
   line-height: .94;
@@ -349,7 +346,7 @@
   text-wrap: balance;
 }
 .sceneIntro h2 em,
-.goIntro h2 em { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; }
+.javascriptCopy h2 em { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; }
 .sceneIntro h2 em { color: #5845aa; }
 .sceneSummary { max-width: 34rem; }
 .sceneLead { max-width: 34rem; margin: .65rem 0 0; color: #4f544e; font-size: 1.04rem; line-height: 1.78; }
@@ -382,17 +379,6 @@
 .javascriptCopy .sectionLabel { color: #534d9e; }
 .javascriptCopy > p:not(.sectionLabel) { margin: 2rem 0; color: #4e4e68; font-size: 1.04rem; line-height: 1.78; }
 
-/* The Go scene makes specialization tangible: semantic types become concrete layouts. */
-.goScene { position: relative; overflow: hidden; padding: clamp(7rem, 11vw, 11rem) 0; color: #10130f; background: var(--home-green); }
-.goScene::after { position: absolute; right: -7rem; bottom: -8rem; width: 31rem; height: 31rem; border: 1px solid rgba(0,0,0,.17); border-radius: 50%; content: ''; box-shadow: 0 0 0 4rem rgba(0,0,0,.025), 0 0 0 8rem rgba(0,0,0,.02); }
-.goIntro { position: relative; z-index: 1; display: grid; grid-template-columns: 1.15fr .55fr; gap: clamp(3rem, 8vw, 8rem); align-items: end; }
-.goIntro .sectionLabel { color: #2f4b11; }
-.goIntro h2 { max-width: 12ch; }
-.goIntro h2 em { color: #304b15; }
-.goIntro > p { max-width: 35rem; margin: 0 0 .7rem; color: #344326; font-size: 1.05rem; line-height: 1.78; }
-.goFooter { position: relative; z-index: 1; display: flex; gap: 2rem; align-items: center; justify-content: space-between; margin-top: clamp(3rem, 6vw, 5.5rem); padding-top: 2rem; border-top: 1px solid rgba(16,19,15,.3); }
-.goFooter p { max-width: 43rem; margin: 0; color: #30421f; font-weight: 650; }
-
 .finalLinks { padding: 2.4rem 0; color: #d7ddd7; background: #101310; }
 .finalLinksInner { display: flex; gap: 2rem; align-items: center; justify-content: space-between; }
 .finalLinks p { margin: 0; color: #929a93; }
@@ -412,10 +398,9 @@
   .sceneIntro { grid-template-columns: 1fr; gap: 1.5rem; }
   .sceneIntro .sectionLabel { padding-top: 0; }
   .sceneLead { max-width: 43rem; }
-  .javascriptGrid, .goIntro { grid-template-columns: 1fr; }
+  .javascriptGrid { grid-template-columns: 1fr; }
   .javascriptCopy h2 { max-width: 15ch; }
   .javascriptCopy { order: -1; }
-  .goIntro > p { max-width: 44rem; }
 }
 
 @media (max-width: 600px) {
@@ -432,7 +417,7 @@
   .codeArea { min-height: 350px; grid-template-columns: 2.3rem minmax(0,1fr); }
   .codeArea pre { font-size: .66rem; }
   .heroTicker div { justify-content: flex-start; }
-  .sceneIntro h2, .javascriptCopy h2, .goIntro h2 { font-size: 2.75rem; }
+  .sceneIntro h2, .javascriptCopy h2 { font-size: 2.75rem; }
   .languageScene { background: #f5f0e4; }
   .browserStage { margin-right: -.2rem; margin-left: -.2rem; box-shadow: 8px 9px 0 #6b62c9; transform: none; }
   .browserChrome span { padding: .5rem .8rem; }
@@ -441,7 +426,6 @@
   .browserResult { display: grid; grid-template-columns: auto 1fr; gap: .8rem 1rem; }
   .browserResult span, .browserResult span:nth-of-type(2) { margin: 0; }
   .browserResult strong { font-size: 2.6rem; }
-  .goFooter { align-items: flex-start; flex-direction: column; }
   .finalLinksInner { align-items: flex-start; flex-direction: column; }
   .finalLinks nav { flex-direction: column; }
 }

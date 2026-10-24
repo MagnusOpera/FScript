@@ -8,7 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/FScript.Backend.DotNet/FScript.Backend.DotNet.fsproj" />
-    <ProjectReference Include="../../src/FScript.Backend.Go/FScript.Backend.Go.fsproj" />
     <ProjectReference Include="../../src/FScript.Runtime/FScript.Runtime.fsproj" />
   </ItemGroup>
 </Project>

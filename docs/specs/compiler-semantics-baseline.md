@@ -15,17 +15,17 @@ This document records the behavior that the typed IR, LIR interpreter, and compi
 - HIR reuses those resolved IDs unchanged for source symbols even when type and value declarations are interleaved; compiler-synthesized temporaries and constructor payload parameters occupy IDs above the resolved frontend range.
 - Top-level statements execute in source order. Every non-final expression must have type `unit`; the final expression is the program result.
 - LIR expression children execute strictly from left to right and stop at the first failure; later arguments, aggregate fields, interpolation parts, map entries, and ordinary operands are not evaluated after that failure. Boolean operators additionally skip an unnecessary right operand.
-- Boolean `&&` and `||` evaluate the left operand first and skip the right operand when the result is already known. The legacy evaluator, LIR interpreter, and generated Go share this short-circuit behavior.
-- Pipeline application retains its distinct value-then-function evaluation order through resolved inference, HIR, LIR, interpretation, serialization, and Go generation; it is not rewritten into ordinary function-first application.
+- Boolean `&&` and `||` evaluate the left operand first and skip the right operand when the result is already known. The legacy evaluator, LIR interpreter, and compiled backends share this short-circuit behavior.
+- Pipeline application retains its distinct value-then-function evaluation order through resolved inference, HIR, LIR, interpretation, serialization, and native generation; it is not rewritten into ordinary function-first application.
 - Compiled top-level expressions execute exactly once in source order even when interleaved with declarations. Top-level pattern bindings evaluate their scrutinee once, fail before later statements when unmatched, and expose all bound names to subsequent statements.
 
-The first aggregate compiler slice preserves tuple field order, record field names, option presence, list element order, list cons/append behavior, and recursively structural equality through HIR, serialized LIR, interpretation, and Go generation.
+The first aggregate compiler slice preserves tuple field order, record field names, option presence, list element order, list cons/append behavior, and recursively structural equality through HIR, serialized LIR, interpretation, and native generation.
 
-Ranges preserve inclusive ascending or descending order. List indexing returns an option and never throws for an out-of-range integer. Record updates allocate a new value, interpolation evaluates embedded expressions from left to right, and generated program output uses FScript value formatting rather than Go's default aggregate formatting.
+Ranges preserve inclusive ascending or descending order. List indexing returns an option and never throws for an out-of-range integer. Record updates allocate a new value, interpolation evaluates embedded expressions from left to right, and generated program output uses FScript value formatting rather than host-language default aggregate formatting.
 
 Declared unions retain their type and case identity plus an optional erased payload. Constructors are deterministic compiler declarations, qualified and unqualified case references share one identity, pattern tests check both type and case tags, and equality recursively compares payloads.
 
-Compiled maps use an ordered entry representation for string and integer keys. Explicit key/value entries replace an earlier value; spread entries retain values already present on their left. Indexing returns an option, and deterministic ordering participates in artifacts, equality, formatting, and generated Go behavior.
+Compiled maps use an ordered entry representation for string and integer keys. Explicit key/value entries replace an earlier value; spread entries retain values already present on their left. Indexing returns an option, and deterministic ordering participates in artifacts, equality, formatting, and compiled-program behavior.
 - `Map.ofList` and `Map.add` restore canonical key order after insertion or replacement rather than exposing source-list insertion order.
 - Functions are curried. Multi-argument declarations are nested lambdas, application is one argument at a time, and LIR closures record only their deterministic free-symbol capture set. Single and mutual recursive function groups are supported.
 - Local mutual-recursive function groups initialize atomically: every peer is visible from every closure before the group body executes.
@@ -36,9 +36,8 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 - Tuples and lists preserve element order. Options distinguish `None` from `Some value`.
 - Maps currently accept string keys through inference and have deterministic ordered-map behavior. Runtime support for integer map keys is legacy representation detail, not permission for newly compiled programs.
 - Declared records retain declaration identity for named annotations. Structural record annotations retain field-shape compatibility and may accept additional fields where current inference permits it. Inference records coercion evidence at the accepting application; HIR and LIR retain an explicit conversion node so backends convert representations without changing compatibility rules.
-- HIR, LIR, and version-1 artifacts carry ordinary record and union declarations separately from nominal references. Generated Go uses concrete structs for ordinary named records, copies record updates, and performs explicit structural/named conversions; projection, patterns, formatting, and recursive equality remain shape-compatible.
+- HIR, LIR, and version-1 artifacts carry ordinary record and union declarations separately from nominal references. Native backends select concrete representations and preserve structural/named conversions, immutable updates, field projection, formatting, and recursive equality.
 - HIR, LIR, and version-1 artifacts also carry the intrinsic `Environment` record and `FsKind` union. Structural record conversions include width conversions from a record with extra fields to a required structural or nominal shape, and recursive named representations are validated without unbounded type expansion.
-- Generated Go represents payload-free declared unions as typed integer enums. A union with any payload becomes a sealed union-specific interface with an unexported marker and concrete typed case structs, so only the active payload is stored. Matching uses type assertions generated from the LIR decision plan; formatting and recursive equality use exhaustive generated type switches.
 - Discriminated unions retain their declared type name, case name, and optional payload. Recursive types require `type rec`; mutually recursive type-definition graphs are rejected.
 - `typeof` produces an FScript type token and `nameof` produces the resolved source name.
 - Compiled local pattern bindings evaluate their source once and use the ordinary match-failure path. Compiled `for` evaluates its list once, executes bodies from first to last, discards their values, and returns unit. Compiled `typeof` retains the resolved declared record or union shape in the artifact instead of performing a name lookup at execution time.
@@ -47,34 +46,28 @@ Compiled maps use an ordered entry representation for string and integer keys. E
 
 - Conditionals and match guards require Boolean values and evaluate only the selected branch.
 - Match clauses are tried in source order. A guard runs only after its pattern binds successfully. Failure to find a clause is a runtime error.
-- HIR patterns lower into LIR projection/check/binding/map-consumption plans. LIR consumers execute that plan vocabulary and never receive source-shaped pattern nodes; generated Go evaluates each serialized plan through one runtime matcher.
+- HIR patterns lower into LIR projection/check/binding/map-consumption plans. LIR consumers execute that plan vocabulary and never receive source-shaped pattern nodes.
 - Patterns cover literals, variables, wildcards, lists, tuples, records, ordered maps, options, union cases, and type-reference tests. Let-pattern failure is a runtime error.
 - Compiled map patterns consume entries deterministically in map order, merge repeated bindings only when structurally equal, and bind an optional tail to the remaining ordered map. Compiled type-reference patterns use resolved types rather than source text lookup.
 - Record updates evaluate the base once and then updates in source order. Ranges, loops, interpolation, indexing, raise, append, and cons preserve the evaluator's existing evaluation order and failures.
 - Equality is structural for primitives, tuples, records, maps, options, lists, unions, and type tokens, recursively. Functions, tasks, constructors, and extern handles are not structurally equal. Backend host-language comparability must not leak into this behavior.
-- Integer and floating-point comparisons share the same resolved numeric operations and are executable in both compiled runtimes. Whole-program specialization gives generated Go operands concrete numeric types. Pure collection functions retain their failure behavior, including an explicit runtime error for `List.tail []`.
-- Go emits integral-valued float literals with an explicit floating representation inside concrete aggregates. Floating division occurs at runtime and preserves FScript/.NET `Infinity`, `-Infinity`, and `NaN` result formatting.
+- Integer and floating-point comparisons share the same resolved numeric operations and are executable in both compiled runtimes. Whole-program specialization gives native operands concrete numeric types. Pure collection functions retain their failure behavior, including an explicit runtime error for `List.tail []`.
 - Cross-runtime failure conformance classifies explicit `raise`, exhausted pattern matches, and integer division by zero independently of each host runtime's exception or panic text.
-- Cross-runtime tests compare the legacy evaluator with artifact-round-tripped LIR execution and generated Go for successful values and failure categories. Named records passed through typed function boundaries keep record field projection semantics; their nominal annotation must not select a union runtime representation.
+- Cross-runtime tests compare the legacy evaluator with artifact-round-tripped LIR execution and compiled backends for successful values and failure categories. Named records passed through typed function boundaries keep record field projection semantics; their nominal annotation must not select a union runtime representation.
 - Cross-runtime result formatting quotes strings at every nesting level, renders unit as `()`, renders ordered maps as `map { key => value }`, uses compact semicolon separators for lists, and retains comma-space separators for tuples.
 - HIR and LIR are accepted only when artifact-local references resolve, source spans are valid, declaration and expression types agree, calls and control-flow nodes have consistent signatures, aggregate representations match their semantic types, and referenced primitives/imports are available and complete.
-- Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert. Fully applying `Task.spawn` or `Task.await` in the LIR interpreter reports `FSI3021`; generated Go executes a specialized task on a goroutine and awaits it through a private typed completion channel.
+- Task signatures and host linkage remain representable in compiled artifacts. An unused task function handle is inert. Fully applying `Task.spawn` or `Task.await` in the LIR interpreter reports `FSI3021`.
 - Compiler extern input is declarative: it carries a name, type scheme, arity, and linkage classification, never an executable `.NET` delegate. Host execution values remain confined to the legacy/runtime API.
-- Generated Go rejects a reachable arbitrary host extern with `FSB4006`; an unused host-extern descriptor remains inert and does not block generation.
-- `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; generated Go emits them in the same order before its final formatted result.
+- `Console.writeLine` evaluates its string argument once, appends one stdout line, and returns unit. LIR reports captured lines in order through `ExecutionResult.Stdout`; native backends emit them in the same order before the final formatted result.
 - `Console.readLine ()` consumes one line from process stdin, strips the line terminator, and returns `Some text`. It returns `None` only when stdin is exhausted before any text is read; a final unterminated line is still returned.
 - `Fs.readText path` reads the complete text file and returns `Some text`; missing, inaccessible, or otherwise unreadable paths return `None`. This read-only operation is portable so generated command-line programs can load their inputs.
-- Generated Go source is deterministic and already canonical according to `gofmt`; generation itself has no installed-Go dependency. Local integration tests skip only when Go is unavailable, while CI installs Go 1.25 and treats its absence as a failure.
-- Tuples and lists remain observably distinct in generated Go: tuples format with parentheses, lists with brackets, tuple patterns require tuple values, and map pair inputs consume tuple values.
-- Backend-imported records retain exact field names and declaration linkage. The initial Go adapter accepts exported primitive fields only, performs record/struct conversion solely at target-call boundaries, and rejects imported unions, empty schemas, lowercase fields, tasks, and aggregate/function fields with `FSB4005`.
+- Tuples and lists remain observably distinct in compiled backends: tuples format with parentheses, lists with brackets, tuple patterns require tuple values, and map pair inputs consume tuple values.
 
 ## Builtins, externs, attributes, and tasks
 
 - Scalar conversions, string helpers, `List`, `Option`, and `Map` functions are protected builtin symbols with explicit polymorphic schemes. They are initial compiler/runtime intrinsics even where a future implementation can compile their FScript source.
-- The LIR interpreter and Go runtime execute the complete pure builtin catalog, including higher-order list, option, and ordered-map functions. Callback invocation remains curried and follows source collection order.
-- Generated Go implements FScript string indexing and substring ranges in UTF-16 code units, matching the reference evaluator and Fable string model rather than Go byte offsets. Boolean parsing accepts only case-insensitive `true` and `false`, matching the reference runtime.
-- `Console.writeLine`, `Console.readLine`, the complete `Fs.*` surface, `Regex.matchGroups`, `Task.spawn`, `Task.await`, and the CLI `Env` value are implemented by generated Go. Hashing, GUID, JSON, and XML functions remain unsupported host externs.
-- Compiled `Env` is a runtime-context intrinsic. The LIR interpreter uses its explicit script name and arguments; generated Go uses the executable base name and `os.Args[1:]`.
+- The LIR interpreter and native backends execute the complete pure builtin catalog, including higher-order list, option, and ordered-map functions. Callback invocation remains curried and follows source collection order.
+- Compiled `Env` is a runtime-context intrinsic. The LIR interpreter uses its explicit script name and arguments; native backends use the executable name and process arguments.
 - `Task.spawn` and `Task.await` are host externs with tracked-task semantics, background error propagation, and an error for unawaited tasks. HIR may represent them before LIR interpreters or backends support them.
 - `[<Export>]` is declaration metadata used by embedding hosts and does not change inference. Backend `Import` metadata is separate and will not weaken the declared FScript type.
 - Both `[<export>]` and `[<Export>]` normalize to a structured `Export` attribute in resolved statements and HIR. `Import` attributes retain their two arguments and attribute span on ordinary HIR function/type declarations in addition to dedicated backend linkage.
@@ -86,13 +79,13 @@ The compiler-owned runtime catalog is declarative and contains no executable hos
 | --- | --- |
 | Compiler context intrinsic | `Env` |
 | Portable runtime intrinsic | `Console.writeLine`, `Console.readLine`, `Fs.readText` |
-| Go-capable host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension` |
-| Go-capable regex | `Regex.matchGroups` |
+| Host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension` |
+| Host regex | `Regex.matchGroups` |
 | Pure host candidates | `Hash.md5` |
 | Host-only/deferred data services | `Guid.new`, `Json.deserialize`, `Json.serialize`, `Xml.queryValues` |
-| Go task runtime | `Task.spawn`, `Task.await` |
+| Task runtime | `Task.spawn`, `Task.await` |
 
-All entries are type-checkable and retained as linkage in HIR/LIR. Except for the compiler context and portable intrinsic rows, reaching one produces an interpreter or backend unsupported diagnostic; unused linkage remains inert.
+All entries are type-checkable and retained as linkage in HIR/LIR. The LIR interpreter supplies the compiler context and portable intrinsics; other linkage requires a registered callback or produces an unsupported diagnostic. Native runtime support is specified in [the .NET backend specification](./dotnet-backends.md). Unused linkage remains inert.
 
 ## Diagnostics
 

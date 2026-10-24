@@ -28,13 +28,7 @@ Generate one versioned whole-program IR artifact:
 fscript compile program.fss --target ir --output ./out
 ```
 
-Generate an inspectable Go 1.25 source project without invoking `go build`:
-
-```bash
-fscript compile program.fss --target go --output ./out
-```
-
-The IR target writes `out/program.fsir`. The Go target writes `go.mod`, `main.go`, and specialized typed program source. Unsupported features use structured compiler/backend diagnostic codes.
+The IR target writes `out/program.fsir`. Unsupported features use structured compiler/backend diagnostic codes.
 
 Generate a standalone .NET assembly or an independently buildable C# project:
 
@@ -47,10 +41,9 @@ dotnet run --project ./out/csharp/Program.csproj
 
 These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET or C#](../compiler/compile-to-dotnet.md).
 
-
 For a self-contained executable, add `--single-file --runtime <rid>` to the .NET target. For a Native AOT executable, use `--aot --runtime <rid>`. Runtime identifiers use .NET names such as `osx-arm64`, `linux-x64`, and `win-x64`. Both options require a .NET 10 SDK for publishing and are rejected for other backends.
 
-Continue with [Compile to Go](../compiler/compile-to-go.md) or [Interpret IR](../compiler/interpret-ir.md).
+Continue with [Compile to .NET or C#](../compiler/compile-to-dotnet.md) or [Interpret IR](../compiler/interpret-ir.md).
 
 ## From source
 

@@ -19,7 +19,7 @@ module LirMonomorphization =
           mutable NextFunction: int }
 
     let private diagnostic code message span =
-        { Code = code; Stage = GoGeneration; Message = message; Span = Some span }
+        { Code = code; Stage = Lowering; Message = message; Span = Some span }
 
     let private fail code message span = raise (Failure(diagnostic code message span))
     let private symbolNumber (Lir.SymbolId value) = value
@@ -39,7 +39,7 @@ module LirMonomorphization =
     let private closedType span value =
         if NativeSpecialization.containsVariable value then
             let source = span.Start.File |> Option.defaultValue "<unknown>"
-            fail "FSB4007" $"Reachable value at {source}:{span.Start.Line}:{span.Start.Column} has open type '{Types.typeToString value}' after Go specialization." span
+            fail "FSL2107" $"Reachable value at {source}:{span.Start.Line}:{span.Start.Column} has open type '{Types.typeToString value}' after native specialization." span
         value
 
     let private bindingKey value = Types.typeToString value
@@ -54,7 +54,7 @@ module LirMonomorphization =
         |> Map.tryFind original
         |> Option.bind (Map.tryFind (bindingKey concrete))
         |> Option.map snd
-        |> Option.defaultWith (fun () -> fail "FSB4007" $"No concrete specialization exists for local symbol {symbolNumber original} at '{Types.typeToString concrete}'." span)
+        |> Option.defaultWith (fun () -> fail "FSL2107" $"No concrete specialization exists for local symbol {symbolNumber original} at '{Types.typeToString concrete}'." span)
 
     let rec private patternBindingIds (plan: Lir.PatternPlan) =
         [ yield! plan.Bindings |> List.map _.Id
@@ -218,7 +218,7 @@ module LirMonomorphization =
                     | TFun(parameterType, resultType) ->
                         preserveNamedRepresentation source.ParameterType parameterType,
                         preserveNamedRepresentation source.Body.Type resultType
-                    | value -> fail "FSB4007" $"Cannot specialize function {functionNumber original} ('{source.Name}') as non-function type '{Types.typeToString value}'." span
+                    | value -> fail "FSL2107" $"Cannot specialize function {functionNumber original} ('{source.Name}') as non-function type '{Types.typeToString value}'." span
                 let concrete = TFun(concreteParameter, concreteResult)
                 let key = $"{functionNumber original}:{Types.typeToString concrete}"
                 match state.FunctionKeys.TryGetValue key with
@@ -227,19 +227,19 @@ module LirMonomorphization =
                     let concreteParameter, concreteResult =
                         match concrete with
                         | TFun(parameterType, resultType) -> parameterType, resultType
-                        | _ -> fail "FSB4007" $"Cannot specialize function {functionNumber original} ('{source.Name}') as non-function type '{Types.typeToString concrete}'." span
+                        | _ -> fail "FSL2107" $"Cannot specialize function {functionNumber original} ('{source.Name}') as non-function type '{Types.typeToString concrete}'." span
                     // Resolved expression types normalize their variables independently. The
                     // enclosing closure type is therefore authoritative for the parameter and
                     // result, while the body receives a fresh substitution derived from its
                     // expected concrete result. Reusing the caller substitution here can alias
                     // unrelated variables from nested curried parameters.
                     match NativeSpecialization.unifyInstantiation source.ParameterType concreteParameter with
-                    | Error error -> fail "FSB4007" $"Cannot specialize parameter of function {functionNumber original} ('{source.Name}'): {error}" span
+                    | Error error -> fail "FSL2107" $"Cannot specialize parameter of function {functionNumber original} ('{source.Name}'): {error}" span
                     | Ok _ -> ()
                     let bodySubstitution =
                         match NativeSpecialization.unifyInstantiation source.Body.Type concreteResult with
                         | Ok value -> value
-                        | Error error -> fail "FSB4007" $"Cannot specialize result of function {functionNumber original} ('{source.Name}'): {error}" span
+                        | Error error -> fail "FSL2107" $"Cannot specialize result of function {functionNumber original} ('{source.Name}'): {error}" span
                     let replacement = freshFunction state
                     state.FunctionKeys.Add(key, replacement)
                     let parameter = freshSymbol state
@@ -278,9 +278,9 @@ module LirMonomorphization =
                     let inferred =
                         match NativeSpecialization.unifyInstantiation source.Type concrete with
                         | Ok value -> value
-                        | Error error -> fail "FSB4007" $"Cannot specialize declaration '{source.Name}': {error}" span
+                        | Error error -> fail "FSL2107" $"Cannot specialize declaration '{source.Name}': {error}" span
                     if NativeSpecialization.containsVariable source.Type && NativeSpecialization.effect source.Value = NativeSpecialization.Observable && not isBottom then
-                        fail "FSB4008" $"Generalized binding '{source.Name}' has observable initialization and cannot be cloned safely." source.Span
+                        fail "FSL2108" $"Generalized binding '{source.Name}' has observable initialization and cannot be cloned safely." source.Span
                     let replacement = freshSymbol state
                     state.DeclarationKeys.Add(key, replacement)
                     let value = transform inferred Map.empty source.Value
@@ -436,18 +436,18 @@ module LirMonomorphization =
                             let uses = collectLoads id effectiveSubstitution body
                             if uses.IsEmpty then
                                 if NativeSpecialization.effect binding = NativeSpecialization.Observable then
-                                    fail "FSB4008" $"Generalized local binding '{name}' has observable initialization and cannot be omitted." binding.Span
+                                    fail "FSL2108" $"Generalized local binding '{name}' has observable initialization and cannot be omitted." binding.Span
                                 (transform effectiveSubstitution environment body).Node
                             else
                                 if NativeSpecialization.effect binding = NativeSpecialization.Observable then
-                                    fail "FSB4008" $"Generalized local binding '{name}' has observable initialization and cannot be cloned safely." binding.Span
+                                    fail "FSL2108" $"Generalized local binding '{name}' has observable initialization and cannot be cloned safely." binding.Span
                                 let mutable scoped = environment
                                 let clones =
                                     uses |> List.map (fun useType ->
                                         let inferred =
                                             match NativeSpecialization.unifyInstantiation bindingType useType with
                                             | Ok value -> mergeSubstitution effectiveSubstitution value
-                                            | Error error -> fail "FSB4007" $"Cannot specialize local binding '{name}': {error}" binding.Span
+                                            | Error error -> fail "FSL2107" $"Cannot specialize local binding '{name}': {error}" binding.Span
                                         let replacement = freshSymbol state
                                         scoped <- bind id useType replacement scoped
                                         replacement, transform inferred (if recursive then scoped else environment) binding)
@@ -461,7 +461,7 @@ module LirMonomorphization =
                     | Lir.LetRecursiveGroup(bindings, body) ->
                         let concreteBindings = bindings |> List.map (fun (id, name, valueType, value) -> id, name, NativeSpecialization.apply effectiveSubstitution valueType, value)
                         if concreteBindings |> List.exists (fun (_, _, valueType, _) -> NativeSpecialization.containsVariable valueType) then
-                            fail "FSB4007" "A reachable local recursive group remains polymorphic after specialization." expression.Span
+                            fail "FSL2107" "A reachable local recursive group remains polymorphic after specialization." expression.Span
                         let replacements = concreteBindings |> List.map (fun (id, _, valueType, _) -> id, valueType, freshSymbol state)
                         let scoped = replacements |> List.fold (fun current (id, valueType, replacement) -> bind id valueType replacement current) environment
                         Lir.LetRecursiveGroup(
@@ -511,4 +511,4 @@ module LirMonomorphization =
                     Entry = entry }
         with
         | Failure value -> Error [ value ]
-        | ex -> Error [ { Code = "FSB4001"; Stage = GoGeneration; Message = ex.Message; Span = None } ]
+        | ex -> Error [ { Code = "FSL2101"; Stage = Lowering; Message = ex.Message; Span = None } ]

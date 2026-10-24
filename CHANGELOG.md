@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Removed the Go backend, CLI target, and toolchain requirements; retained the shared IR and .NET optimizations.
+
 - Added compiler-only typed FFI mappings and pruned unused provider dependencies and external types from .NET output.
 
 - Added self-contained single-file and Native AOT executable output for the .NET backend with explicit runtime targets.

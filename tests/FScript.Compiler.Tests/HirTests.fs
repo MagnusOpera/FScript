@@ -14,6 +14,19 @@ type HirTests() =
         | Ok value -> value
         | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
 
+    [<TestCase("let identity value = value\nidentity", "FSL2107")>]
+    [<TestCase("let generalized =\n  let _ = Console.writeLine \"effect\"\n  fun value -> value\n(generalized 1, generalized \"x\")", "FSL2108")>]
+    member _.``Shared specialization reports backend neutral diagnostics`` (source: string, code: string) =
+        let program =
+            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            | Ok compiled -> compiled.Lir
+            | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
+        match LirMonomorphization.specialize program with
+        | Ok _ -> Assert.Fail("Expected a specialization diagnostic.")
+        | Error diagnostics ->
+            Assert.That(diagnostics |> List.map _.Code, Does.Contain(code))
+            Assert.That(diagnostics |> List.forall (fun diagnostic -> diagnostic.Stage = Lowering), Is.True)
+
     [<Test>]
     member _.``Local values used only by nested captures survive simplification`` () =
         match Compiler.compile {Program=Parser.parseProgram "let make n =\n    let x=n+1\n    fun y -> fun z -> x+y+z\nmake 1 20 20"; Externs=[]} with

@@ -6,7 +6,6 @@ type DiagnosticStage =
     | Hir
     | Lowering
     | Interpreter
-    | GoGeneration
     | CSharpGeneration
     | DotNetGeneration
     | Artifact

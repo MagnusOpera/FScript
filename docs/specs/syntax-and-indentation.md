@@ -251,5 +251,5 @@ let ops =
 - A bodyless target function import uses `[<Import("module/path", "Member")>] let name : complete -> signature`.
 - An imported record schema uses `[<Import("module/path", "TypeName")>] type Name = { Field: type; ... }`.
 - `Import` takes exactly two non-empty arguments and is valid only on a top-level type declaration or bodyless typed `let`.
-- Imported record field spelling is preserved exactly for backend adapters; the initial Go backend requires exported, uppercase primitive fields.
+- Imported record field spelling is preserved exactly for backend adapters. Target-specific restrictions are enforced by each backend.
 - Other top-level type and `let` attributes are retained as structured name, string/identifier arguments, and source span for compiler consumers. Unknown attributes do not change language semantics by themselves.
