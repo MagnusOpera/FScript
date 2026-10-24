@@ -210,6 +210,62 @@ type CliTests() =
         finally
             if Directory.Exists tempRoot then Directory.Delete(tempRoot, true)
 
+    [<TestCase("go", "--single-file")>]
+    [<TestCase("csharp", "--aot")>]
+    [<TestCase("ir", "--single-file")>]
+    [<TestCase("dotnet", "--runtime")>]
+    [<TestCase("dotnet", "--aot")>]
+    [<TestCase("dotnet", "--single-file")>]
+    member _.``Executable options reject invalid combinations before creating output`` (target: string, flag: string) =
+        let root=findRepoRoot ()
+        let output=Path.Combine(Path.GetTempPath(),"fscript-invalid-publish-"+Guid.NewGuid().ToString("N"))
+        let code,_,error=runCli root root ["compile";Path.Combine(root,"samples","hello.fss");"--target";target;"--output";output;flag] None
+        Assert.That(code,Is.EqualTo(1),error)
+        Assert.That(Directory.Exists output,Is.False)
+
+    [<TestCase("--single-file", false)>]
+    [<TestCase("--aot", false)>]
+    [<TestCase("--single-file", true)>]
+    [<TestCase("--aot", true)>]
+    member _.``Self contained executables run alone with no installed runtime root`` (flag: string, ffi: bool) =
+        let root=findRepoRoot ()
+        let directory=Path.Combine(Path.GetTempPath(),"fscript-contained-"+Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let script=Path.Combine(directory,"native.fss")
+            let output=Path.Combine(directory,"output")
+            let standalone=Path.Combine(directory,"standalone")
+            Directory.CreateDirectory(standalone) |> ignore
+            let source=if ffi then "Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nEnv.Arguments"
+            File.WriteAllText(script,source)
+            let args=["compile";script;"--target";"dotnet";"--output";output;flag;"--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
+            let code,_,error=runCli root directory args None
+            Assert.That(code,Is.Zero,error)
+            let name="native"+(if OperatingSystem.IsWindows() then ".exe" else "")
+            let files=Directory.GetFiles(output)
+            Assert.That(files.Length,Is.EqualTo(1))
+            let executable=Path.Combine(standalone,name)
+            File.Copy(Path.Combine(output,name),executable)
+            if not (OperatingSystem.IsWindows()) then File.SetUnixFileMode(executable,File.GetUnixFileMode(Path.Combine(output,name)))
+            Directory.Delete(output,true)
+            File.Delete(script)
+            let start=ProcessStartInfo(executable,WorkingDirectory=standalone,RedirectStandardOutput=true,RedirectStandardError=true)
+            start.ArgumentList.Add("hello")
+            let missingRuntime=Path.Combine(directory,"missing-runtime")
+            start.Environment.["DOTNET_ROOT"] <- missingRuntime
+            start.Environment.["DOTNET_ROOT_ARM64"] <- missingRuntime
+            start.Environment.["DOTNET_ROOT_X64"] <- missingRuntime
+            start.Environment.["DOTNET_MULTILEVEL_LOOKUP"] <- "0"
+            use proc=new Process(StartInfo=start)
+            proc.Start() |> ignore
+            let stdout=proc.StandardOutput.ReadToEnd()
+            let stderr=proc.StandardError.ReadToEnd()
+            Assert.That(proc.WaitForExit(60000),Is.True)
+            Assert.That(proc.ExitCode,Is.Zero,stdout+stderr)
+            let expected=if ffi then "42" else "\"hello\"\n"+name+"\n[\"hello\"]"
+            Assert.That(stdout.Replace("\r\n","\n").Trim(),Is.EqualTo(expected))
+        finally Directory.Delete(directory,true)
+
     [<Test>]
     member _.``No args with redirected stdin executes stdin mode`` () =
         let repoRoot = findRepoRoot ()

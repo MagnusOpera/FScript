@@ -3,6 +3,9 @@ namespace FScript.Cli.Tests.Fixtures.Valid
 open FScript.Extensibility
 
 type ValidExternProvider =
+    static member AnswerNative() = 42L
+    static member FScriptCompiledFunctions() : System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string,System.Reflection.MethodInfo>> =
+        [|System.Collections.Generic.KeyValuePair("Ext.answer",typeof<ValidExternProvider>.GetMethod("AnswerNative") |> nonNull)|]
     [<FScriptExternProvider>]
     static member Provide() : ExternalFunction list =
         [ { Name = "Ext.answer"
@@ -47,3 +50,25 @@ type HostManagedProvider =
                       if node.Context = ctx then node.Value
                       else failwith "Host state was lost")
                   HostFunctions.create registration "Ext.acceptPoint" (fun (point: ProviderPoint) -> point.X) ] }
+
+[<FScriptHostType("NativeCounter")>]
+type NativeCounter(value: int64) =
+    [<FScriptVisible>]
+    member _.Value=value
+
+type CompiledProvider =
+    static member Create(value: int64) = NativeCounter(value)
+    static member Read(value: NativeCounter) = value.Value
+    // This method must never become an AOT root merely because its provider is loaded.
+    static member Unused() = System.Reflection.Assembly.Load("Not.A.Runtime.Dependency") |> ignore; 0L
+    [<FScriptExternProvider>]
+    static member Provide() : ExtensionRegistration =
+        let registration={HostInterop.empty with Types=[HostTypes.describe<NativeCounter>()]}
+        {registration with Functions=[HostFunctions.create registration "Ext.createCounter" CompiledProvider.Create
+                                      HostFunctions.create registration "Ext.readCounter" CompiledProvider.Read
+                                      HostFunctions.create registration "Ext.unusedNative" (fun () -> CompiledProvider.Unused())]}
+    static member FScriptCompiledTypes() : System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string,System.Type>> =
+        [|System.Collections.Generic.KeyValuePair("NativeCounter",typeof<NativeCounter>)|]
+    static member FScriptCompiledFunctions() : System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string,System.Reflection.MethodInfo>> =
+        [| for name,methodName in ["Ext.createCounter","Create";"Ext.readCounter","Read";"Ext.unusedNative","Unused"] do
+               yield System.Collections.Generic.KeyValuePair(name,typeof<CompiledProvider>.GetMethod(methodName) |> nonNull) |]

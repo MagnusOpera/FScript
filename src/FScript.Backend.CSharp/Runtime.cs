@@ -38,6 +38,7 @@ public sealed class OrderedMap<K, V>
 }
 internal static class FsRuntime
 {
+    public static string JsonString(string value) => "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
     public static string Quote(string value) => "\"" + value.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r","\\r").Replace("\n","\\n").Replace("\t","\\t") + "\"";
     public static T Fail<T>(string message) => throw new InvalidOperationException(message);
     public static Unit WriteLine(string value) { Console.WriteLine(value); return default; }

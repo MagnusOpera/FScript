@@ -12,7 +12,7 @@ Saturated self calls in tail position become loops, including calls behind lets,
 
 Known list callbacks use typed loops and direct calls for mapping, iteration, folding, filtering, choosing, collecting, existence tests, and searches. Immediate helper blocks become static methods instead of delegate invocations. Constant boolean terms and branches are simplified while preserving observable evaluation. The CLR JIT can inline small native helpers.
 
-Reachability starts at `Run`, result formatting, exported bindings, and the executable entry point. Unused generated methods, fields, and support types are removed. Reached constructors and interface implementations remain available. Native aggregates use immutable classes/structs without synthesized CLR record printing, equality, cloning, or deconstruction; FScript equality and formatting use dedicated reachable helpers. User provider assemblies are not trimmed.
+Reachability starts at `Run`, result formatting, exported bindings, and the executable entry point. Unused generated methods, fields, and support types are removed. Reached constructors and interface implementations remain available. Native aggregates use immutable classes/structs without synthesized CLR record printing, equality, cloning, or deconstruction; FScript equality and formatting use dedicated reachable helpers. Ordinary assembly generation preserves provider assemblies; executable publishing can trim them as described below.
 
 These passes apply only to `DotNetBackend.generate`. The C# target, serialized LIR, LIR interpreter, and Go backend retain their existing optimization policy. Roslyn remains the final IL emitter; FScript makes the optimization decisions before emission.
 
@@ -22,12 +22,17 @@ Namespace qualification is not a reachability edge to a namespace's syntax body.
 
 - `CSharpBackend.generate : CSharpOptions -> Lir.Program -> Result<GeneratedFile list, CompilerDiagnostic list>`
 - `DotNetBackend.generate : DotNetOptions -> Lir.Program -> Result<GeneratedBinary list, CompilerDiagnostic list>`
+- `DotNetBackend.generateExecutable : DotNetExecutableOptions -> DotNetOptions -> Lir.Program -> Result<GeneratedBinary list, CompilerDiagnostic list>`
 - `ClrBindings.bindMethod : string -> MethodBase -> Lir.Program -> Lir.Program`
 - `ClrBindings.bindType : string -> System.Type -> Lir.Program -> Lir.Program`
 
 CLR linkage is serializable. Exact public overloads, instance receivers, and constructors are explicit. Native type projections use their actual CLR type. Existing extension providers use `ClrBindings.bindProvider`: generated typed adapters marshal values through `FScript.Extensibility`, invoke the provider directly, and service compiled callbacks and tasks through `ExternalCallContext`. Opaque values retain their SDK payload and immutable field snapshots. Providers taking `HostContext` receive the process working directory and compiled default functions. The CLI preserves provider metadata from environment loading rather than executing provider factories twice during compilation. No interpreter or ScriptHost participates in generated execution. Go rejects CLR function imports with `FSB4010`.
 
 ## Representation and execution
+
+Provider classes may expose public static parameterless `FScriptCompiledFunctions` and `FScriptCompiledTypes` methods returning `IEnumerable<KeyValuePair<string, MethodInfo>>` and `IEnumerable<KeyValuePair<string, Type>>` respectively. Keys name registered script bindings. Compiler-only discovery links reachable declarations to exact typed CLR methods/types, overriding the legacy SDK adapter for those bindings. Metadata factories and unused bindings do not become runtime roots. This optional BCL contract preserves the frozen SDK registration records. Typed entry points must preserve the registered semantics and use immutable or snapshot-compatible external representations; unsupported shapes can use explicit adapters.
+
+CLR type reachability is computed from retained expression/function signatures, patterns, constructors, and type tokens, including recursive references. Unused imported types are removed before resolving their native metadata. Emitted dependency copying starts at the PE's actual assembly references and follows the supplied adjacent managed closure; simply loading a provider during frontend registration does not retain its assembly.
 
 Compiled `Env.ScriptName` contains the running assembly or executable filename; `Env.Arguments` contains its command-line arguments. The BASIC sample uses that name in its usage message, so compiled output does not advertise an interpreter invocation.
 
@@ -39,9 +44,19 @@ Match targets are evaluated once. Typed checks/projections, repeated bindings, g
 
 ## Output and verification
 
+`DotNetExecutableOptions` contains the explicit portable .NET `RuntimeIdentifier` and an `AheadOfTime` flag. `generateExecutable` accepts console output only. False produces a self-contained single-file bundle; true uses Native AOT. Both return exactly one executable (`.exe` for Windows targets). The CLI enables Unix execute permissions when writing Unix targets. DLL generation and the other backends do not invoke SDK publishing.
+
+The CLI forms are `--target dotnet --single-file --runtime <rid>` and `--target dotnet --aot --runtime <rid>`. Missing runtime identifiers, runtime identifiers without a publishing mode, and executable flags on other targets are rejected. Runtime identifiers use .NET spelling, including `osx-arm64`, `linux-x64`, and `win-x64`. Native AOT cross-OS compilation is rejected; cross-architecture support depends on the installed toolchain.
+
+Publishing stages the optimized PE and managed dependency closure in an isolated temporary SDK project. Its `CoreCompile` placeholder is replaced with the optimized PE before publish targets consume it. Single-file publishing embeds the runtime and native runtime assets for extraction. Native AOT consumes the same PE, with SDK trimming and native compilation. Managed bundles enable trimming for static bindings and disable it for reachable legacy SDK dispatch. Only IL2040 (missing resources requested for removal by dependency linker descriptors, including optional FSharp.Core compiler metadata) is suppressed; reflection, trimming and AOT compatibility warnings remain errors. Remaining unbundled publish assets cause a diagnostic rather than incomplete output. Debug-symbol files are optional and are not returned.
+
+Publishing requires a .NET 10 SDK on PATH and, for Native AOT, the platform native toolchain and compatible dependencies. SDK restore may need network access. `FSN7101` reports invalid publishing options, `FSN7102` reports an unavailable SDK command, `FSN7103` reports SDK publishing failures/timeouts or incomplete bundling, and `FSN7104` reports Native AOT cross-OS requests. The compiler captures SDK diagnostics and cleans its temporary project. Existing unrelated output-directory files are preserved.
+
 C# output includes `Program.cs`, `Runtime.cs`, and `Program.csproj`. .NET output includes the assembly and, for console applications, a runtime configuration. External assembly references are explicit. Source generation does not invoke an installed compiler. Assembly generation uses Roslyn in-process with release optimization, deterministic output, unsafe code disabled, and nullable checks enabled. Compiler errors and warnings prevent publication of an output assembly.
 
 Tests load emitted assemblies, JIT every closed generated method, execute representative semantic programs and CLR calls, and build generated C# as an independent project. This checks valid IL and execution behavior without relying on FScript hosting.
+
+Native AOT reports `FSN7105` when the optimized PE still contains reachable legacy `SdkInterop` dispatch. Such calls require typed companions or explicit CLR bindings, allowing individual FFI implementations to be inlined/trimmed without retaining a provider factory. Managed bundle mode continues to support legacy dispatch. Integration tests execute both output modes from a directory containing only the executable, with absent runtime roots, and cover direct typed FFI plus external values with an unused reflection-based sibling.
 
 The standalone BASIC and headless graphics assemblies are also checked with ILVerify against the installed .NET runtime and emitted managed dependencies. C# output is syntax-checked and normalized before publication; generated projects explicitly include compiler-owned source files so stale files cannot enter a later build.
 

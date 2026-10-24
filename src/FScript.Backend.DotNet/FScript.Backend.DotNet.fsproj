@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable></PropertyGroup>
-  <ItemGroup><Compile Include="DotNetOptimization.fs" /><Compile Include="DotNetSourceOptimization.fs" /><Compile Include="DotNetBackend.fs" /></ItemGroup>
+  <ItemGroup><Compile Include="DotNetTypes.fs" /><Compile Include="DotNetOptimization.fs" /><Compile Include="DotNetSourceOptimization.fs" /><Compile Include="DotNetPackaging.fs" /><Compile Include="DotNetBackend.fs" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../FScript.Backend.CSharp/FScript.Backend.CSharp.fsproj" /></ItemGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath><Private>true</Private></Reference>

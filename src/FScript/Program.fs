@@ -30,7 +30,7 @@ let removeStaleGoModuleFiles (root: string) (files: FScript.Compiler.GeneratedFi
 
 let runCompileCommand (argv: string array) =
     let usage () =
-        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go|csharp|dotnet> --output <directory> [--reference <assembly.dll>]")
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>]")
         1
     if argv.Length < 2 then usage ()
     else
@@ -41,7 +41,20 @@ let runCompileCommand (argv: string array) =
         match tryOption "--target", tryOption "--output" with
         | Some target, Some output when File.Exists scriptPath ->
             let normalizedTarget = target.ToLowerInvariant()
+            let singleFile=Array.contains "--single-file" argv
+            let aot=Array.contains "--aot" argv
+            let executable=singleFile || aot
+            let runtime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
             if not (List.contains normalizedTarget ["ir"; "go"; "csharp"; "dotnet"]) then usage ()
+            elif normalizedTarget<>"dotnet" && (executable || Array.contains "--runtime" argv) then
+                Console.Error.WriteLine("--single-file, --aot, and --runtime are only supported with --target dotnet.")
+                usage ()
+            elif executable && runtime.IsNone then
+                Console.Error.WriteLine("--single-file and --aot require --runtime <rid>, for example osx-arm64, linux-x64, or win-x64.")
+                usage ()
+            elif not executable && Array.contains "--runtime" argv then
+                Console.Error.WriteLine("--runtime requires --single-file or --aot.")
+                usage ()
             else
                 try
                     let outputDirectory = Path.GetFullPath(output)
@@ -60,6 +73,10 @@ let runCompileCommand (argv: string array) =
                         4
                     | Ok compiled ->
                         let lir = loaded.ProviderMethods |> List.fold (fun program (names,method) -> FScript.Compiler.ClrBindings.bindProvider names method program) compiled.Lir
+                        let lir =
+                            if normalizedTarget="dotnet" || normalizedTarget="csharp" then
+                                FScript.Compiler.ClrBindings.bindCompiledProviders (loaded.ProviderMethods |> List.map snd) lir
+                            else lir
                         Directory.CreateDirectory(outputDirectory) |> ignore
                         match normalizedTarget with
                         | "ir" ->
@@ -89,12 +106,19 @@ let runCompileCommand (argv: string array) =
                             let options: FScript.Compiler.DotNetOptions =
                                 { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
                                   OutputKind=FScript.Compiler.ConsoleApplication; References=references }
-                            match FScript.Compiler.DotNetBackend.generate options lir with
+                            let generated=
+                                if executable then FScript.Compiler.DotNetBackend.generateExecutable {RuntimeIdentifier=runtime.Value;AheadOfTime=aot} options lir
+                                else FScript.Compiler.DotNetBackend.generate options lir
+                            match generated with
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
                                 4
                             | Ok files ->
-                                for file in files do File.WriteAllBytes(Path.Combine(outputDirectory,file.RelativePath),file.Content)
+                                for file in files do
+                                    let path=Path.Combine(outputDirectory,file.RelativePath)
+                                    File.WriteAllBytes(path,file.Content)
+                                    if executable && not (OperatingSystem.IsWindows()) && not (runtime.Value.StartsWith("win-",StringComparison.Ordinal)) then
+                                        File.SetUnixFileMode(path,UnixFileMode.UserRead ||| UnixFileMode.UserWrite ||| UnixFileMode.UserExecute ||| UnixFileMode.GroupRead ||| UnixFileMode.GroupExecute ||| UnixFileMode.OtherRead ||| UnixFileMode.OtherExecute)
                                 0
                         | _ -> usage ()
                 with

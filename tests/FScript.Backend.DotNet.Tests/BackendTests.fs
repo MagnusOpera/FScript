@@ -148,6 +148,7 @@ type BackendTests() =
         Assert.That(actual, Is.EqualTo(Harness.legacy source))
 
     [<TestCase("Json.serialize (Some {| Count=2; Name=\"Ada\" |})")>]
+    [<TestCase("Json.serialize { [\"quote\\\"\"] = 1 }")>]
     [<TestCase("type Person = { Name: string; Age: int option }\nlet person (value: Person option) = value\nJson.deserialize typeof Person \"{\\\"Name\\\":\\\"Ada\\\"}\" |> person")>]
     [<TestCase("Xml.queryValues \"//item/@name\" \"<root><item name=\\\"a\\\"/><item name=\\\"b\\\"/></root>\"")>]
     [<TestCase("Xml.queryValues \"root/item/text()\" \"<root><item> x </item><item> </item></root>\"")>]
@@ -306,6 +307,57 @@ type BackendTests() =
         let missing=Path.Combine(Path.GetTempPath(),Guid.NewGuid().ToString("N")+".dll")
         Assert.That(DotNetBackend.generate {Harness.options with References=[missing]} program |> Result.isError,Is.True)
         Assert.That(CSharpBackend.generate {Namespace="Generated";ClassName="Program";References=[missing]} program |> Result.isError,Is.True)
+
+    [<Test>]
+    member _.``Executable publishing validates target and output kind before running the SDK`` () =
+        let program=Harness.compile "42"
+        let check executable options expected =
+            match DotNetBackend.generateExecutable executable options program with
+            | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code,Does.Contain(expected))
+            | Ok _ -> Assert.Fail("Invalid publishing options must fail before publishing.")
+        let current=System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
+        check {RuntimeIdentifier=current;AheadOfTime=false} Harness.options "FSN7101"
+        let console={Harness.options with OutputKind=ConsoleApplication}
+        check {RuntimeIdentifier="darwin";AheadOfTime=false} console "FSN7101"
+        let foreign=if OperatingSystem.IsWindows() then "linux-x64" else "win-x64"
+        check {RuntimeIdentifier=foreign;AheadOfTime=true} console "FSN7104"
+
+    [<Test>]
+    member _.``Unused provider references and unresolved external types are omitted`` () =
+        let registration: ExtensionRegistration={Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true}];Unions=[];Functions=[]}
+        let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "42";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let imported: Lir.ImportedRecord={Name="Unused";ModulePath="clr:Missing.Type, Missing.Assembly";MemberName="Missing.Type";Fields=["Value",TInt];IsUnion=false;Span=program.Types.Head.Span}
+        let program={program with ImportedRecords=[imported];Types=program.Types |> List.map (fun t -> if t.Name="Unused" then {t with Import=Some imported} else t)}
+        let files=Harness.generate {Harness.options with References=[typeof<ProviderFixture.Provider>.Assembly.Location]} program
+        Assert.That(files.Length,Is.EqualTo(1))
+        let assembly=Assembly.Load(files.Head.Content)
+        Assert.That(assembly.GetReferencedAssemblies() |> Array.exists (fun reference -> List.contains reference.Name ["FScript.Extensibility";"FSharp.Core";"FScript.Backend.DotNet.Tests"]),Is.False)
+
+    [<Test>]
+    member _.``AOT rejects reachable legacy SDK dispatch with a static binding diagnostic`` () =
+        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.apply (fun n -> n+1) 41";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let program=ClrBindings.bindProvider ["Sdk.apply"] (typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull) program
+        let options={Harness.options with OutputKind=ConsoleApplication;References=[typeof<ProviderFixture.Provider>.Assembly.Location;typeof<FScript.Extensibility.ScriptValue>.Assembly.Location;typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]}
+        match DotNetBackend.generateExecutable {RuntimeIdentifier=System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;AheadOfTime=true} options program with
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code,Does.Contain("FSN7105"))
+        | Ok _ -> Assert.Fail("Opaque factory dispatch requires a static binding for Native AOT.")
+
+    [<Test>]
+    member _.``Dependency pruning uses assembly identity rather than a renamed filename`` () =
+        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.apply (fun n -> n+1) 41";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let program=ClrBindings.bindProvider ["Sdk.apply"] (typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull) program
+        let references=[typeof<ProviderFixture.Provider>.Assembly.Location;typeof<FScript.Extensibility.ScriptValue>.Assembly.Location;typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+        let root=Harness.generate {Harness.options with References=references} program |> List.find (fun file -> file.RelativePath="CompiledScript.dll")
+        let renamed=Path.Combine(Path.GetTempPath(),"renamed-provider-"+Guid.NewGuid().ToString("N")+".dll")
+        try
+            File.Copy(typeof<ProviderFixture.Provider>.Assembly.Location,renamed)
+            Assert.That(String.concat "," (ClrBindings.referencedDependencies root.Content [renamed]),Is.EqualTo(renamed))
+            let options={Harness.options with References=renamed :: (List.tail references)}
+            let files=Harness.generate options program
+            Assert.That(files |> List.map _.RelativePath,Does.Contain("FScript.Backend.DotNet.Tests.dll"))
+        finally File.Delete renamed
 
     [<Test>]
     member _.``CSharp projects compile independently`` () =

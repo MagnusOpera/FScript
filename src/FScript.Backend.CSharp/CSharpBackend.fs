@@ -822,7 +822,7 @@ module CSharpBackend =
                     | TInt -> "value.ToString(CultureInfo.InvariantCulture)","value.GetInt64()"
                     | TFloat -> "value.ToString(CultureInfo.InvariantCulture)","value.GetDouble()"
                     | TBool -> "(value ? \"true\" : \"false\")","value.GetBoolean()"
-                    | TString -> "JsonSerializer.Serialize(value)","value.GetString() ?? throw new InvalidOperationException()"
+                    | TString -> (if assemblyMode then "FsRuntime.JsonString(value)" else "JsonSerializer.Serialize(value)"),"value.GetString() ?? throw new InvalidOperationException()"
                     | TOption item ->
                         $"(value.HasValue ? {jsonEncodeName item}(value.Value) : \"null\")",
                         $"(value.ValueKind == JsonValueKind.Null ? default : {csType t}.Some({jsonDecodeName item}(value)))"
@@ -849,7 +849,8 @@ module CSharpBackend =
                             | TBool -> "(e.Key ? \"true\" : \"false\")","bool.Parse(property.Name)"
                             | _ -> unsupported,unsupported
                         if keyText=unsupported then unsupported,unsupported else
-                            $"\"{{\" + string.Join(\",\",value.Entries.Select(e=>JsonSerializer.Serialize({keyText})+\":\"+{jsonEncodeName v}(e.Value))) + \"}}\"",
+                            let quotedKey=if assemblyMode then $"FsRuntime.JsonString({keyText})" else $"JsonSerializer.Serialize({keyText})"
+                            $"\"{{\" + string.Join(\",\",value.Entries.Select(e=>{quotedKey}+\":\"+{jsonEncodeName v}(e.Value))) + \"}}\"",
                             $"value.EnumerateObject().Aggregate(new {csType t}(),(map,property)=>map.Add({keyParse},{jsonDecodeName v}(property.Value)))"
                     | _ -> unsupported,unsupported
                 addHelper $"private static string {jsonEncodeName t}({csType t} value) => {encode};"
@@ -1070,6 +1071,7 @@ module CSharpBackend =
             |> Result.bind (if assemblyMode then specializeAssembly else LirMonomorphization.specialize)
             |> Result.map LirSimplification.optimize
             |> Result.map optimize
+            |> Result.map (if assemblyMode then ClrBindings.pruneUnusedTypes else id)
             |> Result.bind LirValidation.validate
             |> Result.map (emit assemblyMode options)
             |> Result.map (List.map (fun file ->

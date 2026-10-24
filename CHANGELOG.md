@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added compiler-only typed FFI mappings and pruned unused provider dependencies and external types from .NET output.
+
+- Added self-contained single-file and Native AOT executable output for the .NET backend with explicit runtime targets.
+
 - Fixed .NET assembly pruning retaining unused stdlib helpers through generated namespace references.
 
 - Made BASIC's usage message use its running script or executable name instead of a hardcoded FScript command.

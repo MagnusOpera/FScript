@@ -3,18 +3,9 @@ namespace FScript.Compiler
 open System
 open System.IO
 open System.Text
+open System.Reflection.PortableExecutable
 open Microsoft.CodeAnalysis
 open Microsoft.CodeAnalysis.CSharp
-
-type DotNetOutputKind = Library | ConsoleApplication
-type DotNetOptions =
-    { AssemblyName: string
-      Namespace: string
-      ClassName: string
-      OutputKind: DotNetOutputKind
-      References: string list }
-
-type GeneratedBinary = { RelativePath: string; Content: byte array }
 
 /// Produces PE assemblies from compiled LIR. Generated binaries contain no FScript interpreter.
 module DotNetBackend =
@@ -58,11 +49,29 @@ module DotNetBackend =
                         let runtimeConfig =
                             "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"},\"rollForward\":\"LatestMinor\"}}\n"
                         let dependencies =
-                            options.References |> List.map Path.GetFullPath |> List.distinct
+                            ClrBindings.referencedDependencies binary.Content options.References
                             |> List.filter (fun path -> Path.GetFileNameWithoutExtension path <> options.AssemblyName)
-                            |> List.map (fun path -> { RelativePath=Path.GetFileName path |> nonNull; Content=File.ReadAllBytes path })
+                            |> List.map (fun path ->
+                                let name=Reflection.AssemblyName.GetAssemblyName(path).Name |> nonNull
+                                { RelativePath=name+".dll"; Content=File.ReadAllBytes path })
                         let files = binary :: dependencies
                         if options.OutputKind=ConsoleApplication then
                             Ok(files @ [{ RelativePath=options.AssemblyName+".runtimeconfig.json"; Content=Encoding.UTF8.GetBytes(runtimeConfig) }])
                         else Ok files
         with ex -> Error [diagnostic "FSN7000" ex.Message]
+
+    /// Produce one self-contained executable for an explicit .NET runtime identifier.
+    let generateExecutable executable options program =
+        DotNetPackaging.validate executable options.OutputKind
+        |> Result.bind (fun () -> generate options program)
+        |> Result.bind (fun files ->
+            let assembly=files |> List.find (fun file -> file.RelativePath=options.AssemblyName+".dll")
+            use stream=new MemoryStream(assembly.Content,false)
+            use pe=new PEReader(stream)
+            let metadata=System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe)
+            let legacyBridge=metadata.TypeDefinitions |> Seq.exists (fun handle ->
+                let typ=metadata.GetTypeDefinition(handle)
+                metadata.GetString(typ.Name)="SdkInterop" && metadata.GetString(typ.Namespace)=options.Namespace)
+            if executable.AheadOfTime && legacyBridge then
+                Error [diagnostic "FSN7105" "Native AOT requires static compiled FFI bindings. Add FScriptCompiledFunctions/FScriptCompiledTypes companions or bind exact CLR methods/types with ClrBindings; provider-factory SDK dispatch cannot be safely pruned. Managed single-file output still supports legacy providers."]
+            else DotNetPackaging.publish executable (not legacyBridge) options files)
