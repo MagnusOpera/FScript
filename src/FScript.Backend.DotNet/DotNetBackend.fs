@@ -31,7 +31,7 @@ module DotNetBackend =
                 Error [diagnostic "FSN7001" "AssemblyName must be a nonempty file name without path separators."]
             else
                 let csharpOptions: CSharpOptions = { Namespace=options.Namespace; ClassName=options.ClassName; References=options.References }
-                match CSharpBackend.generate csharpOptions program with
+                match CSharpBackend.generateForAssembly DotNetOptimization.optimize csharpOptions program with
                 | Error diagnostics -> Error diagnostics
                 | Ok files ->
                     let trees = files |> List.filter (fun f -> f.RelativePath.EndsWith(".cs",StringComparison.Ordinal)) |> List.map (fun f ->
@@ -46,7 +46,9 @@ module DotNetBackend =
                         |> List.map (fun path -> MetadataReference.CreateFromFile(Path.GetFullPath path) :> MetadataReference)
                     let kind = match options.OutputKind with Library -> OutputKind.DynamicallyLinkedLibrary | ConsoleApplication -> OutputKind.ConsoleApplication
                     let compilationOptions = CSharpCompilationOptions(kind, optimizationLevel=OptimizationLevel.Release, allowUnsafe=false, deterministic=true, nullableContextOptions=NullableContextOptions.Enable)
-                    let compilation = CSharpCompilation.Create(options.AssemblyName, trees, references, compilationOptions)
+                    let compilation =
+                        CSharpCompilation.Create(options.AssemblyName, trees, references, compilationOptions)
+                        |> DotNetSourceOptimization.optimize options.ClassName (options.OutputKind=Library)
                     use output = new MemoryStream()
                     let result = compilation.Emit(output)
                     let diagnostics = result.Diagnostics |> Seq.filter (fun d -> d.Severity=DiagnosticSeverity.Error || d.Severity=DiagnosticSeverity.Warning) |> Seq.map (fun d -> diagnostic "FSN7002" (d.ToString())) |> Seq.toList

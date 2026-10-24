@@ -3,6 +3,7 @@ namespace FScript.Backend.DotNet.Tests
 open System
 open System.IO
 open System.Reflection
+open System.Reflection.Emit
 open System.Runtime.CompilerServices
 open FScript.Language
 open FScript.Compiler
@@ -53,6 +54,39 @@ module private Harness =
         ((programType.GetMethod("FormatResult") |> nonNull).Invoke(null,[|result|]) |> nonNull) :?> string
     let execute program = executeWith options program
 
+module private IL =
+    let instructions (assembly: Assembly) =
+        let opcodes=typeof<OpCodes>.GetFields(BindingFlags.Public ||| BindingFlags.Static) |> Array.map (fun field -> let opcode=field.GetValue(null) :?> OpCode in uint16 opcode.Value,opcode) |> Map.ofArray
+        [ for typ in assembly.GetTypes() do
+            for method in typ.GetMethods(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Static ||| BindingFlags.Instance ||| BindingFlags.DeclaredOnly) do
+                let body=method.GetMethodBody()
+                if not (isNull body) then
+                    let bytes=(nonNull body).GetILAsByteArray() |> nonNull
+                    let mutable offset=0
+                    while offset<bytes.Length do
+                        let first=bytes.[offset]
+                        offset <- offset+1
+                        let code=if first=0xfeuy then let second=bytes.[offset] in offset <- offset+1; 0xfe00us ||| uint16 second else uint16 first
+                        let opcode=opcodes.[code]
+                        let memberInfo=
+                            if opcode.OperandType=OperandType.InlineMethod then
+                                let declaringArgs=if typ.IsGenericType then typ.GetGenericArguments() else [||]
+                                method.Module.ResolveMember(BitConverter.ToInt32(bytes,offset),declaringArgs,method.GetGenericArguments()) |> Option.ofObj
+                            else None
+                        yield method,opcode,memberInfo
+                        let length=
+                            match opcode.OperandType with
+                            | OperandType.InlineNone -> 0
+                            | OperandType.ShortInlineBrTarget | OperandType.ShortInlineI | OperandType.ShortInlineVar -> 1
+                            | OperandType.InlineVar -> 2
+                            | OperandType.InlineI8 | OperandType.InlineR -> 8
+                            | OperandType.InlineSwitch -> 4+4*BitConverter.ToInt32(bytes,offset)
+                            | _ -> 4
+                        offset <- offset+length ]
+    let load source =
+        let files=Harness.generate Harness.options (Harness.compile source)
+        Assembly.Load((files |> List.find (fun file -> file.RelativePath="CompiledScript.dll")).Content)
+
 [<TestFixture>]
 type BackendTests() =
     [<TestCase("let value = Sdk.create \"hello\"\nvalue.Name", "\"hello\"")>]
@@ -85,6 +119,12 @@ type BackendTests() =
     [<TestCase("let add x y = x+y\n(add 1 2, add 1.5 2.5)", "(3, 4)")>]
     [<TestCase("let make x = fun y -> x+y\nlet add = make 10\nadd 32", "42")>]
     [<TestCase("let make n =\n    let x=n+1\n    fun y -> x+y\nmake 1 40", "42")>]
+    [<TestCase("let add x y = x+y\nlet increment=add 1\n(increment 1,increment 41)", "(2, 42)")>]
+    [<TestCase("let twice f x = f (f x)\ntwice (fun x -> x+1) 40", "42")>]
+    [<TestCase("let outer seed =\n    let add value = seed+value\n    fun delta -> add delta\nList.map (outer 10) [1;2]", "[11;12]")>]
+    [<TestCase("let rec swap n a b = if n=0 then (a,b) else swap (n-1) b a\nswap 3 1 2", "(2, 1)")>]
+    [<TestCase("let rec collect n acc = if n=0 then List.map (fun f -> f ()) acc else collect (n-1) ((fun () -> n)::acc)\ncollect 3 []", "[1;2;3]")>]
+    [<TestCase("(List.map (fun n -> n+1) [1;2], List.filter (fun n -> n>1) [1;2], List.fold (fun s n -> s+n) 0 [1;2], List.choose (fun n -> if n>1 then Some n else None) [1;2], List.collect (fun n -> [n;n]) [1;2], List.exists (fun n -> n=2) [1;2], List.tryFind (fun n -> n=2) [1;2], List.tryGet (fun n -> n=2) [1;2])", "([2;3], [2], 3, [2], [1;1;2;2], true, Some 2, Some 1)")>]
     [<TestCase("let rec fib n = if n <= 1 then n else fib (n-1) + fib (n-2)\nfib 10", "55")>]
     [<TestCase("let rec even n = if n=0 then true else odd (n-1)\nand odd n = if n=0 then false else even (n-1)\neven 20", "true")>]
     [<TestCase("[3..1] |> List.map (fun n -> n*2)", "[6;4;2]")>]
@@ -116,8 +156,67 @@ type BackendTests() =
     member _.``Generated formatting JSON XML and interpolation conform to the legacy evaluator`` (source: string) =
         Assert.That(Harness.execute (Harness.compile source), Is.EqualTo(Harness.legacy source))
 
+    [<TestCase("let rec walk n acc = if n=0 then acc else walk (n-1) (acc+1)\nwalk 1000000 0")>]
+    [<TestCase("let count start =\n    let rec walk n acc = if n=0 then acc else walk (n-1) (acc+1)\n    walk start 0\ncount 1000000")>]
+    [<TestCase("let rec walk n acc = match n with | 0 -> acc | _ -> walk (n-1) (acc+1)\nwalk 1000000 0")>]
+    member _.``Self tail recursion runs one million steps with bounded stack`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo("1000000"))
+
+    [<TestCase("let add x y=x+y\nlet increment=add 1\nincrement 41")>]
+    [<TestCase("let twice f x=f (f x)\ntwice (fun x -> x+1) 40")>]
+    [<TestCase("List.map (fun x -> x+1) [1;2] |> List.fold (fun s x -> s+x) 0")>]
+    member _.``Known calls and partial applications contain no delegate invocation in IL`` (source: string) =
+        let instructions=IL.load source |> IL.instructions
+        let invokes=instructions |> List.choose (fun (_,_,memberInfo) -> memberInfo |> Option.filter (fun memberInfo -> memberInfo.Name="Invoke" && not (isNull memberInfo.DeclaringType) && typeof<MulticastDelegate>.IsAssignableFrom(memberInfo.DeclaringType)))
+        Assert.That(invokes,Is.Empty)
+
+    [<Test>]
+    member _.``Unused runtime types helpers and record machinery are absent from the assembly`` () =
+        let assembly=IL.load "40+2"
+        Assert.That(String.concat "," (assembly.GetTypes() |> Array.map _.Name),Is.EqualTo("Program"))
+        let names=(assembly.GetType("Generated.Program") |> nonNull).GetMethods(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Static) |> Array.map _.Name
+        Assert.That(names |> Array.exists (fun name -> name.StartsWith("Json",StringComparison.Ordinal) || name.StartsWith("Equal",StringComparison.Ordinal) || name.StartsWith("Encode",StringComparison.Ordinal)),Is.False)
+
+    [<Test>]
+    member _.``A warmed fully static numeric program allocates no managed values`` () =
+        let assembly=IL.load "export let compute (value: int) =\n    let add x y=x+y\n    let increment=add 1\n    increment value"
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        for input in 1..1000 do run.Invoke(int64 input) |> ignore
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let mutable result=0L
+        for input in 1..10000 do result <- run.Invoke(int64 input)
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result,Is.EqualTo(10001L))
+        Assert.That(allocated,Is.Zero)
+
+    [<Test>]
+    member _.``Redundant true checks disappear from IL while CSharp output retains its policy`` () =
+        let source="export let check value = value && true"
+        let program=Harness.compile source
+        let files=match CSharpBackend.generate {Namespace="Generated";ClassName="Program";References=[]} program with Ok files -> files | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        Assert.That((files |> List.find (fun file -> file.RelativePath="Runtime.cs")).Content,Does.Contain("public readonly record struct Unit"))
+        let instructions=IL.load source |> IL.instructions |> List.filter (fun (method,_,_) -> method.Name.StartsWith("Function",StringComparison.Ordinal) && method.ReturnType=typeof<bool>)
+        Assert.That(instructions,Is.Not.Empty)
+        Assert.That(instructions |> List.exists (fun (_,opcode,_) -> opcode=OpCodes.Ldc_I4_1),Is.False)
+
+    [<Test>]
+    member _.``Closed library exports remain roots without a program entry`` () =
+        let assembly=IL.load "export let answer=42\nexport let add (value: int)=value+1"
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        Assert.That((typ.GetProperty("v_answer") |> nonNull).GetValue(null),Is.EqualTo(box 42L))
+        let add=((typ.GetProperty("v_add") |> nonNull).GetValue(null) |> nonNull) :?> Func<int64,int64>
+        Assert.That(add.Invoke(41L),Is.EqualTo(42L))
+
+    [<Test>]
+    member _.``Open polymorphic exports cannot silently disappear from native libraries`` () =
+        match DotNetBackend.generate Harness.options (Harness.compile "export let identity value=value") with
+        | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code,Does.Contain("FSC6009"))
+        | Ok _ -> Assert.Fail("An exported open function needs a concrete native signature.")
+
     [<TestCase("let field name =\n    Console.writeLine name\n    1\n{| Z=field \"first\"; A=field \"second\" |}")>]
     [<TestCase("let values () =\n    Console.writeLine \"first\"\n    [1]\nlet index () =\n    Console.writeLine \"second\"\n    0\n(values ())[index ()]")>]
+    [<TestCase("let step name n =\n    Console.writeLine name\n    n\nlet rec loop a b = if a=0 then b else loop (step \"first\" (a-1)) (step \"second\" (b+1))\nloop 1 0")>]
+    [<TestCase("let capture () =\n    Console.writeLine \"first\"\n    1\nlet add x y=x+y\nlet increment=add (capture ())\nConsole.writeLine \"second\"\n(increment 1,increment 2)")>]
     member _.``Aggregate construction and indexing preserve effect order`` (source: string) =
         let capture action =
             let previous=Console.Out

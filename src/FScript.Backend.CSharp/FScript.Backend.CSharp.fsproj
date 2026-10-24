@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable></PropertyGroup>
   <ItemGroup>
+    <Compile Include="AssemblyInfo.fs" />
     <Compile Include="CSharpBackend.fs" />
     <EmbeddedResource Include="Runtime.cs" LogicalName="FScript.Backend.CSharp.Runtime.cs" />
     <EmbeddedResource Include="RuntimeSDK.cs" LogicalName="FScript.Backend.CSharp.RuntimeSDK.cs" />

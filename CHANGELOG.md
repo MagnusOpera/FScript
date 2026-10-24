@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Optimized .NET assemblies with static call and partial-application reduction, self tail-call loops, typed collection callbacks, and unused runtime pruning.
+
 - Matched native JSON, XML, formatting, filesystem traversal, and ordered-map patterns to interpreted behavior, with formatted standalone C# output.
 
 - Compiled existing FFI providers, opaque host values, callbacks, and tasks through SDK adapters without invoking an interpreter.

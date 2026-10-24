@@ -22,6 +22,8 @@ dotnet out/basic-dotnet/basic.dll samples/basic/helloworld.bas
 
 Compiled filesystem operations use the process working directory and OS permissions. Interpreter sandbox and execution-budget settings do not apply to standalone binaries.
 
+Assembly compilation resolves known calls and partial applications, lowers self tail calls to loops, and removes unused generated support code. Functions that escape into collections or FFI still use typed delegates. These optimizations apply to the assembly target; the C# source target retains its existing output policy.
+
 ## C# source project
 
 ```sh
