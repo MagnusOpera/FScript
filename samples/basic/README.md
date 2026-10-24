@@ -16,6 +16,15 @@ fscript samples/basic/basic.fss -- helloworld.bas
 
 The first script argument after `--` is the BASIC program path. BASIC files are read relative to the sample root when you run `samples/basic/basic.fss`.
 
+Compile it to a standalone .NET assembly with:
+
+```bash
+dotnet run --project src/FScript -- compile samples/basic/basic.fss --target dotnet --output out/dotnet/basic
+dotnet out/dotnet/basic/basic.dll samples/basic/helloworld.bas
+```
+
+Compiled file paths are relative to the working directory. With no arguments, the usage message uses the running program's name from `Env.ScriptName`, for example `Usage: basic.dll <program.bas>`.
+
 ## Supported Program Format
 
 - Line-numbered BASIC source only.

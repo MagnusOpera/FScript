@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made BASIC's usage message use its running script or executable name instead of a hardcoded FScript command.
+
 - Optimized .NET assemblies with static call and partial-application reduction, self tail-call loops, typed collection callbacks, and unused runtime pruning.
 
 - Matched native JSON, XML, formatting, filesystem traversal, and ordered-map patterns to interpreted behavior, with formatted standalone C# output.

@@ -392,7 +392,28 @@ type CliTests() =
         let code, _, stderr = runCli repoRoot repoRoot [ scriptPath ] None
 
         Assert.That(code, Is.EqualTo(3))
-        Assert.That(stderr, Does.Contain("Usage: fscript samples/basic/basic.fss -- <program.bas>"))
+        Assert.That(stderr, Does.Contain("Usage: basic.fss <program.bas>"))
+        Assert.That(stderr, Does.Not.Contain("Usage: fscript"))
+
+    [<Test>]
+    member _.``Compiled BASIC usage identifies its standalone assembly`` () =
+        let repoRoot=findRepoRoot ()
+        let output=Path.Combine(Path.GetTempPath(),"fscript-basic-native-"+Guid.NewGuid().ToString("N"))
+        try
+            let code,_,error=runCli repoRoot repoRoot ["compile";basicSampleScriptPath repoRoot;"--target";"dotnet";"--output";output] None
+            Assert.That(code,Is.Zero,error)
+            let start=ProcessStartInfo("dotnet",WorkingDirectory=repoRoot,RedirectStandardOutput=true,RedirectStandardError=true)
+            start.ArgumentList.Add(Path.Combine(output,"basic.dll"))
+            use proc=new Process(StartInfo=start)
+            proc.Start() |> ignore
+            let stdout=proc.StandardOutput.ReadToEnd()
+            let stderr=proc.StandardError.ReadToEnd()
+            proc.WaitForExit()
+            Assert.That(proc.ExitCode,Is.Not.Zero,stdout+stderr)
+            Assert.That(stderr,Does.Contain("Usage: basic.dll <program.bas>"))
+            Assert.That(stderr,Does.Not.Contain("Usage: fscript"))
+        finally
+            if Directory.Exists(output) then Directory.Delete(output,true)
 
     [<Test>]
     member _.``Basic sample reports invalid BASIC source`` () =

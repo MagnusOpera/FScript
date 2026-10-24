@@ -4,7 +4,9 @@ import "runtime.fss" as BasicRuntime
 let load_program_path =
     match Env.Arguments with
     | path :: _ -> path
-    | [] -> raise "Usage: fscript samples/basic/basic.fss -- <program.bas>"
+    | [] ->
+        let program_name = Option.defaultValue "basic" Env.ScriptName
+        raise $"Usage: {program_name} <program.bas>"
 
 let read_program path =
     match Fs.readText path with

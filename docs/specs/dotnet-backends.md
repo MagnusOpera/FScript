@@ -27,6 +27,8 @@ CLR linkage is serializable. Exact public overloads, instance receivers, and con
 
 ## Representation and execution
 
+Compiled `Env.ScriptName` contains the running assembly or executable filename; `Env.Arguments` contains its command-line arguments. The BASIC sample uses that name in its usage message, so compiled output does not advertise an interpreter invocation.
+
 Closed exported bindings are specialization roots even when a library has no program entry. An export with an open polymorphic signature receives `FSC6009`; it cannot silently disappear during pruning. A known closure is devirtualized only when its captured values are available in the caller's lexical scope. Otherwise its delegate environment is preserved.
 
 Scalars use `long`, `double`, `bool`, and `string`. Functions use typed `Func<A,B>` delegates. Lists use arrays, options use typed value structs, maps use sorted immutable entry arrays, tuples and records use generated immutable records, and unions use enums or sealed typed cases. Recursive records/unions use CLR references. Collection operations allocate changed values and retain source order. Structural equality and result formatting are generated per semantic type, including recursive aggregate equality and non-equality of functions/tasks.
