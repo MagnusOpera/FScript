@@ -9,6 +9,10 @@
     <Compile Include="HirLowering.fs" />
     <Compile Include="HirValidation.fs" />
     <Compile Include="Lir.fs" />
+    <Compile Include="NativeSpecialization.fs" />
+    <Compile Include="LirMonomorphization.fs" />
+    <Compile Include="LirSimplification.fs" />
+    <Compile Include="ClrBindings.fs" />
     <Compile Include="IrArtifact.fs" />
     <Compile Include="Compiler.fs" />
   </ItemGroup>

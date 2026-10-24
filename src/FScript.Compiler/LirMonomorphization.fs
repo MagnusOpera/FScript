@@ -4,14 +4,14 @@ open System
 open System.Collections.Generic
 open FScript.Language
 
-module GoMonomorphization =
+module LirMonomorphization =
     exception private Failure of CompilerDiagnostic
 
     type private State =
         { Program: Lir.Program
           Declarations: Map<Lir.SymbolId, Lir.Declaration>
           Functions: Map<Lir.FunctionId, Lir.Function>
-          DeclarationKeys: Dictionary<GoSpecialization.SpecializationKey, Lir.SymbolId>
+          DeclarationKeys: Dictionary<NativeSpecialization.SpecializationKey, Lir.SymbolId>
           FunctionKeys: Dictionary<string, Lir.FunctionId>
           OutputDeclarations: ResizeArray<Lir.Declaration>
           OutputFunctions: ResizeArray<Lir.Function>
@@ -37,7 +37,7 @@ module GoMonomorphization =
 
     let private mergeSubstitution left right = right |> Map.fold (fun state key value -> Map.add key value state) left
     let private closedType span value =
-        if GoSpecialization.containsVariable value then
+        if NativeSpecialization.containsVariable value then
             let source = span.Start.File |> Option.defaultValue "<unknown>"
             fail "FSB4007" $"Reachable value at {source}:{span.Start.Line}:{span.Start.Column} has open type '{Types.typeToString value}' after Go specialization." span
         value
@@ -98,7 +98,7 @@ module GoMonomorphization =
         let results = ResizeArray<Type>()
         let rec visit (value: Lir.Expression) =
             match value.Node with
-            | Lir.Load id when id = target -> results.Add(GoSpecialization.apply substitution value.Type)
+            | Lir.Load id when id = target -> results.Add(NativeSpecialization.apply substitution value.Type)
             | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
             | Lir.TailCallClosure(left, right) | Lir.TailPipeClosure(left, right)
             | Lir.Cons(left, right)
@@ -143,7 +143,7 @@ module GoMonomorphization =
                 match template, concrete with
                 | TNamed name, _ ->
                     match typeDefinitions |> Map.tryFind name with
-                    | Some definition when GoSpecialization.unifyInstantiation definition concrete |> Result.isOk -> template
+                    | Some definition when NativeSpecialization.unifyInstantiation definition concrete |> Result.isOk -> template
                     | _ -> concrete
                 | TFun(templateArgument, templateResult), TFun(concreteArgument, concreteResult) ->
                     TFun(preserveNamedRepresentation templateArgument concreteArgument, preserveNamedRepresentation templateResult concreteResult)
@@ -179,14 +179,14 @@ module GoMonomorphization =
                     plan.Bindings |> List.map (fun binding ->
                         let concrete =
                             projectionType plan.Checks [] expectedType binding.Projection
-                            |> Option.defaultValue (GoSpecialization.apply substitution binding.Type)
+                            |> Option.defaultValue (NativeSpecialization.apply substitution binding.Type)
                             |> closedType plan.Span
                         let replacement = freshSymbol state
                         scoped <- bind binding.Id concrete replacement scoped
                         { binding with Id = replacement; Type = concrete })
                 let checks =
                     plan.Checks |> List.map (function
-                        | Lir.TypeCheck(path, valueType) -> Lir.TypeCheck(path, GoSpecialization.apply substitution valueType)
+                        | Lir.TypeCheck(path, valueType) -> Lir.TypeCheck(path, NativeSpecialization.apply substitution valueType)
                         | value -> value)
                 let maps =
                     plan.Maps |> List.map (fun mapPlan ->
@@ -231,11 +231,11 @@ module GoMonomorphization =
                     // result, while the body receives a fresh substitution derived from its
                     // expected concrete result. Reusing the caller substitution here can alias
                     // unrelated variables from nested curried parameters.
-                    match GoSpecialization.unifyInstantiation source.ParameterType concreteParameter with
+                    match NativeSpecialization.unifyInstantiation source.ParameterType concreteParameter with
                     | Error error -> fail "FSB4007" $"Cannot specialize parameter of function {functionNumber original} ('{source.Name}'): {error}" span
                     | Ok _ -> ()
                     let bodySubstitution =
-                        match GoSpecialization.unifyInstantiation source.Body.Type concreteResult with
+                        match NativeSpecialization.unifyInstantiation source.Body.Type concreteResult with
                         | Ok value -> value
                         | Error error -> fail "FSB4007" $"Cannot specialize result of function {functionNumber original} ('{source.Name}'): {error}" span
                     let replacement = freshFunction state
@@ -265,19 +265,19 @@ module GoMonomorphization =
                 let concrete =
                     (if isBottom then
                          let defaults = Types.ftvType concrete |> Seq.map (fun variable -> variable, TUnit) |> Map.ofSeq
-                         GoSpecialization.apply defaults concrete
+                         NativeSpecialization.apply defaults concrete
                      else concrete)
                     |> preserveNamedRepresentation source.Type
                     |> closedType span
-                let key = GoSpecialization.specializationKey (symbolNumber original) concrete
+                let key = NativeSpecialization.specializationKey (symbolNumber original) concrete
                 match state.DeclarationKeys.TryGetValue key with
                 | true, existing -> existing
                 | _ ->
                     let inferred =
-                        match GoSpecialization.unifyInstantiation source.Type concrete with
+                        match NativeSpecialization.unifyInstantiation source.Type concrete with
                         | Ok value -> value
                         | Error error -> fail "FSB4007" $"Cannot specialize declaration '{source.Name}': {error}" span
-                    if GoSpecialization.containsVariable source.Type && GoSpecialization.effect source.Value = GoSpecialization.Observable && not isBottom then
+                    if NativeSpecialization.containsVariable source.Type && NativeSpecialization.effect source.Value = NativeSpecialization.Observable && not isBottom then
                         fail "FSB4008" $"Generalized binding '{source.Name}' has observable initialization and cannot be cloned safely." source.Span
                     let replacement = freshSymbol state
                     state.DeclarationKeys.Add(key, replacement)
@@ -302,14 +302,14 @@ module GoMonomorphization =
                     | _ -> false
                 let representationInsensitive =
                     match expression.Node with
-                    | Lir.Operation(Lir.StructuralEqual, values) -> values |> List.exists (_.Type >> GoSpecialization.containsVariable)
+                    | Lir.Operation(Lir.StructuralEqual, values) -> values |> List.exists (_.Type >> NativeSpecialization.containsVariable)
                     | Lir.CallClosure _ | Lir.TailCallClosure _ ->
                         match rootDeclarationName expression with
                         | Some("Option.isNone" | "Option.isSome" | "Map.count") -> true
                         | _ -> isBottom expression
                     | _ -> isBottom expression
                 let rec expressionVariables (value: Lir.Expression) =
-                    let own = Types.ftvType (GoSpecialization.apply substitution value.Type)
+                    let own = Types.ftvType (NativeSpecialization.apply substitution value.Type)
                     let children =
                         match value.Node with
                         | Lir.CallClosure(left, right) | Lir.PipeClosure(left, right)
@@ -335,24 +335,24 @@ module GoMonomorphization =
                         |> Set.fold (fun current variable -> Map.add variable TUnit current) substitution
                     else substitution
                 let rec resolvedType (value: Lir.Expression) =
-                    let applied = GoSpecialization.apply effectiveSubstitution value.Type
+                    let applied = NativeSpecialization.apply effectiveSubstitution value.Type
                     match value.Node with
                     | Lir.Load id when not (state.Declarations.ContainsKey id) ->
                         match environment |> Map.tryFind id |> Option.map (Map.toList >> List.map snd) with
                         | Some bindings when bindings |> List.exists (fun (boundType, _) -> boundType = applied) -> applied
                         | Some [ (capturedType, _) ] -> capturedType
                         | _ -> applied
-                    | Lir.Cons(_, tail) when GoSpecialization.containsVariable applied -> resolvedType tail
-                    | Lir.List(first :: _) when GoSpecialization.containsVariable applied -> TList(resolvedType first)
-                    | Lir.SomeValue item when GoSpecialization.containsVariable applied -> TOption(resolvedType item)
-                    | Lir.Tuple items when GoSpecialization.containsVariable applied -> TTuple(List.map resolvedType items)
+                    | Lir.Cons(_, tail) when NativeSpecialization.containsVariable applied -> resolvedType tail
+                    | Lir.List(first :: _) when NativeSpecialization.containsVariable applied -> TList(resolvedType first)
+                    | Lir.SomeValue item when NativeSpecialization.containsVariable applied -> TOption(resolvedType item)
+                    | Lir.Tuple items when NativeSpecialization.containsVariable applied -> TTuple(List.map resolvedType items)
                     | _ -> applied
                 let concreteType = resolvedType expression
                 let recurse = transform effectiveSubstitution environment
                 let recurseInAs scoped expected (value: Lir.Expression) =
-                    let template = GoSpecialization.apply effectiveSubstitution value.Type
+                    let template = NativeSpecialization.apply effectiveSubstitution value.Type
                     let contextual =
-                        match GoSpecialization.unifyInstantiation template expected with
+                        match NativeSpecialization.unifyInstantiation template expected with
                         | Ok extra -> mergeSubstitution effectiveSubstitution extra
                         | Error _ -> effectiveSubstitution
                     transform contextual scoped value
@@ -361,7 +361,7 @@ module GoMonomorphization =
                     match expression.Node with
                     | Lir.Load id when state.Declarations.ContainsKey id ->
                         let declaration = state.Declarations.[id]
-                        let requestedType = if GoSpecialization.containsVariable declaration.Type then concreteType else declaration.Type
+                        let requestedType = if NativeSpecialization.containsVariable declaration.Type then concreteType else declaration.Type
                         Lir.Load(requestDeclaration id requestedType expression.Span)
                     | Lir.Load id -> Lir.Load(lookup expression.Span id (closedType expression.Span concreteType) environment)
                     | Lir.MakeClosure(functionId, _) ->
@@ -414,14 +414,14 @@ module GoMonomorphization =
                     | Lir.Tuple values ->
                         let itemTypes = match concreteType with TTuple items -> items | _ -> List.map (fun (value: Lir.Expression) -> value.Type) values
                         Lir.Tuple(List.map2 (fun itemType (value: Lir.Expression) ->
-                            let valueType = GoSpecialization.apply substitution value.Type
-                            let inferred = match GoSpecialization.unifyInstantiation valueType itemType with Ok extra -> mergeSubstitution effectiveSubstitution extra | Error _ -> effectiveSubstitution
+                            let valueType = NativeSpecialization.apply substitution value.Type
+                            let inferred = match NativeSpecialization.unifyInstantiation valueType itemType with Ok extra -> mergeSubstitution effectiveSubstitution extra | Error _ -> effectiveSubstitution
                             transform inferred environment value) itemTypes values)
                     | Lir.List values ->
                         let itemType = match concreteType with TList item -> item | _ -> TVar -1
                         Lir.List(values |> List.map (fun (value: Lir.Expression) ->
-                            let valueType = GoSpecialization.apply substitution value.Type
-                            let inferred = match GoSpecialization.unifyInstantiation valueType itemType with Ok extra -> mergeSubstitution effectiveSubstitution extra | Error _ -> effectiveSubstitution
+                            let valueType = NativeSpecialization.apply substitution value.Type
+                            let inferred = match NativeSpecialization.unifyInstantiation valueType itemType with Ok extra -> mergeSubstitution effectiveSubstitution extra | Error _ -> effectiveSubstitution
                             transform inferred environment value))
                     | Lir.Record fields -> Lir.Record(fields |> List.map (fun (name, value) -> name, recurse value))
                     | Lir.FieldGet(target, name) -> Lir.FieldGet(recurse target, name)
@@ -429,21 +429,21 @@ module GoMonomorphization =
                     | Lir.Cons(head, tail) -> Lir.Cons(recurse head, recurse tail)
                     | Lir.Append(left, right) -> Lir.Append(recurse left, recurse right)
                     | Lir.Let(id, name, recursive, binding, body) ->
-                        let bindingType = GoSpecialization.apply effectiveSubstitution binding.Type
-                        if GoSpecialization.containsVariable bindingType then
+                        let bindingType = NativeSpecialization.apply effectiveSubstitution binding.Type
+                        if NativeSpecialization.containsVariable bindingType then
                             let uses = collectLoads id effectiveSubstitution body
                             if uses.IsEmpty then
-                                if GoSpecialization.effect binding = GoSpecialization.Observable then
+                                if NativeSpecialization.effect binding = NativeSpecialization.Observable then
                                     fail "FSB4008" $"Generalized local binding '{name}' has observable initialization and cannot be omitted." binding.Span
                                 (transform effectiveSubstitution environment body).Node
                             else
-                                if GoSpecialization.effect binding = GoSpecialization.Observable then
+                                if NativeSpecialization.effect binding = NativeSpecialization.Observable then
                                     fail "FSB4008" $"Generalized local binding '{name}' has observable initialization and cannot be cloned safely." binding.Span
                                 let mutable scoped = environment
                                 let clones =
                                     uses |> List.map (fun useType ->
                                         let inferred =
-                                            match GoSpecialization.unifyInstantiation bindingType useType with
+                                            match NativeSpecialization.unifyInstantiation bindingType useType with
                                             | Ok value -> mergeSubstitution effectiveSubstitution value
                                             | Error error -> fail "FSB4007" $"Cannot specialize local binding '{name}': {error}" binding.Span
                                         let replacement = freshSymbol state
@@ -457,8 +457,8 @@ module GoMonomorphization =
                             let scoped = bind id bindingType replacement environment
                             Lir.Let(replacement, name, recursive, transform effectiveSubstitution (if recursive then scoped else environment) binding, recurseInAs scoped concreteType body)
                     | Lir.LetRecursiveGroup(bindings, body) ->
-                        let concreteBindings = bindings |> List.map (fun (id, name, valueType, value) -> id, name, GoSpecialization.apply effectiveSubstitution valueType, value)
-                        if concreteBindings |> List.exists (fun (_, _, valueType, _) -> GoSpecialization.containsVariable valueType) then
+                        let concreteBindings = bindings |> List.map (fun (id, name, valueType, value) -> id, name, NativeSpecialization.apply effectiveSubstitution valueType, value)
+                        if concreteBindings |> List.exists (fun (_, _, valueType, _) -> NativeSpecialization.containsVariable valueType) then
                             fail "FSB4007" "A reachable local recursive group remains polymorphic after specialization." expression.Span
                         let replacements = concreteBindings |> List.map (fun (id, _, valueType, _) -> id, valueType, freshSymbol state)
                         let scoped = replacements |> List.fold (fun current (id, valueType, replacement) -> bind id valueType replacement current) environment
@@ -476,16 +476,16 @@ module GoMonomorphization =
                         Lir.DecisionTree(recurse target, transformedCases)
                     | Lir.Range(first, last) -> Lir.Range(recurse first, recurse last)
                     | Lir.RecordUpdate(target, fields) -> Lir.RecordUpdate(recurse target, fields |> List.map (fun (name, value) -> name, recurse value))
-                    | Lir.RecordConvert(target, targetType) -> Lir.RecordConvert(recurse target, GoSpecialization.apply effectiveSubstitution targetType)
+                    | Lir.RecordConvert(target, targetType) -> Lir.RecordConvert(recurse target, NativeSpecialization.apply effectiveSubstitution targetType)
                     | Lir.IndexGet(target, index) -> Lir.IndexGet(recurse target, recurse index)
                     | Lir.Interpolate parts -> Lir.Interpolate(parts |> List.map (function Lir.TextPart text -> Lir.TextPart text | Lir.ValuePart value -> Lir.ValuePart(recurse value)))
                     | Lir.UnionCase(typeName, caseName, payload) -> Lir.UnionCase(typeName, caseName, Option.map recurse payload)
                     | Lir.Map entries -> Lir.Map(entries |> List.map (function Lir.KeyValue(key, value) -> Lir.KeyValue(recurse key, recurse value) | Lir.Spread value -> Lir.Spread(recurse value)))
                     | Lir.ForEach(id, name, itemType, source, body) ->
-                        let concreteItem = GoSpecialization.apply effectiveSubstitution itemType |> closedType expression.Span
+                        let concreteItem = NativeSpecialization.apply effectiveSubstitution itemType |> closedType expression.Span
                         let replacement = freshSymbol state
                         Lir.ForEach(replacement, name, concreteItem, recurse source, transform effectiveSubstitution (bind id concreteItem replacement environment) body)
-                    | Lir.TypeToken valueType -> Lir.TypeToken(GoSpecialization.apply effectiveSubstitution valueType)
+                    | Lir.TypeToken valueType -> Lir.TypeToken(NativeSpecialization.apply effectiveSubstitution valueType)
                     | value -> value
                 let resultType =
                     match node with
@@ -499,7 +499,7 @@ module GoMonomorphization =
                 { expression with Type = resultType; Node = node }
 
             for declaration in program.Declarations do
-                if GoSpecialization.effect declaration.Value = GoSpecialization.Observable && not (GoSpecialization.containsVariable declaration.Type) then
+                if NativeSpecialization.effect declaration.Value = NativeSpecialization.Observable && not (NativeSpecialization.containsVariable declaration.Type) then
                     requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
             let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
             Ok

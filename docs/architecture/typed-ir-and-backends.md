@@ -48,7 +48,7 @@ Fully saturated intrinsic applications bypass their curried declaration carriers
 
 Immutable list append and cons trees are flattened into ordered builder pieces. Each source expression is evaluated exactly once from left to right, the final capacity is computed from the captured pieces, and one result slice is allocated before appending items and segments.
 
-After monomorphization, a backend-private optimization pass computes conservative effects over the closed function graph. It beta-reduces small literal closures, propagates constants, symbol aliases, and direct projections, removes unused pure calls, refreshes closure captures, and repeats declaration/function reachability. Unknown callbacks, failures, imports, and I/O remain observable.
+`NativeSpecialization`, `LirMonomorphization`, and `LirSimplification` live in `FScript.Compiler` and are shared by source and assembly backends. After monomorphization, simplification computes conservative effects over the closed function graph. It beta-reduces small literal closures, propagates constants, symbol aliases, and direct projections, removes unused pure calls, refreshes closure captures, and repeats declaration/function reachability. Unknown callbacks, failures, imports, and I/O remain observable.
 
 Generated projects contain only the typed program package and its entry point. The former erased runtime templates, universal closure dispatch, dynamic aggregate casts, reflection-oriented carriers, and generic pattern matcher are not embedded or emitted.
 
@@ -126,6 +126,8 @@ Unused pure generalized declarations may be omitted. Observable monomorphic top-
 Compiler bindings classify names as portable intrinsics, backend runtime primitives, target imports, or unsupported host externs. This metadata is distinct from executable .NET `ExternalFunction` implementations.
 
 The compiler accepts the same `ExtensionRegistration` as the frontend through `Compiler.compileWithRegistration`. Registered structural and host-managed types and union declarations retain deterministic IDs, nominal identity, field types, and constructor metadata in resolved trees, HIR, LIR, and artifacts. Opaque runtime payloads and executable callbacks are never serialized. Host callbacks require a backend binding for source or assembly generation; Go rejects reachable .NET FFI imports.
+
+`ClrBindings.bindMethod` links an external declaration to an exact public CLR method or constructor. Instance receivers are explicit first arguments. `ClrBindings.bindType` associates a nominal external type with its assembly-qualified CLR type. Both use the existing target-import linkage and survive artifact serialization; no reflection objects or runtime payloads enter IR. Go reports `FSB4010` for CLR method imports.
 
 `CompileInput.Externs` contains `CompilerExtern` descriptors only: name, normalized scheme, arity, and `CompilerExternKind`. Compilation creates private no-op inference shims because the language inference API still consumes `ExternalFunction`, but no executable delegate enters HIR, LIR, artifacts, the interpreter assembly, or a backend assembly.
 

@@ -1,7 +1,7 @@
 namespace FScript.Compiler
 
 /// Backend-private simplification over the closed, monomorphized LIR program.
-module GoOptimization =
+module LirSimplification =
     type private Effect = Pure | Observable
 
     let private combine values = if List.contains Observable values then Observable else Pure

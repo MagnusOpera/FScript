@@ -4,7 +4,7 @@ open FScript.Language
 
 /// Closed storage shapes consumed by the Go source emitter. This is deliberately
 /// backend-private in purpose even though its helpers are visible to the test assembly.
-module GoSpecialization =
+module NativeSpecialization =
     let private map2 mapper left right =
         match left, right with
         | Ok leftValue, Ok rightValue -> Ok(mapper leftValue rightValue)

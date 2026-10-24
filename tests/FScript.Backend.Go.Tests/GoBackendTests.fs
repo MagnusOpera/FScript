@@ -27,15 +27,15 @@ type GoBackendTests() =
     member _.``Go specialization closes HM instantiations deterministically`` () =
         let template = TFun(TVar 0, TFun(TList(TVar 0), TList(TVar 0)))
         let concrete = TFun(TInt, TFun(TList TInt, TList TInt))
-        match GoSpecialization.unifyInstantiation template concrete with
+        match NativeSpecialization.unifyInstantiation template concrete with
         | Error error -> Assert.Fail(error)
         | Ok substitution ->
-            Assert.That(GoSpecialization.apply substitution template, Is.EqualTo(concrete))
-            Assert.That(GoSpecialization.specializationKey 7 concrete, Is.EqualTo(GoSpecialization.specializationKey 7 concrete))
+            Assert.That(NativeSpecialization.apply substitution template, Is.EqualTo(concrete))
+            Assert.That(NativeSpecialization.specializationKey 7 concrete, Is.EqualTo(NativeSpecialization.specializationKey 7 concrete))
 
     [<Test>]
     member _.``Go representations reject residual open types`` () =
-        match GoSpecialization.tryRepresentation [] (TList(TVar 0)) with
+        match NativeSpecialization.tryRepresentation [] (TList(TVar 0)) with
         | Ok _ -> Assert.Fail("Expected an open-representation error")
         | Error error -> Assert.That(error, Does.Contain("Open type variable"))
 
@@ -67,12 +67,12 @@ type GoBackendTests() =
             match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
-        match GoMonomorphization.specialize compiled.Lir with
+        match LirMonomorphization.specialize compiled.Lir with
         | Error diagnostics -> Assert.Fail(String.Join("; ", diagnostics |> List.map _.Message))
         | Ok specialized ->
             Assert.That(specialized.Declarations |> List.exists (fun item -> item.Name = "quicksort" && item.Type = TFun(TList TInt, TList TInt)), Is.True)
-            Assert.That(specialized.Declarations |> List.forall (fun item -> not (GoSpecialization.containsVariable item.Type)), Is.True)
-            Assert.That(specialized.Functions |> List.forall (fun item -> not (GoSpecialization.containsVariable item.ParameterType) && not (GoSpecialization.containsVariable item.ReturnType)), Is.True)
+            Assert.That(specialized.Declarations |> List.forall (fun item -> not (NativeSpecialization.containsVariable item.Type)), Is.True)
+            Assert.That(specialized.Functions |> List.forall (fun item -> not (NativeSpecialization.containsVariable item.ParameterType) && not (NativeSpecialization.containsVariable item.ReturnType)), Is.True)
 
     [<Test>]
     member _.``Go specialization uses concrete curry and bottom context`` () =
@@ -394,7 +394,7 @@ type GoBackendTests() =
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         let specialized =
-            match GoMonomorphization.specialize compiled.Lir with
+            match LirMonomorphization.specialize compiled.Lir with
             | Ok value -> value
             | Error diagnostics -> failwith (String.Join("; ", diagnostics |> List.map _.Message))
         Assert.That(TypedGoEmitter.canEmit specialized, Is.True, Lir.format specialized)

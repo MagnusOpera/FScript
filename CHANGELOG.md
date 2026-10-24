@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Shared whole-program specialization and simplification across compiled backends and added serializable exact CLR method/type bindings.
+
 - Integrated the current FFI frontend and host type metadata with compiler IR while retaining Go compilation for portable scripts.
 
 - Removed unreachable Go range branches when both bounds are compile-time integer constants.

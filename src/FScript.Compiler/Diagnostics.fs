@@ -7,6 +7,8 @@ type DiagnosticStage =
     | Lowering
     | Interpreter
     | GoGeneration
+    | CSharpGeneration
+    | DotNetGeneration
     | Artifact
 
 type CompilerDiagnostic =
@@ -19,6 +21,8 @@ type CompilerExternKind =
     | RuntimeContextIntrinsic
     | PortableRuntimeIntrinsic
     | UnsupportedHostExtern
+
+type GeneratedFile = { RelativePath: string; Content: string }
 
 type CompilerExtern =
     { Name: string

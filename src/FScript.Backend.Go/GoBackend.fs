@@ -4,7 +4,6 @@ open System
 open FScript.Language
 
 type GoOptions = { ModuleName: string }
-type GeneratedFile = { RelativePath: string; Content: string }
 
 module GoBackend =
     let private diagnostic code message span =
@@ -60,10 +59,10 @@ module GoBackend =
             let declaration = clrImport.Value
             Error [ diagnostic "FSB4010" $".NET FFI binding '{declaration.Name}' cannot be emitted by the Go backend." (Some declaration.Span) ]
         | Ok validated ->
-            match GoMonomorphization.specialize validated with
+            match LirMonomorphization.specialize validated with
             | Error diagnostics -> Error diagnostics
             | Ok specialized when TypedGoEmitter.canEmit specialized ->
-                match specialized |> GoOptimization.optimize |> LirValidation.validate with
+                match specialized |> LirSimplification.optimize |> LirValidation.validate with
                 | Error diagnostics -> Error diagnostics
                 | Ok optimized ->
                     try
