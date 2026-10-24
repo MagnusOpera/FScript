@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added C# source and standalone .NET assembly compilation with typed functions, collections, pattern matching, tasks, and direct CLR interop.
+
 - Shared whole-program specialization and simplification across compiled backends and added serializable exact CLR method/type bindings.
 
 - Integrated the current FFI frontend and host type metadata with compiler IR while retaining Go compilation for portable scripts.

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup><Compile Include="DotNetBackend.fs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../FScript.Backend.CSharp/FScript.Backend.CSharp.fsproj" /></ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+</Project>

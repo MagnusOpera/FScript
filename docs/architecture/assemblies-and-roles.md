@@ -179,6 +179,7 @@ Use this when:
 - `FScript.Language` has no dependency on `FScript.Runtime`.
 - `FScript.Compiler` depends only on `FScript.Language`.
 - `FScript.Interpreter.Lir` and `FScript.Backend.Go` each depend on `FScript.Compiler`.
+- `FScript.Backend.CSharp` depends on `FScript.Compiler`; `FScript.Backend.DotNet` uses that emitter and Roslyn to produce PE assemblies.
 - `FScript.JavaScript` depends on `FScript.Language` and Fable packages.
 - `FScript.Runtime` depends on `FScript.Language` types.
 - `FScript.CSharpInterop` depends on both `FScript.Language` and `FScript.Runtime`.

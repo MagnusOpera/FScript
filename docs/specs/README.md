@@ -7,6 +7,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 - Compiler semantic baseline: [`compiler-semantics-baseline.md`](./compiler-semantics-baseline.md)
 - Typed high-level IR (HIR): [`typed-hir.md`](./typed-hir.md)
 - Executable low-level IR (LIR): [`executable-lir.md`](./executable-lir.md)
+- C# and .NET compilation: [`dotnet-backends.md`](./dotnet-backends.md)
 - Syntax and indentation: [`syntax-and-indentation.md`](./syntax-and-indentation.md)
 - Supported types: [`supported-types.md`](./supported-types.md)
 - Function annotations: [`function-annotations.md`](./function-annotations.md)

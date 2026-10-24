@@ -30,7 +30,7 @@ let removeStaleGoModuleFiles (root: string) (files: FScript.Compiler.GeneratedFi
 
 let runCompileCommand (argv: string array) =
     let usage () =
-        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go> --output <directory>")
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|go|csharp|dotnet> --output <directory> [--reference <assembly.dll>]")
         1
     if argv.Length < 2 then usage ()
     else
@@ -41,12 +41,13 @@ let runCompileCommand (argv: string array) =
         match tryOption "--target", tryOption "--output" with
         | Some target, Some output when File.Exists scriptPath ->
             let normalizedTarget = target.ToLowerInvariant()
-            if normalizedTarget <> "ir" && normalizedTarget <> "go" then usage ()
+            if not (List.contains normalizedTarget ["ir"; "go"; "csharp"; "dotnet"]) then usage ()
             else
                 try
                     let outputDirectory = Path.GetFullPath(output)
                     let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
+                    let references = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value="--reference" && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
                     match FScript.Compiler.Compiler.compile { Program = program; Externs = [] } with
                     | Error diagnostics ->
                         diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
@@ -70,6 +71,23 @@ let runCompileCommand (argv: string array) =
                             | Ok files ->
                                 removeStaleGoModuleFiles outputDirectory files
                                 files |> List.iter (writeGeneratedFile outputDirectory)
+                                0
+                        | "csharp" ->
+                            match FScript.Compiler.CSharpBackend.generate {Namespace="FScript.Generated"; ClassName="Program"; References=references} compiled.Lir with
+                            | Error diagnostics ->
+                                diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
+                                4
+                            | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                        | "dotnet" ->
+                            let options: FScript.Compiler.DotNetOptions =
+                                { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
+                                  OutputKind=FScript.Compiler.ConsoleApplication; References=references }
+                            match FScript.Compiler.DotNetBackend.generate options compiled.Lir with
+                            | Error diagnostics ->
+                                diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
+                                4
+                            | Ok files ->
+                                for file in files do File.WriteAllBytes(Path.Combine(outputDirectory,file.RelativePath),file.Content)
                                 0
                         | _ -> usage ()
                 with
