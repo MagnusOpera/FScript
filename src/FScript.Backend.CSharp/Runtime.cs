@@ -78,7 +78,7 @@ internal static class FsRuntime
     public static OrderedMap<K,V> MapOfArray<K,V>((K,V)[] values) { var result=new OrderedMap<K,V>(); foreach(var e in values) result=result.Add(e.Item1,e.Item2); return result; }
     public static Option<string[]> MatchGroups(string pattern, string value)
     {
-        try { var match=System.Text.RegularExpressions.Regex.Match(value,pattern); return match.Success ? Option<string[]>.Some(match.Groups.Cast<System.Text.RegularExpressions.Group>().Select(g=>g.Value).ToArray()) : default; } catch { return default; }
+        try { var match=System.Text.RegularExpressions.Regex.Match(value,pattern); return match.Success ? Option<string[]>.Some(match.Groups.Cast<System.Text.RegularExpressions.Group>().Skip(1).Select(g=>g.Value).ToArray()) : default; } catch { return default; }
     }
     public static Option<string[]> QueryXml(string xpath, string text) => Try(() => System.Xml.XPath.Extensions.XPathSelectElements(System.Xml.Linq.XDocument.Parse(text),xpath).Select(e=>e.Value).ToArray());
     public static string FloatText(double value)

@@ -534,7 +534,7 @@ module LirValidation =
                         | Lir.ListHead, TList item -> Some item
                         | Lir.ListTail, TList _ -> Some current
                         | Lir.TupleItem index, TTuple items when index >= 0 && index < items.Length -> Some items.[index]
-                        | Lir.RecordField name, TRecord fields -> Map.tryFind name fields
+                        | Lir.RecordField name, (TRecord fields | THostManaged(_,fields)) -> Map.tryFind name fields
                         | Lir.OptionValue, TOption item -> Some item
                         | Lir.UnionPayload, TUnion(_, cases) ->
                             checks
@@ -555,7 +555,7 @@ module LirValidation =
                     | Lir.LiteralCheck(projection, value) -> require projection (compatible (literalType value)) "LIR literal plan has an inconsistent projection type."
                     | Lir.EmptyListCheck projection | Lir.NonEmptyListCheck projection -> require projection (function TList _ -> true | _ -> false) "LIR list plan requires a list projection."
                     | Lir.TupleArityCheck(projection, arity) -> require projection (function TTuple items -> items.Length = arity | _ -> false) "LIR tuple plan has an inconsistent arity."
-                    | Lir.RecordFieldCheck(projection, name) -> require projection (function TRecord fields -> Map.containsKey name fields | _ -> false) $"LIR record plan references unknown field '{name}'."
+                    | Lir.RecordFieldCheck(projection, name) -> require projection (function TRecord fields | THostManaged(_,fields) -> Map.containsKey name fields | _ -> false) $"LIR record plan references unknown field '{name}'."
                     | Lir.SomeCheck projection | Lir.NoneCheck projection -> require projection (function TOption _ -> true | _ -> false) "LIR option plan requires an option projection."
                     | Lir.UnionCaseCheck(projection, typeName, caseName, hasPayload) ->
                         require projection (function TUnion(actual, cases) when actual = typeName -> Map.tryFind caseName cases |> Option.exists (fun payload -> payload.IsSome = hasPayload) | _ -> false) "LIR union plan has inconsistent case metadata."
@@ -587,7 +587,8 @@ module LirValidation =
                 | Lir.Load id when not (Set.contains id locals || Set.contains id declared) -> report "FSL2005" (sprintf "LIR reference %%%d is unresolved." (Lir.symbolNumber id)) expression.Span
                 | Lir.MakeClosure(functionId, captures) ->
                     if captures |> List.exists (fun id -> not (Set.contains id locals || Set.contains id declared)) then
-                        report "FSL2005" "LIR closure contains an unresolved capture." expression.Span
+                        let missing=captures |> List.filter (fun id -> not (Set.contains id locals || Set.contains id declared)) |> List.map Lir.symbolNumber
+                        report "FSL2005" $"LIR closure {Lir.functionNumber functionId} contains unresolved captures {missing} at {expression.Span.Start.File}:{expression.Span.Start.Line}." expression.Span
                     match Map.tryFind functionId functions with
                     | None -> report "FSL2014" "LIR closure references an unknown lifted function." expression.Span
                     | Some fn ->
@@ -713,6 +714,7 @@ module LirOptimization =
         let child = loadedSymbols
         match expression.Node with
         | Lir.Load id -> Set.singleton id
+        | Lir.MakeClosure(_, captures) -> Set.ofList captures
         | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
         | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn)
         | Lir.Cons(fn, argument)
@@ -732,7 +734,7 @@ module LirOptimization =
         | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Set.empty
         | Lir.Map entries -> entries |> List.map (function Lir.KeyValue(key, value) -> Set.union (child key) (child value) | Lir.Spread value -> child value) |> Set.unionMany
         | Lir.ForEach(_, _, _, source, body) -> Set.union (child source) (child body)
-        | Lir.Constant _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _
+        | Lir.Constant _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _
         | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Set.empty
 
     let rec private simplify (expression: Lir.Expression) =
@@ -869,12 +871,12 @@ module LirOptimization =
 
     let optimize (program: Lir.Program) =
         let simplifiedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = fn.Body |> simplify |> markTailCalls true })
-        let captureMap =
-            simplifiedFunctions
-            |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber))
-            |> Map.ofList
         let identityFunctionMap = simplifiedFunctions |> List.map (fun fn -> fn.Id, fn.Id) |> Map.ofList
-        let functions = simplifiedFunctions |> List.map (fun fn -> { fn with Captures = captureMap.[fn.Id]; Body = rewriteClosures identityFunctionMap captureMap fn.Body })
+        let rec stabilizeCaptures (functions: Lir.Function list) =
+            let captureMap = functions |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber)) |> Map.ofList
+            let updated = functions |> List.map (fun fn -> { fn with Captures = captureMap.[fn.Id]; Body = rewriteClosures identityFunctionMap captureMap fn.Body })
+            if updated = functions then updated,captureMap else stabilizeCaptures updated
+        let functions,captureMap = stabilizeCaptures simplifiedFunctions
         let declarations = program.Declarations |> List.map (fun declaration -> { declaration with Value = declaration.Value |> simplify |> rewriteClosures identityFunctionMap captureMap })
         let entry = program.Entry |> Option.map (simplify >> rewriteClosures identityFunctionMap captureMap)
         let declarationMap = declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList

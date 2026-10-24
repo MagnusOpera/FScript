@@ -10,12 +10,14 @@ open FScript.Language
 type LoadedEnvironment =
     { Registration: ExtensionRegistration
       AssemblyPaths: string list
+      ProviderMethods: (string list * MethodInfo) list
       Packages: ResolvedExtensionPackage list }
 
 module EnvironmentLoader =
     let private loadCore
         (settings: EnvironmentSettings)
         : Result<LoadedEnvironment, string> =
+        let collectedProviderMethods = ResizeArray<string list * MethodInfo>()
         let context : HostContext = { RootDirectory = settings.RootDirectory; DeniedPathGlobs = [] }
         let defaultSources =
             if not settings.DefaultExterns then
@@ -112,9 +114,11 @@ module EnvironmentLoader =
                                                     else
                                                         match rawProvided with
                                                         | :? (FScript.Extensibility.ExternalFunction list) as provided ->
+                                                            collectedProviderMethods.Add((provided |> List.map _.Name),providerMethod)
                                                             let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
                                                             collectProviders tail ((sourceName, FScript.Extensibility.HostInterop.ofExterns provided |> ExtensionBridge.toLanguageRegistration) :: acc)
                                                         | :? FScript.Extensibility.ExtensionRegistration as provided ->
+                                                            collectedProviderMethods.Add((provided.Functions |> List.map _.Name),providerMethod)
                                                             let sourceName = $"{Path.GetFileName(assemblyPath)}:{declaringType.FullName}.{providerMethod.Name}"
                                                             collectProviders tail ((sourceName, ExtensionBridge.toLanguageRegistration provided) :: acc)
                                                         | _ ->
@@ -194,6 +198,7 @@ module EnvironmentLoader =
                         HostInterop.typeDefinitions registration [] |> ignore
                         Ok { Registration = registration
                              AssemblyPaths = (uniqueAssemblyPaths @ packageEnvironment.AssemblyPaths) |> List.distinct
+                             ProviderMethods = collectedProviderMethods |> Seq.toList
                              Packages = packageEnvironment.Packages }
                     with EvalException error -> Error error.Message
                 else

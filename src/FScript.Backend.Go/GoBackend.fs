@@ -52,7 +52,7 @@ module GoBackend =
 
     let generate options (program: Lir.Program) : Result<GeneratedFile list, CompilerDiagnostic list> =
         let clrImport = program.Declarations |> List.tryFind (fun declaration ->
-            match declaration.Value.Node with Lir.TargetImport(path, _) -> path.StartsWith("clr:", StringComparison.Ordinal) | _ -> false)
+            match declaration.Value.Node with Lir.TargetImport(path, _) -> path.StartsWith("clr:", StringComparison.Ordinal) || path.StartsWith("clr-sdk:", StringComparison.Ordinal) | _ -> false)
         match LirValidation.validate program with
         | Error diagnostics -> Error diagnostics
         | Ok _ when clrImport.IsSome ->

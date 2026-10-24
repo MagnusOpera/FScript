@@ -23,6 +23,7 @@ module DotNetBackend =
 
     let generate (options: DotNetOptions) (program: Lir.Program) =
         try
+            let options={options with References=ClrBindings.referenceClosure options.References}
             if String.IsNullOrWhiteSpace options.AssemblyName || options.AssemblyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || options.AssemblyName.Contains('/') || options.AssemblyName.Contains('\\') then
                 Error [diagnostic "FSN7001" "AssemblyName must be a nonempty file name without path separators."]
             else

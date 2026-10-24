@@ -11,7 +11,7 @@ Both backends share `LirMonomorphization` and `LirSimplification` with Go. Reach
 - `ClrBindings.bindMethod : string -> MethodBase -> Lir.Program -> Lir.Program`
 - `ClrBindings.bindType : string -> System.Type -> Lir.Program -> Lir.Program`
 
-CLR linkage is serializable. Exact public overloads, instance receivers, and constructors are explicit. Native type projections use their actual CLR type. Unknown callbacks without a binding fail generation; no interpreter callback is invoked by generated code. Go rejects CLR function imports with `FSB4010`.
+CLR linkage is serializable. Exact public overloads, instance receivers, and constructors are explicit. Native type projections use their actual CLR type. Existing extension providers use `ClrBindings.bindProvider`: generated typed adapters marshal values through `FScript.Extensibility`, invoke the provider directly, and service compiled callbacks and tasks through `ExternalCallContext`. Opaque values retain their SDK payload and immutable field snapshots. Providers taking `HostContext` receive the process working directory and compiled default functions. The CLI preserves provider metadata from environment loading rather than executing provider factories twice during compilation. No interpreter or ScriptHost participates in generated execution. Go rejects CLR function imports with `FSB4010`.
 
 ## Representation and execution
 
@@ -24,3 +24,5 @@ Match targets are evaluated once. Typed checks/projections, repeated bindings, g
 C# output includes `Program.cs`, `Runtime.cs`, and `Program.csproj`. .NET output includes the assembly and, for console applications, a runtime configuration. External assembly references are explicit. Source generation does not invoke an installed compiler. Assembly generation uses Roslyn in-process with release optimization, deterministic output, unsafe code disabled, and nullable checks enabled. Compiler errors and warnings prevent publication of an output assembly.
 
 Tests load emitted assemblies, JIT every closed generated method, execute representative semantic programs and CLR calls, and build generated C# as an independent project. This checks valid IL and execution behavior without relying on FScript hosting.
+
+SDK programs additionally include `RuntimeSDK.cs` and explicit references to the extension SDK and FSharp.Core. Colocated managed dependencies are resolved transitively and copied beside emitted assemblies. Generated programs never load the source file or a serialized IR at runtime. The headless graphics sample exercises opaque graphics resources, geometry values, and callback invocation entirely through compiled code.

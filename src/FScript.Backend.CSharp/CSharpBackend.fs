@@ -17,6 +17,10 @@ module CSharpBackend =
     let private comma = ", "
     let private space = " "
     let private itemCode = "item"
+    let private aCode = "a"
+    let private bCode = "b"
+    let private valueCode = "value"
+    let private stringCode = "string"
     let private valueMember code = code + ".Value"
     exception private Failure of CompilerDiagnostic
     let private fail code message span =
@@ -40,6 +44,7 @@ module CSharpBackend =
         render value
 
     let private emit options (program: Lir.Program) =
+        let hasSdk = program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)
         let definitions = program.Types |> List.map (fun d -> d.Name, d.Definition) |> Map.ofList
         let imports = program.ImportedRecords |> List.map (fun d -> d.Name, d) |> Map.ofList
         let nativeTypes =
@@ -61,6 +66,7 @@ module CSharpBackend =
             | TNamed name | THostManaged(name, _) ->
                 match nativeTypes.TryFind name with
                 | Some value -> typeName value
+                | None when hasSdk && (match definitions.TryFind name with Some(THostManaged _) -> true | _ -> false) -> "global::FScript.Extensibility.HostManagedValue"
                 | None when (match definitions.TryFind name with Some(THostManaged _) -> true | _ -> false) ->
                     fail "FSC6003" $"Host-managed type '{name}' requires ClrBindings.bindType." None
                 | None -> ident name
@@ -156,17 +162,56 @@ module CSharpBackend =
             | Lir.String value -> quote value
         let eqName t = "Equal_" + hash t
         let fmtName t = "Format_" + hash t
+        let encName t = "Encode_" + hash t
+        let decName t = "Decode_" + hash t
+        let rec sdkType t =
+            let st="global::FScript.Extensibility.ScriptType"
+            let unary name item = $"{st}.New{name}({sdkType item})"
+            match t with
+            | TUnit -> st+".TUnit" | TInt -> st+".TInt" | TFloat -> st+".TFloat" | TBool -> st+".TBool" | TString -> st+".TString" | TTypeToken -> st+".TTypeToken"
+            | TVar id -> $"{st}.NewTVar({id})" | TNumeric id -> $"{st}.NewTNumeric({id})"
+            | TNamed name -> $"{st}.NewTNamed({quote name})"
+            | TList item -> unary "TList" item | TOption item -> unary "TOption" item | TTask item -> unary "TTask" item
+            | TFun(a,b) -> $"{st}.NewTFun({sdkType a},{sdkType b})" | TMap(a,b) -> $"{st}.NewTMap({sdkType a},{sdkType b})"
+            | TTuple items ->
+                let values=items |> List.map sdkType |> String.concat comma
+                $"{st}.NewTTuple(global::Microsoft.FSharp.Collections.ListModule.OfArray(new {st}[] {{ {values} }}))"
+            | TRecord fields | THostManaged(_,fields) ->
+                let values=fields |> Map.toList |> List.map (fun (name,t) -> $"Tuple.Create({quote name}, {sdkType t})") |> String.concat comma
+                let map= $"global::Microsoft.FSharp.Collections.MapModule.OfSeq(new Tuple<string,{st}>[] {{ {values} }})"
+                match t with THostManaged(name,_) -> $"{st}.NewTHostManaged({quote name},{map})" | _ -> $"{st}.NewTRecord({map})"
+            | TUnion(name,cases) ->
+                let values=cases |> Map.toList |> List.map (fun (name,t) ->
+                    let payload=t |> Option.map (fun t -> $"global::Microsoft.FSharp.Core.FSharpOption<{st}>.Some({sdkType t})") |> Option.defaultValue "null"
+                    $"Tuple.Create<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>({quote name},{payload})") |> String.concat comma
+                $"{st}.NewTUnion({quote name},global::Microsoft.FSharp.Collections.MapModule.OfSeq(new Tuple<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>[] {{ {values} }}))"
+            | TRecordShape _ -> fail "FSC6008" "Unresolved structural witness in SDK signature." None
+        let readField target name code =
+            match resolve target with
+            | THostManaged(typeName,required) when hasSdk && not (nativeTypes.ContainsKey typeName) ->
+                $"{decName required.[name]}(({code}).Fields[{quote name}])"
+            | _ -> $"({code}).{fieldName target name}"
         let rec coerce source target code =
             if csType source = csType target then code
             else
                 match resolve source, resolve target with
                 | (TRecord _ | THostManaged _), TRecord destination ->
                     let original = fresh "converted"
-                    let args = destination |> Map.toList |> List.map (fun (name,t) -> coerce (fields source).[name] t $"{original}.{fieldName source name}") |> String.concat comma
+                    let args = destination |> Map.toList |> List.map (fun (name,t) -> coerce (fields source).[name] t (readField source name original)) |> String.concat comma
                     wrap (csType target) $"var {original} = {code}; return new {csType target}({args});"
                 | TOption a,TOption b ->
                     let original = fresh "option"
                     wrap (csType target) $"var {original} = {code}; return {original}.HasValue ? {csType target}.Some({coerce a b (valueMember original)}) : default;"
+                | TList a,TList b -> $"({code}).Select(item => {coerce a b itemCode}).ToArray()"
+                | TTuple sourceItems,TTuple targetItems when sourceItems.Length=targetItems.Length ->
+                    let original=fresh "tuple"
+                    let args=List.zip sourceItems targetItems |> List.mapi (fun i (a,b) -> coerce a b $"{original}.Item{i}") |> String.concat comma
+                    wrap (csType target) $"var {original}={code}; return new {csType target}({args});"
+                | TFun(sa,sr),TFun(ta,tr) ->
+                    let original=fresh "function"
+                    let argument=fresh "argument"
+                    let call= $"{original}.Invoke({coerce ta sa argument})"
+                    wrap (csType target) $"var {original}={code}; return ({csType ta} {argument}) => {coerce sr tr call};"
                 | _ -> code
         let rec curry current args build =
             match current with
@@ -286,11 +331,28 @@ module CSharpBackend =
                     let original = fresh "foreignOption"
                     wrap (csType semantic) $"var {original}={code}; return {original} is null ? default : {csType semantic}.Some({fromClr (native.GetGenericArguments().[0]) item (valueMember original)});"
                 | _ -> code
-        let targetImport path memberName signature span =
+        let sdkProviders = Collections.Generic.Dictionary<string,string>()
+        let targetImport (path: string) memberName signature span =
+          if path.StartsWith("clr-sdk:",StringComparison.Ordinal) then
+            let methodPath="clr:"+path.Substring(8)
+            let link=ClrBindings.tryMethodLink methodPath |> Option.defaultWith (fun () -> fail "FSC6006" "Invalid SDK provider linkage." (Some span))
+            let key=path
+            let provider=
+                match sdkProviders.TryGetValue key with
+                | true,value -> value
+                | _ ->
+                    let value=fresh "Provider"
+                    sdkProviders.Add(key,value)
+                    value
+            let rec argsOf = function TFun(a,b) -> a :: argsOf b | _ -> []
+            let argumentTypes=argsOf signature
+            curry signature [] (fun args result ->
+                let encoded=List.map2 (fun t arg -> $"{encName t}({arg})") argumentTypes args |> String.concat comma
+                $"{decName result}(SdkInterop.Invoke(SdkInterop.Find({provider}.Value, {quote memberName}), new global::FScript.Extensibility.ScriptValue[] {{ {encoded} }}))")
+          else
             match ClrBindings.tryMethodLink path with
             | None -> fail "FSC6002" $"Import '{path}.{memberName}' has no compiled CLR method binding." (Some span)
             | Some link ->
-                let link = nonNull link
                 let declaring = System.Type.GetType(link.DeclaringType, false)
                 if isNull declaring then fail "FSC6003" $"Cannot resolve CLR declaring type '{link.DeclaringType}'." (Some span)
                 let declaring = nonNull declaring
@@ -321,19 +383,23 @@ module CSharpBackend =
             let code =
                 match value.Node with
                 | Lir.Constant c -> constant c
-                | Lir.Load id -> sym id
+                | Lir.Load id -> coerce symbolTypes.[id] value.Type (sym id)
                 | Lir.MakeClosure(id,captures) ->
                     let fn = functions.[id]
                     let parameter = fresh "closureArg"
                     let captures = captures |> List.filter (fun id -> not (globalIds.Contains id)) |> List.map sym
-                    let args = String.concat comma (captures @ [parameter])
-                    $"(({csType value.Type})(({csType fn.ParameterType} {parameter}) => {funName id}({args})))"
+                    let parameterType,resultType = match value.Type with TFun(a,b) -> a,b | _ -> fn.ParameterType,fn.ReturnType
+                    let args = String.concat comma (captures @ [coerce parameterType fn.ParameterType parameter])
+                    let call=coerce fn.ReturnType resultType $"{funName id}({args})"
+                    $"(({csType value.Type})(({csType parameterType} {parameter}) => {call}))"
                 | Lir.CallClosure(fn,arg) | Lir.TailCallClosure(fn,arg) ->
-                    let parameterType = match fn.Type with TFun(t,_) -> t | _ -> arg.Type
-                    $"({emit fn}).Invoke({coerce arg.Type parameterType (emit arg)})"
+                    let parameterType,resultType = match fn.Type with TFun(a,b) -> a,b | _ -> arg.Type,value.Type
+                    coerce resultType value.Type $"({emit fn}).Invoke({coerce arg.Type parameterType (emit arg)})"
                 | Lir.PipeClosure(arg,fn) | Lir.TailPipeClosure(arg,fn) ->
                     let parameter = fresh "pipelineArgument"
-                    wrap (csType value.Type) $"var {parameter} = {emit arg}; return ({emit fn}).Invoke({parameter});"
+                    let parameterType,resultType=match fn.Type with TFun(a,b) -> a,b | _ -> arg.Type,value.Type
+                    let call=coerce resultType value.Type $"({emit fn}).Invoke({coerce arg.Type parameterType parameter})"
+                    wrap (csType value.Type) $"var {parameter} = {emit arg}; return {call};"
                 | Lir.Branch(condition,yes,no) -> $"({emit condition} ? {coerce yes.Type value.Type (emit yes)} : {coerce no.Type value.Type (emit no)})"
                 | Lir.Operation(operation,[left;right]) ->
                     let op =
@@ -344,14 +410,20 @@ module CSharpBackend =
                         | Lir.NumericLessThanOrEqual -> "<=" | Lir.NumericGreaterThanOrEqual -> ">="
                         | Lir.BooleanAnd -> "&&" | Lir.BooleanOr -> "||" | Lir.StructuralEqual -> "="
                     if op = "=" then $"{eqName left.Type}({emit left}, {coerce right.Type left.Type (emit right)})" else $"({emit left} {op} {emit right})"
-                | Lir.Tuple items -> $"new {csType value.Type}({items |> List.map emit |> String.concat comma})"
-                | Lir.List items -> $"new {csType value.Type} {{ {items |> List.map emit |> String.concat comma} }}"
+                | Lir.Tuple items ->
+                    let itemTypes=match value.Type with TTuple items -> items | _ -> items |> List.map (fun (item: Lir.Expression) -> item.Type)
+                    let args=List.map2 (fun t (item: Lir.Expression) -> coerce item.Type t (emit item)) itemTypes items |> String.concat comma
+                    $"new {csType value.Type}({args})"
+                | Lir.List items ->
+                    let itemType=match value.Type with TList t -> t | _ -> invalidOp "Expected list."
+                    let args=items |> List.map (fun item -> coerce item.Type itemType (emit item)) |> String.concat comma
+                    $"new {csType value.Type} {{ {args} }}"
                 | Lir.Record items ->
                     let byName = Map.ofList items
                     let args = fields value.Type |> Map.toList |> List.map (fun (name,t) -> coerce byName.[name].Type t (emit byName.[name])) |> String.concat comma
                     $"new {csType value.Type}({args})"
                 | Lir.FieldGet(target,name) ->
-                    let code = $"({emit target}).{fieldName target.Type name}"
+                    let code = readField target.Type name (emit target)
                     let nativeName = match target.Type with TNamed name | THostManaged(name,_) -> Some name | _ -> None
                     match nativeName |> Option.bind nativeTypes.TryFind with
                     | Some native ->
@@ -361,10 +433,14 @@ module CSharpBackend =
                         elif not (isNull field) then fromClr (nonNull field).FieldType value.Type code
                         else fail "FSC6007" $"CLR type '{native.FullName}' has no public field or property '{name}'." (Some value.Span)
                     | None -> code
-                | Lir.SomeValue item -> $"{csType value.Type}.Some({emit item})"
+                | Lir.SomeValue item ->
+                    let itemType=match value.Type with TOption t -> t | _ -> item.Type
+                    $"{csType value.Type}.Some({coerce item.Type itemType (emit item)})"
                 | Lir.NoneValue -> $"default({csType value.Type})"
-                | Lir.Cons(head,tail) -> $"new[] {{ {emit head} }}.Concat({emit tail}).ToArray()"
-                | Lir.Append(a,b) -> $"({emit a}).Concat({emit b}).ToArray()"
+                | Lir.Cons(head,tail) ->
+                    let itemType=match value.Type with TList t -> t | _ -> head.Type
+                    $"new[] {{ {coerce head.Type itemType (emit head)} }}.Concat({coerce tail.Type value.Type (emit tail)}).ToArray()"
+                | Lir.Append(a,b) -> $"({coerce a.Type value.Type (emit a)}).Concat({coerce b.Type value.Type (emit b)}).ToArray()"
                 | Lir.Let(id,_,recursive,binding,body) ->
                     if recursive then wrap (csType value.Type) $"{csType binding.Type} {sym id} = default!; {sym id} = {emit binding}; return {emit body};"
                     else wrap (csType value.Type) $"{csType binding.Type} {sym id} = {emit binding}; return {emit body};"
@@ -418,7 +494,7 @@ module CSharpBackend =
                             | Lir.ListHead,TList t -> $"({root})[0]",t
                             | Lir.ListTail,TList t -> $"({root}).Skip(1).ToArray()",TList t
                             | Lir.TupleItem index,TTuple items -> $"({root}).Item{index}",items.[index]
-                            | Lir.RecordField name,(TRecord fields | THostManaged(_,fields)) -> $"({root}).{fieldName rootType name}",fields.[name]
+                            | Lir.RecordField name,(TRecord fields | THostManaged(_,fields)) -> readField rootType name root,fields.[name]
                             | Lir.OptionValue,TOption t -> $"({root}).Value",t
                             | Lir.UnionPayload,TUnion(_,cases) ->
                                 let caseName = checks |> List.tryPick (function Lir.UnionCaseCheck(path,_,name,true) when path=prefix -> Some name | _ -> None) |> Option.defaultWith (fun () -> fail "FSC6008" "Union payload projection requires a preceding case check." None)
@@ -522,8 +598,8 @@ module CSharpBackend =
                         items |> List.mapi (fun i t -> $"{eqName t}(a.Item{i},b.Item{i})") |> joinChecks,
                         "\"(\" + " + (items |> List.mapi (fun i t -> $"{fmtName t}(value.Item{i})") |> String.concat " + \", \" + ") + " + \")\""
                     | TRecord fields | THostManaged(_,fields) ->
-                        let checks = fields |> Map.toList |> List.map (fun (field,ft) -> $"{eqName ft}(a.{fieldName t field},b.{fieldName t field})") |> joinChecks
-                        let parts = fields |> Map.toList |> List.map (fun (field,ft) -> quote (field+": ") + " + " + fmtName ft + "(value." + fieldName t field + ")")
+                        let checks = fields |> Map.toList |> List.map (fun (field,ft) -> $"{eqName ft}({readField t field aCode},{readField t field bCode})") |> joinChecks
+                        let parts = fields |> Map.toList |> List.map (fun (field,ft) -> quote (field+": ") + " + " + fmtName ft + "(" + readField t field "value" + ")")
                         checks, "\"{ \" + " + (if parts.IsEmpty then "\"\"" else String.concat " + \"; \" + " parts) + " + \" }\""
                     | TMap(k,v) ->
                         $"a.Entries.Length == b.Entries.Length && !a.Entries.Where((e,i) => !{eqName k}(e.Key,b.Entries[i].Key) || !{eqName v}(e.Value,b.Entries[i].Value)).Any()",
@@ -541,16 +617,92 @@ module CSharpBackend =
                     | value -> fail "FSC6004" $"Unsupported compiled value '{Types.typeToString value}'." None
                 addHelper $"private static bool {eqName t}({csType t} a, {csType t} b) => {equalBody};"
                 addHelper $"private static string {fmtName t}({csType t} value) => {formatBody};"
+        if hasSdk then
+            let sv="global::FScript.Extensibility.ScriptValue"
+            let mapKey="global::FScript.Extensibility.MapKey"
+            let list values = "global::Microsoft.FSharp.Collections.ListModule.OfArray(new " + sv + "[] { " + String.concat comma values + " })"
+            let none="null"
+            let some value="SdkInterop.Some("+value+")"
+            let rec keyEncode t code =
+                match resolve t with
+                | TString -> $"{mapKey}.NewMKString({code})" | TInt -> $"{mapKey}.NewMKInt({code})" | TBool -> $"{mapKey}.NewMKBool({code})"
+                | TUnion(name,cases) ->
+                    let names=cases |> Map.toList |> List.map (fun (case,_) -> $"{csType t}.{ident case} => {quote case}") |> String.concat comma
+                    $"{mapKey}.NewMKUnionCase({quote name}, {code} switch {{ {names}, _ => throw new InvalidOperationException() }})"
+                | _ -> fail "FSC6008" "Unsupported SDK map key." None
+            let keyDecode t code =
+                match resolve t with
+                | TString -> $"(({mapKey}.MKString)({code})).Item" | TInt -> $"(({mapKey}.MKInt)({code})).Item" | TBool -> $"(({mapKey}.MKBool)({code})).Item"
+                | TUnion(_,cases) ->
+                    let names=cases |> Map.toList |> List.map (fun (case,_) -> $"{quote case} => {csType t}.{ident case}") |> String.concat comma
+                    $"(({mapKey}.MKUnionCase)({code})).Item2 switch {{ {names}, _ => throw new InvalidOperationException() }}"
+                | _ -> fail "FSC6008" "Unsupported SDK map key." None
+            for t in types |> Seq.sort do
+                if not (NativeSpecialization.containsVariable t) then
+                    let encode,decode =
+                        match resolve t with
+                        | TUnit -> sv+".VUnit","default(Unit)"
+                        | TInt -> sv+".NewVInt(value)",$"(({sv}.VInt)value).Item"
+                        | TFloat -> sv+".NewVFloat(value)",$"(({sv}.VFloat)value).Item"
+                        | TBool -> sv+".NewVBool(value)",$"(({sv}.VBool)value).Item"
+                        | TString -> sv+".NewVString(value)",$"(({sv}.VString)value).Item"
+                        | TList item ->
+                            $"{sv}.NewVList(global::Microsoft.FSharp.Collections.ListModule.OfArray(value.Select({encName item}).ToArray()))",
+                            $"(({sv}.VList)value).Item.Select({decName item}).ToArray()"
+                        | TTuple items ->
+                            let values=items |> List.mapi (fun i t -> $"{encName t}(value.Item{i})")
+                            let decoded=items |> List.mapi (fun i t -> $"{decName t}((({sv}.VTuple)value).Item[{i}])") |> String.concat comma
+                            $"{sv}.NewVTuple({list values})",$"new {csType t}({decoded})"
+                        | TOption item ->
+                            let encodedValue=some (encName item+"(value.Value)")
+                            $"{sv}.NewVOption(value.HasValue ? {encodedValue} : null)",
+                            wrap (csType t) $"var option = (({sv}.VOption)value).Item; return option is null ? default : {csType t}.Some({decName item}(option.Value));"
+                        | TRecord fields ->
+                            let values=fields |> Map.toList |> List.map (fun (name,ft) -> $"Tuple.Create({quote name}, {encName ft}({readField t name valueCode}))") |> String.concat comma
+                            let decoded=fields |> Map.toList |> List.map (fun (name,ft) -> $"{decName ft}((({sv}.VRecord)value).Item[{quote name}])") |> String.concat comma
+                            $"{sv}.NewVRecord(SdkInterop.Fields(new Tuple<string,{sv}>[] {{ {values} }}))",$"new {csType t}({decoded})"
+                        | THostManaged(name,_) ->
+                            if nativeTypes.ContainsKey name then fail "FSC6009" "A program cannot combine native and SDK projections of the same host-managed type." None
+                            $"{sv}.NewVHostManaged(value)",$"((({sv}.VHostManaged)value).Item.Descriptor.Name == {quote name} ? (({sv}.VHostManaged)value).Item : throw new InvalidOperationException(\"Host type mismatch\"))"
+                        | TFun(a,b) ->
+                            $"SdkInterop.Callable(argument => {encName b}(value({decName a}(argument))))",
+                            $"({csType a} argument) => {decName b}(SdkInterop.Apply(value, {encName a}(argument)))"
+                        | TTask item ->
+                            $"SdkInterop.TaskValue(Task.Run(async () => {encName item}(await value)))",$"Task.Run(() => {decName item}(SdkInterop.Await(value)))"
+                        | TMap(k,v) ->
+                            let encodedKey=keyEncode k "e.Key"
+                            let decodedKey=keyDecode k "e.Key"
+                            $"{sv}.NewVMap(global::Microsoft.FSharp.Collections.MapModule.OfSeq(value.Entries.Select(e => Tuple.Create({encodedKey},{encName v}(e.Value)))))",
+                            $"new {csType t}((({sv}.VMap)value).Item.Select(e => new {csType t}.Entry({decodedKey},{decName v}(e.Value))).ToArray())"
+                        | TUnion(name,cases) ->
+                            let isEnum=cases |> Map.forall (fun _ -> Option.isNone)
+                            let encoded=cases |> Map.toList |> List.map (fun (case,payload) ->
+                                let pattern=if isEnum then $"{csType t}.{ident case}" else $"{csType t}.{ident case} item"
+                                let payload=payload |> Option.map (fun t -> some (encName t+"(item.Value)")) |> Option.defaultValue none
+                                $"{pattern} => {sv}.NewVUnionCase({quote name},{quote case},{payload})") |> String.concat comma
+                            let decoded=cases |> Map.toList |> List.map (fun (case,payload) ->
+                                let result=if isEnum then $"{csType t}.{ident case}" else
+                                                let arg=payload |> Option.map (fun t -> $"{decName t}(((({sv}.VUnionCase)value).Item3 ?? throw new InvalidOperationException()).Value)") |> Option.defaultValue String.Empty
+                                                $"new {csType t}.{ident case}({arg})"
+                                $"{quote case} => {result}") |> String.concat comma
+                            $"value switch {{ {encoded}, _ => throw new InvalidOperationException() }}",
+                            $"(({sv}.VUnionCase)value).Item2 switch {{ {decoded}, _ => throw new InvalidOperationException() }}"
+                        | TTypeToken ->
+                            let names=types |> Seq.filter (NativeSpecialization.containsVariable >> not) |> Seq.distinctBy Types.typeToString |> Seq.map (fun t -> $"{quote (Types.typeToString t)} => {sdkType (resolve t)}") |> String.concat comma
+                            $"{sv}.NewVTypeToken(value.Name switch {{ {names}, _ => throw new InvalidOperationException(\"Unknown type token\") }})",$"new TypeToken(global::FScript.Extensibility.Types.typeToString((({sv}.VTypeToken)value).Item))"
+                        | _ -> fail "FSC6008" "Unresolved SDK transport type." None
+                    addHelper $"private static {sv} {encName t}({csType t} value) => {encode};"
+                    addHelper $"private static {csType t} {decName t}({sv} value) => {decode};"
         let members = StringBuilder()
         let addMember (value: string) = members.AppendLine(value) |> ignore
         for declaration in program.Declarations do addMember $"private static {csType declaration.Type} {sym declaration.Id} = default!;"
         for fn in program.Functions do
             let captures = fn.Captures |> List.filter (fun id -> not (globalIds.Contains id)) |> List.map (fun id -> $"{csType symbolTypes.[id]} {sym id}")
             let parameters = String.concat comma (captures @ [$"{csType fn.ParameterType} {sym fn.Parameter}"])
-            addMember $"private static {csType fn.ReturnType} {funName fn.Id}({parameters}) {{ return {expression fn.Body}; }}"
+            addMember $"private static {csType fn.ReturnType} {funName fn.Id}({parameters}) {{ return {coerce fn.Body.Type fn.ReturnType (expression fn.Body)}; }}"
         addMember "private static readonly Lazy<Unit> Initialization = new(Initialize);"
         addMember "private static Unit Initialize() {"
-        for declaration in program.Declarations do addMember $"{sym declaration.Id} = {expression declaration.Value};"
+        for declaration in program.Declarations do addMember $"{sym declaration.Id} = {coerce declaration.Value.Type declaration.Type (expression declaration.Value)};"
         addMember "return default; }"
         for declaration in program.Declarations |> List.filter _.IsExported do
             addMember $"public static {csType declaration.Type} {ident declaration.Name} {{ get {{ _ = Initialization.Value; return {sym declaration.Id}; }} }}"
@@ -560,6 +712,32 @@ module CSharpBackend =
         addMember $"public static {csType resultType} Run() {{ _ = Initialization.Value; return {result}; }}"
         addMember $"public static string FormatResult({csType resultType} value) => {fmtName resultType}(value);"
         addMember "public static void Main(string[] args) { Console.WriteLine(FormatResult(Run())); }"
+        if hasSdk then
+            let sdk="global::FScript.Extensibility."
+            let sv=sdk+"ScriptValue"
+            let ctx=sdk+"ExternalCallContext"
+            let fnType=sdk+"ExternalFunction"
+            let listType= $"global::Microsoft.FSharp.Collections.FSharpList<{sv}>"
+            let wrappers=CompilerExternCatalog.defaults |> List.filter (fun fn -> fn.Name<>"Env") |> List.map (fun fn ->
+                let (Forall(variables,t))=fn.Scheme
+                let variables=variables |> List.map string |> String.concat comma
+                let scheme= $"{sdk}FunctionScheme.NewForall(global::Microsoft.FSharp.Collections.ListModule.OfArray(new int[] {{ {variables} }}),{sdkType t})"
+                let invoke= $"global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{ctx},global::Microsoft.FSharp.Core.FSharpFunc<{listType},{sv}>>(ctx => global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{listType},{sv}>(args => SdkInterop.Default({quote fn.Name},ctx,args.ToArray())))"
+                $"new {fnType}({quote fn.Name},{scheme},{invoke},{fn.Arity})") |> String.concat comma
+            addMember $"private static global::Microsoft.FSharp.Collections.FSharpList<{fnType}> ProviderDefaults() => global::Microsoft.FSharp.Collections.ListModule.OfArray(new {fnType}[] {{ {wrappers} }});"
+        for KeyValue(path,name) in sdkProviders do
+            let link=ClrBindings.tryMethodLink ("clr:"+path.Substring(8)) |> Option.get
+            let declaring=System.Type.GetType(link.DeclaringType,true) |> nonNull
+            let sdk="global::FScript.Extensibility."
+            let sdkExternalFunction=sdk+"ExternalFunction"
+            let sdkHostType=sdk+"HostTypeDescriptor"
+            let sdkHostUnion=sdk+"HostUnionDescriptor"
+            let empty element = $"global::Microsoft.FSharp.Collections.ListModule.Empty<{element}>()"
+            let arguments=if link.Parameters.Length=0 then "" else $"new {sdk}HostContext(Directory.GetCurrentDirectory(), {empty stringCode}, ProviderDefaults())"
+            let call= $"{typeName declaring}.@{link.MemberName}({arguments})"
+            let method=declaring.GetMethods(BindingFlags.Public ||| BindingFlags.Static) |> Array.find (fun m -> m.Name=link.MemberName && m.GetParameters().Length=link.Parameters.Length)
+            let call=if method.ReturnType.FullName="FScript.Extensibility.ExtensionRegistration" then call else $"new {sdk}ExtensionRegistration({empty sdkHostType},{empty sdkHostUnion},{call})"
+            addMember $"private static readonly Lazy<{sdk}ExtensionRegistration> {name} = new(() => {call});"
         let header = "#nullable enable\nusing System;\nusing System.IO;\nusing System.Linq;\nusing System.Globalization;\nusing System.Text.Json;\nusing System.Threading.Tasks;\n"
         let source = $"{header}\nnamespace {options.Namespace};\n{typeDeclarations}\npublic static class {options.ClassName} {{\n{helpers}\n{members}\n}}\n"
         use stream = typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.Runtime.cs") |> nonNull
@@ -568,10 +746,15 @@ module CSharpBackend =
         let escapeXml (value: string) = System.Security.SecurityElement.Escape(value) |> nonNull
         let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path |> nonNull)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
         let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>true</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{references}</ItemGroup></Project>\n"
-        [ { RelativePath = "Program.cs"; Content = source }; { RelativePath = "Runtime.cs"; Content = runtime }; { RelativePath = "Program.csproj"; Content = project } ]
+        [ yield { RelativePath = "Program.cs"; Content = source }; yield { RelativePath = "Runtime.cs"; Content = runtime }; yield { RelativePath = "Program.csproj"; Content = project }
+          if hasSdk then
+              use sdkStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeSDK.cs") |> nonNull
+              use sdkReader=new StreamReader(sdkStream)
+              yield {RelativePath="RuntimeSDK.cs"; Content=sdkReader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)} ]
 
     let generate options (program: Lir.Program) =
         try
+            let options={options with References=ClrBindings.referenceClosure options.References}
             let validIdentifier (value: string) = not (String.IsNullOrWhiteSpace value) && (Char.IsLetter value.[0] || value.[0]='_') && value |> Seq.forall (fun c -> Char.IsLetterOrDigit c || c='_')
             if not (validIdentifier options.ClassName && options.Namespace.Split('.') |> Array.forall validIdentifier) then fail "FSC6001" "Namespace and class names must be valid C# identifiers." None
             for path in options.References do

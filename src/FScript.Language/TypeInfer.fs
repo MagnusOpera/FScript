@@ -2005,8 +2005,8 @@ module TypeInfer =
             | PRecord(fields, _) ->
                 let fieldTypes =
                     match expected with
-                    | TRecord values -> values
-                    | TNamed name -> match Map.tryFind name resolvedTypeDefinitions with Some(TRecord values) -> values | _ -> Map.empty
+                    | TRecord values | THostManaged(_,values) -> values
+                    | TNamed name -> match Map.tryFind name resolvedTypeDefinitions with Some(TRecord values) | Some(THostManaged(_,values)) -> values | _ -> Map.empty
                     | _ -> Map.empty
                 fields
                 |> List.map (fun (name, item) -> name, resolvePattern (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item)

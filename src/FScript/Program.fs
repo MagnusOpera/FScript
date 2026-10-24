@@ -47,12 +47,19 @@ let runCompileCommand (argv: string array) =
                     let outputDirectory = Path.GetFullPath(output)
                     let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
-                    let references = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value="--reference" && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
-                    match FScript.Compiler.Compiler.compile { Program = program; Externs = [] } with
+                    let allOptions name = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value=name && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
+                    let loaded =
+                        EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) sourceRoot sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
+                        |> Result.bind EnvironmentLoader.loadWithInfo
+                        |> function Ok environment -> environment | Error message -> failwith message
+                    let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+                    let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
+                    match FScript.Compiler.Compiler.compileWithRegistration loaded.Registration { Program = program; Externs = [] } with
                     | Error diagnostics ->
                         diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
                         4
                     | Ok compiled ->
+                        let lir = loaded.ProviderMethods |> List.fold (fun program (names,method) -> FScript.Compiler.ClrBindings.bindProvider names method program) compiled.Lir
                         Directory.CreateDirectory(outputDirectory) |> ignore
                         match normalizedTarget with
                         | "ir" ->
@@ -61,10 +68,10 @@ let runCompileCommand (argv: string array) =
                                 | null | "" -> "program"
                                 | value -> value
                             let name = baseName + ".fsir"
-                            File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize compiled.Lir)
+                            File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize lir)
                             0
                         | "go" ->
-                            match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } compiled.Lir with
+                            match FScript.Compiler.GoBackend.generate { ModuleName = "fscript.generated/program" } lir with
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
                                 4
@@ -73,7 +80,7 @@ let runCompileCommand (argv: string array) =
                                 files |> List.iter (writeGeneratedFile outputDirectory)
                                 0
                         | "csharp" ->
-                            match FScript.Compiler.CSharpBackend.generate {Namespace="FScript.Generated"; ClassName="Program"; References=references} compiled.Lir with
+                            match FScript.Compiler.CSharpBackend.generate {Namespace="FScript.Generated"; ClassName="Program"; References=references} lir with
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
                                 4
@@ -82,7 +89,7 @@ let runCompileCommand (argv: string array) =
                             let options: FScript.Compiler.DotNetOptions =
                                 { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
                                   OutputKind=FScript.Compiler.ConsoleApplication; References=references }
-                            match FScript.Compiler.DotNetBackend.generate options compiled.Lir with
+                            match FScript.Compiler.DotNetBackend.generate options lir with
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
                                 4

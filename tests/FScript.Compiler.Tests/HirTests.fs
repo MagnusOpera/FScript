@@ -15,6 +15,14 @@ type HirTests() =
         | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
 
     [<Test>]
+    member _.``Local values used only by nested captures survive simplification`` () =
+        match Compiler.compile {Program=Parser.parseProgram "let make n =\n    let x=n+1\n    fun y -> fun z -> x+y+z\nmake 1 20 20"; Externs=[]} with
+        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+        | Ok compiled ->
+            Assert.That(LirValidation.validate compiled.Lir |> Result.isOk, Is.True)
+            Assert.That(compiled.Lir.Functions |> List.exists (fun fn -> not fn.Captures.IsEmpty), Is.True)
+
+    [<Test>]
     member _.``Host types and foreign union metadata survive compiler artifacts`` () =
         let fields = Map.ofList [ "Name", TString ]
         let registration =

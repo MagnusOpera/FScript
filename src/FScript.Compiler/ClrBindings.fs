@@ -3,17 +3,40 @@ namespace FScript.Compiler
 open System
 open System.Reflection
 open System.Text.Json
+open System.IO
+open System.Reflection.Metadata
+open System.Reflection.PortableExecutable
 open FScript.Language
 
 /// Declarative CLR linkage, independent of executable interpreter registrations.
 [<CLIMutable>]
 type ClrMethodLink =
     { DeclaringType: string
+      MemberName: string
       Parameters: string array
       IsStatic: bool
       IsConstructor: bool }
 
 module ClrBindings =
+    /// Include managed dependencies colocated with explicit reference assemblies.
+    let referenceClosure paths =
+        let seen=Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+        let result=ResizeArray<string>()
+        let rec visit path =
+            let path=Path.GetFullPath path
+            if File.Exists path && seen.Add path then
+                result.Add path
+                use stream=File.OpenRead path
+                use pe=new PEReader(stream)
+                if pe.HasMetadata then
+                    let metadata=pe.GetMetadataReader()
+                    for handle in metadata.AssemblyReferences do
+                        let name=metadata.GetString(metadata.GetAssemblyReference(handle).Name)
+                        let adjacent=Path.Combine(Path.GetDirectoryName(path) |> nonNull,name+".dll")
+                        if File.Exists adjacent then visit adjacent
+        List.iter visit paths
+        result |> Seq.distinctBy Path.GetFileName |> Seq.sort |> Seq.toList
+
     let private typeName (value: System.Type) =
         match value.AssemblyQualifiedName with null -> invalidArg "value" "CLR types must have assembly-qualified names." | name -> name
 
@@ -25,6 +48,7 @@ module ClrBindings =
             invalidArg "method" "Compiled FFI does not accept by-reference or pointer parameters."
         "clr:" + JsonSerializer.Serialize<ClrMethodLink>(
             { DeclaringType = typeName declaring
+              MemberName = method.Name
               Parameters = method.GetParameters() |> Array.map (fun parameter -> typeName parameter.ParameterType)
               IsStatic = method.IsStatic
               IsConstructor = method.IsConstructor })
@@ -45,6 +69,20 @@ module ClrBindings =
                 { declaration with Value = { declaration.Value with Node = Lir.TargetImport(link, method.Name) } }
             else declaration)
         if not found then invalidArg "name" $"No reachable external declaration named '{name}' exists."
+        { program with Declarations = declarations }
+
+    /// Link existing SDK providers without retaining compiler-process delegates.
+    /// Generated adapters invoke SDK implementations directly and marshal compiled callbacks.
+    let bindProvider names (method: MethodInfo) (program: Lir.Program) =
+        if not method.IsStatic then invalidArg "method" "SDK providers must be static methods."
+        let link = methodLink method
+        let target = "clr-sdk:" + link.Substring(4)
+        let names = Set.ofList names
+        let declarations =
+            program.Declarations |> List.map (fun declaration ->
+                if Set.contains declaration.Name names then
+                    { declaration with Value = { declaration.Value with Node = Lir.TargetImport(target,declaration.Name) } }
+                else declaration)
         { program with Declarations = declarations }
 
     /// Retain a native type projection in the ordinary serialized target-type linkage.
