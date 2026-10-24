@@ -16,6 +16,8 @@ Reachability starts at `Run`, result formatting, exported bindings, and the exec
 
 These passes apply only to `DotNetBackend.generate`. The C# target, serialized LIR, LIR interpreter, and Go backend retain their existing optimization policy. Roslyn remains the final IL emitter; FScript makes the optimization decisions before emission.
 
+Namespace qualification is not a reachability edge to a namespace's syntax body. Reaching a generated type or method through its fully qualified name retains that declaration and its actual dependencies, without retaining unrelated stdlib members in the same namespace. This rule applies to both libraries and executables.
+
 ## Public API
 
 - `CSharpBackend.generate : CSharpOptions -> Lir.Program -> Result<GeneratedFile list, CompilerDiagnostic list>`

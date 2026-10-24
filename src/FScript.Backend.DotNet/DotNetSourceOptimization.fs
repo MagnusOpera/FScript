@@ -196,7 +196,9 @@ module internal DotNetSourceOptimization =
                 queue.Enqueue node
                 node.Ancestors() |> Seq.tryPick (function :? BaseTypeDeclarationSyntax as parent -> Some(parent :> SyntaxNode) | _ -> None) |> Option.iter retain
         let rec symbol (value: ISymbol) =
-            if visited.Add value then
+            // A namespace qualifies names; it does not make every declaration in its
+            // syntax body reachable. Following its syntax reference roots the entire file.
+            if value.Kind<>SymbolKind.Namespace && visited.Add value then
                 match value with
                 | :? IArrayTypeSymbol as array -> symbol array.ElementType
                 | :? INamedTypeSymbol as named ->

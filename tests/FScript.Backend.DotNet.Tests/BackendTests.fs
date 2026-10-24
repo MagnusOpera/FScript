@@ -177,6 +177,22 @@ type BackendTests() =
         let names=(assembly.GetType("Generated.Program") |> nonNull).GetMethods(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Static) |> Array.map _.Name
         Assert.That(names |> Array.exists (fun name -> name.StartsWith("Json",StringComparison.Ordinal) || name.StartsWith("Equal",StringComparison.Ordinal) || name.StartsWith("Encode",StringComparison.Ordinal)),Is.False)
 
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Hello with environment and console retains only used stdlib members`` (executable: bool) =
+        let source="let name = match Env.Arguments with | head :: _ -> head | _ -> \"Unknown\"\nConsole.writeLine $\"Hello {name} !\""
+        let options={Harness.options with OutputKind=if executable then ConsoleApplication else Library}
+        let files=Harness.generate options (Harness.compile source)
+        let assembly=Assembly.Load((files |> List.find (fun file -> file.RelativePath="CompiledScript.dll")).Content)
+        let runtime=assembly.GetType("Generated.FsRuntime") |> nonNull
+        let methods=runtime.GetMethods(BindingFlags.Static ||| BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.DeclaredOnly) |> Array.map _.Name |> Array.sort
+        Assert.That(String.concat "," methods,Is.EqualTo("WriteLine"))
+        Assert.That(assembly.GetType("Generated.OrderedMap`2"),Is.Null)
+        Assert.That(assembly.GetType("Generated.TypeToken"),Is.Null)
+        let program=assembly.GetType("Generated.Program") |> nonNull
+        let helpers=program.GetMethods(BindingFlags.Static ||| BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.DeclaredOnly) |> Array.map _.Name
+        Assert.That(helpers |> Array.exists (fun name -> name.StartsWith("Json",StringComparison.Ordinal) || name.StartsWith("Equal",StringComparison.Ordinal) || name.StartsWith("Encode",StringComparison.Ordinal) || name.StartsWith("Decode",StringComparison.Ordinal)),Is.False)
+
     [<Test>]
     member _.``A warmed fully static numeric program allocates no managed values`` () =
         let assembly=IL.load "export let compute (value: int) =\n    let add x y=x+y\n    let increment=add 1\n    increment value"

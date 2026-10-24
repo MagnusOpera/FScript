@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fixed .NET assembly pruning retaining unused stdlib helpers through generated namespace references.
+
 - Made BASIC's usage message use its running script or executable name instead of a hardcoded FScript command.
 
 - Optimized .NET assemblies with static call and partial-application reduction, self tail-call loops, typed collection callbacks, and unused runtime pruning.
