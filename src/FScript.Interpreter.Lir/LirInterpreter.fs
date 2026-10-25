@@ -143,7 +143,7 @@ module LirInterpreter =
         | "Int.toString", [ VInt value ] -> Ok(VString(string value))
         | "Float.toString", [ VFloat value ] -> Ok(VString(value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))
         | "Bool.toString", [ VBool value ] -> Ok(VString(value.ToString().ToLowerInvariant()))
-        | "String.replace", [ VString oldValue; VString newValue; VString value ] -> Ok(VString(value.Replace(oldValue, newValue)))
+        | "String.replace", [ VString oldValue; VString newValue; VString value ] -> Ok(VString(if oldValue = "" then value else value.Replace(oldValue, newValue)))
         | "String.indexOf", [ VString needle; VString value ] -> let index = value.IndexOf(needle, System.StringComparison.Ordinal) in Ok(VOption(if index < 0 then None else Some(VInt(int64 index))))
         | "String.toLower", [ VString value ] -> Ok(VString(value.ToLowerInvariant()))
         | "String.toUpper", [ VString value ] -> Ok(VString(value.ToUpperInvariant()))

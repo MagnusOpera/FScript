@@ -74,6 +74,7 @@ internal static class FsRuntime
     public static Option<long> ParseInt(string value) => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? Option<long>.Some(result) : default;
     public static Option<double> ParseFloat(string value) => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? Option<double>.Some(result) : default;
     public static Option<bool> ParseBool(string value) => bool.TryParse(value, out var result) ? Option<bool>.Some(result) : default;
+    public static string Replace(string oldValue, string newValue, string source) => oldValue.Length == 0 ? source : source.Replace(oldValue, newValue, StringComparison.Ordinal);
     public static Option<long> IndexOf(string needle, string haystack) { long index = haystack.IndexOf(needle, StringComparison.Ordinal); return index < 0 ? default : Option<long>.Some(index); }
     public static Option<string> Substring(long start, long length, string value) => start < 0 || length < 0 || start > value.Length || length > value.Length-start ? default : Option<string>.Some(value.Substring((int)start,(int)length));
     public static S MapFold<K,V,S>(Func<S,Func<K,Func<V,S>>> fn, S state, OrderedMap<K,V> values) { foreach(var e in values.Entries) state=fn(state)(e.Key)(e.Value); return state; }

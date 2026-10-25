@@ -26,6 +26,18 @@ test("run returns tagged primitive values", () => {
   assert.equal(result.value, 42n);
 });
 
+test("String.replace always returns, including empty search strings", () => {
+  for (const [search, replacement, source, expected] of [
+    ["", "x", "abc", "abc"],
+    ["", "x", "", ""],
+    ["a", "", "banana", "bnn"],
+    ["aa", "b", "aaaa", "bb"]
+  ]) {
+    const args = [search, replacement, source].map(value => JSON.stringify(value)).join(" ");
+    assert.equal(run(`String.replace ${args}`).value, expected);
+  }
+});
+
 test("map keys round-trip through tagged JavaScript values", () => {
   const value = run("type Color = | Red | Blue\n{ [Red] = 1; [Blue] = 2 }");
   assert.equal(value.kind, "map");

@@ -82,6 +82,7 @@ type ConformanceTests() =
     [<TestCase("let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)\neven 10")>]
     [<TestCase("match { [\"answer\"] = 42 }[\"answer\"] with | Some value -> value | None -> 0")>]
     [<TestCase("Console.writeLine \"hello\"")>]
+    [<TestCase("(String.replace \"\" \"x\" \"abc\", String.replace \"\" \"x\" \"\", String.replace \"a\" \"\" \"banana\", String.replace \"aa\" \"b\" \"aaaa\")")>]
     [<TestCase("[Some (1, [2; 3]); None] = [Some (1, [2; 3]); None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\n{ Name = \"Ada\"; Age = 42 } = {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet person = { Name = \"Ada\"; Age = 42 }\n{ person with Age = 43 }.Age")>]

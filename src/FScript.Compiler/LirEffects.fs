@@ -9,7 +9,7 @@ module LirEffects =
 
     let private totalIntrinsics =
         set [ "ignore"; "Int.tryParse"; "Float.tryParse"; "Bool.tryParse"; "Int.toString"; "Float.toString"; "Bool.toString"
-              "String.indexOf"; "String.toLower"; "String.toUpper"; "String.substring"; "String.concat"; "String.split"; "String.endsWith"
+              "String.replace"; "String.indexOf"; "String.toLower"; "String.toUpper"; "String.substring"; "String.concat"; "String.split"; "String.endsWith"
               "List.empty"; "List.contains"; "List.rev"; "List.distinct"; "List.length"; "List.tryItem"; "List.tryHead"; "List.append"
               "Option.defaultValue"; "Option.isNone"; "Option.isSome"
               "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.count"; "Map.remove" ]
@@ -150,10 +150,6 @@ module LirEffects =
                 // Known intrinsic signatures identify which arguments are actually invoked.
                 if List.contains name ["Console.writeLine";"Console.readLine";"Fs.readText"] then Observable
                 elif arguments.Length<count then Pure
-                elif arguments.Length=count && name="String.replace" then
-                    match arguments with
-                    | {Node=Lir.Constant(Lir.String oldValue)}::_ when oldValue<>"" -> Pure
-                    | _ -> Observable
                 elif arguments.Length=count && Set.contains name totalIntrinsics then
                     if List.contains name ["List.contains";"List.distinct"] && not (arguments |> List.forall (fun value -> stable Set.empty value.Type)) then Observable else Pure
                 elif arguments.Length=count && Set.contains name higherOrder then

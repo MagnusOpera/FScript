@@ -105,7 +105,6 @@ type PurityTests() =
         Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="discarded"),Is.EqualTo(not isPure))
         Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="handle"),Is.True,"A pure type does not make its factory pure.")
 
-    [<TestCase("let discarded = String.replace \"\" \"x\" \"abc\"\n42")>]
     [<TestCase("let discarded = 1 / 0\n42")>]
     [<TestCase("let discarded = match 1 with | 2 -> 0\n42")>]
     [<TestCase("let fail () : int = raise \"boom\"\nlet discarded = fail ()\n42")>]
@@ -130,6 +129,11 @@ type PurityTests() =
         let callback=if effectful then "let callback value =\n    let ignored = Console.writeLine \"callback\"\n    value\n" else "let callback value = value + 1\n"
         let optimized=(compile HostInterop.empty (pureFunctions ["Host.apply"]) externs (callback+"let discarded = Host.apply callback 2\n42")).Lir |> optimize
         Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="discarded"),Is.EqualTo(effectful))
+
+    [<Test>]
+    member _.``Unused string replacement is total and prunable`` () =
+        let optimized=(compile HostInterop.empty PurityContracts.empty [] "let discarded = String.replace \"\" \"x\" \"abc\"\n42").Lir |> optimize
+        Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="discarded"),Is.False)
 
     [<TestCase("Missing.call")>]
     [<TestCase("Console.writeLine")>]

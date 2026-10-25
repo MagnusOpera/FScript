@@ -212,7 +212,7 @@ module BuiltinFunctions =
             (fun _ args ->
                 match args with
                 | [ VString oldValue; VString newValue; VString source ] ->
-                    VString(source.Replace(oldValue, newValue))
+                    VString(if oldValue = "" then source else source.Replace(oldValue, newValue))
                 | _ -> fail "String.replace expects (string, string, string)") }
 
     let private builtinStringIndexOf : ExternalFunction =

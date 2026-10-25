@@ -302,6 +302,15 @@ type EvalTests () =
         | VString value -> value |> should equal "2.5"
         | _ -> Assert.Fail("Expected float to string")
 
+    [<TestCase("", "x", "abc", "abc")>]
+    [<TestCase("", "x", "", "")>]
+    [<TestCase("a", "", "banana", "bnn")>]
+    [<TestCase("aa", "b", "aaaa", "bb")>]
+    member _.``String replacement always returns`` (oldValue: string, newValue: string, source: string, expected: string) =
+        match Helpers.eval ($"String.replace \"{oldValue}\" \"{newValue}\" \"{source}\"") with
+        | VString actual -> Assert.That(actual, Is.EqualTo(expected))
+        | _ -> Assert.Fail("Expected a string")
+
     [<Test>]
     member _.``Evaluates string manipulation builtins`` () =
         match Helpers.eval "String.replace \"world\" \"fscript\" \"hello world\"" with

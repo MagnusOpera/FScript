@@ -247,7 +247,7 @@ module CSharpBackend =
             | "Int.tryParse", _ -> build (fun a _ -> $"FsRuntime.ParseInt({a.[0]})")
             | "Float.tryParse", _ -> build (fun a _ -> $"FsRuntime.ParseFloat({a.[0]})")
             | "Bool.tryParse", _ -> build (fun a _ -> $"FsRuntime.ParseBool({a.[0]})")
-            | "String.replace", _ -> build (fun a _ -> $"{a.[2]}.Replace({a.[0]}, {a.[1]}, StringComparison.Ordinal)")
+            | "String.replace", _ -> build (fun a _ -> $"FsRuntime.Replace({a.[0]}, {a.[1]}, {a.[2]})")
             | "String.indexOf", _ -> build (fun a _ -> $"FsRuntime.IndexOf({a.[0]}, {a.[1]})")
             | "String.toLower", _ -> build (fun a _ -> $"{a.[0]}.ToLowerInvariant()")
             | "String.toUpper", _ -> build (fun a _ -> $"{a.[0]}.ToUpperInvariant()")

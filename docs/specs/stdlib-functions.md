@@ -138,6 +138,7 @@ Map keys may be `string`, `int`, `bool`, or a union whose cases all have no payl
 ## String
 - `String.replace : string -> string -> string -> string`
   - argument order: `oldValue -> newValue -> source`
+  - Replaces all non-overlapping occurrences using ordinal, case-sensitive matching. An empty `oldValue` returns `source` unchanged; an empty `newValue` removes matches. This operation always returns a string.
 - `String.indexOf : string -> string -> int option`
   - argument order: `value -> source`
 - `String.toLower : string -> string`

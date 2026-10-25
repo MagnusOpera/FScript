@@ -276,6 +276,11 @@ type BackendTests() =
         Assert.That(instructions |> List.exists (fun (_,opcode,_) -> opcode=OpCodes.Ldc_I4_1),Is.False)
 
     [<Test>]
+    member _.``String replacement handles empty search and replacement strings`` () =
+        let source = "(String.replace \"\" \"x\" \"abc\", String.replace \"\" \"x\" \"\", String.replace \"a\" \"\" \"banana\", String.replace \"aa\" \"b\" \"aaaa\")"
+        Assert.That(Harness.execute (Harness.compile source), Is.EqualTo("(\"abc\", \"\", \"bnn\", \"bb\")"))
+
+    [<Test>]
     member _.``Closed library exports remain roots without a program entry`` () =
         let assembly=IL.load "export let answer=42\nexport let add (value: int)=value+1"
         let typ=assembly.GetType("Generated.Program") |> nonNull

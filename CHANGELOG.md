@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Made String.replace total across interpreters and compiled backends: an empty search string returns the source unchanged.
+
 - Added trusted Pure contracts for FFI functions and external types, enabling stronger pruning while preserving failures and effects.
 
 - Preserved non-total recursive calls, unused external getter effects, and zero-argument CLR constructor evaluation during native optimization.
