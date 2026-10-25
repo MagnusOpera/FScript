@@ -301,7 +301,7 @@ module IrArtifact =
         writer.WriteStartObject("program"); writer.WriteStartArray("types")
         for declaration in program.Types do
             writer.WriteStartObject(); writer.WriteNumber("id", Lir.symbolNumber declaration.Id); writer.WriteString("name", declaration.Name)
-            writer.WriteBoolean("recursive", declaration.IsRecursive); writer.WritePropertyName("definition"); writeType writer declaration.Definition
+            writer.WriteBoolean("recursive", declaration.IsRecursive); writer.WriteBoolean("pure", declaration.IsPure); writer.WritePropertyName("definition"); writeType writer declaration.Definition
             match declaration.Import with
             | Some imported ->
                 writer.WriteStartObject("import"); writer.WriteString("name", imported.Name); writer.WriteString("modulePath", imported.ModulePath)
@@ -331,7 +331,8 @@ module IrArtifact =
         for declaration in program.Declarations do
             writer.WriteStartObject(); writer.WriteNumber("id", Lir.symbolNumber declaration.Id); writer.WriteString("name", declaration.Name)
             writer.WritePropertyName("type"); writeType writer declaration.Type; writer.WriteBoolean("recursive", declaration.IsRecursive)
-            writer.WriteBoolean("exported", declaration.IsExported)
+            writer.WriteBoolean("exported", declaration.IsExported); writer.WriteBoolean("pure", declaration.IsPure)
+            match declaration.ExternalArity with Some arity -> writer.WriteNumber("externalArity",arity) | None -> writer.WriteNull("externalArity")
             match declaration.Export with
             | Some export -> writer.WriteStartObject("export"); writer.WriteString("name", export.Name); writer.WritePropertyName("span"); writeSpan writer export.Span; writer.WriteEndObject()
             | None -> writer.WriteNull("export")
@@ -566,7 +567,7 @@ module IrArtifact =
                     let types = (property "types" programElement).EnumerateArray() |> Seq.map (fun item ->
                         let importElement = property "import" item
                         ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item
-                           IsRecursive = (property "recursive" item).GetBoolean(); Definition = readType (property "definition" item)
+                           IsRecursive = (property "recursive" item).GetBoolean(); IsPure = (match item.TryGetProperty("pure") with true,value -> value.GetBoolean() | _ -> false); Definition = readType (property "definition" item)
                            Import = if importElement.ValueKind = JsonValueKind.Null then None else Some(readImportedRecord importElement)
                            Span = readSpan (property "span" item) }: Lir.TypeDeclaration)) |> Seq.toList
                     let declarations = (property "declarations" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
@@ -575,7 +576,9 @@ module IrArtifact =
                             if exportElement.ValueKind = JsonValueKind.Null then None
                             else Some({ Name = stringProperty "name" exportElement; Span = readSpan (property "span" exportElement) }: Lir.ExportMetadata)
                         ({ Id = Lir.SymbolId((property "id" item).GetInt32()); Name = stringProperty "name" item; Type = readType (property "type" item)
-                           IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean(); Export = export
+                           IsRecursive = (property "recursive" item).GetBoolean(); IsExported = (property "exported" item).GetBoolean(); IsPure = (match item.TryGetProperty("pure") with true,value -> value.GetBoolean() | _ -> false)
+                           ExternalArity = (match item.TryGetProperty("externalArity") with true,value when value.ValueKind<>JsonValueKind.Null -> Some(value.GetInt32()) | _ -> None)
+                           Export = export
                            Span = readSpan (property "span" item); Value = readExpression (property "value" item) }: Lir.Declaration)) |> Seq.toList
                     let functions = (property "functions" programElement).EnumerateArray() |> Seq.map (fun (item: JsonElement) ->
                         ({ Id = Lir.FunctionId((property "id" item).GetInt32())

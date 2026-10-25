@@ -120,6 +120,7 @@ module LirMonomorphization =
 
     let specialize (program: Lir.Program) : Result<Lir.Program, CompilerDiagnostic list> =
         try
+            let nativeEffect = LirEffects.create program
             let allSymbols =
                 [ yield! program.Declarations |> List.map (_.Id >> symbolNumber)
                   yield! program.Types |> List.map (_.Id >> symbolNumber)
@@ -279,7 +280,7 @@ module LirMonomorphization =
                         match NativeSpecialization.unifyInstantiation source.Type concrete with
                         | Ok value -> value
                         | Error error -> fail "FSL2107" $"Cannot specialize declaration '{source.Name}': {error}" span
-                    if NativeSpecialization.containsVariable source.Type && NativeSpecialization.effect source.Value = NativeSpecialization.Observable && not isBottom then
+                    if NativeSpecialization.containsVariable source.Type && nativeEffect source.Value = LirEffects.Observable && not isBottom then
                         fail "FSL2108" $"Generalized binding '{source.Name}' has observable initialization and cannot be cloned safely." source.Span
                     let replacement = freshSymbol state
                     state.DeclarationKeys.Add(key, replacement)
@@ -435,11 +436,11 @@ module LirMonomorphization =
                         if NativeSpecialization.containsVariable bindingType then
                             let uses = collectLoads id effectiveSubstitution body
                             if uses.IsEmpty then
-                                if NativeSpecialization.effect binding = NativeSpecialization.Observable then
+                                if nativeEffect binding = LirEffects.Observable then
                                     fail "FSL2108" $"Generalized local binding '{name}' has observable initialization and cannot be omitted." binding.Span
                                 (transform effectiveSubstitution environment body).Node
                             else
-                                if NativeSpecialization.effect binding = NativeSpecialization.Observable then
+                                if nativeEffect binding = LirEffects.Observable then
                                     fail "FSL2108" $"Generalized local binding '{name}' has observable initialization and cannot be cloned safely." binding.Span
                                 let mutable scoped = environment
                                 let clones =
@@ -501,8 +502,12 @@ module LirMonomorphization =
                 { expression with Type = resultType; Node = node }
 
             for declaration in program.Declarations do
-                if NativeSpecialization.effect declaration.Value = NativeSpecialization.Observable && not (NativeSpecialization.containsVariable declaration.Type) then
-                    requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
+                if nativeEffect declaration.Value = LirEffects.Observable then
+                    if NativeSpecialization.containsVariable declaration.Type then
+                        match declaration.Value.Node with
+                        | Lir.Fail _ -> requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
+                        | _ -> fail "FSL2108" $"Generalized binding '{declaration.Name}' has observable initialization and cannot be omitted or cloned safely." declaration.Span
+                    else requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
             let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
             Ok
                 { program with

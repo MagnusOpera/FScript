@@ -53,6 +53,12 @@ Host linkage in artifacts consists of names, schemes, arity, and target descript
 
 Backend `Import` attributes remain structured language metadata on bodyless typed function declarations and imported type schemas. They do not create a second type system. Each consumer accepts only linkage it supports. Unused target imports are inert; the LIR interpreter reports `FSI3023` when an unsupported import is fully applied.
 
+## Trusted host purity
+
+A separate `PurityContracts` value supplies registered pure function and type names without changing SDK record shapes. Provider companion methods expose this metadata using BCL `IEnumerable<string>` values; the CLI reads them before resolved inference. Native consumers receive declarative flags and external application arities through HIR/LIR and serialization, with conservative defaults for older artifacts.
+
+`LirEffects` centralizes native totality/effect analysis, propagating known function summaries and callback conditions while treating recursive cycles, potentially failing operations, and unknown external reads conservatively. Unused pure calls can disappear before emission, allowing their SDK adapters and provider dependencies to become unreachable. The AST interpreter does not query these compiler-only companions or change evaluation order. See [FFI purity](../guides/compile-to-dotnet.md#pure-ffi-and-external-values).
+
 ## Artifacts and conformance
 
 Versioned `.fsir` artifacts contain the complete LIR program, compiler/language versions, normalized source paths and SHA-256 hashes, and ordered foreign dependencies. Deserialization rejects incompatible format/version, malformed metadata, and programs that fail LIR validation. The format is internal and carries no backward-compatibility guarantee.

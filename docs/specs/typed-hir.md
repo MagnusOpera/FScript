@@ -137,3 +137,7 @@ HIR diagnostics use `FSH1xxx` codes and preserve an originating FScript span whe
 `Hir.format : Hir.Program -> string` produces a canonical, human-readable representation with stable ordering, symbol IDs, and normalized types. It is intended for diagnostics and snapshot tests, not serialization.
 
 The compiler serializes validated LIR, not formatted HIR.
+
+## Host purity metadata
+
+External declarations carry `IsPure` and `ExternalArity`; external type declarations carry `IsPure`. These originate in trusted `PurityContracts` retained by resolved inference. Function flags include successful termination and effects, not merely absence of mutation. Declaration contracts require external linkage and an application boundary. `FSH1110` rejects inconsistent metadata. Native consumers preserve these fields while linking and specializing declarations. See [external function contracts](external-functions.md#compiler-purity-contracts).

@@ -122,6 +122,8 @@ module Lir =
           Type: Type
           IsRecursive: bool
           IsExported: bool
+          IsPure: bool
+          ExternalArity: int option
           Export: ExportMetadata option
           Span: Span
           Value: Expression }
@@ -152,6 +154,7 @@ module Lir =
         { Id: SymbolId
           Name: string
           IsRecursive: bool
+          IsPure: bool
           Definition: Type
           Import: ImportedRecord option
           Span: Span }
@@ -225,13 +228,15 @@ module Lir =
             | ForEach(id, name, _, source, body) -> children $"for-each %%{symbolNumber id} {name}" [ source; body ]
             | TypeToken tokenType -> add $"type-token {typeName tokenType}"
         for typeDeclaration in program.Types do
-            lines.Add($"type %%{symbolNumber typeDeclaration.Id} {typeDeclaration.Name}: {typeName typeDeclaration.Definition}")
+            let purityLabel = if typeDeclaration.IsPure then " pure" else ""
+            lines.Add($"type %%{symbolNumber typeDeclaration.Id} {typeDeclaration.Name}{purityLabel}: {typeName typeDeclaration.Definition}")
         for fn in program.Functions do
             lines.Add($"function @{functionNumber fn.Id} %%{symbolNumber fn.Parameter} {fn.Name} captures={symbols fn.Captures}: {typeName fn.ParameterType} -> {typeName fn.ReturnType}")
             expression 2 fn.Body
         for declaration in program.Declarations do
             let export = declaration.Export |> Option.map (fun metadata -> $" export={metadata.Name}") |> Option.defaultValue ""
-            lines.Add($"decl %%{symbolNumber declaration.Id} {declaration.Name}{export}: {typeName declaration.Type}")
+            let purityLabel = if declaration.IsPure then " pure" else ""
+            lines.Add($"decl %%{symbolNumber declaration.Id} {declaration.Name}{export}{purityLabel}: {typeName declaration.Type}")
             expression 2 declaration.Value
         program.Entry |> Option.iter (fun entry -> lines.Add("entry"); expression 2 entry)
         System.String.Join("\n", lines) + "\n"
@@ -418,7 +423,7 @@ module LirLowering =
             program.Declarations
             |> List.map (fun value ->
                 ({ Id = symbol value.Id; Name = value.Name; Type = value.Value.Type
-                   IsRecursive = value.IsRecursive; IsExported = value.IsExported
+                   IsRecursive = value.IsRecursive; IsExported = value.IsExported; IsPure = value.IsPure; ExternalArity = value.ExternalArity
                    Export = value.Export |> Option.map (fun export -> { Name = export.Name; Span = export.Span })
                    Span = value.Span; Value = expression state value.Value }: Lir.Declaration))
         let entry = program.Entry |> Option.map (expression state)
@@ -430,7 +435,7 @@ module LirLowering =
           Types =
             program.Types
             |> List.map (fun value ->
-                ({ Id = symbol value.Id; Name = value.Name; IsRecursive = value.IsRecursive; Definition = value.Definition
+                ({ Id = symbol value.Id; Name = value.Name; IsRecursive = value.IsRecursive; IsPure = value.IsPure; Definition = value.Definition
                    Import = value.Import |> Option.map (fun imported ->
                        { Name = imported.Name; ModulePath = imported.ModulePath; MemberName = imported.MemberName
                          IsUnion = imported.IsUnion; Fields = imported.Fields; Span = imported.Span })
@@ -685,6 +690,20 @@ module LirValidation =
                 checkExpression (Set.add fn.Parameter (Set.ofList fn.Captures)) fn.Body
                 if not (compatible fn.ReturnType fn.Body.Type) then report "FSL2006" "Lifted LIR function return type is inconsistent." fn.Span)
             program.Declarations |> List.iter (fun declaration -> checkSpan declaration.Span; checkType declaration.Span declaration.Type; checkExpression Set.empty declaration.Value; if not (compatible declaration.Type declaration.Value.Type) then report "FSL2004" $"LIR declaration '{declaration.Name}' type is inconsistent." declaration.Span)
+            for declaration in program.Declarations do
+                if declaration.IsPure then
+                    match declaration.Value.Node,declaration.ExternalArity with
+                    | Lir.HostExternal _,Some _ | Lir.TargetImport _,Some _ -> ()
+                    | _ -> report "FSL2018" "Pure contracts require an external function binding and its application arity." declaration.Span
+                match declaration.ExternalArity with
+                | Some arity ->
+                    let valid =
+                        match declaration.Value.Node with
+                        | Lir.HostExternal(_,actual) -> actual=arity
+                        | Lir.TargetImport _ | Lir.Intrinsic _ | Lir.RuntimeContext -> true
+                        | _ -> false
+                    if arity<0 || not valid then report "FSL2018" "External application arity is invalid or inconsistent." declaration.Span
+                | None -> ()
             program.Entry |> Option.iter (checkExpression Set.empty)
             if diagnostics.Count = 0 then Ok program else Error(List.ofSeq diagnostics)
 
@@ -696,6 +715,15 @@ module LirOptimization =
     let private combine effects =
         if effects |> List.exists ((=) Observable) then Observable else Pure
 
+    let rec private unknownExternalValue = function
+        | TNamed _ | THostManaged _ -> true
+        | TRecord fields | TRecordShape(_,fields,_) -> fields |> Map.exists (fun _ value -> unknownExternalValue value)
+        | TUnion(_,cases) -> cases |> Map.exists (fun _ value -> value |> Option.exists unknownExternalValue)
+        | TTuple values -> List.exists unknownExternalValue values
+        | TList value | TOption value | TTask value -> unknownExternalValue value
+        | TMap(key,value) -> unknownExternalValue key || unknownExternalValue value
+        | _ -> false
+
     let rec effect (expression: Lir.Expression) =
         let child = effect
         match expression.Node with
@@ -704,19 +732,28 @@ module LirOptimization =
         | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.TailCallClosure _ | Lir.TailPipeClosure _
         | Lir.Fail _ | Lir.ForEach _ -> Observable
         | Lir.Operation((Lir.IntDivide | Lir.IntRemainder | Lir.NumericDivide), _) -> Observable
+        | Lir.Operation(Lir.StructuralEqual, arguments) when arguments |> List.exists (fun value -> unknownExternalValue value.Type) -> Observable
         | Lir.Operation(_, arguments) | Lir.Tuple arguments | Lir.List arguments -> arguments |> List.map child |> combine
         | Lir.Branch(condition, whenTrue, whenFalse) -> [ child condition; child whenTrue; child whenFalse ] |> combine
+        | Lir.Record _ when unknownExternalValue expression.Type -> Observable
         | Lir.Record fields -> fields |> List.map (snd >> child) |> combine
-        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.RecordConvert(target, _) -> child target
+        | Lir.FieldGet(target, _) ->
+            match target.Type with TNamed _ | THostManaged _ -> Observable | _ -> child target
+        | Lir.RecordConvert(target, resultType) ->
+            if unknownExternalValue target.Type || unknownExternalValue resultType then Observable else child target
+        | Lir.SomeValue target -> child target
         | Lir.Cons(head, tail) | Lir.Append(head, tail) | Lir.Range(head, tail) | Lir.IndexGet(head, tail) -> [ child head; child tail ] |> combine
         | Lir.Let(_, _, _, binding, body) -> [ child binding; child body ] |> combine
         | Lir.LetRecursiveGroup(bindings, body) -> child body :: (bindings |> List.map (fun (_, _, _, value) -> child value)) |> combine
+        | Lir.DecisionTree(target, _) when unknownExternalValue target.Type -> Observable
+        | Lir.DecisionTree(_, cases) when not (cases |> List.tryLast |> Option.exists (fun case -> case.Guard.IsNone && case.Plan.Checks.IsEmpty && case.Plan.Maps.IsEmpty)) -> Observable
         | Lir.DecisionTree(target, cases) ->
             child target
             :: (cases |> List.collect (fun case -> [ yield! case.Guard |> Option.map child |> Option.toList; child case.Body ]))
             |> combine
+        | Lir.RecordUpdate(target, _) when unknownExternalValue target.Type -> Observable
         | Lir.RecordUpdate(target, fields) -> child target :: (fields |> List.map (snd >> child)) |> combine
-        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(child value)) |> combine
+        | Lir.Interpolate parts -> parts |> List.map (function Lir.TextPart _ -> Pure | Lir.ValuePart value -> if unknownExternalValue value.Type then Observable else child value) |> combine
         | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Pure
         | Lir.Map entries ->
             entries

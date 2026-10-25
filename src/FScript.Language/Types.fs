@@ -38,6 +38,15 @@ type HostUnionDescriptor =
 [<StructuralEquality; StructuralComparison>]
 type Scheme = Forall of int list * Type
 
+/// Trusted host contracts. Function purity includes deterministic, effect-free,
+/// successful termination; type purity means deeply immutable values and payloads.
+type PurityContracts =
+    { PureFunctions: Set<string>
+      PureTypes: Set<string> }
+
+module PurityContracts =
+    let empty = { PureFunctions = Set.empty; PureTypes = Set.empty }
+
 module Types =
     let mutable private nextId = 0
 

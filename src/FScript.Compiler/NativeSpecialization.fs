@@ -2,17 +2,13 @@ namespace FScript.Compiler
 
 open FScript.Language
 
-/// Shared concrete type substitution, specialization identity, and effect analysis.
+/// Shared concrete type substitutions and deterministic specialization identities.
 module NativeSpecialization =
     type Substitution = Map<int, Type>
 
     type SpecializationKey =
         { Symbol: int
           ConcreteType: string }
-
-    type Effect =
-        | Pure
-        | Observable
 
     let rec containsVariable = function
         | TVar _ | TNumeric _ | TRecordShape _ -> true
@@ -62,25 +58,3 @@ module NativeSpecialization =
     let specializationKey symbol concreteType =
         { Symbol = symbol
           ConcreteType = typeKey concreteType }
-
-    let rec effect (expression: Lir.Expression) =
-        let combine values = if List.exists ((=) Observable) values then Observable else Pure
-        let child = effect
-        match expression.Node with
-        | Lir.Constant _ | Lir.Load _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _
-        | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
-        | Lir.CallClosure _ | Lir.PipeClosure _ | Lir.TailCallClosure _ | Lir.TailPipeClosure _ | Lir.Fail _ -> Observable
-        | Lir.Branch(condition, whenTrue, whenFalse) -> combine [ child condition; child whenTrue; child whenFalse ]
-        | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> values |> List.map child |> combine
-        | Lir.Record fields -> fields |> List.map (snd >> child) |> combine
-        | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.RecordConvert(target, _) -> child target
-        | Lir.Cons(head, tail) | Lir.Append(head, tail) | Lir.Range(head, tail) | Lir.IndexGet(head, tail) -> combine [ child head; child tail ]
-        | Lir.Let(_, _, _, binding, body) -> combine [ child binding; child body ]
-        | Lir.LetRecursiveGroup(bindings, body) -> combine (child body :: (bindings |> List.map (fun (_, _, _, value) -> child value)))
-        | Lir.DecisionTree(target, cases) ->
-            child target :: (cases |> List.collect (fun item -> [ yield! item.Guard |> Option.map child |> Option.toList; child item.Body ])) |> combine
-        | Lir.RecordUpdate(target, fields) -> child target :: (fields |> List.map (snd >> child)) |> combine
-        | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(child value)) |> combine
-        | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Pure
-        | Lir.Map entries -> entries |> List.collect (function Lir.KeyValue(key, value) -> [ child key; child value ] | Lir.Spread value -> [ child value ]) |> combine
-        | Lir.ForEach(_, _, _, source, body) -> combine [ child source; child body ]

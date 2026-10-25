@@ -206,7 +206,7 @@ type HirTests() =
         let value: Hir.Expression = { Type = TInt; Span = span; Node = Hir.Constant(Hir.Int 1L) }
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 0; Name = "value"; Scheme = Forall([], TString)
-              Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }
+              Attributes = []; IsRecursive = false; IsExported = false; IsPure = false; ExternalArity = None; Export = None; Span = span; Value = value }
         match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected invalid HIR diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1104"))
@@ -221,7 +221,7 @@ type HirTests() =
         let reference = ({ Type = TUnit; Span = span; Node = Hir.Reference(Hir.SymbolId 0) }: Hir.Expression)
         let declaration: Hir.Declaration =
             { Id = Hir.SymbolId 10; Name = "value"; Scheme = Forall([], TUnit)
-              Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = reference }
+              Attributes = []; IsRecursive = false; IsExported = false; IsPure = false; ExternalArity = None; Export = None; Span = span; Value = reference }
         match HirValidation.validate { Types = []; ImportedRecords = []; Declarations = [ declaration ]; Entry = None } with
         | Ok _ -> Assert.Fail("Expected unresolved HIR symbol diagnostic")
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code, Does.Contain("FSH1102"))

@@ -109,6 +109,8 @@ module HirValidation =
             || program.Entry |> Option.exists (validExpression >> not)
         if invalidAttributes then
             Error [ Diagnostic.hir "FSH1108" "HIR structured attribute metadata is invalid or inconsistent." None ]
+        elif program.Declarations |> List.exists (fun declaration -> (declaration.IsPure && (declaration.ExternalArity.IsNone || (match declaration.Value.Node with Hir.HostExternal _ | Hir.TargetImport _ -> false | _ -> true))) || (declaration.ExternalArity |> Option.exists (fun arity -> arity<0 || (match declaration.Value.Node with Hir.HostExternal(_,actual) -> actual<>arity | Hir.TargetImport _ | Hir.Intrinsic _ | Hir.RuntimeContext -> false | _ -> true)))) then
+            Error [ Diagnostic.hir "FSH1110" "Pure contracts may only annotate external function bindings." None ]
         elif invalidTypes then
             Error [ Diagnostic.hir "FSH1107" "HIR type declarations must be unique, well-formed, and consistently linked." None ]
         elif invalidImports then

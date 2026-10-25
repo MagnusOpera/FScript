@@ -98,6 +98,54 @@ No SDK record shape or interpreter registration API change is needed: the option
 
 Legacy SDK provider factories can still be used in DLL and managed single-file output. Their opaque delegate registrations may retain sibling implementations. Native AOT rejects a reachable legacy SDK dispatch bridge with `FSN7105` and requests typed mappings instead of silently suppressing linker warnings.
 
+## Pure FFI and external values
+
+Providers can optionally declare a trusted `Pure` guarantee. Undeclared functions and external types remain conservative.
+
+- A **pure function** is deterministic, has no observable effects, and terminates successfully for valid inputs. Required runtime initialization is part of this promise. Returning the same value while logging, mutating hidden state, reading a clock, or sometimes failing does not qualify.
+- A **pure external type** has deeply immutable visible data and opaque payloads. Registered field reads, structural equality, and formatting must also be deterministic, effect-free, and terminating successfully. A readonly CLR property alone does not establish this guarantee. Constructors and ordinary methods need their own function declarations.
+
+For callback-taking functions, the promise applies when supplied callbacks satisfy the same guarantee. The optimizer separately checks callback effects and remains conservative for unknown callbacks. A pure factory does not automatically make a returned callable pure.
+
+Expose these public static parameterless methods on the provider class:
+
+```csharp
+public static IEnumerable<string> FScriptPureFunctions() => new[]
+{
+    "Ext.add"
+};
+
+public static IEnumerable<string> FScriptPureTypes() => new[]
+{
+    "Point"
+};
+```
+
+Names must exactly match the provider's registered script functions and types. The example assumes the provider registers both `Ext.add` and `Point`. Empty or absent metadata means no guarantees. Unknown names and attempts to override protected runtime contracts are compilation errors.
+
+The CLI reads this metadata during compilation for IR, C#, and .NET output. It can be used with either existing SDK adapters or direct [typed CLR mappings](#prunable-typed-ffi-bindings). Existing SDK registration records do not need to change. These methods are not runtime roots and do not add FScript declaration syntax.
+
+Compiler API users can supply the same information explicitly:
+
+```fsharp
+open FScript.Language
+open FScript.Compiler
+
+let purity =
+    { PurityContracts.empty with
+        PureFunctions = Set.singleton "Ext.add"
+        PureTypes = Set.singleton "Point" }
+
+// registration and input are the host's existing compiler inputs.
+Compiler.compileWithRegistrationAndPurity registration purity input
+```
+
+`Compiler.compileWithPurity` accepts contracts with ordinary `CompileInput.Externs`; `ClrBindings.providerPurity` discovers contracts from provider `MethodInfo` values. Ordinary compilation APIs default to empty contracts.
+
+The compiler can remove an unused pure call and then prune its binding, adapters, and dependencies when no other retained code needs them. Effects or failures in its argument expressions are still preserved. A type guarantee permits removal of unused field reads, equality, and formatting when the complete computation is proven pure. It does not make its factory or methods pure.
+
+Declarations are trusted, not verified by executing arbitrary provider code. Incorrect claims can remove behavior or failures after optimization. Normal AST interpretation and SDK boundary validation are unchanged. See [Compilation and optimizations](./compiler-optimizations.md#trusted-external-purity) for the pruning rules.
+
 ## Compiler APIs
 
 Use `Compiler.compileWithRegistration` for host signatures. `ClrBindings.bindMethod` links an exact public CLR method or constructor; instance receivers are explicit first arguments. `ClrBindings.bindType` projects a native CLR type. `ClrBindings.bindProvider` preserves SDK providers. These declarative links survive IR serialization.

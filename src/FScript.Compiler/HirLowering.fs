@@ -259,7 +259,7 @@ module HirLowering =
                 BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst |> List.map (fun (name, scheme) ->
                     let (Forall(_, valueType)) = scheme
                     let span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-                    ({ Id = builtins.[name]; Name = name; Scheme = schemeFor builtins.[name] scheme; Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
+                    ({ Id = builtins.[name]; Name = name; Scheme = schemeFor builtins.[name] scheme; Attributes = []; IsRecursive = false; IsExported = false; IsPure = false; ExternalArity = None; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = Hir.Intrinsic name } }: Hir.Declaration))
             let externalDeclarations =
                 externs |> List.sortBy _.Name |> List.map (fun external ->
                     let (Forall(_, valueType)) = external.Scheme
@@ -269,7 +269,7 @@ module HirLowering =
                         | RuntimeContextIntrinsic -> Hir.RuntimeContext
                         | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
-                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = schemeFor externSymbols.[external.Name] external.Scheme; Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
+                    ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = schemeFor externSymbols.[external.Name] external.Scheme; Attributes = []; IsRecursive = false; IsExported = false; IsPure = Set.contains external.Name resolved.Purity.PureFunctions; ExternalArity = Some external.Arity; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
             builtinDeclarations @ externalDeclarations @ (constructorDefinitions |> List.map (fun (typeName, caseName, payloadType, span, id) ->
                 let unionType = TNamed typeName
                 let value =
@@ -279,7 +279,7 @@ module HirLowering =
                         let parameter = newSymbol state
                         let body = ({ Type = unionType; Span = span; Node = Hir.UnionCase(typeName, caseName, Some({ Type = itemType; Span = span; Node = Hir.Reference parameter })) }: Hir.Expression)
                         ({ Type = TFun(itemType, unionType); Span = span; Node = Hir.Lambda(parameter, "value", itemType, body) }: Hir.Expression)
-                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = value }: Hir.Declaration)))
+                ({ Id = id; Name = $"{typeName}.{caseName}"; Scheme = Types.generalize Map.empty value.Type; Attributes = []; IsRecursive = false; IsExported = false; IsPure = false; ExternalArity = None; Export = None; Span = span; Value = value }: Hir.Declaration)))
         let mutable entry: Hir.Expression option = None
         let mutable errors = []
         for resolvedStatement in resolved.ResolvedStatements do
@@ -295,6 +295,8 @@ module HirLowering =
                          Attributes = attributesOf resolvedStatement
                          IsRecursive = declaration.IsRecursive
                          IsExported = isExported
+                         IsPure = false
+                         ExternalArity = None
                          Export = exportMetadata binding.Name binding.Span isExported
                          Span = binding.Span
                          Value = value }: Hir.Declaration) ]
@@ -309,6 +311,8 @@ module HirLowering =
                          Attributes = []
                          IsRecursive = false
                          IsExported = false
+                         IsPure = false
+                         ExternalArity = None
                          Export = None
                          Span = value.Span
                          Value = value }: Hir.Declaration) ]
@@ -326,6 +330,8 @@ module HirLowering =
                          Attributes = []
                          IsRecursive = false
                          IsExported = false
+                         IsPure = false
+                         ExternalArity = None
                          Export = None
                          Span = span
                          Value = value }: Hir.Declaration) ]
@@ -334,7 +340,7 @@ module HirLowering =
                 let check = ({ Type = TUnit; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = unitBody; Span = span } ]) }: Hir.Expression)
                 let checkId = newSymbol state
                 declarations <- declarations @
-                    [ ({ Id = checkId; Name = $"$patternCheck{Hir.symbolNumber checkId}"; Scheme = Forall([], TUnit); Attributes = []; IsRecursive = false; IsExported = false; Export = None; Span = span; Value = check }: Hir.Declaration) ]
+                    [ ({ Id = checkId; Name = $"$patternCheck{Hir.symbolNumber checkId}"; Scheme = Forall([], TUnit); Attributes = []; IsRecursive = false; IsExported = false; IsPure = false; ExternalArity = None; Export = None; Span = span; Value = check }: Hir.Declaration) ]
                 for binding, scheme in declaration.Bindings do
                     let name = binding.Name
                     let inferred = representationType state binding.Type
@@ -344,7 +350,7 @@ module HirLowering =
                         let body = ({ Type = inferred; Span = span; Node = Hir.Reference patternId }: Hir.Expression)
                         let projection = ({ Type = inferred; Span = span; Node = Hir.Match(target, [ { Pattern = loweredPattern; Guard = None; Body = body; Span = span } ]) }: Hir.Expression)
                         declarations <- declarations @
-                            [ ({ Id = Hir.SymbolId binding.SymbolId; Name = name; Scheme = scheme; Attributes = attributesOf resolvedStatement; IsRecursive = false; IsExported = isExported; Export = (exportMetadata name span isExported); Span = span; Value = projection }: Hir.Declaration) ]
+                            [ ({ Id = Hir.SymbolId binding.SymbolId; Name = name; Scheme = scheme; Attributes = attributesOf resolvedStatement; IsRecursive = false; IsExported = isExported; IsPure = false; ExternalArity = None; Export = (exportMetadata name span isExported); Span = span; Value = projection }: Hir.Declaration) ]
             | TypeInfer.ResolvedRecursiveDeclarations recursiveDeclarations ->
                 for declaration in recursiveDeclarations do
                     let binding = declaration.Binding
@@ -356,6 +362,8 @@ module HirLowering =
                              Attributes = attributesOf resolvedStatement
                              IsRecursive = true
                              IsExported = isExported
+                             IsPure = false
+                             ExternalArity = None
                              Export = exportMetadata binding.Name binding.Span isExported
                              Span = binding.Span
                              Value = value }: Hir.Declaration) ]
@@ -368,6 +376,8 @@ module HirLowering =
                          Attributes = attributesOf resolvedStatement
                          IsRecursive = false
                          IsExported = false
+                         IsPure = false
+                         ExternalArity = None
                          Export = None
                          Span = binding.Span
                          Value = { Type = representationType state binding.Type; Span = binding.Span; Node = Hir.TargetImport(declaration.Import.ModulePath, declaration.Import.MemberName) } }: Hir.Declaration) ]
@@ -389,6 +399,7 @@ module HirLowering =
                  ({ Id = id
                     Name = name
                     IsRecursive = false
+                    IsPure = false
                     Definition = definition
                     Attributes = []
                     Import = None
@@ -398,6 +409,7 @@ module HirLowering =
                 ({ Id = Hir.SymbolId definition.Binding.SymbolId
                    Name = definition.Binding.Name
                    IsRecursive = definition.IsRecursive
+                   IsPure = Set.contains definition.Binding.Name resolved.Purity.PureTypes
                    Definition = definition.Definition
                    Attributes = attributesOf statement
                    Import = importedRecords |> List.tryFind (fun imported -> imported.Name = definition.Binding.Name)

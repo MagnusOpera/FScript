@@ -110,6 +110,8 @@ module Hir =
           Attributes: AttributeMetadata list
           IsRecursive: bool
           IsExported: bool
+          IsPure: bool
+          ExternalArity: int option
           Export: ExportMetadata option
           Span: Span
           Value: Expression }
@@ -135,6 +137,7 @@ module Hir =
         { Id: SymbolId
           Name: string
           IsRecursive: bool
+          IsPure: bool
           Definition: Type
           Attributes: AttributeMetadata list
           Import: ImportedRecord option
@@ -236,11 +239,11 @@ module Hir =
 
         for typeDeclaration in program.Types do
             let attributes = typeDeclaration.Attributes |> List.map _.Name |> function [] -> "" | values -> " attrs=" + String.concat "," values
-            lines.Add(sprintf "type %%%d %s%s%s = %s" (symbolNumber typeDeclaration.Id) typeDeclaration.Name (if typeDeclaration.IsRecursive then " rec" else "") attributes (formatType typeDeclaration.Definition))
+            lines.Add(sprintf "type %%%d %s%s%s = %s" (symbolNumber typeDeclaration.Id) typeDeclaration.Name ((if typeDeclaration.IsRecursive then " rec" else "") + (if typeDeclaration.IsPure then " pure" else "")) attributes (formatType typeDeclaration.Definition))
         for declaration in program.Declarations do
             let export = declaration.Export |> Option.map (fun metadata -> $" export={metadata.Name}") |> Option.defaultValue ""
             let attributes = declaration.Attributes |> List.map _.Name |> function [] -> "" | values -> " attrs=" + String.concat "," values
-            lines.Add(sprintf "decl %%%d %s%s%s: %s" (symbolNumber declaration.Id) declaration.Name export attributes (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
+            lines.Add(sprintf "decl %%%d %s%s%s: %s" (symbolNumber declaration.Id) declaration.Name (export + (if declaration.IsPure then " pure" else "")) attributes (formatType (let (Forall(_, value)) = declaration.Scheme in value)))
             expression 2 declaration.Value
         match program.Entry with
         | Some entry ->

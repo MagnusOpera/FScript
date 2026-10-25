@@ -157,3 +157,9 @@ LirInterpreter.execute :
 `InterpreterContext` supplies an optional script name and argument list. `ExecutionResult` contains the final `LirValue` and ordered `Console.writeLine` output. `Console.readLine` consumes the interpreter process stdin and returns `None` at end of input; hosts that need controlled input can temporarily supply a `TextReader` through `Console.SetIn` around execution.
 
 `Lir.format : Lir.Program -> string` is a deterministic debug/snapshot representation and is not the artifact encoding.
+
+## External purity metadata
+
+External declarations retain `IsPure` and nullable `ExternalArity`; type declarations retain `IsPure`. A function's external application boundary is independent of the number of arrows in its type, because applying a returned callback is another operation. Validation rejects incompatible purity/arity metadata with `FSL2018`. Serialized version-1 declarations include `pure` and `externalArity`; type declarations include `pure`. Missing fields in older artifacts mean false/unknown, never an implicit guarantee. Wrong JSON types or inconsistent metadata are rejected on load.
+
+These are trusted optimization contracts, not executable host delegates. Native effect analysis may prune a claimed-pure call only when its arguments and invoked callbacks are also safe. Observable failures and unproven termination remain conservative. Ordinary LIR interpretation does not infer or enforce the provider's promise. See [FFI contracts](external-functions.md#compiler-purity-contracts).

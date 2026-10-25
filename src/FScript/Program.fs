@@ -53,7 +53,8 @@ let runCompileCommand (argv: string array) =
                         |> function Ok environment -> environment | Error message -> failwith message
                     let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
                     let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
-                    match FScript.Compiler.Compiler.compileWithRegistration loaded.Registration { Program = program; Externs = [] } with
+                    let purity = FScript.Compiler.ClrBindings.providerPurity (loaded.ProviderMethods |> List.map snd)
+                    match FScript.Compiler.Compiler.compileWithRegistrationAndPurity loaded.Registration purity { Program = program; Externs = [] } with
                     | Error diagnostics ->
                         diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
                         4

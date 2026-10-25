@@ -405,7 +405,8 @@ module TypeInfer =
           Span: Span }
 
     type ResolvedProgram =
-        { TypedProgram: TypedProgram
+        { Purity: PurityContracts
+          TypedProgram: TypedProgram
           ResolvedStatements: ResolvedStatement list
           ExpressionTypes: ResolvedExpressionType list
           Symbols: ResolvedSymbol list
@@ -2279,11 +2280,16 @@ module TypeInfer =
                       Fields = match definition with TRecord fields | THostManaged(_, fields) -> Map.toList fields | _ -> []
                       Cases = match definition with TUnion(_, cases) -> Map.toList cases | _ -> []
                       Import = None } })
-        { TypedProgram = typed
+        { Purity = PurityContracts.empty
+          TypedProgram = typed
           ResolvedStatements = hostStatements @ resolvedStatements
           ExpressionTypes = expressions
           Symbols = symbols |> Seq.toList
           SymbolReferences = resolvedReferences }
+
+    /// Host metadata does not change inference or execute provider code.
+    let inferResolvedProgramWithRegistrationAndPurity registration purity program =
+        { inferResolvedProgramWithRegistration registration program with Purity = purity }
 
     let inferResolvedProgramWithExterns externs program =
         inferResolvedProgramWithRegistration (HostInterop.ofExterns externs) program

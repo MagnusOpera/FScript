@@ -11,6 +11,19 @@ open NUnit.Framework
 
 module ProviderFixture =
     open FScript.Extensibility
+    type QuietValue() =
+        member _.Value = 7L
+    type ConstructedValue(value: int64) =
+        static let mutable created = 0
+        do created <- created+1
+        static member Reset() = created <- 0
+        static member Created = created
+        member _.Value = value
+    type ObservedValue() =
+        static let mutable reads = 0
+        static member Reset() = reads <- 0
+        static member Reads = reads
+        member _.Value = reads <- reads+1; 7L
     type Provider =
         static member Provide() : ExtensionRegistration =
             let descriptor={Name="Secret"; Fields=Map.ofList ["Name",TString]; HostManaged=true}
@@ -89,6 +102,52 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    [<Test>]
+    member _.``A pure external type does not imply a pure constructor`` () =
+        let native=typeof<ProviderFixture.ConstructedValue>
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=false}]}
+        let contracts={PurityContracts.empty with PureTypes=Set.singleton "NativeValue"}
+        let input={Program=Parser.parseProgram "let discarded = { Value=7 }\n42";Externs=[]}
+        let program=match Compiler.compileWithRegistrationAndPurity registration contracts input with Ok value -> value.Lir | Error errors -> failwith (string errors)
+        let linked=ClrBindings.bindType "NativeValue" native program
+        ProviderFixture.ConstructedValue.Reset()
+        Assert.That(Harness.executeWith {Harness.options with References=[native.Assembly.Location]} linked,Is.EqualTo("42"))
+        Assert.That(ProviderFixture.ConstructedValue.Created,Is.EqualTo(1))
+
+    [<TestCase(false,"match value with | { Value=7 } -> 1 | _ -> 0")>]
+    [<TestCase(true,"match value with | { Value=7 } -> 1 | _ -> 0")>]
+    [<TestCase(false,"value.Value")>]
+    [<TestCase(true,"value.Value")>]
+    [<TestCase(false,"value = value")>]
+    [<TestCase(true,"value = value")>]
+    [<TestCase(false,"$\"{value}\"")>]
+    [<TestCase(true,"$\"{value}\"")>]
+    member _.``Native getter pruning requires a pure external type`` (isPure: bool, expression: string) =
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
+        let contracts=if isPure then {PurityContracts.empty with PureTypes=Set.singleton "NativeValue"} else PurityContracts.empty
+        let native=typeof<ProviderFixture.QuietValue>
+        let compiled=match Compiler.compileWithRegistrationAndPurity registration contracts {Program=Parser.parseProgram ("let value = Native.create ()\nlet discarded = "+expression+"\n42");Externs=[external]} with Ok value -> value.Lir | Error errors -> failwith (string errors)
+        let linked=compiled |> ClrBindings.bindType "NativeValue" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor(System.Type.EmptyTypes) |> nonNull)
+        let options={Harness.options with References=[native.Assembly.Location]}
+        let binary=Harness.generate options linked |> List.find (fun file -> file.RelativePath="CompiledScript.dll")
+        let assembly=Assembly.Load(binary.Content)
+        let callsGetter=IL.instructions assembly |> List.exists (fun (_,_,memberInfo) -> memberInfo |> Option.exists (fun info -> info.DeclaringType=native && info.Name="get_Value"))
+        Assert.That(callsGetter,Is.EqualTo(not isPure))
+        Assert.That(Harness.executeWith options linked,Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Unmarked external getters execute once and cannot be duplicated`` () =
+        let native=typeof<ProviderFixture.ObservedValue>
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
+        let source="let value = Native.create ()\nlet useValue () =\n    let read = value.Value\n    (read,read)\nuseValue ()"
+        let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[external]} with Ok value -> value.Lir | Error errors -> failwith (string errors)
+        let linked=program |> ClrBindings.bindType "NativeValue" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor(System.Type.EmptyTypes) |> nonNull)
+        ProviderFixture.ObservedValue.Reset()
+        Assert.That(Harness.executeWith {Harness.options with References=[native.Assembly.Location]} linked,Is.EqualTo("(7, 7)"))
+        Assert.That(ProviderFixture.ObservedValue.Reads,Is.EqualTo(1))
+
     [<TestCase("let value = Sdk.create \"hello\"\nvalue.Name", "\"hello\"")>]
     [<TestCase("Sdk.apply (fun value -> value+2) 40", "42")>]
     [<TestCase("Sdk.identity (Some [1;2])", "Some [1;2]")>]

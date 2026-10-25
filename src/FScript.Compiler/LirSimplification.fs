@@ -2,16 +2,7 @@ namespace FScript.Compiler
 
 /// Backend-private simplification over the closed, monomorphized LIR program.
 module LirSimplification =
-    type private Effect = Pure | Observable
-
-    let private combine values = if List.contains Observable values then Observable else Pure
-
-    let private pureIntrinsic =
-        set [ "ignore"; "Int.tryParse"; "Float.tryParse"; "Bool.tryParse"; "Int.toString"; "Float.toString"; "Bool.toString"
-              "String.replace"; "String.indexOf"; "String.toLower"; "String.toUpper"; "String.substring"; "String.concat"; "String.split"; "String.endsWith"
-              "List.empty"; "List.contains"; "List.rev"; "List.distinct"; "List.length"; "List.tryItem"; "List.tryHead"; "List.append"
-              "Option.defaultValue"; "Option.isNone"; "Option.isSome"
-              "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.count"; "Map.remove" ]
+    open LirEffects
 
     let private expressionSize expression =
         let rec size (value: Lir.Expression) =
@@ -70,45 +61,7 @@ module LirSimplification =
     let optimize (program: Lir.Program) =
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let declarations = program.Declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
-        let mutable summaries = functions |> Map.map (fun _ _ -> Pure)
-
-        let rec effect (expression: Lir.Expression) =
-            let child = effect
-            let callee (value: Lir.Expression) =
-                match value.Node with
-                | Lir.MakeClosure(id, _) -> Map.tryFind id summaries |> Option.defaultValue Observable
-                | Lir.Load id ->
-                    match Map.tryFind id declarations |> Option.map _.Value.Node with
-                    | Some(Lir.MakeClosure(functionId, _)) -> Map.tryFind functionId summaries |> Option.defaultValue Observable
-                    | Some(Lir.Intrinsic name) when Set.contains name pureIntrinsic -> Pure
-                    | Some(Lir.HostExternal("Regex.matchGroups", _)) -> Pure
-                    | _ -> Observable
-                | _ -> Observable
-            match expression.Node with
-            | Lir.Constant _ | Lir.Load _ | Lir.MakeClosure _ | Lir.NoneValue | Lir.Intrinsic _ | Lir.HostExternal _ | Lir.RuntimeContext | Lir.TargetImport _ | Lir.TypeToken _ -> Pure
-            | Lir.CallClosure(fn, argument) | Lir.PipeClosure(argument, fn)
-            | Lir.TailCallClosure(fn, argument) | Lir.TailPipeClosure(argument, fn) -> combine [ child argument; callee fn ]
-            | Lir.Fail _ | Lir.ForEach _ -> Observable
-            | Lir.Operation((Lir.IntDivide | Lir.IntRemainder | Lir.NumericDivide), _) -> Observable
-            | Lir.Operation(_, values) | Lir.Tuple values | Lir.List values -> values |> List.map child |> combine
-            | Lir.Branch(a, b, c) -> combine [ child a; child b; child c ]
-            | Lir.Record fields -> fields |> List.map (snd >> child) |> combine
-            | Lir.FieldGet(target, _) | Lir.SomeValue target | Lir.RecordConvert(target, _) -> child target
-            | Lir.Cons(left, right) | Lir.Append(left, right) | Lir.Range(left, right) | Lir.IndexGet(left, right) -> combine [ child left; child right ]
-            | Lir.Let(_, _, _, binding, body) -> combine [ child binding; child body ]
-            | Lir.LetRecursiveGroup(bindings, body) -> child body :: (bindings |> List.map (fun (_, _, _, value) -> child value)) |> combine
-            | Lir.DecisionTree(target, cases) -> child target :: (cases |> List.collect (fun item -> [ yield! Option.toList item.Guard |> List.map child; child item.Body ])) |> combine
-            | Lir.RecordUpdate(target, fields) -> child target :: (fields |> List.map (snd >> child)) |> combine
-            | Lir.Interpolate parts -> parts |> List.choose (function Lir.TextPart _ -> None | Lir.ValuePart value -> Some(child value)) |> combine
-            | Lir.UnionCase(_, _, payload) -> payload |> Option.map child |> Option.defaultValue Pure
-            | Lir.Map entries -> entries |> List.collect (function Lir.KeyValue(key, value) -> [ child key; child value ] | Lir.Spread value -> [ child value ]) |> combine
-
-        let mutable changed = true
-        while changed do
-            changed <- false
-            for KeyValue(id, fn) in functions do
-                let next = effect fn.Body
-                if summaries.[id] <> next then summaries <- Map.add id next summaries; changed <- true
+        let effect = LirEffects.create program
 
         let rec substitute symbol replacement (expression: Lir.Expression) =
             match expression.Node with
@@ -129,7 +82,7 @@ module LirSimplification =
             | Lir.Branch({ Node = Lir.Constant(Lir.Bool false) }, _, whenFalse) -> whenFalse
             | Lir.Let(id, _, false, binding, body) when body.Node = Lir.Load id -> binding
             | Lir.Let(id, _, false, binding, body) when not (Set.contains id (LirOptimization.loadedSymbols body)) && effect binding = Pure -> body
-            | Lir.Let(id, _, false, binding, body) when replicable binding -> substitute id binding body |> recurse
+            | Lir.Let(id, _, false, binding, body) when replicable binding && effect binding = Pure -> substitute id binding body |> recurse
             | Lir.CallClosure({ Node = Lir.MakeClosure(functionId, _) }, argument)
                 when functions |> Map.tryFind functionId |> Option.exists (fun fn -> expressionSize fn.Body <= 18) ->
                 let fn = functions.[functionId]

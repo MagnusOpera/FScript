@@ -86,3 +86,7 @@ Constructible provided types follow existing ordinary record literal resolution,
 `HostTypes.describeUnion<'T>()` derives this descriptor from an F# discriminated union marked `[<FScriptHostType("Protocol.Mode", ScriptConstructible = true)>]`. Nullary cases have no payload, one-field cases use that field's type, and multiple fields form a tuple payload. Every payload type must use a supported projection and every referenced descriptor must be registered. Opaque and recursive union projections are rejected. `HostTypes.wrap`, `unwrap`, and `HostFunctions.create` convert these unions recursively, including inside records and containers.
 
 F# sets project as script lists. Host-to-script snapshots follow CLR set iteration order. Script-to-host conversion applies CLR set ordering and deduplication; list order and duplicates are not preserved in the reconstructed set.
+
+## Compiler purity
+
+External values are not assumed pure because their visible schema is immutable. A provider may separately declare the strong pure-type contract: deeply immutable visible data and opaque payloads, and safe, deterministic, terminating, effect-free registered field reads, structural equality, and formatting. This can enable pruning of otherwise unused projections and structural operations. It does not mark constructors or ordinary methods pure and does not skip runtime boundary validation. See [FFI purity contracts](external-functions.md#compiler-purity-contracts).

@@ -6,6 +6,12 @@ Both backends share `LirMonomorphization` and `LirSimplification`. Reachable pol
 
 For target selection and executable workflows, see [Compilation](../guides/compilation.md). The user-facing [optimization guide](../guides/compiler-optimizations.md) compares both targets and illustrates the limits described below.
 
+## Purity contracts
+
+`PurityContracts` contains `PureFunctions` and `PureTypes` sets of registered script names. The compiler API's explicit contract overloads default to empty sets through legacy entry points. The CLI discovers optional `FScriptPureFunctions`/`FScriptPureTypes` provider methods returning `IEnumerable<string>`. Function contracts include totality and effects; type contracts include deep immutability and safe registered-field reads. Provider initialization and callbacks must satisfy the documented conditional guarantee. Declarations are trusted; protected runtime contracts cannot be overridden.
+
+`LirEffects` performs conservative contract-aware analysis shared by specialization and simplification. Recursive summaries start observable, avoiding circular proofs of termination. Unproven failures, non-exhaustive matches, external reads without type guarantees, and unknown callback effects remain observable. Pure calls can be pruned only with pure arguments and a correctly retained application boundary. Generated-member/dependency pruning then removes newly unreachable code. This does not change the AST evaluator or SDK validation.
+
 ## Assembly optimization
 
 The .NET assembly pipeline additionally beta-reduces known nonrecursive calls with fresh lexical identities, propagates known partial applications, and hoists their top-level captures so effects execute once in source order. Recursive components are detected before expansion. Saturated calls use methods with multiple typed parameters. Exported or genuinely escaping functions retain typed delegates.

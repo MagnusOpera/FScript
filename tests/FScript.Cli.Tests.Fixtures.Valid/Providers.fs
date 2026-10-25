@@ -59,6 +59,10 @@ type NativeCounter(value: int64) =
 type CompiledProvider =
     static member Create(value: int64) = NativeCounter(value)
     static member Read(value: NativeCounter) = value.Value
+    static member FScriptPureFunctions() : System.Collections.Generic.IEnumerable<string> =
+        [| "Ext.createCounter"; "Ext.readCounter" |]
+    static member FScriptPureTypes() : System.Collections.Generic.IEnumerable<string> =
+        [| "NativeCounter" |]
     // This method must never become an AOT root merely because its provider is loaded.
     static member Unused() = System.Reflection.Assembly.Load("Not.A.Runtime.Dependency") |> ignore; 0L
     [<FScriptExternProvider>]

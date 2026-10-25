@@ -10,6 +10,7 @@ These passes run automatically. There is no FScript CLI optimization-level switc
 | --- | --- | --- |
 | Specialize reachable polymorphic uses | Yes | Yes |
 | Simplify constants, branches, aliases, and unused pure bindings in shared IR | Yes | Yes |
+| Use declared FFI purity and external-type guarantees | Yes | Yes |
 | Additional known-call and partial-application reduction | No | Yes |
 | Native methods for saturated calls | No | Yes |
 | Proven self-tail calls converted to loops | No | Yes |
@@ -93,6 +94,18 @@ let announced = Console.writeLine "starting"
 The unused function can disappear, but the console write must remain. Console operations, filesystem access, tasks, imports, unknown callbacks, and failures are treated conservatively. Neither an unused result nor immutability makes I/O pure.
 
 A generalized initializer cannot be duplicated if it performs observable work. The compiler reports a diagnostic rather than introducing a value restriction or silently repeating the effect. Move one-time effects outside the generalized function or give its boundary a concrete type.
+
+## Trusted external purity
+
+[FFI providers](./compile-to-dotnet.md#pure-ffi-and-external-values) can declare the same strong `Pure` guarantee used by the optimizer: deterministic, effect-free, and guaranteed to terminate successfully for valid inputs. External type guarantees additionally cover deep immutability and safe, terminating registered field reads, equality, and formatting. No callable member becomes pure just because its receiver type is pure. Implicit imported-record construction, updates, and conversions remain conservative because they may invoke CLR constructors. A pure type does not make those constructors pure; use an explicitly pure factory binding when that guarantee holds.
+
+Both source and assembly specialization can use these contracts. An unused pure call may be removed, including through known FScript wrappers. Afterward, unused bindings and adapters can disappear; the assembly target can also omit provider dependencies that are no longer referenced. Argument expressions are analyzed separately, so `pureFunction (1 / 0)` must still fail and an argument that writes to the console must still execute.
+
+Curried application boundaries are retained in IR. Creating a pure function value and invoking a callable returned from it are separate operations. Callback-taking FFI and known higher-order collection operations require sufficiently strong callback proofs; unknown or effectful callbacks preserve the call.
+
+Failure is observable. Division is not considered pure unless its divisor and any signed-overflow case are proven safe. Explicit failures, potentially exhausted matches, and unproven recursive cycles remain observable even without mutation or I/O. Tail-call lowering does not establish termination. Observable generalized initializers that cannot be represented safely receive a diagnostic rather than silently disappearing.
+
+The contracts survive resolved inference, HIR, LIR, CLR linkage, specialization, and `.fsir` serialization. Older artifacts without them load conservatively. Provider declarations are trusted promises; FScript cannot generally verify their implementations. The current use is pruning and safe local propagation, not automatic memoization or general common-subexpression elimination.
 
 ## FFI pruning and executable publishing
 

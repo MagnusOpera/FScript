@@ -167,6 +167,34 @@ type CliTests() =
             Assert.That(File.Exists(Path.Combine(output,"FScript.Runtime.dll")),Is.False)
         finally Directory.Delete(tempRoot,true)
 
+    [<Test>]
+    member _.``Pure provider calls and their dependencies are pruned from native output`` () =
+        let root=findRepoRoot ()
+        let directory=Path.Combine(Path.GetTempPath(),"fscript-pure-provider-"+Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let script=Path.Combine(directory,"pure.fss")
+            File.WriteAllText(script,"let discarded = Ext.readCounter (Ext.createCounter 7)\n42")
+            let output=Path.Combine(directory,"output")
+            let args=["compile";script;"--target";"dotnet";"--output";output;"--extern-assembly";validProviderAssemblyPath()]
+            let code,_,error=runCli root directory args None
+            Assert.That(code,Is.Zero,error)
+            Assert.That(Directory.GetFiles(output) |> Array.map Path.GetFileName,Is.EquivalentTo([|"pure.dll";"pure.runtimeconfig.json"|]))
+            let start=ProcessStartInfo("dotnet",RedirectStandardOutput=true,RedirectStandardError=true)
+            start.ArgumentList.Add(Path.Combine(output,"pure.dll"))
+            use proc=new Process(StartInfo=start)
+            proc.Start() |> ignore
+            let stdout=proc.StandardOutput.ReadToEnd()
+            let stderr=proc.StandardError.ReadToEnd()
+            proc.WaitForExit()
+            Assert.That(proc.ExitCode,Is.Zero,stderr)
+            Assert.That(stdout.Trim(),Is.EqualTo("42"))
+            let irOutput=Path.Combine(directory,"ir")
+            let code,_,error=runCli root directory ["compile";script;"--target";"ir";"--output";irOutput;"--extern-assembly";validProviderAssemblyPath()] None
+            Assert.That(code,Is.Zero,error)
+            Assert.That(File.ReadAllText(Path.Combine(irOutput,"pure.fsir")),Does.Contain("\"pure\": true"))
+        finally Directory.Delete(directory,true)
+
     [<TestCase("unknown")>]
     [<TestCase("go")>]
     [<TestCase("GO")>]

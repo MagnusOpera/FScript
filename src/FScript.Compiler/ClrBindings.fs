@@ -177,6 +177,23 @@ module ClrBindings =
         {program with Types=program.Types |> List.filter (fun declaration -> names.Contains declaration.Name)
                       ImportedRecords=program.ImportedRecords |> List.filter (fun record -> names.Contains record.Name)}
 
+    /// Additive provider metadata; existing SDK registration records remain unchanged.
+    let providerPurity (providers: MethodInfo list) : PurityContracts =
+        let mutable functions = Set.empty
+        let mutable types = Set.empty
+        for typ in providers |> List.map (fun method -> method.DeclaringType |> nonNull) |> List.distinct do
+            let names methodName =
+                match typ.GetMethod(methodName, BindingFlags.Public ||| BindingFlags.Static, null, System.Type.EmptyTypes, null) |> Option.ofObj with
+                | None -> Set.empty
+                | Some factory ->
+                    match factory.Invoke(null, [||]) with
+                    | :? Collections.Generic.IEnumerable<string> as values ->
+                        values |> Seq.map (fun value -> if String.IsNullOrWhiteSpace value then invalidOp $"{typ.FullName}.{methodName} contains an empty binding name." else value) |> Set.ofSeq
+                    | _ -> invalidOp $"{typ.FullName}.{methodName} must return IEnumerable<string>."
+            functions <- Set.union functions (names "FScriptPureFunctions")
+            types <- Set.union types (names "FScriptPureTypes")
+        { PureFunctions = functions; PureTypes = types }
+
     /// Optional compiler-only companion contract. Uses BCL metadata types, so existing
     /// SDK providers and their interpreter registration records remain binary-compatible.
     let bindCompiledProviders (providers: MethodInfo list) (program: Lir.Program) =

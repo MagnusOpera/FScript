@@ -495,6 +495,11 @@ module CSharpBackend =
                             let call= $"Native{funName id}({String.concat comma (captures @ arguments)})"
                             coerce (List.last chain).ReturnType value.Type call
                         | _ -> invalidOp "Unsupported direct application."
+                    // CLR unit arguments can be evaluated without being passed to a zero-argument
+                    // method/constructor. Preserve their effects without an unread temporary.
+                    let setup = names |> Map.fold (fun (setup: string) _ name ->
+                        if Text.RegularExpressions.Regex.IsMatch(result, @"\b" + Text.RegularExpressions.Regex.Escape(name) + @"\b") then setup
+                        else setup.Replace($"var {name}=", "_=")) setup
                     Some(wrap (csType value.Type) $"{setup} return {result};")
             let code =
                 match (if assemblyMode then directApplication () else None) with

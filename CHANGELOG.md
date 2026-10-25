@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added trusted Pure contracts for FFI functions and external types, enabling stronger pruning while preserving failures and effects.
+
+- Preserved non-total recursive calls, unused external getter effects, and zero-argument CLR constructor evaluation during native optimization.
+
 - Added a Compilation documentation section with dedicated .NET, C#, and optimization guides.
 
 - Enforced `export let` as the only export declaration syntax across .NET and JavaScript.
