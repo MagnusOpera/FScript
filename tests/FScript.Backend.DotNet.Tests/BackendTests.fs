@@ -429,6 +429,16 @@ type BackendTests() =
         check {RuntimeIdentifier=foreign;AheadOfTime=true} console "FSN7104"
 
     [<Test>]
+    member _.``Invalid Apple runtime spelling identifies the .NET spelling`` () =
+        let options={Harness.options with OutputKind=ConsoleApplication}
+        match DotNetBackend.generateExecutable {RuntimeIdentifier="darwin-arm64";AheadOfTime=true} options (Harness.compile "42") with
+        | Ok _ -> Assert.Fail("An invalid runtime identifier must not reach SDK publishing.")
+        | Error diagnostics ->
+            Assert.That(diagnostics.Head.Code,Is.EqualTo("FSN7101"))
+            Assert.That(diagnostics.Head.Message,Does.Contain("'darwin-arm64'"))
+            Assert.That(diagnostics.Head.Message,Does.Contain("use 'osx-arm64'"))
+
+    [<Test>]
     member _.``Unused provider references and unresolved external types are omitted`` () =
         let registration: ExtensionRegistration={Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true}];Unions=[];Functions=[]}
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "42";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))

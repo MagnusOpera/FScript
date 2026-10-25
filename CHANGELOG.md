@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Improved invalid .NET runtime-ID diagnostics with supported values and macOS spelling guidance, and clarified SDK requirements for compilation and publishing.
+
 - Added shared common-subexpression elimination for C# and .NET compilation, reusing proven-pure computations without memoization.
 
 - Made String.replace total across interpreters and compiled backends: an empty search string returns the source unchanged.

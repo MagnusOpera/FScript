@@ -226,6 +226,24 @@ type CliTests() =
         Assert.That(code,Is.EqualTo(1),error)
         Assert.That(Directory.Exists output,Is.False)
 
+    [<TestCase("darwin-arm64", false)>]
+    [<TestCase("darwin-arm64", true)>]
+    [<TestCase("unknown-rid", false)>]
+    member _.``Invalid runtime identifiers report a FScript diagnostic without SDK publishing`` (rid: string, aot: bool) =
+        let root=findRepoRoot ()
+        let output=Path.Combine(Path.GetTempPath(),"fscript-invalid-rid-"+Guid.NewGuid().ToString("N"))
+        try
+            let flags=if aot then ["--single-file";"--aot"] else ["--single-file"]
+            let code,_,error=runCli root root (["compile";Path.Combine(root,"samples","hello.fss");"--target";"dotnet";"--output";output;"--runtime";rid] @ flags) None
+            Assert.That(code,Is.EqualTo(4),error)
+            Assert.That(error,Does.Contain("FSN7101"))
+            Assert.That(error,Does.Contain($"'{rid}'"))
+            Assert.That(error,Does.Contain("osx-arm64"))
+            Assert.That(error,Does.Not.Contain("NETSDK"))
+            Assert.That((if Directory.Exists output then Directory.GetFiles(output) else [||]),Is.Empty)
+        finally
+            if Directory.Exists output then Directory.Delete(output,true)
+
     [<TestCase("--single-file", false)>]
     [<TestCase("--aot", false)>]
     [<TestCase("--single-file", true)>]

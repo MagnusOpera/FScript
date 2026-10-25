@@ -6,6 +6,16 @@ slug: /compiler/dotnet
 
 The .NET backend compiles a typed FScript program into an optimized .NET assembly. For a buildable source project, use [the C# backend](./compile-to-csharp.md). Generated programs do not require the source script, a `.fsir` file, `ScriptHost`, or an interpreter.
 
+## Build-machine requirements
+
+| Operation | Requirements |
+| --- | --- |
+| Generate a `.dll` with `--target dotnet` | FScript and a .NET 10 runtime; no SDK required. Roslyn is bundled with FScript and emits the assembly in-process. |
+| Publish with `--single-file` | .NET 10 SDK available through `dotnet` on PATH. |
+| Publish with `--aot` | .NET 10 SDK plus the target platform's native build tools; build on the target OS. |
+
+Running FScript itself from source with `dotnet run` requires the SDK to build FScript. That is separate from the installed compiler's requirements. A generated ordinary DLL needs a .NET 10 runtime to run; published single-file and AOT executables do not require a .NET installation on the destination machine.
+
 ## Runnable .NET assembly
 
 ```sh
@@ -45,6 +55,16 @@ These flags are available only for `--target dotnet`, and `--runtime` is require
 | macOS | `osx-x64` | `osx-arm64` |
 | Linux | `linux-x64` | `linux-arm64` |
 | Windows | `win-x64` | `win-arm64` |
+
+Invalid or unsupported identifiers produce `FSN7101` before SDK publishing. The diagnostic includes the supplied identifier and supported values; `darwin-arm64`, for example, suggests `osx-arm64`.
+
+When invoking FScript from source, put `--` between `dotnet run` options and FScript arguments:
+
+```sh
+dotnet run --project src/FScript -- compile samples/hello.fss --target dotnet --aot --runtime osx-arm64 --output out/hello-native
+```
+
+Without that separator, `dotnet run` can consume `--runtime` itself and fail while building FScript, before its CLI starts. Such SDK errors cannot be reported by FScript.
 
 Windows output has an `.exe` extension; macOS and Linux output has no extension. Use a fresh output directory when switching from DLL output: existing files are not deleted. External data such as BASIC source files remains program input and is not bundled.
 

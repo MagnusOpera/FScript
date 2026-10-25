@@ -15,7 +15,17 @@ module internal DotNetPackaging =
         if outputKind<>ConsoleApplication then
             Error [diagnostic "FSN7101" "Single-file and Native AOT output require a console application, not a library."]
         elif not (Set.contains executable.RuntimeIdentifier supported) then
-            Error [diagnostic "FSN7101" "Specify a portable .NET runtime identifier, for example osx-arm64, linux-x64, or win-x64."]
+            let rid=executable.RuntimeIdentifier
+            let suggestion=
+                ["darwin-";"macos-"]
+                |> List.tryPick (fun prefix ->
+                    if rid.StartsWith(prefix,StringComparison.Ordinal) then
+                        let candidate="osx-"+rid.Substring(prefix.Length)
+                        if Set.contains candidate supported then Some $" For macOS, use '{candidate}'." else None
+                    else None)
+                |> Option.defaultValue ""
+            let names=String.concat ", " (Set.toList supported)
+            Error [diagnostic "FSN7101" $"Unsupported .NET runtime identifier '{rid}'.{suggestion} Supported runtime identifiers: {names}."]
         elif executable.AheadOfTime &&
              not ((OperatingSystem.IsMacOS() && executable.RuntimeIdentifier.StartsWith("osx-",StringComparison.Ordinal)) ||
                   (OperatingSystem.IsLinux() && executable.RuntimeIdentifier.StartsWith("linux-",StringComparison.Ordinal)) ||
