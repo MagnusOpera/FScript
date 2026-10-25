@@ -217,13 +217,21 @@ type CliTests() =
     [<TestCase("csharp", "--aot")>]
     [<TestCase("ir", "--single-file")>]
     [<TestCase("dotnet", "--runtime")>]
-    [<TestCase("dotnet", "--aot")>]
-    [<TestCase("dotnet", "--single-file")>]
     member _.``Executable options reject invalid combinations before creating output`` (target: string, flag: string) =
         let root=findRepoRoot ()
         let output=Path.Combine(Path.GetTempPath(),"fscript-invalid-publish-"+Guid.NewGuid().ToString("N"))
         let code,_,error=runCli root root ["compile";Path.Combine(root,"samples","hello.fss");"--target";target;"--output";output;flag] None
         Assert.That(code,Is.EqualTo(1),error)
+        Assert.That(Directory.Exists output,Is.False)
+
+    [<TestCase("--single-file")>]
+    [<TestCase("--aot")>]
+    member _.``Explicit runtime options still require a value`` flag =
+        let root=findRepoRoot ()
+        let output=Path.Combine(Path.GetTempPath(),"fscript-missing-rid-"+Guid.NewGuid().ToString("N"))
+        let code,_,error=runCli root root ["compile";Path.Combine(root,"samples","hello.fss");"--target";"dotnet";"--output";output;flag;"--runtime"] None
+        Assert.That(code,Is.EqualTo(1),error)
+        Assert.That(error,Does.Contain("--runtime requires a value"))
         Assert.That(Directory.Exists output,Is.False)
 
     [<TestCase("darwin-arm64", false)>]
@@ -248,7 +256,7 @@ type CliTests() =
     [<TestCase("--aot", false)>]
     [<TestCase("--single-file", true)>]
     [<TestCase("--aot", true)>]
-    member _.``Self contained executables run alone with no installed runtime root`` (flag: string, ffi: bool) =
+    member _.``Self contained executables support default and explicit runtimes and run alone`` (flag: string, ffi: bool) =
         let root=findRepoRoot ()
         let directory=Path.Combine(Path.GetTempPath(),"fscript-contained-"+Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(directory) |> ignore
@@ -259,7 +267,8 @@ type CliTests() =
             Directory.CreateDirectory(standalone) |> ignore
             let source=if ffi then "Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nEnv.Arguments"
             File.WriteAllText(script,source)
-            let args=["compile";script;"--target";"dotnet";"--output";output;flag;"--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
+            let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
+            let args=["compile";script;"--target";"dotnet";"--output";output;flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
             let code,_,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
             let name="native"+(if OperatingSystem.IsWindows() then ".exe" else "")

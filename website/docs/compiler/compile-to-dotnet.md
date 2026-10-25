@@ -40,15 +40,15 @@ Both options produce one executable containing the compiled program and its depe
 
 ```sh
 # Self-contained bundle with the .NET runtime
-fscript compile samples/hello.fss --target dotnet --single-file --runtime osx-arm64 --output out/hello-single
+fscript compile samples/hello.fss --target dotnet --single-file --output out/hello-single
 ./out/hello-single/hello Ada
 
 # Ahead-of-time compiled native executable
-fscript compile samples/hello.fss --target dotnet --aot --runtime osx-arm64 --output out/hello-native
+fscript compile samples/hello.fss --target dotnet --aot --output out/hello-native
 ./out/hello-native/hello Ada
 ```
 
-These flags are available only for `--target dotnet`, and `--runtime` is required. Use .NET runtime identifiers:
+These flags are available only for `--target dotnet`. When `--runtime` is omitted, publishing targets the current .NET host runtime identifier (`RuntimeInformation.RuntimeIdentifier`), so both commands above build for the current platform. Pass `--runtime <rid>` to select another target. An explicitly supplied `--runtime` still requires a value. Use .NET runtime identifiers:
 
 | Platform | x64 | Arm64 |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ Invalid or unsupported identifiers produce `FSN7101` before SDK publishing. The 
 When invoking FScript from source, put `--` between `dotnet run` options and FScript arguments:
 
 ```sh
-dotnet run --project src/FScript -- compile samples/hello.fss --target dotnet --aot --runtime osx-arm64 --output out/hello-native
+dotnet run --project src/FScript -- compile samples/hello.fss --target dotnet --aot --output out/hello-native
 ```
 
 Without that separator, `dotnet run` can consume `--runtime` itself and fail while building FScript, before its CLI starts. Such SDK errors cannot be reported by FScript.

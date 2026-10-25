@@ -41,7 +41,7 @@ Shared specialization diagnostics use `FSL21xx`; native consumers translate them
 
 The .NET backend adds an assembly-only optimization path: static saturated calls, partial-application reduction, closure propagation, self-tail-call loops, typed collection callbacks, immediate-block lowering, and generated-member pruning. It reuses the C# representation emitter through an internal entry point; the ordinary C# source target does not run these extra passes. Roslyn emits valid release IL. See the [native backend specification](../specs/dotnet-backends.md).
 
-The .NET backend can publish its optimized PE as a self-contained single-file or Native AOT executable. A temporary SDK project's post-compile target replaces its placeholder assembly with that PE before publication. No interpreter or hosting layer participates. Publishing requires an explicit .NET runtime identifier and installed SDK/toolchain.
+The .NET backend can publish its optimized PE as a self-contained single-file or Native AOT executable. A temporary SDK project's post-compile target replaces its placeholder assembly with that PE before publication. No interpreter or hosting layer participates. The CLI defaults the .NET runtime identifier to the current host and accepts an explicit override; the backend API receives the resolved identifier. Publishing requires the installed SDK/toolchain.
 
 ## Interpretation, runtime context, and FFI
 

@@ -30,13 +30,17 @@ let runCompileCommand (argv: string array) =
             let singleFile=Array.contains "--single-file" argv
             let aot=Array.contains "--aot" argv
             let executable=singleFile || aot
-            let runtime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
+            let hasRuntime=Array.contains "--runtime" argv
+            let requestedRuntime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
+            let runtime=
+                if executable && not hasRuntime then Some System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
+                else requestedRuntime
             if not (List.contains normalizedTarget ["ir"; "csharp"; "dotnet"]) then usage ()
             elif normalizedTarget<>"dotnet" && (executable || Array.contains "--runtime" argv) then
                 Console.Error.WriteLine("--single-file, --aot, and --runtime are only supported with --target dotnet.")
                 usage ()
-            elif executable && runtime.IsNone then
-                Console.Error.WriteLine("--single-file and --aot require --runtime <rid>, for example osx-arm64, linux-x64, or win-x64.")
+            elif hasRuntime && requestedRuntime.IsNone then
+                Console.Error.WriteLine("--runtime requires a value, for example osx-arm64, linux-x64, or win-x64. Omit --runtime to target the current platform.")
                 usage ()
             elif not executable && Array.contains "--runtime" argv then
                 Console.Error.WriteLine("--runtime requires --single-file or --aot.")
