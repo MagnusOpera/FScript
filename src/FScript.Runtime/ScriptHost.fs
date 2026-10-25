@@ -61,8 +61,7 @@ module ScriptHost =
                 Some (name, { Name = name; ParameterNames = names; ParameterTypes = parameters; ReturnType = result }))
         |> Map.ofList
 
-    let private loadProgram (registration: ExtensionRegistration) (program: Program) : LoadedScript =
-        let typed = TypeInfer.inferProgramWithRegistration registration program
+    let private loadTypedProgram (registration: ExtensionRegistration) (typed: TypeInfer.TypedProgram) : LoadedScript =
         let state = Eval.evalProgramWithRegistrationState registration typed
         let exportedNames =
             declaredExportedNames typed
@@ -114,6 +113,29 @@ module ScriptHost =
           ExportedValues = values
           LastValue = state.LastValue
           ExitCode = state.ExitCode }
+
+    let private loadProgram registration program =
+        loadTypedProgram registration (TypeInfer.inferProgramWithRegistration registration program)
+
+    /// Runs analysis once before evaluation and reports warnings to the host.
+    /// Existing load APIs never enter this path or construct analysis state.
+    let loadProgramWithTaskSharingAnalysis registration purity options report program =
+        let resolved = TypeInfer.inferResolvedProgramWithRegistrationAndPurity registration purity program
+        let options = TaskSharingContracts.withRuntime registration options
+        TaskSharingAnalysis.analyze registration options resolved |> List.iter report
+        loadTypedProgram registration resolved.TypedProgram
+
+    let loadSourceWithTaskSharingAnalysis registration purity options report source =
+        let program = FScript.parse source
+        if program |> List.exists (function SImport _ -> true | _ -> false) then
+            raise (HostCommon.evalError "'import' is only supported when loading scripts from files")
+        loadProgramWithTaskSharingAnalysis registration purity options report program
+
+    let loadFileWithTaskSharingAnalysis registration purity options report path =
+        let fullPath = Path.GetFullPath(path)
+        let root = Path.GetDirectoryName(fullPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+        FScript.parseFileWithIncludes root fullPath
+        |> loadProgramWithTaskSharingAnalysis registration purity options report
 
     let loadSourceWithRegistration (registration: ExtensionRegistration) (source: string) : LoadedScript =
         let program = FScript.parse source

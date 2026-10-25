@@ -33,6 +33,13 @@ smoke-tests:
 	echo "Running samples/ffi (headless)"; \
 	dotnet build samples/ffi/FfiSample.fsproj -c Release > /dev/null; \
 	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
+	echo "Analyzing samples/task-sharing"; \
+	dotnet build samples/task-sharing/TaskSharingSample.fsproj -c Release > /dev/null; \
+	for script in samples/task-sharing/*.fss; do \
+		dotnet run --project src/FScript -- analyze "$$script"; \
+	done; \
+	dotnet run --project src/FScript -- samples/task-sharing/ordered.fss > /dev/null; \
+	dotnet run --project src/FScript -- --no-result samples/task-sharing/thread-safe.fss > /dev/null; \
 	echo "All smoke tests passed."
 
 

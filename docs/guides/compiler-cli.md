@@ -39,3 +39,12 @@ Console.writeLine "Evaluation continues."
 ```
 
 This prints the explicit message and, by default, `42`; the shell receives status `7`. With `--no-result`, only the explicit message is printed and the status remains `7`.
+
+## Check potential FFI sharing before compiling
+
+Use `fscript analyze program.fss` as a separate step to report potential cross-task
+host-value and host-function sharing without running the script. Compilation does
+not run this analysis. Warnings are advisory and include both source locations;
+a clean check does not prove thread safety. See
+[the analysis specification](../specs/static-task-sharing-analysis.md) for host APIs,
+provider contracts, and limitations.

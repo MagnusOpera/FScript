@@ -196,3 +196,10 @@ F# sets use script lists at the boundary. Host snapshots follow set iteration or
 Providers can optionally declare `Pure` information for native compilation. Functions promise deterministic, effect-free, successful termination for valid inputs; external types promise deeply immutable visible data and payloads with safe, terminating registered field reads and structural observers. Constructors and ordinary methods do not inherit a receiver type's guarantee.
 
 The compiler reads optional `FScriptPureFunctions()` and `FScriptPureTypes()` provider methods returning registered script names. These declarations are trusted; ordinary interpreter execution and SDK validation remain unchanged. See [Pure FFI and external values](../compiler/compile-to-dotnet.md#pure-ffi-and-external-values) for the contract, examples, callback rules, and compiler API.
+
+## Concurrent access
+
+An opaque value can retain mutable CLR state even though its FScript binding is
+immutable. Passing it to multiple tasks does not clone or synchronize that state.
+[Checking FFI Task Sharing](../learn/task-sharing-analysis.md) explains how to find
+potential sharing and how providers can declare trusted thread-safety contracts.

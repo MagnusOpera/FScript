@@ -240,3 +240,10 @@ The script owns the changeable rule. The host owns loading, input, output, and e
 6. Run the BASIC sample under `samples/basic/` when you want to see FScript host a second language with `PRINT`, `INPUT`, jumps, and loops.
 
 Continue with [FFI Graphics — A Rotating Teapot](./ffi-graphics.md) to generate a 3D model in FScript and send geometry, camera, and lighting through a typed .NET provider.
+
+## Check FFI sharing across tasks
+
+The [task-sharing analysis samples](../learn/task-sharing-analysis.md#try-the-runnable-samples)
+contrast unsafe shared state, hidden function state, ordered access, and a
+non-pure but thread-safe counter. They use a small provider with no graphics or
+native dependencies.

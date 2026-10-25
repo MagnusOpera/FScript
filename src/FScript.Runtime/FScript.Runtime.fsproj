@@ -37,6 +37,7 @@
     <Compile Include="ExtensionLoadContext.fs" />
     <Compile Include="EnvironmentLoader.fs" />
     <Compile Include="ExportSignatures.fs" />
+    <Compile Include="TaskSharingContracts.fs" />
     <Compile Include="ScriptHost.fs" />
     <Compile Include="DebugSession.fs" />
   </ItemGroup>

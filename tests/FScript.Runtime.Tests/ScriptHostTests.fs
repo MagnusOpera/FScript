@@ -5,6 +5,11 @@ open NUnit.Framework
 open FScript.Language
 open FScript.Runtime
 
+type TaskSharingMetadataProvider =
+    static member Provide() = ()
+    static member FScriptThreadSafeTypes() : System.Collections.Generic.IEnumerable<string> = ["Handle"]
+    static member FScriptThreadSafeFunctions() : System.Collections.Generic.IEnumerable<string> = ["Host.tick"]
+
 [<TestFixture>]
 type ScriptHostTests () =
     [<Test>]
@@ -186,3 +191,47 @@ type ScriptHostTests () =
     member _.``Exit codes use the portable shell range`` source =
         let error=Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.loadSource [] source |> ignore)) |> nonNull
         Assert.That(string error,Does.Contain("between 0 and 255"))
+
+    [<Test>]
+    member _.``Explicit task sharing analysis reports before interpreting without changing values`` () =
+        let mutable calls = 0
+        let tick: ExternalFunction =
+            { Name = "Host.tick"; Scheme = Forall([], TFun(TUnit, TInt)); Arity = 1
+              Impl = fun _ _ -> System.Threading.Interlocked.Increment(&calls) |> int64 |> VInt }
+        let registration = { HostInterop.empty with Functions = [tick; TaskFunctions.spawn; TaskFunctions.awaitTask] }
+        let source = "let first = Task.spawn (fun () -> Host.tick ())\nlet second = Task.spawn (fun () -> Host.tick ())\nTask.await first + Task.await second"
+        let warnings = ResizeArray<TaskSharingAnalysis.Diagnostic>()
+        let report warning =
+            Assert.That(calls, Is.Zero, "All analysis warnings must precede interpretation")
+            warnings.Add warning
+        let loaded = ScriptHost.loadSourceWithTaskSharingAnalysis registration PurityContracts.empty TaskSharingAnalysis.defaults report source
+        Assert.That(warnings |> Seq.exists (fun warning -> warning.Code = "FST1002"), Is.True)
+        Assert.That(calls, Is.EqualTo(2))
+        Assert.That(Pretty.valueToString loaded.LastValue, Is.EqualTo("3"))
+        calls <- 0
+        let ordinary = ScriptHost.loadSourceWithRegistration registration source
+        Assert.That(calls, Is.EqualTo(2))
+        Assert.That(Pretty.valueToString ordinary.LastValue, Is.EqualTo(Pretty.valueToString loaded.LastValue))
+
+    [<Test>]
+    member _.``Thread safety companions use independent BCL metadata`` () =
+        let method = typeof<TaskSharingMetadataProvider>.GetMethod("Provide") |> nonNull
+        let options = TaskSharingContracts.fromProviders [method]
+        Assert.That(options.ThreadSafeTypes.Contains "Handle", Is.True)
+        Assert.That(options.ThreadSafeFunctions.Contains "Host.tick", Is.True)
+
+    [<Test>]
+    member _.``Runtime console contracts classify actual implementations without granting purity`` () =
+        let registration = { HostInterop.empty with Functions = [ConsoleExterns.write_line; ConsoleExterns.read_line; TaskFunctions.spawn; TaskFunctions.awaitTask] }
+        let source = "let first = Task.spawn (fun () -> Console.writeLine \"one\")\nlet second = Task.spawn (fun () -> Console.writeLine \"two\")\nTask.await first\nTask.await second"
+        let resolved = Parser.parseProgram source |> TypeInfer.inferResolvedProgramWithRegistration registration
+        let options = TaskSharingContracts.withRuntime registration TaskSharingAnalysis.defaults
+        Assert.That(options.ThreadSafeFunctions.Contains "Console.writeLine", Is.True)
+        Assert.That(options.ThreadSafeFunctions.Contains "Console.readLine", Is.True)
+        Assert.That(resolved.Purity.PureFunctions.Contains "Console.writeLine", Is.False)
+        Assert.That(TaskSharingAnalysis.analyze registration options resolved, Is.Empty)
+        let replacement = { ConsoleExterns.write_line with Impl = fun _ _ -> VUnit }
+        let replaced = { registration with Functions = replacement :: [TaskFunctions.spawn; TaskFunctions.awaitTask] }
+        let options = TaskSharingContracts.withRuntime replaced TaskSharingAnalysis.defaults
+        Assert.That(options.ThreadSafeFunctions.Contains "Console.writeLine", Is.False)
+        Assert.That(TaskSharingAnalysis.analyze replaced options resolved |> List.exists (fun warning -> warning.Code = "FST1002"), Is.True)

@@ -76,3 +76,13 @@ The `feature/in-memory-execution` experiment is reference material only; its dyn
 Result display defaults to enabled and is independent of shell status. CLI `--no-result` disables it; native consumers run `LirResultPolicy.discard` before specialization so unused pure result work can be pruned while observable initialization remains rooted. `LirTraversal` supplies common child mapping and complete symbol census for transformations and fresh lexical bindings.
 
 `Env.setExitCode` is a reserved effectful core operation that coexists with the runtime `Env` record. The evaluator owns a locked status cell shared with its tasks; generated programs use an atomic per-program field and return its value from `Main`. Neither embedding surface sets the host process status. LIR exposes status alongside values. Fable/JavaScript ignores the setter and keeps returning/displaying ordinary values. Task ordering remains scheduling-dependent, and existing task failure/lifetime rules are unchanged.
+
+## Optional task-sharing analysis
+
+`FScript.Language.TaskSharingAnalysis` is an independent consumer of resolved
+typed programs. CLI analysis and host pre-execution analysis share this pass;
+compilation does not run it. It owns its alias, closure, logical
+task-clock, and diagnostic state only while requested; evaluators and generated
+programs have no hooks or added synchronization. Hosting adapters reuse the
+inference result rather than inferring twice. See the
+[static analysis contract](../specs/static-task-sharing-analysis.md).

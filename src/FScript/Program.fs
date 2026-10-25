@@ -14,6 +14,13 @@ let writeGeneratedFile (root: string) (file: FScript.Compiler.GeneratedFile) =
     | directory -> Directory.CreateDirectory(directory) |> ignore
     File.WriteAllText(path, file.Content)
 
+let reportTaskSharingWarning (warning: TaskSharingAnalysis.Diagnostic) =
+    let location (span: Span) =
+        let file = span.Start.File |> Option.defaultValue "<script>"
+        $"{file}({span.Start.Line},{span.Start.Column})"
+    Console.Error.WriteLine($"{location warning.Span}: warning {warning.Code}: {warning.Message}")
+    Console.Error.WriteLine($"  Related task access or capture: {location warning.RelatedSpan}")
+
 let runCompileCommand (argv: string array) =
     let usage () =
         Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--no-result]")
@@ -36,6 +43,9 @@ let runCompileCommand (argv: string array) =
                 if executable && not hasRuntime then Some System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
                 else requestedRuntime
             if not (List.contains normalizedTarget ["ir"; "csharp"; "dotnet"]) then usage ()
+            elif Array.contains "--analyze-task-sharing" argv then
+                Console.Error.WriteLine("Task-sharing analysis is a separate command: fscript analyze <program.fss>")
+                usage ()
             elif normalizedTarget="ir" && Array.contains "--no-result" argv then
                 Console.Error.WriteLine("--no-result applies to script execution and C#/ .NET compilation, not IR artifacts.")
                 usage ()
@@ -167,6 +177,35 @@ let Env = asEnvironment {{ ScriptName = {scriptNameExpr}; Arguments = {argsExpr}
 let parseEnvironmentPrelude (scriptName: string option) (arguments: string list) =
     environmentPrelude scriptName arguments
     |> FScript.parseWithSourceName (Some "<cli-environment>")
+
+let runAnalyzeCommand (argv: string array) =
+    let reportError (span: Span) message =
+        let file = span.Start.File |> Option.defaultValue "<script>"
+        Console.Error.WriteLine($"{file}({span.Start.Line},{span.Start.Column}): {message}")
+        1
+    try
+        let parser = ArgumentParser.Create<AnalyzeArgs>(programName = "fscript analyze")
+        let args = parser.ParseCommandLine(inputs = argv.[1..], raiseOnUsage = true)
+        match args.TryGetResult <@ AnalyzeArgs.Script @> with
+        | None -> Console.Error.WriteLine("Usage: fscript analyze <program.fss> [--config <fscript.toml>] [--no-config] [--extern-assembly <provider.dll>]"); 1
+        | Some script ->
+            let path = Path.GetFullPath script
+            let root = Path.GetDirectoryName(path) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+            let settings =
+                EnvironmentConfiguration.resolveForCli (args.TryGetResult <@ AnalyzeArgs.Config @>) (args.Contains <@ AnalyzeArgs.No_Config @>) (Directory.GetCurrentDirectory()) root (args.TryGetResult <@ AnalyzeArgs.Root @>) (args.Contains <@ AnalyzeArgs.No_Default_Externs @>) (args.GetResults <@ AnalyzeArgs.Extern_Assembly @>)
+                |> function Ok settings -> settings | Error message -> failwith message
+            let loaded = EnvironmentLoader.loadWithInfo settings |> function Ok loaded -> loaded | Error message -> failwith message
+            let providers = loaded.ProviderMethods |> List.map snd
+            let purity = FScript.Compiler.ClrBindings.providerPurity providers
+            let options = TaskSharingContracts.fromProviders providers |> TaskSharingContracts.withRuntime loaded.Registration
+            let program = parseEnvironmentPrelude (Some(Path.GetFileName path |> nonNull)) [] @ FScript.parseFileWithIncludes settings.RootDirectory path
+            let resolved = TypeInfer.inferResolvedProgramWithRegistrationAndPurity loaded.Registration purity program
+            TaskSharingAnalysis.analyze loaded.Registration options resolved |> List.iter reportTaskSharingWarning
+            0
+    with
+    | ParseException error -> reportError error.Span error.Message
+    | TypeException error -> reportError error.Span error.Message
+    | error -> Console.Error.WriteLine(error.Message); 1
 
 let runFile printResult (registration: ExtensionRegistration) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
     if not (File.Exists scriptPath) then
@@ -426,5 +465,7 @@ let runOrdinaryCommand argv =
 let main argv =
     if argv.Length > 0 && String.Equals(argv.[0], "compile", StringComparison.OrdinalIgnoreCase) then
         runCompileCommand argv
+    elif argv.Length > 0 && String.Equals(argv.[0], "analyze", StringComparison.OrdinalIgnoreCase) then
+        runAnalyzeCommand argv
     else
         runOrdinaryCommand argv

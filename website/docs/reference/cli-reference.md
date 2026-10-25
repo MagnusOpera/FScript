@@ -175,3 +175,18 @@ Console.writeLine "Evaluation continues."
 ```
 
 This prints the explicit message and, by default, `42`; the shell receives status `7`. With `--no-result`, only the explicit message is printed and the status remains `7`.
+
+## Analyze task sharing
+
+```sh
+fscript analyze program.fss
+fscript analyze program.fss --config fscript.toml
+```
+
+The command checks potential sharing of host instances (`FST1001`) and host-function
+state (`FST1002`) across concurrent tasks, without executing the script. Warnings
+go to stderr and do not cause a nonzero exit status. Analysis is separate from
+compilation; existing execution and compilation commands skip it.
+
+See [Checking FFI Task Sharing](../learn/task-sharing-analysis.md) for the rationale,
+examples, provider thread-safety contracts, hosting APIs, and limitations.

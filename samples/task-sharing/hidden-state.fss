@@ -1,0 +1,4 @@
+// No instance is passed: mutable state is hidden inside the provider.
+let first = Task.spawn (fun () -> Host.nextGlobal ())
+let second = Task.spawn (fun () -> Host.nextGlobal ())
+(Task.await first, Task.await second)

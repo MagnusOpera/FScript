@@ -764,3 +764,84 @@ type CliTests() =
         let code,_,error=runCli root root ["compile";Path.Combine(root,"samples","hello.fss");"--target";"ir";"--no-result";"--output";output] None
         Assert.That(code,Is.EqualTo(1),error)
         Assert.That(Directory.Exists output,Is.False)
+
+    [<Test>]
+    member _.``Analyze reports sharing without executing script effects`` () =
+        let repo = findRepoRoot ()
+        let script = Path.Combine(Path.GetTempPath(), $"fscript-analysis-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(script, "Console.writeLine \"DO-NOT-EXECUTE\"\nlet node = Ext.node 1\nlet first = Task.spawn (fun () -> Ext.acceptNode node)\nlet second = Task.spawn (fun () -> Ext.acceptNode node)\nTask.await first + Task.await second")
+            let code, output, error = runCli repo repo ["analyze"; script; "--no-config"; "--extern-assembly"; validProviderAssemblyPath ()] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain("warning FST1001"))
+            Assert.That(error, Does.Contain("Related task access or capture"))
+            Assert.That(error, Does.Contain(script))
+        finally File.Delete script
+
+    [<Test>]
+    member _.``Compilation keeps task sharing analysis as a separate command`` () =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), $"fscript-analysis-compile-{Guid.NewGuid():N}")
+        Directory.CreateDirectory directory |> ignore
+        let script = Path.Combine(directory, "main.fss")
+        try
+            File.WriteAllText(script, "let first = Task.spawn (fun () -> Console.writeLine \"one\")\nlet second = Task.spawn (fun () -> Console.writeLine \"two\")\nTask.await first\nTask.await second")
+            let args = ["compile"; script; "--target"; "ir"; "--output"; directory; "--no-config"]
+            let code, _, error = runCli repo repo args None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(error, Does.Not.Contain("FST1002"))
+            let code, _, error = runCli repo repo (args @ ["--analyze-task-sharing"]) None
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(error, Does.Contain("fscript analyze"))
+        finally Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``Analyze rejects invalid scripts without execution`` () =
+        let repo = findRepoRoot ()
+        let script = Path.Combine(Path.GetTempPath(), $"fscript-analysis-invalid-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(script, "let value = missingName")
+            let code, output, error = runCli repo repo ["analyze"; script; "--no-config"] None
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Does.Contain("missingName"))
+        finally File.Delete script
+
+    [<Test>]
+    member _.``Analyze accepts concurrent built in console calls without running them`` () =
+        let repo = findRepoRoot ()
+        let script = Path.Combine(Path.GetTempPath(), $"fscript-analysis-console-{Guid.NewGuid():N}.fss")
+        try
+            File.WriteAllText(script, "let first = Task.spawn (fun () -> Console.writeLine \"one\")\nlet second = Task.spawn (fun () -> Console.writeLine \"two\")\nTask.await first\nTask.await second")
+            let code, output, error = runCli repo repo ["analyze"; script; "--no-config"] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output, Is.Empty)
+            Assert.That(error, Is.Empty)
+        finally File.Delete script
+
+    [<TestCase("unsafe-shared.fss", true, true)>]
+    [<TestCase("hidden-state.fss", false, true)>]
+    [<TestCase("ordered.fss", false, false)>]
+    [<TestCase("thread-safe.fss", false, false)>]
+    member _.``Task sharing samples report their documented diagnostics`` (name: string, instanceWarning: bool, functionWarning: bool) =
+        let repo = findRepoRoot ()
+        let script = Path.Combine(repo, "samples", "task-sharing", name)
+        let code, output, error = runCli repo repo ["analyze"; script] None
+        Assert.That(code, Is.Zero, error)
+        Assert.That(output, Is.Empty)
+        Assert.That(error.Contains("FST1001"), Is.EqualTo(instanceWarning), error)
+        Assert.That(error.Contains("FST1002"), Is.EqualTo(functionWarning), error)
+        if not instanceWarning && not functionWarning then Assert.That(error, Is.Empty)
+
+    [<TestCase("ordered.fss")>]
+    [<TestCase("thread-safe.fss")>]
+    member _.``Safe task sharing samples execute their effects`` (name: string) =
+        let repo = findRepoRoot ()
+        let script = Path.Combine(repo, "samples", "task-sharing", name)
+        let arguments = if name = "thread-safe.fss" then ["--no-result"; script] else [script]
+        let code, output, error = runCli repo repo arguments None
+        Assert.That(code, Is.Zero, error)
+        Assert.That(error, Is.Empty)
+        if name = "ordered.fss" then Assert.That(output.Trim(), Is.EqualTo("(1, 2)"))
+        else Assert.That((output.Trim() = "(1, 2)" || output.Trim() = "(2, 1)"), Is.True, output)

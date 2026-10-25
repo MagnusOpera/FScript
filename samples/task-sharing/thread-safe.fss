@@ -1,0 +1,7 @@
+// SafeCounter and Host.nextSafe are thread-safe, but neither is Pure.
+let counter = Host.createSafeCounter ()
+let first = Task.spawn (fun () -> Host.nextSafe counter)
+let second = Task.spawn (fun () -> Host.nextSafe counter)
+let values = (Task.await first, Task.await second)
+Console.writeLine $"{values}"
+values

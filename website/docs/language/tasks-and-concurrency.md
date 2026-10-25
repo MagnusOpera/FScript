@@ -88,3 +88,10 @@ Console.writeLine $"{result}"
 For a larger example, see [`samples/parallel-quicksort.fss`](https://github.com/MagnusOpera/FScript/blob/main/samples/parallel-quicksort.fss).
 
 Continue with [Guided Examples](../examples/guided-examples) to combine these features, or consult the [Stdlib Overview](../stdlib/overview) for available operations.
+
+## Sharing FFI values between tasks
+
+Immutable bindings can refer to mutable host resources. Use `fscript analyze program.fss`
+to check potential cross-task instance and function sharing before execution. See
+[Checking FFI Task Sharing](../learn/task-sharing-analysis.md) for the warning codes,
+ordering examples, and the limits of this optional static check.

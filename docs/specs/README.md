@@ -21,6 +21,8 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 - External functions and extensibility: [`external-functions.md`](./external-functions.md)
 - Shared CLI/editor environments: [`environment-configuration.md`](./environment-configuration.md)
 
+- Static task-sharing analysis: [`static-task-sharing-analysis.md`](./static-task-sharing-analysis.md)
+
 ## Hosting and security
 
 - Embedding `FScript.Language`: [`embedding-fscript-language.md`](./embedding-fscript-language.md)

@@ -34,3 +34,19 @@ FScript is designed for host applications that embed a scripting language safely
 ## Executable graphics sample
 
 The [FFI graphics walkthrough](../examples/ffi-graphics.md) puts geometry, camera, lighting, and animation in FScript. A typed .NET provider uploads the generated Utah teapot and renders it with OpenGL. It demonstrates script-constructible scene records, opaque window/mesh resources, typed function adapters, and editor discovery through `fscript.toml`. Run it with `fscript samples/ffi/main.fss`; use `-- --headless` to exercise the scripts without a display.
+
+## Optional task-sharing checks
+
+To report potential FFI sharing before interpreting, call
+`ScriptHost.loadSourceWithTaskSharingAnalysis registration purity options report source`.
+Use `PurityContracts.empty` and `TaskSharingAnalysis.defaults` for conservative
+defaults. The `report` callback receives diagnostics before script evaluation;
+hosts decide whether to log warnings or reject execution.
+
+`loadFileWithTaskSharingAnalysis` and `loadProgramWithTaskSharingAnalysis` support
+file and parsed-program loading. They reuse the resolved inference result for
+interpretation. Existing loading and invocation APIs skip analysis entirely, and
+there is no runtime tracking or synchronization overhead.
+
+See [Checking FFI Task Sharing](../learn/task-sharing-analysis.md) for examples,
+provider contracts, and how to interpret the warnings.

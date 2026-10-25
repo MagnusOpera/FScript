@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>FScript.TaskSharing.Sample</AssemblyName>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Provider.fs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
+    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' == 'true'">
+    <ProjectReference Include="$(FScriptExtensibilityProject)" />
+  </ItemGroup>
+</Project>

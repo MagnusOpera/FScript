@@ -1,0 +1,7 @@
+// The first operation finishes before the second task is created.
+let counter = Host.createCounter ()
+let first = Task.spawn (fun () -> Host.next counter)
+let firstValue = Task.await first
+let second = Task.spawn (fun () -> Host.next counter)
+let secondValue = Task.await second
+(firstValue, secondValue)

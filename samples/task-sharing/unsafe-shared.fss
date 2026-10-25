@@ -1,0 +1,6 @@
+// Analyze this example; the provider intentionally has unsynchronized state.
+let counter = Host.createCounter ()
+let alias = counter
+let first = Task.spawn (fun () -> Host.next counter)
+let second = Task.spawn (fun () -> Host.next alias)
+(Task.await first, Task.await second)

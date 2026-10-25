@@ -35,6 +35,7 @@
     <Compile Include="Execution.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />
+    <Compile Include="TaskSharingAnalysis.fs" />
     <Compile Include="ExportSignatures.fs" />
     <Compile Include="TaskFunctions.fs" />
     <Compile Include="DebugHooks.fs" />

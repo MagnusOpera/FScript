@@ -184,3 +184,11 @@ Pure external types promise deeply immutable visible data and opaque payloads, p
 Providers expose optional public static parameterless `FScriptPureFunctions()` and `FScriptPureTypes()` methods returning `IEnumerable<string>` of registered script names. The compiler CLI reads these for every compilation target. Invalid names, empty entries, and protected runtime contract overrides are rejected. Existing SDK records and ordinary runtime execution remain unchanged.
 
 The .NET compiler API exposes `PurityContracts`, `Compiler.compileWithPurity`, `Compiler.compileWithRegistrationAndPurity`, and `ClrBindings.providerPurity`. Metadata survives resolved inference, HIR, LIR, serialization, and native linkage. No new FScript annotation syntax is introduced. See [the provider guide](../guides/compile-to-dotnet.md#pure-ffi-and-external-values) for examples and [optimization rules](../guides/compiler-optimizations.md#trusted-external-purity) for limitations.
+
+## Static concurrency diagnostics
+
+Optional `FScriptThreadSafeTypes()` and `FScriptThreadSafeFunctions()` provider
+companions supply trusted concurrency contracts for opt-in task-sharing analysis.
+They use BCL `IEnumerable<string>` registered names and do not change the SDK,
+purity contracts, or runtime behavior. See
+[static task-sharing analysis](static-task-sharing-analysis.md).

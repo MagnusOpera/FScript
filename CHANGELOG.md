@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Add runnable FFI task-sharing samples for unsafe sharing, hidden state, ordered access, and thread-safe effects.
+- Document FFI task-sharing warnings and keep analysis separate from compilation, with built-in console I/O recognized as thread-safe.
+- Add opt-in static warnings for potential FFI sharing across tasks in CLI analysis and interpreted hosting.
+
 ## [0.84.0]
 
 

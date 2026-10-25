@@ -60,3 +60,10 @@ See [Compile to .NET](./compile-to-dotnet.md) for FFI configuration, typed bindi
 Compilation is an explicit CLI or compiler API operation. Running `fscript program.fss` or using ordinary `ScriptHost` embedding continues to use the AST interpreter. JavaScript embedding also remains interpreted.
 
 The separate [IR workflow](./interpret-ir.md) produces a versioned `.fsir` artifact and executes it with the LIR interpreter. It is useful for compiler tooling and conformance work; it is not required to run compiled .NET programs.
+
+## Check FFI task sharing before compiling
+
+Run `fscript analyze program.fss` separately to check potential sharing of host
+instances and function state across tasks. Compilation does not run this check.
+The [task-sharing guide](../learn/task-sharing-analysis.md) explains the warning
+codes and why a clean check is not a proof of thread safety.
