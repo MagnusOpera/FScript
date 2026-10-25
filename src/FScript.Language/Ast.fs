@@ -1,10 +1,16 @@
 namespace FScript.Language
 
+type BackendImport =
+    { ModulePath: string
+      MemberName: string
+      Span: Span }
+
 type TypeDef =
     { Name: string
       IsRecursive: bool
       Fields: (string * TypeRef) list
       Cases: (string * TypeRef option) list
+      Import: BackendImport option
       Span: Span }
 
 and TypeRef =
@@ -19,6 +25,11 @@ and TypeRef =
 type Param =
     { Name: string
       Annotation: TypeRef option
+      Span: Span }
+
+type Attribute =
+    { Name: string
+      Arguments: string list
       Span: Span }
 
 type Literal =
@@ -88,6 +99,8 @@ and Stmt =
     | SLet of string * Param list * TypeRef option * Expr * bool * bool * Span
     | SLetPattern of Pattern * Expr * bool * Span
     | SLetRecGroup of (string * Param list * TypeRef option * Expr * Span) list * bool * Span
+    | SBackendImport of string * TypeRef * BackendImport * Span
+    | SAttributed of Attribute list * Stmt * Span
     | SExpr of Expr
 
 type Program = Stmt list
@@ -141,3 +154,10 @@ module Ast =
         | ETypeOf (_, s) -> s
         | ENameOf (_, s) -> s
         | EInterpolatedString (_, s) -> s
+
+    let spanOfStmt statement =
+        match statement with
+        | SType definition -> definition.Span
+        | SImport(_, _, span) | SLet(_, _, _, _, _, _, span) | SLetPattern(_, _, _, span)
+        | SLetRecGroup(_, _, span) | SBackendImport(_, _, _, span) | SAttributed(_, _, span) -> span
+        | SExpr expression -> spanOfExpr expression

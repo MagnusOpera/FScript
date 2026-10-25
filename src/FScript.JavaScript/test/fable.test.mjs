@@ -26,6 +26,18 @@ test("run returns tagged primitive values", () => {
   assert.equal(result.value, 42n);
 });
 
+test("String.replace always returns, including empty search strings", () => {
+  for (const [search, replacement, source, expected] of [
+    ["", "x", "abc", "abc"],
+    ["", "x", "", ""],
+    ["a", "", "banana", "bnn"],
+    ["aa", "b", "aaaa", "bb"]
+  ]) {
+    const args = [search, replacement, source].map(value => JSON.stringify(value)).join(" ");
+    assert.equal(run(`String.replace ${args}`).value, expected);
+  }
+});
+
 test("map keys round-trip through tagged JavaScript values", () => {
   const value = run("type Color = | Red | Blue\n{ [Red] = 1; [Blue] = 2 }");
   assert.equal(value.kind, "map");
@@ -136,4 +148,26 @@ test("export is a contextual declaration prefix rather than a reserved identifie
   assert.equal(getValue(loaded, "answer").value, 42n);
   assert.equal(invoke(loaded, "export", [7]).value, 7n);
   assert.throws(() => run("[<export>] let answer = 42"), error => error.phase === "parse");
+  assert.throws(() => run("let outer =\n  export let answer = 42\n  answer\nouter"), error => error.phase === "parse");
+});
+
+test("attribute forms cannot declare exports", () => {
+  for (const attribute of ["export", "Export"]) {
+    for (const source of [
+      `[<${attribute}>] let answer = 42`,
+      `[<${attribute}>] let echo value = value`,
+      `[<${attribute}("argument")>] let answer = 42`,
+      `[<${attribute}>] type Answer = { Value: int }`
+    ]) {
+      assert.throws(() => load(source), error => error.phase === "parse" && error.message === "Unexpected attribute");
+    }
+  }
+});
+
+test("JavaScript ignores exit status and preserves the returned value", () => {
+  assert.equal(run("Env.setExitCode 7\n42").value, 42n);
+  assert.equal(run("Env.setExitCode 256\n42").value, 42n);
+  assert.equal(run("Env.setExitCode (0-1)\n42").value, 42n);
+  const loaded = load("export let configure code =\n    Env.setExitCode code\n    code+1\n42");
+  assert.equal(invoke(loaded, "configure", [7]).value, 8n);
 });

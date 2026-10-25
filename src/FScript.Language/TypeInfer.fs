@@ -211,6 +211,137 @@ module TypeInfer =
           Span: Span
           Type: Type }
 
+    type ResolvedExpressionType =
+        { Expr: Expr
+          Type: Type
+          Span: Span }
+
+    type ResolvedSymbolReference =
+        { SymbolId: int
+          Name: string
+          Kind: ResolvedSymbolKind
+          Type: Type
+          Span: Span }
+
+    and ResolvedSymbolKind =
+        | TypeSymbol
+        | DeclarationSymbol
+        | ParameterSymbol
+        | PatternBindingSymbol
+        | LocalSymbol
+        | BuiltinSymbol
+        | ExternSymbol
+        | UnionCaseSymbol
+
+    type ResolvedSymbol =
+        { SymbolId: int
+          Name: string
+          Kind: ResolvedSymbolKind
+          Span: Span
+          Scheme: Scheme option }
+
+    type ResolvedPrimitiveOperation =
+        | NumericAddition | NumericSubtraction | NumericMultiplication | NumericDivision
+        | IntegerAddition | FloatingAddition
+        | IntegerSubtraction | FloatingSubtraction
+        | IntegerMultiplication | FloatingMultiplication
+        | IntegerDivision | FloatingDivision
+        | IntegerRemainder | StructuralEquality
+        | NumericComparison of string
+        | BooleanOperation of string
+
+    type RecordCoercionEvidence =
+        { SourceType: Type
+          TargetType: Type
+          TargetName: string option }
+
+    type ResolvedLiteral =
+        | ResolvedUnit
+        | ResolvedInt of int64
+        | ResolvedFloat of float
+        | ResolvedBool of bool
+        | ResolvedString of string
+
+    type ResolvedBinding =
+        { SymbolId: int
+          Name: string
+          Type: Type
+          Span: Span }
+
+    type ResolvedExpression =
+        { Type: Type
+          Span: Span
+          Reference: ResolvedSymbolReference option
+          Primitive: ResolvedPrimitiveOperation option
+          RecordCoercion: RecordCoercionEvidence option
+          Node: ResolvedExpressionNode
+          Children: ResolvedExpression list }
+
+    and ResolvedExpressionNode =
+        | ResolvedConstant of ResolvedLiteral
+        | ResolvedReference of ResolvedSymbolReference
+        | ResolvedLambda of ResolvedBinding * ResolvedExpression
+        | ResolvedApply of ResolvedExpression * ResolvedExpression
+        | ResolvedPipe of ResolvedExpression * ResolvedExpression
+        | ResolvedIf of ResolvedExpression * ResolvedExpression * ResolvedExpression
+        | ResolvedPrimitive of ResolvedPrimitiveOperation * ResolvedExpression list
+        | ResolvedTuple of ResolvedExpression list
+        | ResolvedList of ResolvedExpression list
+        | ResolvedRecord of (string * ResolvedExpression) list
+        | ResolvedFieldGet of ResolvedExpression * string
+        | ResolvedSome of ResolvedExpression
+        | ResolvedNone
+        | ResolvedCons of ResolvedExpression * ResolvedExpression
+        | ResolvedAppend of ResolvedExpression * ResolvedExpression
+        | ResolvedLet of ResolvedBinding * bool * ResolvedExpression * ResolvedExpression
+        | ResolvedLetRecursiveGroup of ResolvedRecursiveBinding list * ResolvedExpression
+        | ResolvedFail of ResolvedExpression
+        | ResolvedMatch of ResolvedExpression * ResolvedMatchCase list
+        | ResolvedRange of ResolvedExpression * ResolvedExpression
+        | ResolvedRecordUpdate of bool * ResolvedExpression * (string * ResolvedExpression) list
+        | ResolvedIndexGet of ResolvedExpression * ResolvedExpression
+        | ResolvedInterpolate of ResolvedInterpolationPart list
+        | ResolvedMap of ResolvedMapEntry list
+        | ResolvedForEach of ResolvedBinding * ResolvedExpression * ResolvedExpression
+        | ResolvedTypeToken of Type
+
+    and ResolvedRecursiveBinding =
+        { Binding: ResolvedBinding
+          Value: ResolvedExpression }
+
+    and ResolvedInterpolationPart =
+        | ResolvedTextPart of string
+        | ResolvedValuePart of ResolvedExpression
+
+    and ResolvedMapEntry =
+        | ResolvedKeyValue of ResolvedExpression * ResolvedExpression
+        | ResolvedSpread of ResolvedExpression
+
+    and ResolvedPattern =
+        { Type: Type
+          Span: Span
+          Node: ResolvedPatternNode }
+
+    and ResolvedPatternNode =
+        | ResolvedWildcard
+        | ResolvedPatternBinding of ResolvedBinding
+        | ResolvedLiteralPattern of ResolvedLiteral
+        | ResolvedEmptyList
+        | ResolvedConsPattern of ResolvedPattern * ResolvedPattern
+        | ResolvedTuplePattern of ResolvedPattern list
+        | ResolvedRecordPattern of (string * ResolvedPattern) list
+        | ResolvedMapPattern of (ResolvedPattern * ResolvedPattern) list * ResolvedPattern option
+        | ResolvedSomePattern of ResolvedPattern
+        | ResolvedNonePattern
+        | ResolvedUnionPattern of string * string * ResolvedPattern option
+        | ResolvedTypePattern of Type
+
+    and ResolvedMatchCase =
+        { Pattern: ResolvedPattern
+          Guard: ResolvedExpression option
+          Body: ResolvedExpression
+          Span: Span }
+
     type private LocalVariableTypeCapture =
         { Name: string
           Span: Span
@@ -220,16 +351,76 @@ module TypeInfer =
         | TSLet of string * Expr * Type * bool * bool * Span
         | TSLetPattern of Pattern * Expr * Map<string, Type> * bool * Span
         | TSLetRecGroup of (string * Expr * Type * Span) list * bool * Span
+        | TSBackendImport of string * Type * BackendImport * Span
         | TSExpr of TypedExpr
     type TypedProgram = TypedStmt list
 
+    type ResolvedBackendImport =
+        { ModulePath: string
+          MemberName: string
+          Span: Span }
+
+    type ResolvedTypeDeclaration =
+        { Binding: ResolvedBinding
+          IsRecursive: bool
+          Definition: Type
+          Fields: (string * Type) list
+          Cases: (string * Type option) list
+          Import: ResolvedBackendImport option }
+
+    type ResolvedValueDeclaration =
+        { Binding: ResolvedBinding
+          Scheme: Scheme
+          IsRecursive: bool
+          Value: ResolvedExpression }
+
+    type ResolvedPatternDeclaration =
+        { Pattern: ResolvedPattern
+          Value: ResolvedExpression
+          Bindings: (ResolvedBinding * Scheme) list }
+
+    type ResolvedImportedDeclaration =
+        { Binding: ResolvedBinding
+          Scheme: Scheme
+          Import: ResolvedBackendImport }
+
+    type ResolvedStatementNode =
+        | ResolvedTypeDeclaration of ResolvedTypeDeclaration
+        | ResolvedValueDeclaration of ResolvedValueDeclaration
+        | ResolvedPatternDeclaration of ResolvedPatternDeclaration
+        | ResolvedRecursiveDeclarations of ResolvedValueDeclaration list
+        | ResolvedImportedDeclaration of ResolvedImportedDeclaration
+        | ResolvedExpressionStatement of ResolvedExpression
+
+    type ResolvedStatement =
+        { Span: Span
+          Attributes: Attribute list
+          Export: ResolvedExport option
+          Node: ResolvedStatementNode
+          Patterns: ResolvedPattern list
+          Expressions: ResolvedExpression list }
+
+    and ResolvedExport =
+        { Name: string
+          Span: Span }
+
+    type ResolvedProgram =
+        { Purity: PurityContracts
+          TypedProgram: TypedProgram
+          ResolvedStatements: ResolvedStatement list
+          ExpressionTypes: ResolvedExpressionType list
+          Symbols: ResolvedSymbol list
+          SymbolReferences: ResolvedSymbolReference list }
+
     type private InferenceTelemetry =
         { mutable ScopeStack: Set<string> list
-          LocalVariableTypes: ResizeArray<LocalVariableTypeCapture> }
+          LocalVariableTypes: ResizeArray<LocalVariableTypeCapture>
+          ExpressionTypes: ResizeArray<ResolvedExpressionType> }
 
     let private createTelemetry () =
         { ScopeStack = [ Set.empty ]
-          LocalVariableTypes = ResizeArray() }
+          LocalVariableTypes = ResizeArray()
+          ExpressionTypes = ResizeArray() }
 
     let private capturedLocalVariableTypes (telemetry: InferenceTelemetry option) : LocalVariableTypeInfo list =
         match telemetry with
@@ -295,6 +486,14 @@ module TypeInfer =
                 let entry = t.LocalVariableTypes[i]
                 entry.Type <- applyType subst entry.Type
 
+    let private applySubstToCapturedExpressions (telemetry: InferenceTelemetry option) (startIndex: int) (subst: Subst) =
+        match telemetry with
+        | Some t ->
+            for i = startIndex to t.ExpressionTypes.Count - 1 do
+                let item = t.ExpressionTypes.[i]
+                t.ExpressionTypes.[i] <- { item with Type = applyType subst item.Type }
+        | None -> ()
+
     let private currentTelemetryCaptureCount (telemetry: InferenceTelemetry option) =
         match telemetry with
         | Some t -> t.LocalVariableTypes.Count
@@ -304,7 +503,16 @@ module TypeInfer =
         { UnionName: string
           Payload: Type option }
 
-    let private asTyped expr t = { Expr = expr; Type = t; Span = Ast.spanOfExpr expr }
+    let private asTyped (telemetry: InferenceTelemetry option) expr t : TypedExpr =
+        let span = Ast.spanOfExpr expr
+        match telemetry with
+        | Some capture ->
+            capture.ExpressionTypes.Add
+                { Expr = expr
+                  Type = t
+                  Span = span }
+        | None -> ()
+        { Expr = expr; Type = t; Span = span }
 
     let private builtinType (name: string) : Type option =
         match name with
@@ -649,16 +857,18 @@ module TypeInfer =
         loop t
 
     let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+        let expressionStart = match telemetry with Some t -> t.ExpressionTypes.Count | None -> 0
         let subst, inferred, _ = inferExprRaw telemetry typeDefs constructors env expr
         let keySubst = constrainMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType subst inferred)
         let combined = compose keySubst subst
         let resolved = applyType combined inferred
-        combined, resolved, asTyped expr resolved
+        applySubstToCapturedExpressions telemetry expressionStart combined
+        combined, resolved, { Expr = expr; Type = resolved; Span = Ast.spanOfExpr expr }
 
     and private inferExprRaw (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
         match expr with
         | EUnit _ ->
-            emptySubst, TUnit, asTyped expr TUnit
+            emptySubst, TUnit, asTyped telemetry expr TUnit
         | ELiteral (lit, _) ->
             let t =
                 match lit with
@@ -666,25 +876,25 @@ module TypeInfer =
                 | LFloat _ -> TFloat
                 | LBool _ -> TBool
                 | LString _ -> TString
-            emptySubst, t, asTyped expr t
+            emptySubst, t, asTyped telemetry expr t
         | EVar (name, span) ->
             match env |> Map.tryFind name with
             | Some scheme ->
                 let t = instantiate scheme
                 recordLocalVariableUse telemetry name span t
-                emptySubst, t, asTyped expr t
+                emptySubst, t, asTyped telemetry expr t
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EParen (inner, _) ->
             let s, t, _ = inferExpr telemetry typeDefs constructors env inner
-            s, t, asTyped expr t
+            s, t, asTyped telemetry expr t
         | ETypeOf (name, span) ->
             if typeDefs.ContainsKey name then
-                emptySubst, TTypeToken, asTyped expr TTypeToken
+                emptySubst, TTypeToken, asTyped telemetry expr TTypeToken
             else
                 raise (TypeException { Message = sprintf "Unknown type '%s'" name; Span = span })
         | ENameOf (name, span) ->
             if env.ContainsKey name then
-                emptySubst, TString, asTyped expr TString
+                emptySubst, TString, asTyped telemetry expr TString
             else
                 raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | EInterpolatedString (parts, span) ->
@@ -695,7 +905,7 @@ module TypeInfer =
                 | IPExpr pexpr ->
                     let s1, _, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) pexpr
                     sAcc <- compose s1 sAcc
-            sAcc, TString, asTyped expr TString
+            sAcc, TString, asTyped telemetry expr TString
         | ELambda (param, body, _) ->
             let tv =
                 match param.Annotation with
@@ -708,7 +918,7 @@ module TypeInfer =
                     inferExpr telemetry typeDefs constructors env' body)
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
-            s1, tFun, asTyped expr tFun
+            s1, tFun, asTyped telemetry expr tFun
         | EApply (fn, arg, span) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env fn
             let env2 = applyEnv s1 env
@@ -719,7 +929,7 @@ module TypeInfer =
             let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(t2, tv)))
             let s = compose keySubst combined
             let tRes = applyType s tv
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | EIf (cond, tExpr, fExpr, span) ->
             let s1, tCond, _ = inferExpr telemetry typeDefs constructors env cond
             let sBool = unify typeDefs tCond TBool span
@@ -730,13 +940,13 @@ module TypeInfer =
             let s4 = unify typeDefs (applyType s3 tThen) tElse span
             let s = compose s4 (compose s3 (compose s2 (compose sBool s1)))
             let tRes = applyType s tElse
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | ERaise (value, span) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
             let s2 = unify typeDefs (applyType s1 t1) TString span
             let s = compose s2 s1
             let tRes = Types.freshVar()
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | EFor (name, source, body, span) ->
             let s1, tSource, _ = inferExpr telemetry typeDefs constructors env source
             let tv = Types.freshVar()
@@ -751,7 +961,7 @@ module TypeInfer =
                     inferExpr telemetry typeDefs constructors envBody body)
             let sBodyUnit = unify typeDefs (applyType s2 tBody) TUnit (Ast.spanOfExpr body)
             let s = compose sBodyUnit (compose s2 sSource)
-            s, TUnit, asTyped expr TUnit
+            s, TUnit, asTyped telemetry expr TUnit
         | ELet (name, value, body, isRec, returnAnnotation, span) ->
             if isRec then
                 let tv = Types.freshVar()
@@ -775,7 +985,7 @@ module TypeInfer =
                     withLocalBindings telemetry [ name ] (fun () ->
                         inferExpr telemetry typeDefs constructors env2 body)
                 let s = compose s3 sValue
-                s, tBody, asTyped expr tBody
+                s, tBody, asTyped telemetry expr tBody
             else
                 let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
                 let sDiscard =
@@ -798,7 +1008,7 @@ module TypeInfer =
                     withLocalBindings telemetry [ name ] (fun () ->
                         inferExpr telemetry typeDefs constructors env2 body)
                 let s = compose s2 sValue
-                s, t2, asTyped expr t2
+                s, t2, asTyped telemetry expr t2
         | ELetPattern (pat, value, body, span) ->
             let startIndex = currentTelemetryCaptureCount telemetry
             let s1, tValue, _ = inferExpr telemetry typeDefs constructors env value
@@ -818,7 +1028,7 @@ module TypeInfer =
                 withLocalBindings telemetry boundNames (fun () ->
                     inferExpr telemetry typeDefs constructors env2 body)
             let s = compose sBody sValue
-            s, tBody, asTyped expr tBody
+            s, tBody, asTyped telemetry expr tBody
         | ELetRecGroup (bindings, body, span) ->
             let foldedBindings =
                 bindings
@@ -871,7 +1081,7 @@ module TypeInfer =
                 withLocalBindings telemetry recursiveNames (fun () ->
                     inferExpr telemetry typeDefs constructors envBody body)
             let s = compose sBody sRec
-            s, tBody, asTyped expr tBody
+            s, tBody, asTyped telemetry expr tBody
         | EMatch (scrutinee, cases, span) ->
             let s1, tScrut, _ = inferExpr telemetry typeDefs constructors env scrutinee
             let mutable sAcc = s1
@@ -903,7 +1113,7 @@ module TypeInfer =
                         Some (applyType sEq tPrev)
                 sAcc <- compose sBody (compose sPat sAcc)
             let tRes = resultTypeOpt |> Option.defaultValue (Types.freshVar())
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | EList (items, span) ->
             let tv = Types.freshVar()
             let mutable sAcc = emptySubst
@@ -912,7 +1122,7 @@ module TypeInfer =
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
                 sAcc <- compose s2 (compose s1 sAcc)
             let tRes = TList (applyType sAcc tv)
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | ERange (startExpr, endExpr, span) ->
             let s1, tStart, _ = inferExpr telemetry typeDefs constructors env startExpr
             let env2 = applyEnv s1 env
@@ -921,7 +1131,7 @@ module TypeInfer =
             let s4 = unify typeDefs (applyType s3 (applyType s2 tEnd)) TInt span
             let s = compose s4 (compose s3 (compose s2 s1))
             let tRes = TList TInt
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | ETuple (items, _) ->
             let mutable sAcc = emptySubst
             let mutable inferred : Type list = []
@@ -930,7 +1140,7 @@ module TypeInfer =
                 sAcc <- compose s1 sAcc
                 inferred <- inferred @ [ applyType sAcc t1 ]
             let tRes = TTuple inferred
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | ERecord (fields, span) ->
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
@@ -943,7 +1153,7 @@ module TypeInfer =
             let sRecord = unify typeDefs (applyType sAcc (TRecord inferred)) expected span
             let s = compose sRecord sAcc
             let tRes = applyType s expected
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | EStructuralRecord (fields, _) ->
             let mutable sAcc = emptySubst
             let mutable inferred : Map<string, Type> = Map.empty
@@ -952,7 +1162,7 @@ module TypeInfer =
                 sAcc <- compose s1 sAcc
                 inferred <- inferred.Add(name, applyType sAcc t1)
             let tRes = TRecord inferred
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | EMap (entries, span) ->
             let ensureSupportedMapKeyType = ensureSupportedMapKeyType typeDefs span
 
@@ -983,7 +1193,7 @@ module TypeInfer =
 
             ensureSupportedMapKeyType (applyType sAcc keyType)
             let tRes = TMap (applyType sAcc keyType, applyType sAcc valueType)
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | ERecordUpdate (baseExpr, updates, span) ->
             let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
             let sBase =
@@ -1013,7 +1223,7 @@ module TypeInfer =
                 sAcc <- compose sEq (compose sField sAcc)
             let resultFields = baseFields |> Map.map (fun _ t -> applyType sAcc t)
             let tRes = TRecord resultFields
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | EStructuralRecordUpdate (baseExpr, updates, span) ->
             let sInitial, tBase, _ = inferExpr telemetry typeDefs constructors env baseExpr
             let sBase =
@@ -1044,7 +1254,7 @@ module TypeInfer =
                 sAcc <- compose sEq (compose sField sAcc)
                 resultFields <- resultFields |> Map.add name (applyType sAcc tFieldApplied)
             let tRes = TRecord (resultFields |> Map.map (fun _ t -> applyType sAcc t))
-            sAcc, tRes, asTyped expr tRes
+            sAcc, tRes, asTyped telemetry expr tRes
         | EFieldGet (target, fieldName, span) ->
             let inferRecordField s1 tTarget =
                 match applyType s1 tTarget with
@@ -1080,6 +1290,8 @@ module TypeInfer =
                 | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
 
             let rec qualifiedTarget = function
+                // Env combines runtime data with this reserved runtime operation.
+                | EVar ("Env", _) when fieldName="setExitCode" -> Some "Env"
                 | EVar (name, _) when not (env.ContainsKey name) -> Some name
                 | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
                 | _ -> None
@@ -1089,15 +1301,15 @@ module TypeInfer =
                 match env.TryFind qualifiedName with
                 | Some scheme ->
                     let t = instantiate scheme
-                    emptySubst, t, asTyped expr t
+                    emptySubst, t, asTyped telemetry expr t
                 | None ->
                     let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
                     let sField, tField = inferRecordField s1 tTarget
-                    sField, tField, asTyped expr tField
+                    sField, tField, asTyped telemetry expr tField
             | _ ->
                 let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
                 let sField, tField = inferRecordField s1 tTarget
-                sField, tField, asTyped expr tField
+                sField, tField, asTyped telemetry expr tField
         | EIndexGet (target, keyExpr, span) ->
             let s1, tTarget, _ = inferExpr telemetry typeDefs constructors env target
             let env2 = applyEnv s1 env
@@ -1109,26 +1321,26 @@ module TypeInfer =
                 let s3 = unify typeDefs keyType TInt span
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s itemType)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | TMap (mapKeyType, valueType), _ ->
                 let s3 = unify typeDefs keyType mapKeyType span
                 let s = compose s3 (compose s2 s1)
                 ensureSupportedMapKeyType typeDefs span (applyType s mapKeyType)
                 let tRes = TOption (applyType s valueType)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | TVar _, TInt ->
                 let itemType = Types.freshVar()
                 let s3 = unify typeDefs targetType (TList itemType) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s itemType)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | TVar _, (TString | TBool | TNamed _) ->
                 let valueType = Types.freshVar()
                 ensureSupportedMapKeyType typeDefs span keyType
                 let s3 = unify typeDefs targetType (TMap (keyType, valueType)) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = TOption (applyType s valueType)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | TVar _, TVar _ ->
                 raise (TypeException { Message = "Ambiguous index access: annotate the list or map target"; Span = span })
             | _ ->
@@ -1151,7 +1363,7 @@ module TypeInfer =
                 let keySubst = constrainMapKeyTypes typeDefs span (applyType combined (TFun(tLeft, tv)))
                 let s = compose keySubst combined
                 let tRes = applyType s tv
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | "::" ->
                 let s1, tHead, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
@@ -1159,7 +1371,7 @@ module TypeInfer =
                 let s3 = unify typeDefs (applyType s2 tTail) (TList tHead) span
                 let s = compose s3 (compose s2 s1)
                 let tRes = applyType s (TList tHead)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | "@" ->
                 let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
@@ -1169,7 +1381,7 @@ module TypeInfer =
                 let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
                 let s = compose s4 (compose s3 (compose s2 s1))
                 let tRes = TList (applyType s tv)
-                s, tRes, asTyped expr tRes
+                s, tRes, asTyped telemetry expr tRes
             | _ ->
                 let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
                 let env2 = applyEnv s1 env
@@ -1188,13 +1400,13 @@ module TypeInfer =
                     | "&&" | "||" -> unify typeDefs t TBool span, TBool
                     | _ -> raise (TypeException { Message = sprintf "Unknown operator %s" op; Span = span })
                 let s = compose sOp (compose s3 (compose s2 s1))
-                s, resultType, asTyped expr resultType
+                s, resultType, asTyped telemetry expr resultType
         | ESome (value, _) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env value
-            s1, TOption t1, asTyped expr (TOption t1)
+            s1, TOption t1, asTyped telemetry expr (TOption t1)
         | ENone _ ->
             let tv = Types.freshVar()
-            emptySubst, TOption tv, asTyped expr (TOption tv)
+            emptySubst, TOption tv, asTyped telemetry expr (TOption tv)
         | ECons (head, tail, span) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env head
             let env2 = applyEnv s1 env
@@ -1202,7 +1414,7 @@ module TypeInfer =
             let s3 = unify typeDefs (applyType s2 t2) (TList t1) span
             let s = compose s3 (compose s2 s1)
             let tRes = applyType s (TList t1)
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
         | EAppend (a, b, span) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors env a
             let env2 = applyEnv s1 env
@@ -1212,7 +1424,7 @@ module TypeInfer =
             let s4 = unify typeDefs (applyType s3 (applyType s2 t2)) (TList (applyType s3 tv)) span
             let s = compose s4 (compose s3 (compose s2 s1))
             let tRes = TList (applyType s tv)
-            s, tRes, asTyped expr tRes
+            s, tRes, asTyped telemetry expr tRes
 
     let private envFromExterns (externs: ExternalFunction list) : Map<string, Scheme> =
         externs
@@ -1244,18 +1456,29 @@ module TypeInfer =
                 | None -> acc
         loop [] pat
 
+    let rec private unwrapStatementAttributes statement =
+        match statement with
+        | SAttributed(attributes, inner, _) ->
+            let nested, unwrapped = unwrapStatementAttributes inner
+            attributes @ nested, unwrapped
+        | value -> [], value
+
+    let private unwrapProgramAttributes (program: Program) =
+        program |> List.map unwrapStatementAttributes |> List.unzip
+
     let private topLevelBindingNames (program: Program) : string list =
         program
-        |> List.collect (function
+        |> List.collect (unwrapStatementAttributes >> snd >> function
             | SLet(name, _, _, _, _, _, _) -> [ name ]
             | SLetPattern(pat, _, _, _) -> patternBindingNames pat
             | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
             | _ -> [])
 
-    let private inferProgramWithExternsRawAndLocals (captureLocalVariables: bool) (registration: ExtensionRegistration) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
+    let private inferProgramWithExternsRawAndLocals (captureTelemetry: bool) (registration: ExtensionRegistration) (program: Program) : TypedProgram * LocalVariableTypeInfo list * ResolvedExpressionType list =
+        let _, program = unwrapProgramAttributes program
         let externs = registration.Functions
         let hostDefinitions =
-            try HostInterop.typeDefinitions registration ((BuiltinTypes.typeDefs |> List.map (fun d -> d.Name)) @ (program |> List.choose (function SType d -> Some d.Name | _ -> None)))
+            try HostInterop.typeDefinitions registration (program |> List.choose (function SType d -> Some d.Name | _ -> None))
             with EvalException error -> raise (TypeException { Message = error.Message; Span = error.Span })
         let decls =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
@@ -1311,17 +1534,30 @@ module TypeInfer =
             ||> List.fold (fun acc (name, scheme) -> acc.Add(name, scheme))
 
         let telemetry =
-            if captureLocalVariables then Some(createTelemetry ())
+            if captureTelemetry then Some(createTelemetry ())
             else None
 
         let typed = ResizeArray<TypedStmt>()
         try
             for i, stmt in program |> List.indexed do
+                let expressionStartIndex =
+                    match telemetry with
+                    | Some t -> t.ExpressionTypes.Count
+                    | None -> 0
                 match stmt with
                 | SType def ->
                     typed.Add(TSType def)
                 | SImport (_, _, span) ->
                     raise (TypeException { Message = "'import' must be resolved before type inference"; Span = span })
+                | SAttributed(_, _, span) ->
+                    raise (TypeException { Message = "Attributed statements must be normalized before type inference"; Span = span })
+                | SBackendImport(name, signature, import, span) ->
+                    let importedType = annotationTypeFromRef typeDefs span signature
+                    match importedType with
+                    | TFun _ ->
+                        env <- Map.add name (Forall([], importedType)) env
+                        typed.Add(TSBackendImport(name, importedType, import, span))
+                    | _ -> raise (TypeException { Message = "Backend imports require a complete function signature"; Span = span })
                 | SLet(name, args, returnAnnotation, expr, isRec, isExported, span) ->
                     let exprVal = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args expr
                     let startIndex =
@@ -1343,6 +1579,7 @@ module TypeInfer =
                             | None -> emptySubst
                         let s = compose sRet (compose s2 s1)
                         applySubstToCapturedLocals telemetry startIndex s
+                        applySubstToCapturedExpressions telemetry expressionStartIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
@@ -1360,6 +1597,7 @@ module TypeInfer =
                             | None -> emptySubst
                         let s = compose sRet s1
                         applySubstToCapturedLocals telemetry startIndex s
+                        applySubstToCapturedExpressions telemetry expressionStartIndex s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
@@ -1377,6 +1615,7 @@ module TypeInfer =
                     let s2 = unify typeDefs (applyType s1 tValue) tPat span
                     let s = compose s2 s1
                     applySubstToCapturedLocals telemetry startIndex s
+                    applySubstToCapturedExpressions telemetry expressionStartIndex s
                     let envBase = applyEnv s env
                     let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
                     typedBindings
@@ -1428,6 +1667,7 @@ module TypeInfer =
                         | None -> ()
 
                     applySubstToCapturedLocals telemetry startIndex sRec
+                    applySubstToCapturedExpressions telemetry expressionStartIndex sRec
 
                     let envGeneralize = applyEnv sRec env
                     let schemes =
@@ -1460,18 +1700,24 @@ module TypeInfer =
                             emptySubst
                     let s = compose sDiscard s1
                     applySubstToCapturedLocals telemetry startIndex s
+                    applySubstToCapturedExpressions telemetry expressionStartIndex s
                     validateMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType s t1)
                     env <- applyEnv s env
                     typed.Add(TSExpr typedExpr)
 
-            typed |> Seq.toList, capturedLocalVariableTypes telemetry
+            let expressionTypes =
+                match telemetry with
+                | Some value -> value.ExpressionTypes |> Seq.toList
+                | None -> []
+            typed |> Seq.toList, capturedLocalVariableTypes telemetry, expressionTypes
         with _ ->
             reraise ()
 
     let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        inferProgramWithExternsRawAndLocals false (HostInterop.ofExterns externs) program |> fst
+        let typed, _, _ = inferProgramWithExternsRawAndLocals false (HostInterop.ofExterns externs) program
+        typed
 
-    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+    let private validateProgramBindings (externs: ExternalFunction list) (program: Program) =
         let reserved = BuiltinSignatures.builtinReservedNames
 
         externs
@@ -1483,23 +1729,582 @@ module TypeInfer =
         |> List.tryFind (fun name -> Set.contains name reserved)
         |> Option.iter (fun name ->
             raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
-
-        inferProgramWithExternsRaw externs program
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
-        let reserved = BuiltinSignatures.builtinReservedNames
+        validateProgramBindings externs program
+        let typed, locals, _ = inferProgramWithExternsRawAndLocals true (HostInterop.ofExterns externs) program
+        typed, locals
 
-        externs
-        |> List.tryFind (fun ext -> Set.contains ext.Name reserved)
-        |> Option.iter (fun ext ->
-            raise (TypeException { Message = $"Host extern '{ext.Name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+    let inferResolvedProgramWithRegistration (registration: ExtensionRegistration) (program: Program) : ResolvedProgram =
+        let externs = registration.Functions
+        validateProgramBindings externs program
+        let statementAttributes, semanticProgram = unwrapProgramAttributes program
+        let typed, _, expressions = inferProgramWithExternsRawAndLocals true registration semanticProgram
+        let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
+        let mutable nextSymbol = 0
+        let symbols = ResizeArray<ResolvedSymbol>()
+        let references = ResizeArray<ResolvedSymbolReference>()
+        let patternBindingIds = ResizeArray<Span * int>()
+        let normalizeScheme (Forall(variables, schemeType)) =
+            let mapping = variables |> List.mapi (fun index variable -> variable, index) |> Map.ofList
+            let rec normalize = function
+                | TVar variable -> TVar(mapping |> Map.tryFind variable |> Option.defaultValue variable)
+                | TNumeric variable -> TVar(mapping |> Map.tryFind variable |> Option.defaultValue variable)
+                | TRecordShape(id, fields, constructible) -> TRecordShape(mapping |> Map.tryFind id |> Option.defaultValue id, Map.map (fun _ -> normalize) fields, constructible)
+                | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
+                | TTuple items -> TTuple(List.map normalize items)
+                | TRecord fields -> TRecord(Map.map (fun _ value -> normalize value) fields)
+                | TMap(key, value) -> TMap(normalize key, normalize value)
+                | TFun(argument, result) -> TFun(normalize argument, normalize result)
+                | TUnion(name, cases) -> TUnion(name, Map.map (fun _ payload -> Option.map normalize payload) cases)
+                | value -> value
+            Forall([ 0 .. variables.Length - 1 ], normalize schemeType)
+        let normalizeTypeVariables value =
+            let mutable next = 0
+            let mutable mapping = Map.empty
+            let rec normalize = function
+                | TVar variable | TNumeric variable ->
+                    match Map.tryFind variable mapping with
+                    | Some normalized -> TVar normalized
+                    | None ->
+                        let normalized = next
+                        next <- next + 1
+                        mapping <- Map.add variable normalized mapping
+                        TVar normalized
+                | TRecordShape(id, fields, constructible) ->
+                    let witness = match normalize (TVar id) with TVar value -> value | _ -> id
+                    TRecordShape(witness, Map.map (fun _ -> normalize) fields, constructible)
+                | TList item -> TList(normalize item) | TTask item -> TTask(normalize item) | TOption item -> TOption(normalize item)
+                | TTuple items -> TTuple(List.map normalize items)
+                | TRecord fields -> TRecord(Map.map (fun _ item -> normalize item) fields)
+                | TMap(key, item) -> TMap(normalize key, normalize item)
+                | TFun(argument, result) -> TFun(normalize argument, normalize result)
+                | TUnion(name, cases) -> TUnion(name, Map.map (fun _ payload -> Option.map normalize payload) cases)
+                | item -> item
+            normalize value
+        let allocate name kind span scheme =
+            let id = nextSymbol
+            nextSymbol <- nextSymbol + 1
+            symbols.Add { SymbolId = id; Name = name; Kind = kind; Span = span; Scheme = Option.map normalizeScheme scheme }
+            id
+        let syntheticSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+        let mutable globalEnvironment = Map.empty
+        for name, scheme in BuiltinSignatures.builtinSchemes |> Map.toList |> List.sortBy fst do
+            globalEnvironment <- Map.add name (allocate name BuiltinSymbol syntheticSpan (Some scheme)) globalEnvironment
+        for external in externs |> List.sortBy _.Name do
+            globalEnvironment <- Map.add external.Name (allocate external.Name ExternSymbol syntheticSpan (Some external.Scheme)) globalEnvironment
+        for definition in BuiltinTypes.typeDefs do
+            globalEnvironment <- Map.add definition.Name (allocate definition.Name TypeSymbol definition.Span None) globalEnvironment
+            for caseName, _ in definition.Cases do
+                let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
+                globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+        let hostDefinitions = HostInterop.typeDefinitions registration []
+        for name, definition in hostDefinitions |> Map.toList do
+            globalEnvironment <- Map.add name (allocate name TypeSymbol syntheticSpan None) globalEnvironment
+            match definition with
+            | TUnion(_, cases) ->
+                for caseName, _ in cases |> Map.toList do
+                    let id = allocate $"{name}.{caseName}" UnionCaseSymbol syntheticSpan None
+                    globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{name}.{caseName}" id
+            | _ -> ()
+        let builtinEnvironment = globalEnvironment
+        for statement in typed do
+            match statement with
+            | TSType definition ->
+                globalEnvironment <- Map.add definition.Name (allocate definition.Name TypeSymbol definition.Span None) globalEnvironment
+                for caseName, _ in definition.Cases do
+                    let id = allocate $"{definition.Name}.{caseName}" UnionCaseSymbol definition.Span None
+                    globalEnvironment <- globalEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+            | TSLet(name, _, inferred, _, _, span) ->
+                globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSLetPattern(_, _, bindings, _, span) ->
+                for name, inferred in bindings |> Map.toList do
+                    globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSLetRecGroup(bindings, _, _) ->
+                for name, _, inferred, span in bindings do
+                    globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Types.generalize Map.empty inferred))) globalEnvironment
+            | TSBackendImport(name, importedType, _, span) ->
+                globalEnvironment <- Map.add name (allocate name DeclarationSymbol span (Some(Forall([], importedType)))) globalEnvironment
+            | TSExpr _ -> ()
+        let recordReference environment name expression span =
+            environment |> Map.tryFind name |> Option.iter (fun id ->
+                let symbol = symbols |> Seq.find (fun symbol -> symbol.SymbolId = id)
+                references.Add
+                    { SymbolId = id
+                      Name = name
+                      Kind = symbol.Kind
+                      Type = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables
+                      Span = span })
+        let bindPattern kind environment pattern =
+            let rec bind bindings current pattern =
+                match pattern with
+                | PVar(name, span) ->
+                    match Map.tryFind name bindings with
+                    | Some id ->
+                        patternBindingIds.Add(span, id)
+                        bindings, Map.add name id current
+                    | None ->
+                        let id = allocate name kind span None
+                        patternBindingIds.Add(span, id)
+                        Map.add name id bindings, Map.add name id current
+                | PCons(head, tail, _) ->
+                    let bindings, current = bind bindings current head
+                    bind bindings current tail
+                | PTuple(items, _) -> items |> List.fold (fun (bindings, current) item -> bind bindings current item) (bindings, current)
+                | PRecord(fields, _) -> fields |> List.fold (fun (bindings, current) (_, item) -> bind bindings current item) (bindings, current)
+                | PMap(clauses, tail, _) ->
+                    let bindings, current =
+                        clauses
+                        |> List.fold (fun (bindings, current) (key, value) ->
+                            let bindings, current = bind bindings current key
+                            bind bindings current value) (bindings, current)
+                    tail |> Option.map (bind bindings current) |> Option.defaultValue (bindings, current)
+                | PSome(item, _) -> bind bindings current item
+                | PUnionCase(_, _, payload, _) -> payload |> Option.map (bind bindings current) |> Option.defaultValue (bindings, current)
+                | _ -> bindings, current
+            bind Map.empty environment pattern |> snd
+        let rec visit environment expression =
+            let visitSame item = visit environment item
+            match expression with
+            | EVar(name, span) -> recordReference environment name expression span
+            | ENameOf(name, span) -> recordReference environment name expression span
+            | ETypeOf(name, span) -> recordReference environment name expression span
+            | ELambda(parameter, body, _) ->
+                let id = allocate parameter.Name ParameterSymbol parameter.Span None
+                visit (Map.add parameter.Name id environment) body
+            | EApply(fn, argument, _) | EBinOp(_, fn, argument, _) | EAppend(fn, argument, _) | ECons(fn, argument, _) | EIndexGet(fn, argument, _) -> visitSame fn; visitSame argument
+            | EIf(condition, whenTrue, whenFalse, _) -> visitSame condition; visitSame whenTrue; visitSame whenFalse
+            | ELet(name, binding, body, recursive, _, span) ->
+                let id = allocate name LocalSymbol span None
+                visit (if recursive then Map.add name id environment else environment) binding
+                visit (Map.add name id environment) body
+            | ELetPattern(pattern, binding, body, _) -> visitSame binding; visit (bindPattern PatternBindingSymbol environment pattern) body
+            | ELetRecGroup(bindings, body, _) ->
+                let recursiveEnvironment = bindings |> List.fold (fun env (name, _, _, _, span) -> Map.add name (allocate name LocalSymbol span None) env) environment
+                for _, parameters, _, value, span in bindings do
+                    let folded = Seq.foldBack (fun parameter inner -> ELambda(parameter, inner, span)) parameters value
+                    visit recursiveEnvironment folded
+                visit recursiveEnvironment body
+            | EMatch(target, cases, _) ->
+                visitSame target
+                for pattern, guard, body, _ in cases do
+                    let caseEnvironment = bindPattern PatternBindingSymbol environment pattern
+                    Option.iter (visit caseEnvironment) guard
+                    visit caseEnvironment body
+            | EFor(name, source, body, span) ->
+                visitSame source
+                let id = allocate name LocalSymbol span None
+                visit (Map.add name id environment) body
+            | EList(items, _) | ETuple(items, _) -> List.iter visitSame items
+            | ERecord(fields, _) | EStructuralRecord(fields, _) -> fields |> List.iter (snd >> visitSame)
+            | EMap(entries, _) -> entries |> List.iter (function MEKeyValue(key, value) -> visitSame key; visitSame value | MESpread value -> visitSame value)
+            | ERecordUpdate(target, fields, _) | EStructuralRecordUpdate(target, fields, _) -> visitSame target; fields |> List.iter (snd >> visitSame)
+            | EFieldGet(EVar(moduleName, _), fieldName, span) when Map.containsKey $"{moduleName}.{fieldName}" environment -> recordReference environment $"{moduleName}.{fieldName}" expression span
+            | EFieldGet(target, _, _) -> visitSame target
+            | ESome(item, _) | EParen(item, _) | ERaise(item, _) -> visitSame item
+            | ERange(first, last, _) -> visitSame first; visitSame last
+            | EInterpolatedString(parts, _) -> parts |> List.iter (function IPText _ -> () | IPExpr item -> visitSame item)
+            | EUnit _ | ELiteral _ | ENone _ -> ()
+        let allocated kind name span =
+            symbols
+            |> Seq.find (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
+            |> _.SymbolId
+        let mutable resolutionEnvironment = builtinEnvironment
+        for statement in typed do
+            match statement with
+            | TSType definition ->
+                resolutionEnvironment <- Map.add definition.Name (allocated TypeSymbol definition.Name definition.Span) resolutionEnvironment
+                for caseName, _ in definition.Cases do
+                    let id = allocated UnionCaseSymbol $"{definition.Name}.{caseName}" definition.Span
+                    resolutionEnvironment <- resolutionEnvironment |> Map.add caseName id |> Map.add $"{definition.Name}.{caseName}" id
+            | TSLet(name, expression, _, recursive, _, span) ->
+                let id = allocated DeclarationSymbol name span
+                visit (if recursive then Map.add name id resolutionEnvironment else resolutionEnvironment) expression
+                resolutionEnvironment <- Map.add name id resolutionEnvironment
+            | TSLetPattern(pattern, expression, bindings, _, span) ->
+                visit resolutionEnvironment expression
+                bindPattern PatternBindingSymbol resolutionEnvironment pattern |> ignore
+                for name, _ in bindings |> Map.toList do
+                    resolutionEnvironment <- Map.add name (allocated DeclarationSymbol name span) resolutionEnvironment
+            | TSLetRecGroup(bindings, _, _) ->
+                let recursiveEnvironment =
+                    bindings
+                    |> List.fold (fun environment (name, _, _, span) ->
+                        Map.add name (allocated DeclarationSymbol name span) environment) resolutionEnvironment
+                bindings |> List.iter (fun (_, expression, _, _) -> visit recursiveEnvironment expression)
+                resolutionEnvironment <- recursiveEnvironment
+            | TSExpr expression -> visit resolutionEnvironment expression.Expr
+            | TSBackendImport(name, _, _, span) ->
+                resolutionEnvironment <- Map.add name (allocated DeclarationSymbol name span) resolutionEnvironment
+        let resolvedReferences = references |> Seq.toList
+        let mutable remainingReferenceOccurrences = resolvedReferences
+        let finalType expression = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables
+        let declarations =
+            (BuiltinTypes.typeDefs |> List.map (fun definition -> definition.Name, definition))
+            @ (typed |> List.choose (function TSType definition -> Some(definition.Name, definition) | _ -> None))
+            |> Map.ofList
+        let resolvedTypeDefinitions =
+            declarations
+            |> Map.map (fun name definition ->
+                if definition.Cases.IsEmpty then
+                    definition.Fields
+                    |> List.map (fun (fieldName, fieldType) -> fieldName, typeFromRef declarations [ name ] fieldType)
+                    |> Map.ofList
+                    |> TRecord
+                else
+                    definition.Cases
+                    |> List.map (fun (caseName, payload) -> caseName, Option.map (typeFromRef declarations [ name ]) payload)
+                    |> Map.ofList
+                    |> fun cases -> TUnion(name, cases))
+            |> fun definitions -> Map.fold (fun state name definition -> Map.add name definition state) definitions hostDefinitions
+        let resolvedLiteral = function
+            | LInt value -> ResolvedInt value
+            | LFloat value -> ResolvedFloat value
+            | LBool value -> ResolvedBool value
+            | LString value -> ResolvedString value
+        let symbolAt kind name span =
+            symbols
+            |> Seq.find (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
+        let bindingAt kind name span bindingType =
+            let id =
+                if kind = PatternBindingSymbol then
+                    patternBindingIds
+                    |> Seq.tryFind (fst >> (=) span)
+                    |> Option.map snd
+                    |> Option.defaultWith (fun () -> (symbolAt kind name span).SymbolId)
+                else
+                    (symbolAt kind name span).SymbolId
+            { SymbolId = id; Name = name; Type = bindingType; Span = span }
+        let referenceAt expression =
+            let span = Ast.spanOfExpr expression
+            let expectedName =
+                match expression with
+                | EVar(name, _) | ENameOf(name, _) | ETypeOf(name, _) -> Some name
+                | EFieldGet(EVar(moduleName, _), fieldName, _) -> Some $"{moduleName}.{fieldName}"
+                | _ -> None
+            let matches (item: ResolvedSymbolReference) =
+                item.Span = span && expectedName |> Option.forall ((=) item.Name)
+            let rec consume preceding = function
+                | [] -> None
+                | item :: tail when matches item ->
+                    remainingReferenceOccurrences <- List.rev preceding @ tail
+                    Some item
+                | item :: tail -> consume (item :: preceding) tail
+            consume [] remainingReferenceOccurrences
+        let rec resolvePattern (expected: Type) (pattern: Pattern) : ResolvedPattern =
+            let span = Ast.spanOfPattern pattern
+            let make node : ResolvedPattern = { Type = expected; Span = span; Node = node }
+            match pattern with
+            | PWildcard _ -> make ResolvedWildcard
+            | PVar(name, _) -> make (ResolvedPatternBinding(bindingAt PatternBindingSymbol name span expected))
+            | PLiteral(value, _) -> make (ResolvedLiteralPattern(resolvedLiteral value))
+            | PNil _ -> make ResolvedEmptyList
+            | PCons(head, tail, _) ->
+                let itemType = match expected with TList item -> item | _ -> Types.freshVar()
+                make (ResolvedConsPattern(resolvePattern itemType head, resolvePattern expected tail))
+            | PTuple(items, _) ->
+                let itemTypes = match expected with TTuple types when types.Length = items.Length -> types | _ -> List.replicate items.Length (Types.freshVar())
+                make (ResolvedTuplePattern(List.map2 resolvePattern itemTypes items))
+            | PRecord(fields, _) ->
+                let fieldTypes =
+                    match expected with
+                    | TRecord values | THostManaged(_,values) -> values
+                    | TNamed name -> match Map.tryFind name resolvedTypeDefinitions with Some(TRecord values) | Some(THostManaged(_,values)) -> values | _ -> Map.empty
+                    | _ -> Map.empty
+                fields
+                |> List.map (fun (name, item) -> name, resolvePattern (fieldTypes |> Map.tryFind name |> Option.defaultValue (Types.freshVar())) item)
+                |> ResolvedRecordPattern
+                |> make
+            | PMap(clauses, tail, _) ->
+                let keyType, valueType = match expected with TMap(key, value) -> key, value | _ -> Types.freshVar(), Types.freshVar()
+                let resolvedClauses = clauses |> List.map (fun (key, value) -> resolvePattern keyType key, resolvePattern valueType value)
+                make (ResolvedMapPattern(resolvedClauses, Option.map (resolvePattern expected) tail))
+            | PSome(item, _) ->
+                let itemType = match expected with TOption value -> value | _ -> Types.freshVar()
+                make (ResolvedSomePattern(resolvePattern itemType item))
+            | PNone _ -> make ResolvedNonePattern
+            | PUnionCase(qualifier, caseName, payload, _) ->
+                let unionName, payloadType =
+                    match expected with
+                    | TNamed name ->
+                        match Map.tryFind name resolvedTypeDefinitions with
+                        | Some(TUnion(_, cases)) -> name, cases |> Map.tryFind caseName |> Option.flatten
+                        | _ -> qualifier |> Option.defaultValue name, None
+                    | TUnion(name, cases) -> name, cases |> Map.tryFind caseName |> Option.flatten
+                    | _ ->
+                        resolvedTypeDefinitions
+                        |> Map.toSeq
+                        |> Seq.tryPick (fun (name, definition) ->
+                            match definition with
+                            | TUnion(_, cases) when Map.containsKey caseName cases -> Some(name, cases.[caseName])
+                            | _ -> None)
+                        |> Option.defaultValue (qualifier |> Option.defaultValue "", None)
+                make (ResolvedUnionPattern(unionName, caseName, Option.map (resolvePattern (payloadType |> Option.defaultValue (Types.freshVar()))) payload))
+            | PTypeRef(typeRef, _) -> make (ResolvedTypePattern(annotationTypeFromRef resolvedTypeDefinitions span typeRef))
+        let rec resolveExpression (expression: Expr) : ResolvedExpression =
+            let expressionType = finalType expression
+            let reference = referenceAt expression
+            let primitive =
+                match expression with
+                | EBinOp(op, left, _, _) ->
+                    match op, expressionType with
+                    | "+", TFloat -> Some FloatingAddition | "+", TInt -> Some IntegerAddition | "+", _ -> Some NumericAddition
+                    | "-", TFloat -> Some FloatingSubtraction | "-", TInt -> Some IntegerSubtraction | "-", _ -> Some NumericSubtraction
+                    | "*", TFloat -> Some FloatingMultiplication | "*", TInt -> Some IntegerMultiplication | "*", _ -> Some NumericMultiplication
+                    | "/", TFloat -> Some FloatingDivision | "/", TInt -> Some IntegerDivision | "/", _ -> Some NumericDivision
+                    | "%", TInt -> Some IntegerRemainder | "=", _ -> Some StructuralEquality
+                    | ("<" | ">" | "<=" | ">="), _ -> Some(NumericComparison op)
+                    | ("&&" | "||"), _ -> Some(BooleanOperation op)
+                    | _ -> None
+                | _ -> None
+            let node : ResolvedExpressionNode =
+                match expression with
+                | EUnit _ -> ResolvedConstant ResolvedUnit
+                | ELiteral(value, _) -> ResolvedConstant(resolvedLiteral value)
+                | EVar _ -> ResolvedReference(Option.get reference)
+                | EParen(inner, _) -> (resolveExpression inner).Node
+                | ELambda(parameter, body, _) ->
+                    let parameterType = match expressionType with TFun(argument, _) -> argument | _ -> Types.freshVar()
+                    ResolvedLambda(bindingAt ParameterSymbol parameter.Name parameter.Span parameterType, resolveExpression body)
+                | EApply(fn, argument, _) -> ResolvedApply(resolveExpression fn, resolveExpression argument)
+                | EIf(condition, whenTrue, whenFalse, _) -> ResolvedIf(resolveExpression condition, resolveExpression whenTrue, resolveExpression whenFalse)
+                | EBinOp("|>", left, right, _) -> ResolvedPipe(resolveExpression left, resolveExpression right)
+                | EBinOp("::", head, tail, _) -> ResolvedCons(resolveExpression head, resolveExpression tail)
+                | EBinOp("@", left, right, _) | EAppend(left, right, _) -> ResolvedAppend(resolveExpression left, resolveExpression right)
+                | EBinOp(_, left, right, _) -> ResolvedPrimitive(Option.get primitive, [ resolveExpression left; resolveExpression right ])
+                | ECons(head, tail, _) -> ResolvedCons(resolveExpression head, resolveExpression tail)
+                | ETuple(items, _) -> ResolvedTuple(List.map resolveExpression items)
+                | EList(items, _) -> ResolvedList(List.map resolveExpression items)
+                | ERecord(fields, _) | EStructuralRecord(fields, _) -> ResolvedRecord(fields |> List.map (fun (name, value) -> name, resolveExpression value))
+                | EFieldGet(_, _, _) when reference.IsSome -> ResolvedReference(Option.get reference)
+                | EFieldGet(target, name, _) -> ResolvedFieldGet(resolveExpression target, name)
+                | ESome(item, _) -> ResolvedSome(resolveExpression item)
+                | ENone _ -> ResolvedNone
+                | ELet(name, value, body, recursive, _, span) ->
+                    let valueType = finalType value
+                    ResolvedLet(bindingAt LocalSymbol name span valueType, recursive, resolveExpression value, resolveExpression body)
+                | ELetPattern(pattern, value, body, _) ->
+                    let resolvedValue = resolveExpression value
+                    ResolvedMatch(resolvedValue, [ { Pattern = resolvePattern resolvedValue.Type pattern; Guard = None; Body = resolveExpression body; Span = Ast.spanOfPattern pattern } ])
+                | ELetRecGroup(bindings, body, _) ->
+                    let values =
+                        bindings |> List.map (fun (name, parameters, _, value, span) ->
+                            let folded = Seq.foldBack (fun parameter inner -> ELambda(parameter, inner, span)) parameters value
+                            let resolvedValue = resolveExpression folded
+                            { Binding = bindingAt LocalSymbol name span resolvedValue.Type; Value = resolvedValue })
+                    ResolvedLetRecursiveGroup(values, resolveExpression body)
+                | ERaise(value, _) -> ResolvedFail(resolveExpression value)
+                | EFor(name, source, body, span) ->
+                    let resolvedSource = resolveExpression source
+                    let itemType = match resolvedSource.Type with TList item -> item | _ -> Types.freshVar()
+                    ResolvedForEach(bindingAt LocalSymbol name span itemType, resolvedSource, resolveExpression body)
+                | EMatch(target, cases, _) ->
+                    let resolvedTarget = resolveExpression target
+                    let resolvedCases =
+                        cases |> List.map (fun (pattern, guard, body, caseSpan) ->
+                            { Pattern = resolvePattern resolvedTarget.Type pattern
+                              Guard = Option.map resolveExpression guard
+                              Body = resolveExpression body
+                              Span = caseSpan })
+                    ResolvedMatch(resolvedTarget, resolvedCases)
+                | ERange(first, last, _) -> ResolvedRange(resolveExpression first, resolveExpression last)
+                | ERecordUpdate(target, fields, _) ->
+                    ResolvedRecordUpdate(true, resolveExpression target, fields |> List.map (fun (name, value) -> name, resolveExpression value))
+                | EStructuralRecordUpdate(target, fields, _) ->
+                    ResolvedRecordUpdate(false, resolveExpression target, fields |> List.map (fun (name, value) -> name, resolveExpression value))
+                | EIndexGet(target, index, _) -> ResolvedIndexGet(resolveExpression target, resolveExpression index)
+                | ENameOf(name, _) -> ResolvedConstant(ResolvedString name)
+                | ETypeOf(name, _) -> ResolvedTypeToken(Map.find name resolvedTypeDefinitions)
+                | EInterpolatedString(parts, _) ->
+                    parts
+                    |> List.map (function IPText text -> ResolvedTextPart text | IPExpr item -> ResolvedValuePart(resolveExpression item))
+                    |> ResolvedInterpolate
+                | EMap(entries, _) ->
+                    entries
+                    |> List.map (function MEKeyValue(key, value) -> ResolvedKeyValue(resolveExpression key, resolveExpression value) | MESpread value -> ResolvedSpread(resolveExpression value))
+                    |> ResolvedMap
+            let children =
+                match node with
+                | ResolvedLambda(_, body) | ResolvedSome body | ResolvedFail body -> [ body ]
+                | ResolvedApply(left, right) | ResolvedPipe(left, right) | ResolvedCons(left, right) | ResolvedAppend(left, right)
+                | ResolvedRange(left, right) | ResolvedIndexGet(left, right) -> [ left; right ]
+                | ResolvedIf(condition, whenTrue, whenFalse) -> [ condition; whenTrue; whenFalse ]
+                | ResolvedPrimitive(_, values) | ResolvedTuple values | ResolvedList values -> values
+                | ResolvedRecord fields -> List.map snd fields
+                | ResolvedFieldGet(target, _) -> [ target ]
+                | ResolvedLet(_, _, value, body) -> [ value; body ]
+                | ResolvedLetRecursiveGroup(bindings, body) -> (bindings |> List.map _.Value) @ [ body ]
+                | ResolvedMatch(target, cases) -> target :: (cases |> List.collect (fun case -> Option.toList case.Guard @ [ case.Body ]))
+                | ResolvedRecordUpdate(_, target, fields) -> target :: List.map snd fields
+                | ResolvedInterpolate parts -> parts |> List.choose (function ResolvedTextPart _ -> None | ResolvedValuePart value -> Some value)
+                | ResolvedMap entries -> entries |> List.collect (function ResolvedKeyValue(key, value) -> [ key; value ] | ResolvedSpread value -> [ value ])
+                | ResolvedForEach(_, source, body) -> [ source; body ]
+                | ResolvedConstant _ | ResolvedReference _ | ResolvedNone | ResolvedTypeToken _ -> []
+            let coercion =
+                let recordShape = function
+                    | TRecord fields -> Some fields
+                    | TNamed name ->
+                        match Map.tryFind name resolvedTypeDefinitions with
+                        | Some(TRecord fields) -> Some fields
+                        | _ -> None
+                    | _ -> None
+                let conversion targetType sourceType =
+                    match recordShape targetType, recordShape sourceType with
+                    | Some targetFields, Some sourceFields
+                        when targetType <> sourceType
+                             && targetFields
+                                |> Map.forall (fun name targetField ->
+                                    sourceFields |> Map.tryFind name |> Option.exists ((=) targetField)) ->
+                        Some
+                            { SourceType = sourceType
+                              TargetType = targetType
+                              TargetName = match targetType with TNamed name -> Some name | _ -> None }
+                    | _ -> None
+                let callParameter (fn: ResolvedExpression) =
+                    let inferred = match fn.Type with TFun(argument, _) -> Some argument | _ -> None
+                    match fn.Node with
+                    | ResolvedReference reference ->
+                        symbols |> Seq.tryFind (fun symbol -> symbol.SymbolId = reference.SymbolId)
+                        |> Option.bind _.Scheme
+                        |> Option.bind (fun (Forall(_, signature)) ->
+                            match signature with TFun(TRecord fields, _) -> Some(TRecord fields) | _ -> None)
+                        |> Option.orElse inferred
+                    | _ -> inferred
+                match node with
+                | ResolvedApply(fn, argument) ->
+                    callParameter fn |> Option.bind (fun targetType -> conversion targetType argument.Type)
+                | ResolvedPipe(argument, fn) ->
+                    callParameter fn |> Option.bind (fun targetType -> conversion targetType argument.Type)
+                | _ -> None
+            { Type = expressionType; Span = Ast.spanOfExpr expression; Reference = reference
+              Primitive = primitive; RecordCoercion = coercion; Node = node; Children = children }
+        let resolvedStatements =
+            (statementAttributes, typed) ||> List.map2 (fun declaredAttributes statement ->
+                let roots =
+                    match statement with
+                    | TSLet(_, expression, _, _, _, _) | TSLetPattern(_, expression, _, _, _) -> [ expression ]
+                    | TSLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (_, expression, _, _) -> expression)
+                    | TSExpr expression -> [ expression.Expr ]
+                    | TSBackendImport _ | TSType _ -> []
+                let export =
+                    match statement with
+                    | TSLet(name, _, _, _, true, span) -> Some { Name = name; Span = span }
+                    | TSLetPattern(_, _, _, true, span) -> Some { Name = "<pattern>"; Span = span }
+                    | TSLetRecGroup(bindings, true, span) -> Some { Name = bindings |> List.map (fun (name, _, _, _) -> name) |> String.concat ","; Span = span }
+                    | _ -> None
+                let attributes =
+                    match statement with
+                    | TSLet(_, _, _, _, true, span) | TSLetPattern(_, _, _, true, span) | TSLetRecGroup(_, true, span) ->
+                        [ { Name = "Export"; Arguments = []; Span = span } ]
+                    | TSBackendImport(_, _, import, _) ->
+                        [ { Name = "Import"; Arguments = [ import.ModulePath; import.MemberName ]; Span = import.Span } ]
+                    | TSType definition ->
+                        definition.Import
+                        |> Option.map (fun import -> [ { Name = "Import"; Arguments = [ import.ModulePath; import.MemberName ]; Span = import.Span } ])
+                        |> Option.defaultValue []
+                    | _ -> []
+                let patterns =
+                    match statement with
+                    | TSLetPattern(pattern, expression, _, _, _) -> [ resolvePattern (finalType expression) pattern ]
+                    | _ -> []
+                let resolvedRoots = List.map resolveExpression roots
+                let declarationBinding name span bindingType = bindingAt DeclarationSymbol name span bindingType
+                let declarationScheme name span fallback =
+                    (symbolAt DeclarationSymbol name span).Scheme |> Option.defaultValue fallback
+                let importMetadata (import: BackendImport) : ResolvedBackendImport =
+                    { ModulePath = import.ModulePath; MemberName = import.MemberName; Span = import.Span }
+                let node =
+                    match statement with
+                    | TSType definition ->
+                        ResolvedTypeDeclaration
+                            { Binding = bindingAt TypeSymbol definition.Name definition.Span (TNamed definition.Name)
+                              IsRecursive = definition.IsRecursive
+                              Definition = resolvedTypeDefinitions.[definition.Name]
+                              Fields =
+                                definition.Fields
+                                |> List.map (fun (name, fieldType) -> name, typeFromRef declarations [ definition.Name ] fieldType)
+                              Cases =
+                                definition.Cases
+                                |> List.map (fun (name, payload) -> name, Option.map (typeFromRef declarations [ definition.Name ]) payload)
+                              Import = Option.map importMetadata definition.Import }
+                    | TSLet(name, _, inferred, recursive, _, span) ->
+                        ResolvedValueDeclaration
+                            { Binding = declarationBinding name span (normalizeTypeVariables inferred)
+                              Scheme = declarationScheme name span (Types.generalize Map.empty inferred)
+                              IsRecursive = recursive
+                              Value = List.exactlyOne resolvedRoots }
+                    | TSLetPattern(_, _, bindings, _, span) ->
+                        let resolvedBindings =
+                            bindings
+                            |> Map.toList
+                            |> List.map (fun (name, bindingType) ->
+                                let normalized = normalizeTypeVariables bindingType
+                                declarationBinding name span normalized,
+                                declarationScheme name span (Types.generalize Map.empty normalized))
+                        ResolvedPatternDeclaration
+                            { Pattern = List.exactlyOne patterns
+                              Value = List.exactlyOne resolvedRoots
+                              Bindings = resolvedBindings }
+                    | TSLetRecGroup(bindings, _, _) ->
+                        List.zip bindings resolvedRoots
+                        |> List.map (fun ((name, _, inferred, span), value) ->
+                            { Binding = declarationBinding name span (normalizeTypeVariables inferred)
+                              Scheme = declarationScheme name span (Types.generalize Map.empty inferred)
+                              IsRecursive = true
+                              Value = value })
+                        |> ResolvedRecursiveDeclarations
+                    | TSBackendImport(name, importedType, import, span) ->
+                        let normalized = normalizeTypeVariables importedType
+                        ResolvedImportedDeclaration
+                            { Binding = declarationBinding name span normalized
+                              Scheme = declarationScheme name span (Forall([], normalized))
+                              Import = importMetadata import }
+                    | TSExpr _ -> ResolvedExpressionStatement(List.exactlyOne resolvedRoots)
+                { Span =
+                    match statement with
+                    | TSType definition -> definition.Span
+                    | TSLet(_, _, _, _, _, span) | TSLetPattern(_, _, _, _, span)
+                    | TSLetRecGroup(_, _, span) | TSBackendImport(_, _, _, span) -> span
+                    | TSExpr expression -> expression.Span
+                  Attributes =
+                    declaredAttributes @ attributes
+                    |> List.sortBy (fun attribute -> attribute.Span.Start.Line, attribute.Span.Start.Column)
+                  Export = export
+                  Node = node
+                  Patterns = patterns
+                  Expressions = resolvedRoots })
+        let hostStatements =
+            hostDefinitions |> Map.toList |> List.map (fun (name, definition) ->
+                { Span = syntheticSpan; Attributes = []; Export = None; Patterns = []; Expressions = []
+                  Node = ResolvedTypeDeclaration
+                    { Binding = bindingAt TypeSymbol name syntheticSpan (TNamed name)
+                      IsRecursive = false; Definition = definition
+                      Fields = match definition with TRecord fields | THostManaged(_, fields) -> Map.toList fields | _ -> []
+                      Cases = match definition with TUnion(_, cases) -> Map.toList cases | _ -> []
+                      Import = None } })
+        { Purity = PurityContracts.empty
+          TypedProgram = typed
+          ResolvedStatements = hostStatements @ resolvedStatements
+          ExpressionTypes = expressions
+          Symbols = symbols |> Seq.toList
+          SymbolReferences = resolvedReferences }
 
-        topLevelBindingNames program
-        |> List.tryFind (fun name -> Set.contains name reserved)
-        |> Option.iter (fun name ->
-            raise (TypeException { Message = $"Top-level binding '{name}' collides with reserved stdlib symbol"; Span = unknownSpan }))
+    /// Host metadata does not change inference or execute provider code.
+    let inferResolvedProgramWithRegistrationAndPurity registration purity program =
+        { inferResolvedProgramWithRegistration registration program with Purity = purity }
 
-        inferProgramWithExternsRawAndLocals true (HostInterop.ofExterns externs) program
+    let inferResolvedProgramWithExterns externs program =
+        inferResolvedProgramWithRegistration (HostInterop.ofExterns externs) program
+
+    let inferResolvedProgram (program: Program) : ResolvedProgram =
+        inferResolvedProgramWithExterns [] program
+
+    /// The legacy typed-program API is a projection of the semantic resolved
+    /// result, so both compiler consumers and existing evaluators observe the
+    /// same inference pass and substitutions.
+    let inferProgramWithExterns (externs: ExternalFunction list) (program: Program) : TypedProgram =
+        validateProgramBindings externs program
+        inferProgramWithExternsRaw externs program
 
     let inferProgramWithLocalVariableTypes (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         inferProgramWithExternsAndLocalVariableTypes [] program
@@ -1514,7 +2319,8 @@ module TypeInfer =
             raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
         if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
             raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
-        inferProgramWithExternsRawAndLocals false registration program |> fst
+        let typed, _, _ = inferProgramWithExternsRawAndLocals false registration program
+        typed
 
     let inferProgramWithRegistrationAndLocalVariableTypes (registration: ExtensionRegistration) program =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -1522,4 +2328,5 @@ module TypeInfer =
             raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
         if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
             raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
-        inferProgramWithExternsRawAndLocals true registration program
+        let typed, locals, _ = inferProgramWithExternsRawAndLocals true registration program
+        typed, locals

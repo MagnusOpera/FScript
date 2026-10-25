@@ -155,3 +155,34 @@ type ScriptHostTests () =
         match ScriptHost.invoke loaded "export" [VString "value"] with
         | VString "value" -> ()
         | _ -> Assert.Fail("Expected exported function named export")
+
+    [<Test>]
+    member _.``Exit codes are scoped to evaluation and do not terminate the host`` () =
+        let original=System.Environment.ExitCode
+        let loaded=ScriptHost.loadSource [] "Env.setExitCode 7\nEnv.setExitCode 9\n42"
+        Assert.That(loaded.ExitCode,Is.EqualTo(9))
+        Assert.That(Pretty.valueToString loaded.LastValue,Is.EqualTo("42"))
+        Assert.That((ScriptHost.loadSource [] "42").ExitCode,Is.Zero)
+        Assert.That(System.Environment.ExitCode,Is.EqualTo(original))
+
+    [<Test>]
+    member _.``Export invocations return their own exit code`` () =
+        let loaded=ScriptHost.loadSource [] "export let configure code = Env.setExitCode code\n42"
+        let result=ScriptHost.invokeWithExitCode loaded "configure" [VInt 7L]
+        Assert.That(result.ExitCode,Is.EqualTo(7))
+        Assert.That(Pretty.valueToString result.Value,Is.EqualTo("()"))
+        Assert.That(loaded.ExitCode,Is.Zero)
+        Assert.That((ScriptHost.invokeWithExitCode loaded "configure" [VInt 0L]).ExitCode,Is.Zero)
+
+    [<Test>]
+    member _.``Awaited tasks share status without stopping subsequent evaluation`` () =
+        let registration=HostInterop.ofExterns [TaskFunctions.spawn;TaskFunctions.awaitTask]
+        let loaded=ScriptHost.loadSourceWithRegistration registration "let worker=Task.spawn (fun () -> Env.setExitCode 3)\nTask.await worker\nEnv.setExitCode 7\n42"
+        Assert.That(loaded.ExitCode,Is.EqualTo(7))
+        Assert.That(Pretty.valueToString loaded.LastValue,Is.EqualTo("42"))
+
+    [<TestCase("Env.setExitCode 256")>]
+    [<TestCase("Env.setExitCode (0-1)")>]
+    member _.``Exit codes use the portable shell range`` source =
+        let error=Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.loadSource [] source |> ignore)) |> nonNull
+        Assert.That(string error,Does.Contain("between 0 and 255"))

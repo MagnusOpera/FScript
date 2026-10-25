@@ -12,6 +12,7 @@ Start with lists, options, and maps for data transformations. Add runtime module
 | --- | --- | --- |
 | Core functions and values | `List`, `Option`, `Map`, `String`, `Int`, `Float`, `Bool`, `ignore` | Always, including JavaScript hosts |
 | Default .NET runtime externs | `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid` | The host registers them; the CLI enables them by default |
+| Exit status | `Env.setExitCode : int -> unit` | Effectful core operation; never terminates the host |
 | Execution metadata | `Env : Environment` | Injected by the CLI/REPL or supplied by an embedding host |
 
 No imports are needed for registered functions. An embedding host may expose a subset of the runtime catalog, and the CLI's `--no-default-externs` disables that catalog without removing core functions. The browser playground supplies its own capabilities; it does not load the .NET runtime.

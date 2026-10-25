@@ -13,6 +13,15 @@ This folder is organized into three layers:
 - FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)
 - Language rationale: [`guides/language-choices.md`](./guides/language-choices.md)
 
+## Compilation
+
+- [Choose a compilation target](./guides/compilation.md)
+- [Compile to .NET](./guides/compile-to-dotnet.md): assemblies, single-file executables, Native AOT, and typed FFI
+- [Compile to C#](./guides/compile-to-csharp.md): generated projects, source layout, and managed references
+- [Compilation and optimizations](./guides/compiler-optimizations.md): shared passes, assembly-only transformations, and pruning limits
+- [Compiler CLI reference](./guides/compiler-cli.md)
+- [Compile and interpret IR](./guides/interpret-ir.md)
+
 ## User references
 
 The [website manual sources](../website/docs/intro.md) separate a guided learning path from lookup material:

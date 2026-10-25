@@ -8,6 +8,8 @@ slug: /stdlib/string
 
 Argument order is `oldValue -> newValue -> source`.
 
+Replaces all non-overlapping occurrences using ordinal, case-sensitive matching. An empty `oldValue` returns `source` unchanged; an empty `newValue` removes matches. This operation always returns a string.
+
 ```fsharp
 let text = String.replace "-" "_" "a-b-c"
 ```

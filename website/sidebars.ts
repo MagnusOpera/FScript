@@ -32,6 +32,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Compilation',
+      items: ['compiler/compilation', 'compiler/compile-to-dotnet', 'compiler/compile-to-csharp', 'compiler/compiler-optimizations', 'compiler/interpret-ir'],
+    },
+    {
+      type: 'category',
       label: 'Stdlib',
       items: [
         'stdlib/stdlib-overview',

@@ -60,12 +60,12 @@ module Parser =
         | BoolLit v -> LBool v
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
-    let rec parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
-        let tokens = Lexer.tokenizeWithSourceName sourceName src
+    let rec private parseProgramWithSourceNameAndOrigin (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Program =
+        let tokens = Lexer.tokenizeWithSourceNameAndOrigin sourceName startLine startColumn src
         let stream = TokenStream(tokens)
 
-        let parseSingleExpression (exprText: string) =
-            let parsed = parseProgramWithSourceName None exprText
+        let parseSingleExpression (originLine: int) (originColumn: int) (exprText: string) =
+            let parsed = parseProgramWithSourceNameAndOrigin sourceName originLine originColumn exprText
             match parsed with
             | [ SExpr expr ] -> expr
             | _ ->
@@ -110,7 +110,15 @@ module Parser =
                 let exprText = s.Substring(start, i - start - 1)
                 if System.String.IsNullOrWhiteSpace(exprText) then
                     raise (ParseException { Message = "Interpolation placeholder cannot be empty"; Span = span })
-                let expr = parseSingleExpression exprText
+                let mutable originLine = span.Start.Line
+                let mutable originColumn = span.Start.Column + 2
+                for offset = 0 to start - 1 do
+                    if s.[offset] = '\n' then
+                        originLine <- originLine + 1
+                        originColumn <- 1
+                    else
+                        originColumn <- originColumn + 1
+                let expr = parseSingleExpression originLine originColumn exprText
                 expr, i
 
             let mutable i = 0
@@ -351,7 +359,7 @@ module Parser =
                     argsDone <- true
             args
 
-        and parseTypeDecl () : Stmt =
+        and parseTypeDecl (backendImport: Attribute option) : Stmt =
             let typeTok = stream.Expect(Type, "Expected 'type'")
             let isRec = stream.Match(Rec)
             let nameTok = stream.ExpectIdent("Expected identifier after 'type'")
@@ -463,7 +471,14 @@ module Parser =
                 if not (stream.Match(Dedent)) then
                     raise (ParseException { Message = "Expected dedent after type declaration"; Span = stream.Peek().Span })
                 while stream.Match(Dedent) do ()
-            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Span = mkSpanFrom typeTok.Span endSpan }
+            let import =
+                backendImport
+                |> Option.map (fun attribute ->
+                    match attribute.Arguments with
+                    | [ modulePath; memberName ] when not (System.String.IsNullOrWhiteSpace modulePath) && not (System.String.IsNullOrWhiteSpace memberName) ->
+                        { ModulePath = modulePath; MemberName = memberName; Span = attribute.Span }
+                    | _ -> raise (ParseException { Message = "Import requires module path and member name: [<Import(\"module/path\", \"Member\")>]"; Span = attribute.Span }))
+            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Import = import; Span = mkSpanFrom typeTok.Span endSpan }
 
         and parsePattern () : Pattern =
             stream.SkipNewlines()
@@ -1458,6 +1473,8 @@ module Parser =
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
                 | [SLetRecGroup(_, _, span)] ->
                     raise (ParseException { Message = "Block cannot end with a let binding; add a final expression"; Span = span })
+                | SBackendImport(_, _, _, span) :: _ ->
+                    raise (ParseException { Message = "Backend imports are only supported at top level"; Span = span })
                 | SLet(name, args, returnAnnotation, value, isRec, _, span) :: rest ->
                     let valExpr = Seq.foldBack (fun arg acc -> ELambda(arg, acc, span)) args value
                     let body = desugar rest
@@ -1475,6 +1492,8 @@ module Parser =
                     raise (ParseException { Message = "Type declarations are only supported at top level"; Span = def.Span })
                 | SImport (_, _, span) :: _ ->
                     raise (ParseException { Message = "'import' is only supported at top level"; Span = span })
+                | SAttributed(_, _, span) :: _ ->
+                    raise (ParseException { Message = "Attributes are only supported at top level"; Span = span })
             desugar (statements |> Seq.toList)
 
         and parseLetStmt (isExported: bool) : Stmt =
@@ -1561,49 +1580,122 @@ module Parser =
                 | None ->
                     SLet(bindingName, args |> Seq.toList, returnAnnotation, value, false, isExported, mkSpanFrom letTok.Span (Ast.spanOfExpr value))
 
+        and parseAttribute () =
+            stream.Expect(LBracket, "Expected '[' in attribute") |> ignore
+            stream.Expect(Less, "Expected '<' in attribute") |> ignore
+            let nameTok = stream.ExpectIdent("Expected attribute name")
+            let name =
+                match nameTok.Kind with
+                | Ident n -> n
+                | _ -> ""
+            let arguments = ResizeArray<string>()
+            if stream.Match(LParen) then
+                let mutable doneArguments = false
+                while not doneArguments do
+                    let argument = stream.Next()
+                    match argument.Kind with
+                    | StringLit value | Ident value -> arguments.Add(value)
+                    | _ -> raise (ParseException { Message = "Attribute arguments must be strings or identifiers"; Span = argument.Span })
+                    if stream.Match(Comma) then ()
+                    else
+                        stream.Expect(RParen, "Expected ')' after attribute arguments") |> ignore
+                        doneArguments <- true
+            stream.Expect(Greater, "Expected '>' in attribute") |> ignore
+            stream.Expect(RBracket, "Expected ']' in attribute") |> ignore
+            { Name = name; Arguments = arguments |> Seq.toList; Span = nameTok.Span }
+
+        and parseBackendImport (attribute: Attribute) =
+            let letToken = stream.Expect(Let, "Expected 'let' after Import attribute")
+            let nameToken = stream.ExpectIdent("Expected imported binding name")
+            let name = match nameToken.Kind with Ident value -> value | _ -> ""
+            stream.Expect(Colon, "Imported binding requires a complete type signature") |> ignore
+            let signature = parseTypeRef()
+            if stream.Peek().Kind = Equals then
+                raise (ParseException { Message = "Imported bindings must not have a body"; Span = stream.Peek().Span })
+            match attribute.Arguments with
+            | [ modulePath; memberName ] when not (System.String.IsNullOrWhiteSpace modulePath) && not (System.String.IsNullOrWhiteSpace memberName) ->
+                let span = mkSpanFrom letToken.Span nameToken.Span
+                SBackendImport(name, signature, { ModulePath = modulePath; MemberName = memberName; Span = attribute.Span }, span)
+            | _ ->
+                raise (ParseException { Message = "Import requires module path and member name: [<Import(\"module/path\", \"Member\")>]"; Span = attribute.Span })
+
         and parseStmt () : Stmt =
             stream.SkipNewlines()
 
-            match stream.Peek().Kind with
-            | Ident "export" when stream.PeekAt(1).Kind = Let ->
+            if stream.Peek().Kind = Ident "export" && stream.PeekAt(1).Kind = Let then
                 stream.Next() |> ignore
                 parseLetStmt true
-            | LBracket when stream.PeekAt(1).Kind = Less ->
-                raise (ParseException { Message = "Attributes are not supported in scripts; use 'export let' for exported bindings"; Span = stream.Peek().Span })
-            | Hash ->
-                let hashTok = stream.Next()
-                match stream.Next().Kind with
-                | Include ->
-                    raise (ParseException { Message = "'#include' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
+            else
+                parseAttributedStmt ()
+
+        and parseAttributedStmt () : Stmt =
+
+            let mutable hasAttributes = false
+            let mutable backendImport: Attribute option = None
+            let structuredAttributes = ResizeArray<Attribute>()
+            let mutable parsingAttributes = true
+            while parsingAttributes do
+                if stream.Peek().Kind = LBracket && stream.PeekAt(1).Kind = Less then
+                    hasAttributes <- true
+                    let attribute = parseAttribute()
+                    match attribute.Name with
+                    | "export" | "Export" ->
+                        raise (ParseException { Message = "Unexpected attribute"; Span = attribute.Span })
+                    | "Import" ->
+                        if backendImport.IsSome then
+                            raise (ParseException { Message = "Duplicate attribute 'Import'"; Span = attribute.Span })
+                        backendImport <- Some attribute
+                    | _ -> structuredAttributes.Add(attribute)
+                    stream.SkipNewlines()
+                else
+                    parsingAttributes <- false
+
+            let statement =
+                match stream.Peek().Kind with
+                | Hash ->
+                    if hasAttributes then
+                        raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
+                    let hashTok = stream.Next()
+                    match stream.Next().Kind with
+                    | Include ->
+                        raise (ParseException { Message = "'#include' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
+                    | Import ->
+                        raise (ParseException { Message = "'#import' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
+                    | _ ->
+                        raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
                 | Import ->
-                    raise (ParseException { Message = "'#import' was removed in 0.32.0; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
+                    if hasAttributes then
+                        raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
+                    let importTok = stream.Next()
+                    let pathTok = stream.Next()
+                    match pathTok.Kind with
+                    | StringLit path when not (System.String.IsNullOrWhiteSpace path) ->
+                        stream.Expect(As, "Expected 'as' in import directive. Use: import \"file.fss\" as Alias") |> ignore
+                        let aliasTok = stream.ExpectIdent("Expected module alias after 'as'")
+                        let alias =
+                            match aliasTok.Kind with
+                            | Ident value -> value
+                            | _ -> ""
+                        SImport(alias, path, mkSpanFrom importTok.Span aliasTok.Span)
+                    | StringLit _ ->
+                        raise (ParseException { Message = "Import path cannot be empty"; Span = pathTok.Span })
+                    | _ ->
+                        raise (ParseException { Message = "Expected string literal import path after 'import'"; Span = pathTok.Span })
+                | Module ->
+                    raise (ParseException { Message = "'module' declarations are not supported in scripts"; Span = stream.Peek().Span })
+                | Type ->
+                    parseTypeDecl backendImport
+                | Let ->
+                    match backendImport with
+                    | Some attribute -> parseBackendImport attribute
+                    | None -> parseLetStmt false
+                | _ when hasAttributes ->
+                    raise (ParseException { Message = "Attributes must be followed by a top-level declaration"; Span = stream.Peek().Span })
                 | _ ->
-                    raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
-            | Import ->
-                let importTok = stream.Next()
-                let pathTok = stream.Next()
-                match pathTok.Kind with
-                | StringLit path when not (System.String.IsNullOrWhiteSpace path) ->
-                    stream.Expect(As, "Expected 'as' in import directive. Use: import \"file.fss\" as Alias") |> ignore
-                    let aliasTok = stream.ExpectIdent("Expected module alias after 'as'")
-                    let alias =
-                        match aliasTok.Kind with
-                        | Ident value -> value
-                        | _ -> ""
-                    SImport(alias, path, mkSpanFrom importTok.Span aliasTok.Span)
-                | StringLit _ ->
-                    raise (ParseException { Message = "Import path cannot be empty"; Span = pathTok.Span })
-                | _ ->
-                    raise (ParseException { Message = "Expected string literal import path after 'import'"; Span = pathTok.Span })
-            | Module ->
-                raise (ParseException { Message = "'module' declarations are not supported in scripts"; Span = stream.Peek().Span })
-            | Type ->
-                parseTypeDecl()
-            | Let ->
-                parseLetStmt false
-            | _ ->
-                let expr = parseExpr()
-                SExpr expr
+                    let expr = parseExpr()
+                    SExpr expr
+            if structuredAttributes.Count = 0 then statement
+            else SAttributed(structuredAttributes |> Seq.toList, statement, Ast.spanOfStmt statement)
 
         let program = ResizeArray<Stmt>()
         stream.SkipNewlines()
@@ -1616,6 +1708,9 @@ module Parser =
                 program.Add(stmt)
                 stream.SkipNewlines()
         program |> Seq.toList
+
+    let parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
+        parseProgramWithSourceNameAndOrigin sourceName 1 1 src
 
     let parseProgram (src: string) : Program =
         parseProgramWithSourceName None src

@@ -70,6 +70,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Regex
 - `Regex.matchGroups : string -> string -> string list option`
 
+
 ### Hash and GUID
 - `Hash.md5 : string -> string option`
 - `Guid.new : 'a -> string option` (dummy argument to preserve call shape)
@@ -81,6 +82,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 ### Task
 - `Task.spawn : (unit -> 'a) -> 'a task`
 - `Task.await : 'a task -> 'a`
+
 - These are part of the default runtime extern registry, so hosts may omit them.
 
 ### Collections and prelude
@@ -172,3 +174,13 @@ Provider trust, atomic loading, configuration selection, and reload rules are un
 ## NuGet-distributed extensions
 
 `[[runtime.packages]]` declares a required package `name` and optional exact `version`; an omitted version selects latest stable. The shared Runtime loader restores dependencies without the .NET SDK and discovers the existing SDK `[FScriptExternProvider]` methods in explicitly requested package runtime assemblies. Providers return the same SDK registrations used by local DLLs. `EnvironmentLoader.loadWithInfo` additionally exposes resolved package versions and concrete assembly paths; `load` retains its registration-only result. Parsing settings does not restore or execute packages. See [environment configuration](environment-configuration.md) for cache, dependency selection, trust, and failure rules.
+
+## Compiler purity contracts
+
+Purity is an opt-in, trusted host contract. Pure functions must be deterministic, effect-free, and terminating successfully for valid inputs, including any required runtime initialization. For higher-order bindings, this guarantee is conditional on pure, total callbacks; the optimizer checks callbacks conservatively. A returned callable does not inherit its factory's guarantee.
+
+Pure external types promise deeply immutable visible data and opaque payloads, plus deterministic, effect-free, successfully terminating registered field reads, equality, and formatting. Constructors and ordinary methods require separate function contracts. Incorrect declarations are provider contract violations; compiler transformations may remove the claimed-pure computation.
+
+Providers expose optional public static parameterless `FScriptPureFunctions()` and `FScriptPureTypes()` methods returning `IEnumerable<string>` of registered script names. The compiler CLI reads these for every compilation target. Invalid names, empty entries, and protected runtime contract overrides are rejected. Existing SDK records and ordinary runtime execution remain unchanged.
+
+The .NET compiler API exposes `PurityContracts`, `Compiler.compileWithPurity`, `Compiler.compileWithRegistrationAndPurity`, and `ClrBindings.providerPurity`. Metadata survives resolved inference, HIR, LIR, serialization, and native linkage. No new FScript annotation syntax is introduced. See [the provider guide](../guides/compile-to-dotnet.md#pure-ffi-and-external-values) for examples and [optimization rules](../guides/compiler-optimizations.md#trusted-external-purity) for limitations.

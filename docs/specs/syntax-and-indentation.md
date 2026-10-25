@@ -14,6 +14,8 @@ This document describes the concrete syntax accepted by the interpreter and the 
 - Parsing is layout-aware: the lexer emits `Indent`/`Dedent` tokens from leading whitespace.
 - Comments use `//` line-comment syntax.
 
+Backend `Import` requires exactly a target module path and member name, a complete function signature, and no body. It cannot be combined with `export` and is not allowed in expression blocks. The legacy evaluator reports an explicit error if an imported function is called; compiled consumers use the retained target linkage.
+
 ## Core expression forms
 - Literals: `int`, `float`, `bool`, `string`, `()`
 - Variables and function application by whitespace:
@@ -31,7 +33,8 @@ This document describes the concrete syntax accepted by the interpreter and the 
   - tuple destructuring is supported for non-`rec` `let` bindings only
   - `export let` requires a single identifier binding (tuple patterns are rejected)
   - `export let` is only valid on top-level `let` bindings
-  - `export` is a contextual, case-sensitive modifier recognized only immediately before top-level `let`; it remains a valid ordinary binding, parameter, and field name. Script attributes are unsupported.
+  - `export` is a contextual, case-sensitive modifier recognized only immediately before top-level `let`; it remains a valid ordinary binding, parameter, and field name.
+  - Only the `export let` declaration prefix marks an export, including through the JavaScript facade. Other forms are ordinary syntax errors.
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`
@@ -243,3 +246,11 @@ let ops =
   - imports are effectively deduplicated.
 - `import` must appear before executable/type code in a file.
 - Parse/type/eval errors include file-aware spans (`file`, `line`, `column`) so failures in imported files point to the offending source.
+
+## Backend import attributes
+
+- A bodyless target function import uses `[<Import("module/path", "Member")>] let name : complete -> signature`.
+- An imported record schema uses `[<Import("module/path", "TypeName")>] type Name = { Field: type; ... }`.
+- `Import` takes exactly two non-empty arguments and is valid only on a top-level type declaration or bodyless typed `let`.
+- Imported record field spelling is preserved exactly for backend adapters. Target-specific restrictions are enforced by each backend.
+- Other top-level type and `let` attributes are retained as structured name, string/identifier arguments, and source span for compiler consumers. Unknown attributes do not change language semantics by themselves.

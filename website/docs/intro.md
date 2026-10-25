@@ -49,6 +49,7 @@ By the end of this manual, you should be comfortable with:
 - **Learn**: onboarding and first working scripts.
 - **Language**: core syntax, data modeling, typing, imports/exports, layout rules.
 - **Examples**: practical scripts and reusable patterns.
+- **Compilation**: .NET assemblies, C# projects, executable publishing, and optimization behavior.
 - **Stdlib**: detailed function-by-function reference and recipes.
 - **Embedding**: host integration model, extern registration, safety boundaries.
 - **Reference**: CLI options, environment configuration, syntax/operators, native types, and the complete function signature index.

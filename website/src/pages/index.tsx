@@ -68,27 +68,6 @@ const total = invoke(pricing, "quote", [{
   },
 };
 
-const examples = [
-  {
-    number: '01',
-    title: 'Name every outcome',
-    description: 'Use records and unions to describe the data a rule accepts and every result it can return.',
-    code: `type Decision =\n  | Approve of int\n  | Review of string\n  | Decline\n\nlet decide score =\n  match score with\n  | n when n > 80 -> Approve 5000\n  | n when n > 55 -> Review "manual"\n  | _ -> Decline`,
-  },
-  {
-    number: '02',
-    title: 'Choose what scripts can call',
-    description: 'Register typed host functions for the exact operations a script needs. Leave everything else out.',
-    code: `let notifyLateInvoice invoice =\n  match invoice.Status with\n  | "late" ->\n      Host.notify invoice.Owner\n        $"Invoice {invoice.Id} is late"\n  | _ ->\n      ()`,
-  },
-  {
-    number: '03',
-    title: 'Call exports from your app',
-    description: 'Load a script, find its exported functions, and invoke them by name from .NET or JavaScript.',
-    code: `type Event = { Kind: string }\n\nexport let route (event: Event) =\n  match event.Kind with\n  | "signup" -> "onboarding"\n  | "payment.failed" -> "billing"\n  | "churn.risk" -> "success"\n  | _ -> "archive"`,
-  },
-];
-
 function Arrow() {
   return <span aria-hidden="true">↗</span>;
 }
@@ -141,13 +120,13 @@ function HomepageHeader() {
       <div className={styles.orbTwo} aria-hidden="true" />
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}><span>Open source</span> · Embeds in .NET and JavaScript</div>
+          <div className={styles.eyebrow}><span>Open source</span> · Embed in .NET and JavaScript · Compile to .NET</div>
           <Heading as="h1" className={styles.heroTitle}>
             Change the rules.<br /><em>Keep the host.</em>
           </Heading>
           <p className={styles.heroLead}>
-            Load <code>.fss</code> files, check their types, and run them inside your process.
-            Your application decides which functions scripts can call.
+            Load <code>.fss</code> files, check their types, and run them inside your process. Or compile
+            them into a standalone .NET program.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
@@ -164,7 +143,8 @@ function HomepageHeader() {
           <div className={styles.heroProof}>
             <span>Static type inference</span>
             <span>Pattern matching</span>
-            <span>Explicit host functions</span>
+            <span>Versioned IR</span>
+            <span>.NET backend</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
@@ -177,8 +157,8 @@ function HomepageHeader() {
       </div>
       <div className={styles.heroTicker} aria-label="How FScript runs">
         <div>
-          <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>CALL EXPORTS</span><i>✦</i>
-          <span>REGISTER EXTERNS</span><i>✦</i><span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i>
+          <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>BUILD HIR</span><i>✦</i>
+          <span>EXECUTE LIR</span><i>✦</i><span>COMPILE .NET</span><i>✦</i><span>LOAD .FSS</span><i>✦</i>
         </div>
       </div>
     </header>
@@ -188,132 +168,71 @@ function HomepageHeader() {
 export default function Home() {
   return (
     <Layout
-      title="FScript, a typed language for embedded rules"
-      description="Load typed FScript rules inside a .NET or JavaScript application and control the functions they can call.">
+      title="FScript: embed typed rules or compile them to .NET"
+      description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone .NET programs.">
       <HomepageHeader />
       <main className={styles.main}>
-        <section className={styles.statementSection}>
-          <div className={`container ${styles.statementGrid}`}>
-            <p className={styles.sectionKicker}>Why embed a language?</p>
-            <div>
-              <Heading as="h2" className={styles.statementTitle}>
-                A pricing change should not require a new application build.
-              </Heading>
-              <p className={styles.statementCopy}>
-                Put changeable rules in <code>.fss</code> files. FScript checks them before execution,
-                while your host keeps ownership of the database, network, filesystem, and other I/O.
+        <section className={styles.languageScene}>
+          <div className={`container ${styles.sceneIntro}`}>
+            <p className={styles.sectionLabel}>Language lineage</p>
+            <Heading as="h2">Name the thing.<br /><em>Or just ask for its shape.</em></Heading>
+            <div className={styles.sceneSummary}>
+              <p className={styles.sceneLead}>
+                FScript keeps the part of the ML family that makes programs pleasant to reason about: inferred
+                types, immutable data, unions, curried functions, and pattern matching. Then it adds a useful choice.
+                A record can carry a domain name, or a function can accept any value with the fields it needs.
               </p>
+              <Link className={styles.inlineLink} to="/manual/learn/language-tour">Meet the language <Arrow /></Link>
             </div>
-          </div>
-          <div className={`container ${styles.metricStrip}`}>
-            <div><strong>01</strong><span>Runs in process<br />No service to operate.</span></div>
-            <div><strong>02</strong><span>Checks types first<br />Errors stop before evaluation.</span></div>
-            <div><strong>03</strong><span>Calls registered externs<br />The host controls I/O.</span></div>
           </div>
         </section>
 
-        <section className={styles.examplesSection}>
-          <div className={`container ${styles.sectionHeading}`}>
-            <p className={styles.sectionKicker}>What the code looks like</p>
-            <Heading as="h2">Typed data.<br /><em>Direct code.</em></Heading>
-            <p>Functions, records, unions, and pattern matching. No class hierarchy required.</p>
-          </div>
-          <div className={`container ${styles.exampleGrid}`}>
-            {examples.map((example) => (
-              <article className={styles.exampleCard} key={example.number}>
-                <div className={styles.exampleTopline}>
-                  <span>{example.number}</span><i />
+        <section className={styles.javascriptScene}>
+          <div className={`container ${styles.javascriptGrid}`}>
+            <div className={styles.browserStage} aria-label="FScript running in a browser">
+              <div className={styles.browserChrome}><i /><i /><i /><span>app.example / live-pricing</span></div>
+              <div className={styles.browserBody}>
+                <div className={styles.browserEditor}>
+                  <span>rules/discount.fss · loaded</span>
+                  <pre><code>{`let discount customer =
+  match customer.Plan with
+  | "scale" -> 20
+  | "team"  -> 10
+  | _       -> 0`}</code></pre>
                 </div>
-                <Heading as="h3">{example.title}</Heading>
-                <p>{example.description}</p>
-                <pre><code>{example.code}</code></pre>
-              </article>
-            ))}
-          </div>
-          <div className={`container ${styles.examplesLink}`}>
-            <Link to="/manual/examples/guided-examples">Explore guided examples <Arrow /></Link>
-          </div>
-        </section>
-
-        <section className={styles.boundarySection}>
-          <div className={`container ${styles.boundaryGrid}`}>
-            <div className={styles.boundaryCopy}>
-              <p className={styles.sectionKicker}>The host sets the boundary</p>
-              <Heading as="h2">Scripts get what<br /><em>you register.</em></Heading>
+                <div className={styles.browserResult}>
+                  <span>TYPE</span><code>Customer → int</code>
+                  <span>RESULT</span><strong>20</strong>
+                </div>
+              </div>
+              <div className={styles.browserStatus}><span><i /> checked in this tab</span><span>npm · ESM</span></div>
+            </div>
+            <div className={styles.javascriptCopy}>
+              <p className={styles.sectionLabel}>JavaScript support</p>
+              <Heading as="h2">Ship the app. Change the rules while it runs.</Heading>
               <p>
-                A script cannot query your database or send an HTTP request unless your host gives it a function
-                that does so. Each extern has a name and a checked type signature.
+                FScript is an npm package for browsers and Node. Keep pricing, eligibility, feature decisions, or
+                customer-specific policy outside the application bundle. Fetch a rule when you need it, check its
+                types, and call its exported functions from JavaScript.
               </p>
-              <ul>
-                <li><span>01</span> Register the externs the script needs</li>
-                <li><span>02</span> Load and type-check the source</li>
-                <li><span>03</span> Invoke a named export</li>
-              </ul>
-              <Link className={styles.textLink} to="/manual/embedding/overview">See the embedding model <Arrow /></Link>
-            </div>
-            <div className={styles.boundaryDiagram}>
-              <div className={styles.hostBox}>
-                <small>YOUR HOST</small>
-                <strong>.NET / JS</strong>
-                <div><span>Database</span><span>HTTP</span><span>Events</span></div>
-              </div>
-              <div className={styles.bridge}>
-                <span>typed externs</span><i>→</i><span>explicit exports</span>
-              </div>
-              <div className={styles.languageBox}>
-                <small>EMBEDDED</small>
-                <strong>FScript</strong>
-                <div><span>Data</span><span>Rules</span><span>Exports</span></div>
-              </div>
-              <div className={styles.boundaryLabel}>CAPABILITY BOUNDARY</div>
+              <p>
+                The host supplies typed operations and decides where rule files come from. A new rule can take effect
+                without rebuilding the interface or restarting the process. The application keeps running; the part
+                you meant to make configurable is free to change.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/embedding/fable-javascript">Load rules from JavaScript <Arrow /></Link>
             </div>
           </div>
         </section>
 
-        <section className={styles.learningSection}>
-          <div className={`container ${styles.learningHeader}`}>
-            <div>
-              <p className={styles.sectionKicker}>Start with running code</p>
-              <Heading as="h2">Try one rule. Then<br />wire it into your host.</Heading>
-            </div>
-            <p>The browser sandbox runs without an install. When the syntax makes sense, follow the host example for .NET or JavaScript.</p>
-          </div>
-          <div className={`container ${styles.learningGrid}`}>
-            <Link className={styles.learningCard} to="/sandbox">
-              <span className={styles.learningNumber}>01</span>
-              <div className={styles.learningIcon}>▶</div>
-              <Heading as="h3">Play</Heading>
-              <p>Edit an FScript example and run it in the browser. Nothing to install.</p>
-              <b>Open sandbox <Arrow /></b>
-            </Link>
-            <Link className={styles.learningCard} to="/manual/learn/language-tour">
-              <span className={styles.learningNumber}>02</span>
-              <div className={styles.learningIcon}>ƒ</div>
-              <Heading as="h3">Learn</Heading>
-              <p>Learn bindings, functions, data types, and pattern matching with working examples.</p>
-              <b>Take the tour <Arrow /></b>
-            </Link>
-            <Link className={styles.learningCard} to="/manual/embedding/real-world-embedding">
-              <span className={styles.learningNumber}>03</span>
-              <div className={styles.learningIcon}>{'{ }'}</div>
-              <Heading as="h3">Embed</Heading>
-              <p>Load a script, register externs, and call an exported function from your app.</p>
-              <b>Read the host example <Arrow /></b>
-            </Link>
-          </div>
-        </section>
-
-        <section className={styles.ctaSection}>
-          <div className={`container ${styles.ctaInner}`}>
-            <img src={useBaseUrl('/img/logo.svg')} alt="FScript mascot" width="150" height="150" />
-            <div>
-              <p className={styles.sectionKicker}>Run the first script</p>
-              <Heading as="h2">See if FScript fits<br />your host.</Heading>
-            </div>
-            <div className={styles.ctaActions}>
-              <Link className={styles.primaryAction} to="/manual/learn/quickstart">Get started <Arrow /></Link>
-              <a className={styles.secondaryAction} href="https://github.com/MagnusOpera/FScript">View on GitHub</a>
-            </div>
+        <section className={styles.finalLinks}>
+          <div className={`container ${styles.finalLinksInner}`}>
+            <p>FScript is open source.</p>
+            <nav aria-label="Start using FScript">
+              <Link to="/sandbox">Open the sandbox</Link>
+              <Link to="/manual/learn/quickstart">Install and run</Link>
+              <a href="https://github.com/MagnusOpera/FScript">GitHub <Arrow /></a>
+            </nav>
           </div>
         </section>
       </main>

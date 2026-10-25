@@ -37,6 +37,13 @@ let writeLine : string -> unit
 let readLine : unit -> string option
 """
 
+    let private envStdlibDoc =
+        stdlibDoc "Env.fss" """module Env
+
+// Effectful. Set the eventual shell status without stopping evaluation.
+let setExitCode : int -> unit
+"""
+
     let private taskStdlibDoc =
         stdlibDoc "Task.fss" """module Task
 
@@ -178,6 +185,7 @@ let queryValues : string -> string -> string list option
     let private stdlibVirtualSources : Map<string, string> =
         [ builtinsStdlibDoc
           consoleStdlibDoc
+          envStdlibDoc
           taskStdlibDoc
           listStdlibDoc
           optionStdlibDoc
@@ -214,6 +222,7 @@ let queryValues : string -> string -> string list option
 
     let private stdlibDefinitionEntries : (string * string * string) list =
         [ ("ignore", stdlibVirtualUri "Builtins.fss", "ignore")
+          ("Env.setExitCode", stdlibVirtualUri "Env.fss", "setExitCode")
           ("Console.writeLine", stdlibVirtualUri "Console.fss", "writeLine")
           ("Console.readLine", stdlibVirtualUri "Console.fss", "readLine")
           ("Task.spawn", stdlibVirtualUri "Task.fss", "spawn")
@@ -358,7 +367,8 @@ let queryValues : string -> string -> string list option
             |> Map.map (fun _ signature -> schemeTypeToString signature)
 
     let private builtinParameterNames : Map<string, string list> =
-        [ "ignore", [ "value" ]
+        [ "Env.setExitCode", [ "code" ]
+          "ignore", [ "value" ]
           "Int.tryParse", [ "value" ]
           "Float.tryParse", [ "value" ]
           "Bool.tryParse", [ "value" ]
@@ -900,6 +910,7 @@ let queryValues : string -> string -> string list option
                     bindings
                     |> List.tryPick (fun (name, _, bindingType, _) ->
                         if name = targetName then Some bindingType else None)
+                | TypeInfer.TSBackendImport(name, importedType, _, _) when name = targetName -> Some importedType
                 | _ -> None)
 
         let keyOf (entry: TypeInfer.LocalVariableTypeInfo) =
@@ -907,14 +918,19 @@ let queryValues : string -> string -> string list option
             (entry.Name, entry.Span.Start.Line, entry.Span.Start.Column, entry.Span.End.Line, entry.Span.End.Column, file)
 
         for stmt in program do
+            let rec withoutAttributes = function
+                | SAttributed(_, inner, _) -> withoutAttributes inner
+                | statement -> statement
             let targetNames =
-                match stmt with
+                match withoutAttributes stmt with
                 | SLet(name, _, _, _, _, _, _) -> [ name ]
                 | SLetPattern(pattern, _, _, _) -> collectPatternNames pattern
                 | SLetRecGroup(bindings, _, _) -> bindings |> List.map (fun (name, _, _, _, _) -> name)
+                | SBackendImport(name, _, _, _) -> [ name ]
                 | SType _
                 | SExpr _
-                | SImport _ -> []
+                | SImport _
+                | SAttributed _ -> []
 
             if not targetNames.IsEmpty then
                 match tryInfer stmt with
@@ -1221,6 +1237,10 @@ let queryValues : string -> string -> string list option
                                 let scopedWithArgs = pushBindings scoped argBindings
                                 resolveExpr scopedWithArgs valueExpr))
                     resolveStmts scopesWithNames rest (acc @ inBindings)
+                | SBackendImport(name, _, _, span) ->
+                    resolveStmts (pushBindings scopes [ name, span ]) rest acc
+                | SAttributed(_, inner, _) ->
+                    resolveStmts scopes (inner :: rest) acc
                 | SExpr expr ->
                     let inExpr = resolveExpr scopes expr
                     resolveStmts scopes rest (acc @ inExpr)
@@ -3075,6 +3095,7 @@ let queryValues : string -> string -> string list option
 
                 match tryRecordFieldsForQualifier doc qualifier with
                 | Some fields ->
+                    let fields=if qualifier="Env" then fields @ ["setExitCode","int -> unit"] else fields
                     let filtered =
                         fields
                         |> List.filter (fun (name, _) ->
@@ -3085,7 +3106,7 @@ let queryValues : string -> string -> string list option
                         |> List.map (fun (name, fieldType) ->
                             let item = JsonObject()
                             item["label"] <- JsonValue.Create(name)
-                            item["kind"] <- JsonValue.Create(10)
+                            item["kind"] <- JsonValue.Create(if qualifier="Env" && name="setExitCode" then 3 else 10)
                             item["detail"] <- JsonValue.Create(fieldType)
                             item["filterText"] <- JsonValue.Create(name)
                             item["sortText"] <- JsonValue.Create($"0_{name}")

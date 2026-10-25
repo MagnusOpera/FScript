@@ -79,6 +79,7 @@ type ExtensionBridgeTests() =
               Apply = fun _ _ -> failwith "unused"
               SpawnTask = fun _ -> failwith "unused"
               AwaitTask = fun _ -> failwith "unused"
+              SetExitCode = ignore
               CheckRuntime = fun () -> raise (OperationCanceledException "host limit") }
         let error = Assert.Throws<OperationCanceledException>(Action(fun () -> registration.Functions.Head.Impl context [VUnit] |> ignore)) |> nonNull
         Assert.That(error.Message, Is.EqualTo("host limit"))

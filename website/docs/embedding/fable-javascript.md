@@ -340,3 +340,7 @@ Try the browser runtime in the [FScript sandbox](/sandbox).
 Both hosts use the same language rules for provided records, opaque snapshots, and nominal unions. The .NET SDK additionally derives descriptors and typed conversions from CLR types. JavaScript authors supply descriptors explicitly and retain ordinary JavaScript payload objects through `HostTypes`.
 
 CLR attributes, assembly providers, and NuGet environments belong to .NET hosting. `fscript.toml` does not load CLR assemblies into a JavaScript host or the browser playground. See [Host-Managed Types](./host-managed-types) and [Environment Configuration](../reference/environment-configuration).
+
+## Exit status
+
+JavaScript treats `Env.setExitCode` as a no-op for source portability. It does not change process status or enforce a shell-code range. Arguments are still evaluated normally, and the program's returned value is unchanged. The website continues displaying that value. Existing `run`, `evaluate`, and `invoke` APIs retain their tagged-value results.

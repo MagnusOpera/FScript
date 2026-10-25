@@ -7,16 +7,124 @@ open CliArgs
 open FScript.Language
 open FScript.Runtime
 
+let writeGeneratedFile (root: string) (file: FScript.Compiler.GeneratedFile) =
+    let path = Path.Combine(root, file.RelativePath)
+    match Path.GetDirectoryName(path) with
+    | null -> ()
+    | directory -> Directory.CreateDirectory(directory) |> ignore
+    File.WriteAllText(path, file.Content)
+
+let runCompileCommand (argv: string array) =
+    let usage () =
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--no-result]")
+        1
+    if argv.Length < 2 then usage ()
+    else
+        let scriptPath = Path.GetFullPath(argv.[1])
+        let tryOption name =
+            argv |> Array.tryFindIndex ((=) name)
+            |> Option.bind (fun index -> if index + 1 < argv.Length then Some argv.[index + 1] else None)
+        match tryOption "--target", tryOption "--output" with
+        | Some target, Some output when File.Exists scriptPath ->
+            let normalizedTarget = target.ToLowerInvariant()
+            let singleFile=Array.contains "--single-file" argv
+            let aot=Array.contains "--aot" argv
+            let executable=singleFile || aot
+            let hasRuntime=Array.contains "--runtime" argv
+            let requestedRuntime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
+            let runtime=
+                if executable && not hasRuntime then Some System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
+                else requestedRuntime
+            if not (List.contains normalizedTarget ["ir"; "csharp"; "dotnet"]) then usage ()
+            elif normalizedTarget="ir" && Array.contains "--no-result" argv then
+                Console.Error.WriteLine("--no-result applies to script execution and C#/ .NET compilation, not IR artifacts.")
+                usage ()
+            elif normalizedTarget<>"dotnet" && (executable || Array.contains "--runtime" argv) then
+                Console.Error.WriteLine("--single-file, --aot, and --runtime are only supported with --target dotnet.")
+                usage ()
+            elif hasRuntime && requestedRuntime.IsNone then
+                Console.Error.WriteLine("--runtime requires a value, for example osx-arm64, linux-x64, or win-x64. Omit --runtime to target the current platform.")
+                usage ()
+            elif not executable && Array.contains "--runtime" argv then
+                Console.Error.WriteLine("--runtime requires --single-file or --aot.")
+                usage ()
+            else
+                try
+                    let outputDirectory = Path.GetFullPath(output)
+                    let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+                    let program = FScript.parseFileWithIncludes sourceRoot scriptPath
+                    let allOptions name = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value=name && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
+                    let loaded =
+                        EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) sourceRoot sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
+                        |> Result.bind EnvironmentLoader.loadWithInfo
+                        |> function Ok environment -> environment | Error message -> failwith message
+                    let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+                    let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
+                    let purity = FScript.Compiler.ClrBindings.providerPurity (loaded.ProviderMethods |> List.map snd)
+                    match FScript.Compiler.Compiler.compileWithRegistrationAndPurity loaded.Registration purity { Program = program; Externs = [] } with
+                    | Error diagnostics ->
+                        diagnostics |> List.iter (fun diagnostic -> Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Message}"))
+                        4
+                    | Ok compiled ->
+                        let lir = loaded.ProviderMethods |> List.fold (fun program (names,method) -> FScript.Compiler.ClrBindings.bindProvider names method program) compiled.Lir
+                        let lir =
+                            if normalizedTarget="dotnet" || normalizedTarget="csharp" then
+                                FScript.Compiler.ClrBindings.bindCompiledProviders (loaded.ProviderMethods |> List.map snd) lir
+                            else lir
+                        Directory.CreateDirectory(outputDirectory) |> ignore
+                        match normalizedTarget with
+                        | "ir" ->
+                            let baseName =
+                                match Path.GetFileNameWithoutExtension(scriptPath) with
+                                | null | "" -> "program"
+                                | value -> value
+                            let name = baseName + ".fsir"
+                            File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize lir)
+                            0
+                        | "csharp" ->
+                            match FScript.Compiler.CSharpBackend.generateWithResultOutput (not (Array.contains "--no-result" argv)) {Namespace="FScript.Generated"; ClassName="Program"; References=references} lir with
+                            | Error diagnostics ->
+                                diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
+                                4
+                            | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                        | "dotnet" ->
+                            let options: FScript.Compiler.DotNetOptions =
+                                { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
+                                  OutputKind=FScript.Compiler.ConsoleApplication; References=references }
+                            let generated=
+                                if executable then FScript.Compiler.DotNetBackend.generateExecutableWithResultOutput (not (Array.contains "--no-result" argv)) {RuntimeIdentifier=runtime.Value;AheadOfTime=aot} options lir
+                                else FScript.Compiler.DotNetBackend.generateWithResultOutput (not (Array.contains "--no-result" argv)) options lir
+                            match generated with
+                            | Error diagnostics ->
+                                diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
+                                4
+                            | Ok files ->
+                                for file in files do
+                                    let path=Path.Combine(outputDirectory,file.RelativePath)
+                                    File.WriteAllBytes(path,file.Content)
+                                    if executable && not (OperatingSystem.IsWindows()) && not (runtime.Value.StartsWith("win-",StringComparison.Ordinal)) then
+                                        File.SetUnixFileMode(path,UnixFileMode.UserRead ||| UnixFileMode.UserWrite ||| UnixFileMode.UserExecute ||| UnixFileMode.GroupRead ||| UnixFileMode.GroupExecute ||| UnixFileMode.OtherRead ||| UnixFileMode.OtherExecute)
+                                0
+                        | _ -> usage ()
+                with
+                | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1
+                | TypeException error -> Console.Error.WriteLine($"Type error: {error.Message}"); 2
+                | :? UnauthorizedAccessException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
+                | :? IOException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
+                | ex -> Console.Error.WriteLine(ex.Message); 4
+        | Some _, Some _ -> Console.Error.WriteLine($"File not found: {scriptPath}"); 1
+        | _ -> usage ()
+
 let formatSpan (span: Span) =
     match span.Start.File with
     | Some file -> sprintf "(%s:%d:%d)" file span.Start.Line span.Start.Column
     | None -> sprintf "(line %d, col %d)" span.Start.Line span.Start.Column
 
-let runTypedProgram (registration: ExtensionRegistration) (program: Program) =
+let runTypedProgram printResult (registration: ExtensionRegistration) (program: Program) =
     let typed = TypeInfer.inferProgramWithRegistration registration program
-    let result = Eval.evalProgramWithRegistration registration typed
-    Console.WriteLine(Pretty.valueToString result)
-    0
+    let state = Eval.evalProgramWithRegistrationState registration typed
+    if printResult then Console.WriteLine(Pretty.valueToString state.LastValue)
+    state.ExitCode
 
 let escapeFScriptString (value: string) =
     value
@@ -60,7 +168,7 @@ let parseEnvironmentPrelude (scriptName: string option) (arguments: string list)
     environmentPrelude scriptName arguments
     |> FScript.parseWithSourceName (Some "<cli-environment>")
 
-let runFile (registration: ExtensionRegistration) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
+let runFile printResult (registration: ExtensionRegistration) (rootDirectory: string) (scriptPath: string) (arguments: string list) =
     if not (File.Exists scriptPath) then
         Console.Error.WriteLine($"File not found: {scriptPath}")
         1
@@ -73,13 +181,13 @@ let runFile (registration: ExtensionRegistration) (rootDirectory: string) (scrip
         let envProgram = parseEnvironmentPrelude (Some scriptName) arguments
         let scriptProgram = FScript.parseFileWithIncludes rootDirectory scriptPath
         let program = envProgram @ scriptProgram
-        runTypedProgram registration program
+        runTypedProgram printResult registration program
 
-let runSource (registration: ExtensionRegistration) (_rootDirectory: string) (source: string) (arguments: string list) =
+let runSource printResult (registration: ExtensionRegistration) (_rootDirectory: string) (source: string) (arguments: string list) =
     let combinedSource = $"{environmentPrelude None arguments}\n{source}"
     let loaded = ScriptHost.loadSourceWithRegistration registration combinedSource
-    Console.WriteLine(Pretty.valueToString loaded.LastValue)
-    0
+    if printResult then Console.WriteLine(Pretty.valueToString loaded.LastValue)
+    loaded.ExitCode
 
 let tryGetLastExpressionType (typed: TypeInfer.TypedProgram) =
     typed
@@ -137,10 +245,11 @@ let printVersion () =
         | null -> "0.0.0"
         | v -> v.ToString()
 
-let runRepl (registration: ExtensionRegistration) (_rootDirectory: string) =
+let runRepl printResult (registration: ExtensionRegistration) (_rootDirectory: string) =
     let initialProgram = parseEnvironmentPrelude None []
     let initialSubmission = Interactive.createWithRegistration registration |> fun session -> Interactive.submit session initialProgram
     let mutable session = initialSubmission.Session
+    let mutable exitCode = initialSubmission.State.ExitCode
     let mutable pendingLines: string list = []
     let mutable pendingBlankLines = 0
     let mutable running = true
@@ -157,12 +266,13 @@ let runRepl (registration: ExtensionRegistration) (_rootDirectory: string) =
         let submission = Interactive.submit session parsed
         let typed = submission.TypedProgram
         let state = submission.State
+        exitCode <- state.ExitCode
         let hasExpression =
             parsed
             |> List.exists (function
                 | SExpr _ -> true
                 | _ -> false)
-        if hasExpression then
+        if hasExpression && printResult then
             match tryGetLastExpressionType typed with
             | Some t ->
                 match tryFormatFunctionValueWithType state.LastValue t with
@@ -228,7 +338,7 @@ let runRepl (registration: ExtensionRegistration) (_rootDirectory: string) =
                 Console.Error.WriteLine($"Eval error {formatSpan err.Span}: {err.Message}")
                 pendingLines <- []
                 pendingBlankLines <- 0
-    0
+    exitCode
 
 // Keep the adapter's assembly and protocol dependencies out of ordinary CLI
 // startup. The JIT resolves these calls only when a debugger mode is selected.
@@ -238,8 +348,7 @@ let runDebugAdapter () = FScript.DebugAdapter.DebuggerEntry.RunAdapter()
 [<MethodImpl(MethodImplOptions.NoInlining)>]
 let runDebugHost port token = FScript.DebugAdapter.DebuggerEntry.RunHost(port, token)
 
-[<EntryPoint>]
-let main argv =
+let runOrdinaryCommand argv =
     let parser = ArgumentParser.Create<CliArgs>(programName = "fscript")
     let cliArgv, scriptArguments = splitScriptArguments argv
     try
@@ -288,16 +397,16 @@ let main argv =
                 | Ok registration ->
                     match scriptPath with
                     | Some path ->
-                        runFile registration rootDirectory path scriptArguments
+                        runFile (not (args.Contains <@ No_Result @>)) registration rootDirectory path scriptArguments
                     | None when Console.IsInputRedirected ->
                         let source = Console.In.ReadToEnd()
-                        runSource registration rootDirectory source scriptArguments
+                        runSource (not (args.Contains <@ No_Result @>)) registration rootDirectory source scriptArguments
                     | None ->
                         if not scriptArguments.IsEmpty then
                             Console.Error.WriteLine("Script arguments require file or stdin mode. Use 'fscript <script.fss> -- <args...>' or pipe stdin with '--'.")
                             1
                         else
-                            runRepl registration rootDirectory
+                            runRepl (not (args.Contains <@ No_Result @>)) registration rootDirectory
             with
             | ParseException err ->
                 Console.Error.WriteLine($"Parse error {formatSpan err.Span}: {err.Message}")
@@ -308,7 +417,14 @@ let main argv =
             | EvalException err ->
                 Console.Error.WriteLine($"Eval error {formatSpan err.Span}: {err.Message}")
                 3
-    with
-    | :? ArguParseException as ex ->
-        Console.Error.WriteLine(ex.Message)
-        1
+      with
+      | :? ArguParseException as ex ->
+          Console.Error.WriteLine(ex.Message)
+          1
+
+[<EntryPoint>]
+let main argv =
+    if argv.Length > 0 && String.Equals(argv.[0], "compile", StringComparison.OrdinalIgnoreCase) then
+        runCompileCommand argv
+    else
+        runOrdinaryCommand argv

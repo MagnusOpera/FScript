@@ -212,7 +212,7 @@ module BuiltinFunctions =
             (fun _ args ->
                 match args with
                 | [ VString oldValue; VString newValue; VString source ] ->
-                    VString(source.Replace(oldValue, newValue))
+                    VString(if oldValue = "" then source else source.Replace(oldValue, newValue))
                 | _ -> fail "String.replace expects (string, string, string)") }
 
     let private builtinStringIndexOf : ExternalFunction =
@@ -702,8 +702,22 @@ module BuiltinFunctions =
                 | [ key; VMap values ] -> values.Remove(valueToMapKey "Map.remove" key) |> VMap
                 | _ -> fail "Map.remove expects (key, values)") }
 
+    let private builtinSetExitCode : ExternalFunction =
+        { Name = "Env.setExitCode"
+          Scheme = scheme "Env.setExitCode"
+          Arity = 1
+          Impl = fun context -> function
+#if FABLE_COMPILER
+              | [VInt _] -> VUnit
+#else
+              | [VInt code] when code >= 0L && code <= 255L -> context.SetExitCode(int code); VUnit
+              | [VInt _] -> fail "Env.setExitCode expects a code between 0 and 255."
+#endif
+              | _ -> fail "Env.setExitCode expects an integer." }
+
     let builtinExterns : ExternalFunction list =
-        [ builtinIgnore
+        [ builtinSetExitCode
+          builtinIgnore
           builtinIntTryParse
           builtinFloatTryParse
           builtinBoolTryParse

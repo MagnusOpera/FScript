@@ -190,3 +190,9 @@ The helper produces a plain `HostUnionDescriptor`:
 Put every referenced union descriptor in `ExtensionRegistration.Unions`, and every referenced record descriptor in `Types`. Union projections require `ScriptConstructible = true` and nonrecursive supported payloads. `HostTypes.describe` describes records; `describeUnion` describes unions.
 
 F# sets use script lists at the boundary. Host snapshots follow set iteration order; converting a script list back to a set sorts and removes duplicates using CLR comparison semantics.
+
+## Compiler purity guarantees
+
+Providers can optionally declare `Pure` information for native compilation. Functions promise deterministic, effect-free, successful termination for valid inputs; external types promise deeply immutable visible data and payloads with safe, terminating registered field reads and structural observers. Constructors and ordinary methods do not inherit a receiver type's guarantee.
+
+The compiler reads optional `FScriptPureFunctions()` and `FScriptPureTypes()` provider methods returning registered script names. These declarations are trusted; ordinary interpreter execution and SDK validation remain unchanged. See [Pure FFI and external values](../compiler/compile-to-dotnet.md#pure-ffi-and-external-values) for the contract, examples, callback rules, and compiler API.

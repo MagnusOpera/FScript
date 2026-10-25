@@ -9,3 +9,7 @@ Provide complete environments with `registration({types, unions, functions})` an
 `HostFunctions.create({name, parameters, result, invoke})` builds a typed function from explicit script types. Handlers receive tagged arguments and an invocation context with `apply` for synchronous script callbacks. Existing `extern` declarations still work. Fable task execution and Promise-returning handlers are unsupported.
 
 See the [JavaScript hosting reference](https://fscript.magnusopera.io/manual/embedding/fable-javascript) for descriptor tables and examples. Run the local sample after building: `node examples/hosting.mjs`.
+
+## Exit status
+
+JavaScript treats `Env.setExitCode` as a no-op for source portability. It does not change process status or enforce a shell-code range. Arguments are still evaluated normally, and the program's returned value is unchanged. The website continues displaying that value. Existing `run`, `evaluate`, and `invoke` APIs retain their tagged-value results.

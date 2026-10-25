@@ -11,10 +11,14 @@ module Eval =
     type ProgramState =
         { TypeDefs: Map<string, Type>
           Env: Env
-          LastValue: Value }
+          LastValue: Value
+          ExitCode: int }
+
+    type InvocationResult = { Value: Value; ExitCode: int }
 
     type private RuntimeState =
         { SyncRoot: obj
+          ExitCode: int ref
           Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
           BackgroundFailure: EvalError option ref
@@ -438,6 +442,11 @@ module Eval =
           Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
           SpawnTask = spawnTaskValue runtime typeDefs
           AwaitTask = awaitTaskValue runtime
+#if FABLE_COMPILER
+          SetExitCode = ignore
+#else
+          SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
+#endif
           CheckRuntime = fun () ->
               raiseIfBackgroundFailed runtime
 #if !FABLE_COMPILER
@@ -765,6 +774,7 @@ module Eval =
         | EStructuralRecordUpdate(target, updates, span) -> return! updateRecord runtime typeDefs env target updates span true
         | EFieldGet(target, field, span) ->
             let rec qualified = function
+                | EVar("Env", _) when field="setExitCode" -> Some "Env"
                 | EVar(name, _) when not (env.ContainsKey name) -> Some name
                 | EFieldGet(parent, name, _) -> qualified parent |> Option.map (fun prefix -> prefix + "." + name)
                 | _ -> None
@@ -791,6 +801,16 @@ module Eval =
             | VMap _, _ -> return raise (EvalException { Message = "Map index key must be string, int, bool, or a payload-free union case"; Span = span })
             | VList _, _ -> return raise (EvalException { Message = "List index must be int"; Span = span })
             | _ -> return raise (EvalException { Message = "Index access requires a list or map value"; Span = span })
+        | EBinOp(("&&" | "||") as op, a, b, span) ->
+            let! first = evalExpr runtime typeDefs env a
+            match first with
+            | VBool value when (op = "&&" && not value) || (op = "||" && value) -> return VBool value
+            | VBool _ ->
+                let! second = evalExpr runtime typeDefs env b
+                match second with
+                | VBool _ -> return second
+                | _ -> return raise (EvalException { Message = "Boolean operands required"; Span = span })
+            | _ -> return raise (EvalException { Message = "Boolean operands required"; Span = span })
         | ECons(a, b, span) | EAppend(a, b, span) | EBinOp(_, a, b, span) ->
             let! av = evalExpr runtime typeDefs env a
             let! bv = evalExpr runtime typeDefs env b
@@ -821,9 +841,10 @@ module Eval =
             return invalidOp "Immediate expressions are handled before compound evaluation."
     }
 
-    let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
+    let invokeValueWithExitCode (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : InvocationResult =
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None
@@ -864,8 +885,12 @@ module Eval =
                 let next = applyFunctionValue runtime typeDefs unknownSpan value nextArg |> Execution.run
                 applyMany next tailArgs
 
-        try applyMany fnValue args
+        try
+            let value=applyMany fnValue args
+            {Value=value;ExitCode=withRuntimeLock runtime (fun () -> runtime.ExitCode.Value)}
         finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+
+    let invokeValue typeDefs fnValue args = (invokeValueWithExitCode typeDefs fnValue args).Value
 
     let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -896,6 +921,14 @@ module Eval =
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
+            | TypeInfer.TSBackendImport(name, importedType, import, span) ->
+                let rec arity = function TFun(_, result) -> 1 + arity result | _ -> 0
+                let external =
+                    { Name = name
+                      Scheme = Forall([], importedType)
+                      Arity = arity importedType
+                      Impl = fun _ _ -> raise (EvalException { Message = $"Backend import '{import.ModulePath}.{import.MemberName}' is not executable in the legacy evaluator"; Span = span }) }
+                env <- Map.add name (VExternal(external, [])) env
             | TypeInfer.TSLet(name, expr, _, isRec, _, span) ->
                 if isRec then
                     match expr with
@@ -947,11 +980,13 @@ module Eval =
 
         { TypeDefs = typeDefs
           Env = env
-          LastValue = lastValue }
+          LastValue = lastValue
+          ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref state.ExitCode
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None
@@ -973,6 +1008,7 @@ module Eval =
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None

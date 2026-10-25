@@ -20,7 +20,8 @@ module ScriptHost =
           ExportedValueNames: string list
           ExportedValueSet: Set<string>
           ExportedValues: Map<string, Value>
-          LastValue: Value }
+          LastValue: Value
+          ExitCode: int }
 
     let private isCallable value =
         match value with
@@ -111,7 +112,8 @@ module ScriptHost =
           ExportedValueNames = valueNames
           ExportedValueSet = valueSet
           ExportedValues = values
-          LastValue = state.LastValue }
+          LastValue = state.LastValue
+          ExitCode = state.ExitCode }
 
     let loadSourceWithRegistration (registration: ExtensionRegistration) (source: string) : LoadedScript =
         let program = FScript.parse source
@@ -158,7 +160,7 @@ module ScriptHost =
             | Some value -> value
             | None -> raise (HostCommon.evalError $"Unknown exported value '{valueName}'")
 
-    let invoke (loaded: LoadedScript) (functionName: string) (args: Value list) : Value =
+    let invokeWithExitCode (loaded: LoadedScript) (functionName: string) (args: Value list) : Eval.InvocationResult =
         if not (loaded.ExportedFunctionSet |> Set.contains functionName) then
             if loaded.ExportedValueSet |> Set.contains functionName then
                 raise (HostCommon.evalError $"'{functionName}' is a value and cannot be invoked")
@@ -170,12 +172,19 @@ module ScriptHost =
                 match loaded.ExportedFunctionSignatures.TryFind functionName with
                 | Some signature ->
                     let fullType = List.foldBack (fun argument result -> TFun(argument, result)) signature.ParameterTypes signature.ReturnType
-                    HostInterop.validateCall loaded.TypeDefs fullType args (fun () -> Eval.invokeValue loaded.TypeDefs fnValue args)
-                | None -> Eval.invokeValue loaded.TypeDefs fnValue args
+                    let mutable exitCode=0
+                    let value=HostInterop.validateCall loaded.TypeDefs fullType args (fun () ->
+                        let result=Eval.invokeValueWithExitCode loaded.TypeDefs fnValue args
+                        exitCode<-result.ExitCode
+                        result.Value)
+                    {Value=value;ExitCode=exitCode}
+                | None -> Eval.invokeValueWithExitCode loaded.TypeDefs fnValue args
             | Some _ ->
                 raise (HostCommon.evalError $"'{functionName}' is not callable")
             | None ->
                 raise (HostCommon.evalError $"Unknown exported function '{functionName}'")
+
+    let invoke loaded functionName args = (invokeWithExitCode loaded functionName args).Value
 
     let loadSource externs source = loadSourceWithRegistration (HostInterop.ofExterns externs) source
     let loadFile externs path = loadFileWithRegistration (HostInterop.ofExterns externs) path

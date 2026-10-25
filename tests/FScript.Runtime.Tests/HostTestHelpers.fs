@@ -21,6 +21,7 @@ module HostTestHelpers =
               Apply = noApply
               SpawnTask = noSpawnTask
               AwaitTask = noAwaitTask
+              SetExitCode = ignore
               CheckRuntime = fun () -> () }
             args
 

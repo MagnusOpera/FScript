@@ -194,3 +194,11 @@ Manual callbacks and tasks are opaque SDK handles. Use `ExternalCallContext.Appl
 Package your SDK-only provider as a .NET library with its normal package dependencies. The public static method bearing `[FScriptExternProvider]` remains the discovery entry point and returns the type/function registration; no additional attribute is required. Users declare `[[runtime.packages]]` with your package `name` and optional exact `version` in their manifest. FScript restores dependencies and loads compatible runtime assets without building the package or requiring the .NET SDK. See [Environment Configuration](../reference/environment-configuration#nuget-packages).
 
 Complementary extensions may share opaque CLR values, such as NDArray. Depend on the numerical provider’s package, use its descriptors for handler validation, and return only your own registration entries. Provider dependencies are discovered once and all packages in the manifest share one managed dependency context. Do not re-register another provider’s types or functions.
+
+## Compiler purity guarantees
+
+Providers can optionally declare `Pure` information for native compilation. Functions promise deterministic, effect-free, successful termination for valid inputs; external types promise deeply immutable visible data and payloads with safe, terminating registered field reads and structural observers. Constructors and ordinary methods do not inherit a receiver type's guarantee.
+
+The compiler reads optional `FScriptPureFunctions()` and `FScriptPureTypes()` provider methods returning registered script names. These declarations are trusted; ordinary interpreter execution and SDK validation remain unchanged. See [Pure FFI and external values](../compiler/compile-to-dotnet.md#pure-ffi-and-external-values) for the contract, examples, callback rules, and compiler API.
+
+Scripts can call the core `Env.setExitCode` operation without a registered extern. It updates execution-local status rather than terminating the host. .NET hosts can read `LoadedScript.ExitCode` or use `ScriptHost.invokeWithExitCode`; returned values remain separate from status.

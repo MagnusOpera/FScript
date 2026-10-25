@@ -37,6 +37,7 @@ TestResults/
 .DS_Store
 Thumbs.db
 .out
+/out/
 
 vscode-fscript/dist/
 vscode-fscript/*.vsix

@@ -35,6 +35,7 @@ smoke-tests:
 	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
 	echo "All smoke tests passed."
 
+
 verify-changelog:
 	REQUIRE_CHANGELOG_ALWAYS=true .github/scripts/check-unreleased-changelog.sh
 

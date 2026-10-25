@@ -720,6 +720,17 @@ type ParserTests () =
         | _ -> Assert.Fail("Expected interpolated string")
 
     [<Test>]
+    member _.``Interpolation placeholders retain absolute source spans`` () =
+        let program = Parser.parseProgramWithSourceName (Some "sample.fss") "let name = \"Ada\"\n$\"hello {name}\""
+        match program with
+        | [ _; SExpr(EInterpolatedString([ IPText "hello "; IPExpr(EVar("name", span)) ], _)) ] ->
+            Assert.That(span.Start.File, Is.EqualTo(Some "sample.fss"))
+            Assert.That(span.Start.Line, Is.EqualTo(2))
+            Assert.That(span.Start.Column, Is.EqualTo(10))
+            Assert.That(span.End.Column, Is.EqualTo(14))
+        | _ -> Assert.Fail("Expected interpolated variable placeholder")
+
+    [<Test>]
     member _.``Parses interpolated placeholder containing string literal`` () =
         let p = Helpers.parse "$\"{if true then \"missing\" else \"none\"}\""
         match p.[0] with
@@ -796,50 +807,44 @@ type ParserTests () =
         act |> should throw typeof<ParseException>
 
     [<Test>]
-    member _.``Rejects attribute export syntax`` () =
-        let act () = Helpers.parse "[<export>] let y = 1" |> ignore
-        act |> should throw typeof<ParseException>
+    member _.``Parses contextual export syntax`` () =
+        match Helpers.parse "export let y = 1" with
+        | [ SLet("y", _, _, _, _, true, _) ] -> ()
+        | _ -> Assert.Fail("Expected exported let binding")
 
-    [<Test>]
-    member _.``Rejects wrong attribute casing`` () =
-        let act () = Helpers.parse "[<Export>] let y = 1" |> ignore
-        act |> should throw typeof<ParseException>
+    [<TestCase("export")>]
+    [<TestCase("Export")>]
+    member _.``Export attribute forms are plain syntax errors`` (name: string) =
+        try
+            Helpers.parse $"[<{name}>] let answer = 42" |> ignore
+            Assert.Fail("Expected a parse error")
+        with ParseException error ->
+            Assert.That(error.Message, Is.EqualTo("Unexpected attribute"))
+            Assert.That(error.Span.Start.Line, Is.EqualTo(1))
 
     [<Test>]
     member _.``Rejects export prefix in nested expression block`` () =
         let act () = Helpers.parse "(let x =\n    export let y = 1\n    y\n)" |> ignore
         act |> should throw typeof<ParseException>
 
+    [<Test>]
+    member _.``Parses bodyless backend import attributes`` () =
+        match Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string" with
+        | [ SBackendImport("upper", TRFun(TRName "string", TRName "string"), import, _) ] ->
+            import.ModulePath |> should equal "strings"
+            import.MemberName |> should equal "ToUpper"
+        | _ -> Assert.Fail("Expected backend import")
 
     [<Test>]
-    member _.``Parses exported value`` () =
-        match Helpers.parse "export let answer = 42" with
-        | [ SLet("answer", [], None, _, false, true, _) ] -> ()
-        | _ -> Assert.Fail("Expected exported value")
+    member _.``Parses backend import attributes on record types`` () =
+        match Helpers.parse "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string; Age: int }" with
+        | [ SType { Name = "Person"; Import = Some import; Fields = fields } ] ->
+            import.ModulePath |> should equal "example.com/model"
+            import.MemberName |> should equal "Person"
+            fields.Length |> should equal 2
+        | _ -> Assert.Fail("Expected imported record type")
 
     [<Test>]
-    member _.``Export remains an ordinary binding and parameter name`` () =
-        match Helpers.parse "let export = 42\nlet identity export = export\nexport\nidentity export" with
-        | [ SLet("export", [], _, _, false, false, _)
-            SLet("identity", [param], _, EVar("export", _), false, false, _)
-            SExpr(EVar("export", _))
-            SExpr(EApply(EVar("identity", _), EVar("export", _), _)) ] ->
-            Assert.That(param.Name, Is.EqualTo("export"))
-        | _ -> Assert.Fail("Expected ordinary export identifiers")
-
-    [<Test>]
-    member _.``An exported binding may itself be named export`` () =
-        match Helpers.parse "export let export export = export" with
-        | [ SLet("export", [param], _, EVar("export", _), false, true, _) ] ->
-            Assert.That(param.Name, Is.EqualTo("export"))
-        | _ -> Assert.Fail("Expected exported function named export")
-
-    [<TestCase("let x = export let y = 1\n    y")>]
-    [<TestCase("let x =\n  export let y = 1\n  y")>]
-    [<TestCase("(export let y = 1\n y)")>]
-    member _.``Rejects exported local bindings`` (source: string) =
-        try
-            Helpers.parse source |> ignore
-            Assert.Fail("Expected parse error")
-        with
-        | ParseException detail -> Assert.That(detail.Message, Does.Contain("top level"))
+    member _.``Rejects backend imports with bodies`` () =
+        let act () = Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string = fun value -> value" |> ignore
+        act |> should throw typeof<ParseException>
