@@ -86,7 +86,7 @@ type HirTests() =
 
     [<Test>]
     member _.``Compilation exposes exported function signatures from its frontend pass`` () =
-        let source = "[<Export>] let pair (prefix: string) (count: int) = (prefix, count)"
+        let source = "export let pair (prefix: string) (count: int) = (prefix, count)"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
         | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
         | Ok compiled ->
@@ -184,7 +184,7 @@ type HirTests() =
 
     [<Test>]
     member _.``HIR attaches structured export and import attributes`` () =
-        let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\n[<Export>] let answer = 42"
+        let source = "[<Import(\"example.com/model\", \"Person\")>] type Person = { Name: string }\nexport let answer = 42"
         let compiled = match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with Ok value -> value | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
         let personType = compiled.Hir.Types |> List.find (fun item -> item.Name = "Person")
         Assert.That((personType.Attributes |> List.map _.Name) = [ "Import" ], Is.True)

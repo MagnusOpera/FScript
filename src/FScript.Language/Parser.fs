@@ -1630,7 +1630,6 @@ module Parser =
 
         and parseAttributedStmt () : Stmt =
 
-            let mutable isExported = false
             let mutable hasAttributes = false
             let mutable backendImport: Attribute option = None
             let structuredAttributes = ResizeArray<Attribute>()
@@ -1641,11 +1640,7 @@ module Parser =
                     let attribute = parseAttribute()
                     match attribute.Name with
                     | "export" | "Export" ->
-                        if isExported then
-                            raise (ParseException { Message = "Duplicate attribute 'export'"; Span = attribute.Span })
-                        if not attribute.Arguments.IsEmpty then
-                            raise (ParseException { Message = "Export does not accept arguments"; Span = attribute.Span })
-                        isExported <- true
+                        raise (ParseException { Message = "Unexpected attribute"; Span = attribute.Span })
                     | "Import" ->
                         if backendImport.IsSome then
                             raise (ParseException { Message = "Duplicate attribute 'Import'"; Span = attribute.Span })
@@ -1658,7 +1653,7 @@ module Parser =
             let statement =
                 match stream.Peek().Kind with
                 | Hash ->
-                    if hasAttributes || isExported then
+                    if hasAttributes then
                         raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
                     let hashTok = stream.Next()
                     match stream.Next().Kind with
@@ -1669,7 +1664,7 @@ module Parser =
                     | _ ->
                         raise (ParseException { Message = "Unexpected '#'; use 'import \"file.fss\" as Alias'"; Span = hashTok.Span })
                 | Import ->
-                    if hasAttributes || isExported then
+                    if hasAttributes then
                         raise (ParseException { Message = "Attributes are not supported on 'import' directives"; Span = stream.Peek().Span })
                     let importTok = stream.Next()
                     let pathTok = stream.Next()
@@ -1689,14 +1684,11 @@ module Parser =
                 | Module ->
                     raise (ParseException { Message = "'module' declarations are not supported in scripts"; Span = stream.Peek().Span })
                 | Type ->
-                    if isExported then
-                        raise (ParseException { Message = "'[<export>]' is only valid for top-level let bindings"; Span = stream.Peek().Span })
                     parseTypeDecl backendImport
                 | Let ->
                     match backendImport with
-                    | Some attribute when isExported -> raise (ParseException { Message = "Import and Export cannot be combined initially"; Span = attribute.Span })
                     | Some attribute -> parseBackendImport attribute
-                    | None -> parseLetStmt isExported
+                    | None -> parseLetStmt false
                 | _ when hasAttributes ->
                     raise (ParseException { Message = "Attributes must be followed by a top-level declaration"; Span = stream.Peek().Span })
                 | _ ->

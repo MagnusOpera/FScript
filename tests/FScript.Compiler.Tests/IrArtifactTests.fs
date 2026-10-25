@@ -194,7 +194,7 @@ type IrArtifactTests() =
 
     [<Test>]
     member _.``IR artifact preserves structured export metadata`` () =
-        let lir = (compile "[<export>] let answer = 42").Lir
+        let lir = (compile "export let answer = 42").Lir
         let exported = lir.Declarations |> List.find _.IsExported
         Assert.That(exported.Export |> Option.map _.Name, Is.EqualTo(Some "answer"))
         match lir |> IrArtifact.serialize |> IrArtifact.deserialize with

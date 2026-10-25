@@ -34,7 +34,7 @@ Backend `Import` requires exactly a target module path and member name, a comple
   - `export let` requires a single identifier binding (tuple patterns are rejected)
   - `export let` is only valid on top-level `let` bindings
   - `export` is a contextual, case-sensitive modifier recognized only immediately before top-level `let`; it remains a valid ordinary binding, parameter, and field name.
-  - `[<export>]` and `[<Export>]` are equivalent top-level export attributes. They accept no arguments and cannot be repeated on a declaration. These forms also work through the JavaScript facade.
+  - Only the `export let` declaration prefix marks an export, including through the JavaScript facade. Other forms are ordinary syntax errors.
 - Conditionals:
   - `if cond then a else b`
   - `elif` desugars to nested `if`

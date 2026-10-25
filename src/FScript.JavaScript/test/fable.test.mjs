@@ -135,17 +135,19 @@ test("export is a contextual declaration prefix rather than a reserved identifie
   const loaded = load("let export = 40\nexport let answer = export + 2\nexport let export export = export");
   assert.equal(getValue(loaded, "answer").value, 42n);
   assert.equal(invoke(loaded, "export", [7]).value, 7n);
+  assert.throws(() => run("[<export>] let answer = 42"), error => error.phase === "parse");
   assert.throws(() => run("let outer =\n  export let answer = 42\n  answer\nouter"), error => error.phase === "parse");
 });
 
-test("Export attributes expose values and functions with either supported casing", () => {
+test("attribute forms cannot declare exports", () => {
   for (const attribute of ["export", "Export"]) {
-    const loaded = load(`[<${attribute}>] let answer = 42\n[<${attribute}>] let echo value = value`);
-    assert.deepEqual(listValues(loaded), ["answer"]);
-    assert.deepEqual(listFunctions(loaded), ["echo"]);
-    assert.equal(getValue(loaded, "answer").value, 42n);
-    assert.equal(invoke(loaded, "echo", [7]).value, 7n);
-    assert.throws(() => run(`[<${attribute}("argument")>] let answer = 42`), error => error.phase === "parse");
-    assert.throws(() => run(`[<${attribute}>]\n[<${attribute}>] let answer = 42`), error => error.phase === "parse");
+    for (const source of [
+      `[<${attribute}>] let answer = 42`,
+      `[<${attribute}>] let echo value = value`,
+      `[<${attribute}("argument")>] let answer = 42`,
+      `[<${attribute}>] type Answer = { Value: int }`
+    ]) {
+      assert.throws(() => load(source), error => error.phase === "parse" && error.message === "Unexpected attribute");
+    }
   }
 });

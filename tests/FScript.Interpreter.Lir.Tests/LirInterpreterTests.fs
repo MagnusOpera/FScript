@@ -15,7 +15,7 @@ type LirInterpreterTests() =
 
     [<Test>]
     member _.``Loads a program and invokes an exported function repeatedly`` () =
-        let source = "[<Export>] let add x y = x + y\n0"
+        let source = "export let add x y = x + y\n0"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
         | Error diagnostics -> Assert.Fail(errorText diagnostics)
         | Ok compiled ->
@@ -38,7 +38,7 @@ type LirInterpreterTests() =
               Invoke = function
                 | [ LirValue.VInt value ] -> Ok(LirValue.VInt(value + 1L))
                 | _ -> Error "expected one integer" }
-        let source = "[<Export>] let bumpTwice value = Host.bump (Host.bump value)\n0"
+        let source = "export let bumpTwice value = Host.bump (Host.bump value)\n0"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [ external ] } with
         | Error diagnostics -> Assert.Fail(errorText diagnostics)
         | Ok compiled ->

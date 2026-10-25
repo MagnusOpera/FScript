@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Fixed JavaScript export-syntax tests to cover the supported Export attributes and invalid declarations.
+- Enforced `export let` as the only export declaration syntax across .NET and JavaScript.
 
 - Removed the Go backend, CLI target, and toolchain requirements; retained the shared IR and .NET optimizations.
 

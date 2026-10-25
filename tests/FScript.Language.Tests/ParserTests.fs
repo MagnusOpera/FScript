@@ -812,11 +812,15 @@ type ParserTests () =
         | [ SLet("y", _, _, _, _, true, _) ] -> ()
         | _ -> Assert.Fail("Expected exported let binding")
 
-    [<Test>]
-    member _.``Parses canonical Export attribute casing`` () =
-        match Helpers.parse "[<Export>] let y = 1" with
-        | [ SLet("y", _, _, _, _, true, _) ] -> ()
-        | _ -> Assert.Fail("Expected exported let binding")
+    [<TestCase("export")>]
+    [<TestCase("Export")>]
+    member _.``Export attribute forms are plain syntax errors`` (name: string) =
+        try
+            Helpers.parse $"[<{name}>] let answer = 42" |> ignore
+            Assert.Fail("Expected a parse error")
+        with ParseException error ->
+            Assert.That(error.Message, Is.EqualTo("Unexpected attribute"))
+            Assert.That(error.Span.Start.Line, Is.EqualTo(1))
 
     [<Test>]
     member _.``Rejects export prefix in nested expression block`` () =

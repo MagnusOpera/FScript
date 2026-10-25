@@ -149,7 +149,7 @@ type ResolvedInferenceTests() =
 
     [<Test>]
     member _.``Resolved statements preserve structured export metadata`` () =
-        let resolved = Helpers.parse "[<Export>] let answer = 42" |> TypeInfer.inferResolvedProgram
+        let resolved = Helpers.parse "export let answer = 42" |> TypeInfer.inferResolvedProgram
         match resolved.ResolvedStatements |> List.tryPick _.Export with
         | Some export ->
             Assert.That(export.Name, Is.EqualTo("answer"))
