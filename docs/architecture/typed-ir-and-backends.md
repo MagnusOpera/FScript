@@ -70,3 +70,9 @@ The conformance suite compares the reference evaluator with serialized/deseriali
 ## Reference execution
 
 The `feature/in-memory-execution` experiment is reference material only; its dynamic assembly architecture is neither copied nor referenced. Normal CLI and `ScriptHost` execution retain the reference AST evaluator. JavaScript embedding remains unchanged. The LIR interpreter is a separate execution/reference consumer, and native compilation is explicit.
+
+## Result display and exit status
+
+Result display defaults to enabled and is independent of shell status. CLI `--no-result` disables it; native consumers run `LirResultPolicy.discard` before specialization so unused pure result work can be pruned while observable initialization remains rooted. `LirTraversal` supplies common child mapping and complete symbol census for transformations and fresh lexical bindings.
+
+`Env.setExitCode` is a reserved effectful core operation that coexists with the runtime `Env` record. The evaluator owns a locked status cell shared with its tasks; generated programs use an atomic per-program field and return its value from `Main`. Neither embedding surface sets the host process status. LIR exposes status alongside values. Fable/JavaScript ignores the setter and keeps returning/displaying ordinary values. Task ordering remains scheduling-dependent, and existing task failure/lifetime rules are unchanged.

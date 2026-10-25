@@ -45,7 +45,7 @@ module CSharpBackend =
             else "global::" + (value.FullName |> nonNull).Replace('+', '.')
         render value
 
-    let private emit assemblyMode options (program: Lir.Program) =
+    let private emit assemblyMode printResult options (program: Lir.Program) =
         let hasSdk = program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)
         let definitions = program.Types |> List.map (fun d -> d.Name, d.Definition) |> Map.ofList
         let imports = program.ImportedRecords |> List.map (fun d -> d.Name, d) |> Map.ofList
@@ -291,6 +291,7 @@ module CSharpBackend =
             | "Map.filter", _ -> build (fun a r -> $"new {csType r}({a.[1]}.Entries.Where(e => {a.[0]}(e.Key)(e.Value)).ToArray())")
             | "Map.map", _ -> build (fun a r -> $"new {csType r}({a.[1]}.Entries.Select(e => new {csType r}.Entry(e.Key, {a.[0]}(e.Value))).ToArray())")
             | "Map.choose", _ -> build (fun a r -> $"new {csType r}({a.[1]}.Entries.Select(e => (e.Key, Value: {a.[0]}(e.Key)(e.Value))).Where(e => e.Value.HasValue).Select(e => new {csType r}.Entry(e.Key,e.Value.Value)).ToArray())")
+            | "Env.setExitCode", _ -> build (fun a _ -> $"SetExitCode({a.[0]})")
             | "Console.writeLine", _ -> build (fun a _ -> $"FsRuntime.WriteLine({a.[0]})")
             | "Console.readLine", _ -> build (fun a _ -> $"FsRuntime.ReadLine({a.[0]})")
             | "Fs.readText", _ -> build (fun a _ -> $"FsRuntime.Try(() => File.ReadAllText({a.[0]}))")
@@ -1004,7 +1005,11 @@ module CSharpBackend =
         addType resultType
         addMember $"public static {csType resultType} Run() {{ {forceInitialization} return {result}; }}"
         addMember $"public static string FormatResult({csType resultType} value) => {fmtName resultType}(value);"
-        addMember "public static void Main(string[] args) { _ = Run(); }"
+        addMember "private static int ProcessExitCode = 0;"
+        addMember "public static int ExitCode => System.Threading.Volatile.Read(ref ProcessExitCode);"
+        addMember "private static Unit SetExitCode(long code) { if (code < 0 || code > 255) return FsRuntime.Fail<Unit>(\"Env.setExitCode expects a code between 0 and 255.\"); System.Threading.Interlocked.Exchange(ref ProcessExitCode, (int)code); return default; }"
+        let display=if printResult then "Console.WriteLine(FormatResult(Run()));" else "_ = Run();"
+        addMember $"public static int Main(string[] args) {{ {display} return ExitCode; }}"
         if hasSdk then
             let sdk="global::FScript.Extensibility."
             let sv=sdk+"ScriptValue"
@@ -1062,7 +1067,7 @@ module CSharpBackend =
                 let entry=match specialized.Entry with Some {Node=Lir.Tuple(first::_)} when program.Entry.IsSome -> Some first | _ -> None
                 {specialized with Entry=entry})
 
-    let private generateWith assemblyMode optimize options (program: Lir.Program) =
+    let private generateWith assemblyMode printResult optimize options (program: Lir.Program) =
         try
             for path in options.References do
                 if not (File.Exists path) then fail "FSC6003" $"Reference assembly does not exist: {path}" None
@@ -1073,13 +1078,14 @@ module CSharpBackend =
                 if not (File.Exists path) then fail "FSC6003" $"Reference assembly does not exist: {path}" None
                 Reflection.Assembly.LoadFrom(Path.GetFullPath path) |> ignore
             program |> LirValidation.validate
+            |> Result.map (if printResult then id else LirResultPolicy.discard)
             |> Result.bind (if assemblyMode then specializeAssembly else LirMonomorphization.specialize)
             |> Result.map LirSimplification.optimize
             |> Result.map optimize
             |> Result.map LirCommonSubexpressions.optimize
             |> Result.map (if assemblyMode then ClrBindings.pruneUnusedTypes else id)
             |> Result.bind LirValidation.validate
-            |> Result.map (emit assemblyMode options)
+            |> Result.map (emit assemblyMode printResult options)
             |> Result.map (List.map (fun file ->
                 if not (file.RelativePath.EndsWith(".cs",StringComparison.Ordinal)) then file else
                     let tree=CSharpSyntaxTree.ParseText(file.Content,CSharpParseOptions(LanguageVersion.Latest))
@@ -1091,6 +1097,7 @@ module CSharpBackend =
         | Failure diagnostic -> Error [diagnostic]
         | ex -> Error [{ Code="FSC6000"; Stage=CSharpGeneration; Message=ex.Message; Span=None }]
 
-    let generate options program = generateWith false id options program
+    let generateWithResultOutput printResult options program = generateWith false printResult id options program
+    let generate options program = generateWithResultOutput true options program
 
-    let internal generateForAssembly optimize options program = generateWith true optimize options program
+    let internal generateForAssembly printResult optimize options program = generateWith true printResult optimize options program

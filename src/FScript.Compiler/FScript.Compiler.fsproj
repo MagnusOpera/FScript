@@ -10,6 +10,7 @@
     <Compile Include="HirValidation.fs" />
     <Compile Include="Lir.fs" />
     <Compile Include="LirEffects.fs" />
+    <Compile Include="LirTraversal.fs" />
     <Compile Include="NativeSpecialization.fs" />
     <Compile Include="LirMonomorphization.fs" />
     <Compile Include="LirSimplification.fs" />

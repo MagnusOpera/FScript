@@ -451,3 +451,21 @@ type LirInterpreterTests() =
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok _ -> Assert.Fail("Expected target-import diagnostic")
             | Error diagnostics -> Assert.That(diagnostics.Code, Is.EqualTo("FSI3023"))
+
+    [<Test>]
+    member _.``Exit status survives artifacts and remains evaluation local`` () =
+        let compile source = match Compiler.compile {Program=Parser.parseProgram source;Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+        let run program = match LirInterpreter.execute {ScriptName=None;Arguments=[]} program with Ok result -> result | Error error -> failwith error.Message
+        let compiled=compile "Env.setExitCode 7\nEnv.setExitCode 9\n42"
+        let loaded=match IrArtifact.deserialize (IrArtifact.serialize compiled) with Ok p -> p | Error errors -> failwith (string errors)
+        let result=run loaded
+        Assert.That(result.ExitCode,Is.EqualTo(9))
+        Assert.That(result.Value,Is.EqualTo(LirValue.VInt 42L))
+        Assert.That((run (compile "42")).ExitCode,Is.Zero)
+
+    [<Test>]
+    member _.``Invalid exit status reports a structured interpreter error`` () =
+        let compiled=match Compiler.compile {Program=Parser.parseProgram "Env.setExitCode 256";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+        match LirInterpreter.execute {ScriptName=None;Arguments=[]} compiled with
+        | Ok _ -> Assert.Fail("Expected an invalid exit code")
+        | Error diagnostic -> Assert.That(diagnostic.Code,Is.EqualTo("FSI3027"))

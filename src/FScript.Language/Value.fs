@@ -54,7 +54,8 @@ and ExternalCallContext =
       Apply: Value -> Value -> Value
       SpawnTask: Value -> Value
       AwaitTask: Value -> Value
-      CheckRuntime: unit -> unit }
+      CheckRuntime: unit -> unit
+      SetExitCode: int -> unit }
 
 and ExternalFunction =
     { Name: string

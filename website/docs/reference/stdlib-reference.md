@@ -171,3 +171,5 @@ This is the complete catalog of core functions/values and default .NET runtime e
 Constructors and syntax are separate from function registration: `Some`/`None`, union cases, literals, ranges, field access, list/map indexers, `typeof`, and `nameof` are covered in [Native Types](./native-types-reference.md) and [Syntax and Operators](./syntax-reference.md). Host-provided type descriptors are covered in [Host-Provided Types](../embedding/host-managed-types).
 
 `Json.deserialize` uses a runtime type token; its generic result scheme does not statically encode the relationship between that token and the result. `Guid.new` accepts an ignored argument; use `Guid.new ()`. `List.contains` compares scalars only; use `List.exists` with `=` for composite data.
+
+`Env.setExitCode : int -> unit` selects the eventual shell status without stopping evaluation; see [core builtins](../stdlib/builtins#envsetexitcode). It is effectful and accepts codes `0..255`.

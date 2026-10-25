@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Stopped compiled C# and .NET executables from automatically printing final values; explicit console output and scripting result display are preserved.
+- Added execution-local Env.setExitCode and --no-result for .NET scripting and compiled applications, with default printing, task-safe status writes, pure-result pruning, and a JavaScript no-op.
 
 - Defaulted single-file and Native AOT publishing to the current platform when --runtime is omitted.
 

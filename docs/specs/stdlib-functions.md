@@ -5,7 +5,7 @@ This document lists core standard-library functions and the optional default .NE
 
 ## Modules
 
-- Core: `List`, `Option`, `Map`, `Int`, `Float`, `Bool`, `String`.
+- Core: `Env.setExitCode`, `List`, `Option`, `Map`, `Int`, `Float`, `Bool`, `String`.
 - Default .NET runtime: `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
 
 ## Top-level surface
@@ -205,3 +205,21 @@ match Env.Arguments with
 | scriptPath :: _ -> Console.writeLine scriptPath
 | [] -> Console.writeLine "no args"
 ```
+
+## Env.setExitCode
+
+`Env.setExitCode : int -> unit` is an always-available core operation, including in embedding and JavaScript. It coexists with host-provided `Env.ScriptName` and `Env.Arguments` without adding a field to the `Environment` record. The qualified operation is reserved even when an `Env` value is in scope.
+
+On .NET and compiled targets, the code must be in the portable shell range `0..255`; other values fail with an evaluation error. It selects the eventual shell status and returns unit normally. It never calls process exit, cancels tasks, or changes a host process's exit status during embedded evaluation. The default is `0`, repeated calls use the last completed write, and unhandled execution failures still produce failure rather than a selected success code.
+
+This operation is effectful and is not `Pure`. Its writes survive pruning and common-subexpression elimination. Writes from tasks share the execution status and are synchronized, but their order is scheduling-dependent. For deterministic status, await tasks and set it afterward in the main flow. Existing task lifetime and failure rules are preserved.
+
+```fsharp
+Env.setExitCode 7
+42 // still evaluated; shell status is 7
+```
+
+Result printing is independent of this status. `--no-result` suppresses automatic display in the CLI and can be baked into compiled applications.
+
+
+Fable/JavaScript deliberately treats this operation as a no-op (including shell-range validation). Arguments still evaluate normally, returned values remain unchanged, and the website displays the returned value as before.

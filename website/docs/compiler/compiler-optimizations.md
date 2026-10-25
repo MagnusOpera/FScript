@@ -143,3 +143,9 @@ Self-contained single-file output still includes a managed runtime. Native AOT p
 Ordinary CLI execution and `ScriptHost` still use the AST interpreter; JavaScript embedding remains interpreted. Native specialization, call lowering, and assembly pruning are not enabled on those paths. The separate LIR interpreter executes validated IR and has its own tail-call trampoline; it does not run the .NET assembly backend's passes.
 
 For API contracts, representations, and validation details, see the [.NET backend specification](https://github.com/MagnusOpera/FScript/blob/main/docs/specs/dotnet-backends.md).
+
+## Discarding the entry value
+
+Compile with `--no-result` to remove the entry value as a reachability root before specialization. Pure and total computations used only for that value can disappear, including their functions, helpers, and dependencies. This can also permit an unused open pure value such as `None` to be discarded. Observable calls, potential failures, and `Env.setExitCode` writes remain roots; the option never licenses dropping failures or effects. No result-based exit-code inference is performed.
+
+Printing remains the default. Setting an exit code is never pure, including when two writes use the same integer. Tasks may share this status, so synchronized writes remain scheduling-dependent and are not deduplicated or reordered.

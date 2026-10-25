@@ -23,7 +23,7 @@ dotnet run --project src/FScript -- compile samples/fibonacci.fss --target dotne
 dotnet out/fibonacci-dotnet/fibonacci.dll
 ```
 
-Compiled entry points evaluate the program and discard its final value. Output comes from explicit calls such as `Console.writeLine`; automatic result display belongs to scripting. Library callers can still retrieve values through `Run` and format them explicitly with `FormatResult`.
+Compiled entry points print the final value by default. Add `--no-result` when compiling to suppress it and allow proven-pure discarded computations to be pruned. Explicit output, failures, and exit-code writes remain observable. Without this flag, library callers can retrieve the typed value through `Run` and format it explicitly with `FormatResult`; in discard mode, `Run` returns unit.
 
 Output includes a `.dll`, runtime configuration, and required external managed dependencies. The minimum runtime is .NET 10. Arguments after the assembly name become `Env.Arguments`.
 
@@ -175,3 +175,11 @@ Use `Compiler.compileWithRegistration` for host signatures. `ClrBindings.bindMet
 `DotNetBackend.generate` accepts `OutputKind = Library` for library assemblies or `ConsoleApplication` for executables. Generated classes expose `Run`, `FormatResult`, and exported bindings. `CSharpBackend.generate` emits source files instead.
 
 Representation and CLR linkage diagnostics use `FSC6xxx`, including failures from the assembly target's shared emitter. Assembly emission and publishing diagnostics use `FSN7xxx`. Frontend and IR errors retain their own codes and source spans. Roslyn errors or warnings prevent assembly output. Reachable open polymorphic results and generalized initializers with effects remain compilation diagnostics under whole-program specialization.
+
+## Exit status and embedding
+
+`Env.setExitCode : int -> unit` selects the eventual shell status without stopping evaluation or task execution. Valid codes are `0` through `255`; the default is `0`. The last completed write wins. Writes from tasks are synchronized, but their scheduling order can change the final code. For a predictable code, await the tasks and set it in the main flow. Existing task completion and failure rules still apply; the setter does not add cancellation or bypass shutdown.
+
+The generated `Program.ExitCode` property exposes status to embedding callers. Calling `Run` or an exported function does not change the host process's `Environment.ExitCode`. The executable `Main` returns the selected status after normal completion. Unhandled failures take precedence and return a nonzero process status.
+
+The compiler APIs `CSharpBackend.generateWithResultOutput`, `DotNetBackend.generateWithResultOutput`, and `DotNetBackend.generateExecutableWithResultOutput` take a Boolean display policy before their ordinary options. Existing generation APIs default to printing. Passing `false` discards the entry value before specialization and prunes unused pure work; exported library bindings remain roots.

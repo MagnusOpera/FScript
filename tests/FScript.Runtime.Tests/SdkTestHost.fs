@@ -10,6 +10,7 @@ module SdkTestHost =
           Apply = fun _ _ -> failwith "No callbacks in data conversion"
           SpawnTask = fun _ -> failwith "No tasks in data conversion"
           AwaitTask = fun _ -> failwith "No tasks in data conversion"
+          SetExitCode = ignore
           CheckRuntime = ignore }
     let invokeExternal (fn: FScript.Extensibility.ExternalFunction) args =
         fn.Impl (FScript.Extensibility.ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)) args

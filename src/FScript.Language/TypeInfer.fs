@@ -1290,6 +1290,8 @@ module TypeInfer =
                 | _ -> raise (TypeException { Message = "Field access requires a record value"; Span = span })
 
             let rec qualifiedTarget = function
+                // Env combines runtime data with this reserved runtime operation.
+                | EVar ("Env", _) when fieldName="setExitCode" -> Some "Env"
                 | EVar (name, _) when not (env.ContainsKey name) -> Some name
                 | EFieldGet (parent, name, _) -> qualifiedTarget parent |> Option.map (fun prefix -> prefix + "." + name)
                 | _ -> None

@@ -493,6 +493,19 @@ type BackendTests() =
             let error=proc.StandardError.ReadToEnd()
             Assert.That(proc.WaitForExit(60000),Is.True)
             Assert.That(proc.ExitCode,Is.EqualTo(0),output+error)
-            Assert.That(output,Is.Empty)
+            Assert.That(output.Trim(),Is.EqualTo("[2;3;4]"))
         finally
             if Directory.Exists directory then Directory.Delete(directory,true)
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Compiled library status is observable without changing host process status`` noResult =
+        let original=Environment.ExitCode
+        let program=Harness.compile "Env.setExitCode 7\n42"
+        let files=match DotNetBackend.generateWithResultOutput (not noResult) Harness.options program with Ok files -> files | Error errors -> failwith (string errors)
+        let assembly=Assembly.Load((files |> List.find (fun file -> file.RelativePath="CompiledScript.dll")).Content)
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let value=(typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+        Assert.That((typ.GetProperty("ExitCode") |> nonNull).GetValue(null),Is.EqualTo(box 7))
+        Assert.That(Environment.ExitCode,Is.EqualTo(original))
+        if not noResult then Assert.That(value,Is.EqualTo(box 42L))

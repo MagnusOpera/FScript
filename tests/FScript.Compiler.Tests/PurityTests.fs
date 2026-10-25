@@ -141,3 +141,29 @@ type PurityTests() =
         match Compiler.compileWithPurity (pureFunctions [name]) {Program=Parser.parseProgram "42";Externs=[]} with
         | Ok _ -> Assert.Fail("Expected an invalid purity contract")
         | Error errors -> Assert.That(errors |> List.map _.Code,Does.Contain("FSH1000"))
+
+    [<Test>]
+    member _.``Exit code writes are observable and cannot be deduplicated`` () =
+        let compiled=compile HostInterop.empty PurityContracts.empty [] "Env.setExitCode 7\nEnv.setExitCode 7\n42"
+        let optimized=compiled.Lir |> optimize |> LirCommonSubexpressions.optimize
+        let setters=optimized.Declarations |> List.filter (fun d -> d.Name.StartsWith("$expression") && d.Value.Type=TUnit)
+        Assert.That(setters.Length,Is.EqualTo(2))
+
+    [<Test>]
+    member _.``Discarding results prunes pure work but preserves status and failures`` () =
+        let run source =
+            let compiled=compile HostInterop.empty PurityContracts.empty [] source
+            compiled.Lir |> LirResultPolicy.discard |> optimize
+        let discarded=run "let compute n = n*n + 1\ncompute 42"
+        Assert.That(discarded.Declarations,Is.Empty)
+        Assert.That(discarded.Functions,Is.Empty)
+        let setter=run "Env.setExitCode 7\n42"
+        Assert.That(setter.Declarations |> List.exists (fun d -> d.Value.Type=TUnit && d.Name.StartsWith("$expression")),Is.True)
+        let failure=run "1/0"
+        Assert.That(failure.Declarations,Is.Not.Empty)
+
+    [<Test>]
+    member _.``Discard mode accepts an unused open pure result`` () =
+        let compiled=compile HostInterop.empty PurityContracts.empty [] "None"
+        let optimized=compiled.Lir |> LirResultPolicy.discard |> optimize
+        Assert.That(optimized.Declarations,Is.Empty)

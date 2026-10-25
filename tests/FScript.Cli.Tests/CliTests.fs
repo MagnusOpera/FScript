@@ -149,7 +149,7 @@ type CliTests() =
             let script=Path.Combine(tempRoot,"native.fss")
             File.WriteAllText(script,"Console.writeLine (Int.toString Ext.answer)")
             let output=Path.Combine(tempRoot,"output")
-            let code,_,error=runCli repoRoot tempRoot ["compile";script;"--target";target;"--output";output;"--extern-assembly";validProviderAssemblyPath()] None
+            let code,_,error=runCli repoRoot tempRoot ["compile";script;"--target";target;"--output";output;"--no-result";"--extern-assembly";validProviderAssemblyPath()] None
             Assert.That(code,Is.Zero,error)
             let start=ProcessStartInfo("dotnet",WorkingDirectory=tempRoot,RedirectStandardOutput=true,RedirectStandardError=true)
             if target="dotnet" then start.ArgumentList.Add(Path.Combine(output,"native.dll"))
@@ -176,7 +176,7 @@ type CliTests() =
             let script=Path.Combine(directory,"pure.fss")
             File.WriteAllText(script,"let discarded = Ext.readCounter (Ext.createCounter 7)\n42")
             let output=Path.Combine(directory,"output")
-            let args=["compile";script;"--target";"dotnet";"--output";output;"--extern-assembly";validProviderAssemblyPath()]
+            let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result";"--extern-assembly";validProviderAssemblyPath()]
             let code,_,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
             Assert.That(Directory.GetFiles(output) |> Array.map Path.GetFileName,Is.EquivalentTo([|"pure.dll";"pure.runtimeconfig.json"|]))
@@ -266,9 +266,9 @@ type CliTests() =
             let standalone=Path.Combine(directory,"standalone")
             Directory.CreateDirectory(standalone) |> ignore
             let source=if ffi then "Console.writeLine (Int.toString (Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1))\n42" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nConsole.writeLine $\"{Env.Arguments}\""
-            File.WriteAllText(script,source)
+            File.WriteAllText(script,"Env.setExitCode 7\n"+source)
             let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
-            let args=["compile";script;"--target";"dotnet";"--output";output;flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
+            let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result";flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
             let code,_,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
             let name="native"+(if OperatingSystem.IsWindows() then ".exe" else "")
@@ -291,7 +291,7 @@ type CliTests() =
             let stdout=proc.StandardOutput.ReadToEnd()
             let stderr=proc.StandardError.ReadToEnd()
             Assert.That(proc.WaitForExit(60000),Is.True)
-            Assert.That(proc.ExitCode,Is.Zero,stdout+stderr)
+            Assert.That(proc.ExitCode,Is.EqualTo(7),stdout+stderr)
             let expected=if ffi then "42" else "\"hello\"\n"+name+"\n[hello]"
             Assert.That(stdout.Replace("\r\n","\n").Trim(),Is.EqualTo(expected))
         finally Directory.Delete(directory,true)
@@ -712,3 +712,55 @@ type CliTests() =
             Assert.That(code,Is.Zero,error)
             Assert.That(output.Trim(),Is.EqualTo("[\"--debug-adapter\"]"))
         finally File.Delete script
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Interpreted status is independent of result display`` noResult =
+        let root=findRepoRoot ()
+        let arguments=if noResult then ["--no-result"] else []
+        let code,output,error=runCli root root arguments (Some "Env.setExitCode 7\nEnv.setExitCode 9\nConsole.writeLine \"after\"\n42")
+        Assert.That(code,Is.EqualTo(9),error)
+        Assert.That(error,Is.Empty)
+        Assert.That(output.Replace("\r\n","\n").Trim(),Is.EqualTo(if noResult then "after" else "after\n42"))
+
+    [<TestCase("dotnet",false)>]
+    [<TestCase("dotnet",true)>]
+    [<TestCase("csharp",false)>]
+    [<TestCase("csharp",true)>]
+    member _.``Compiled status and result policy match scripting`` (target: string,noResult: bool) =
+        let root=findRepoRoot ()
+        let directory=Path.Combine(Path.GetTempPath(),"fscript-status-"+Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let script=Path.Combine(directory,"status.fss")
+            File.WriteAllText(script,"Env.setExitCode 7\nConsole.writeLine \"after\"\n42")
+            let output=Path.Combine(directory,"output")
+            let flags=if noResult then ["--no-result"] else []
+            let code,_,error=runCli root directory (["compile";script;"--target";target;"--output";output] @ flags) None
+            Assert.That(code,Is.Zero,error)
+            let start=ProcessStartInfo("dotnet",WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true)
+            let args=if target="dotnet" then [Path.Combine(output,"status.dll")] else ["run";"--project";Path.Combine(output,"Program.csproj")]
+            for argument in args do start.ArgumentList.Add(argument)
+            use proc=Process.Start(start) |> nonNull
+            let stdout=proc.StandardOutput.ReadToEndAsync()
+            let stderr=proc.StandardError.ReadToEndAsync()
+            Assert.That(proc.WaitForExit(60000),Is.True)
+            Assert.That(proc.ExitCode,Is.EqualTo(7),stderr.Result)
+            Assert.That(stdout.Result.Replace("\r\n","\n").Trim(),Is.EqualTo(if noResult then "after" else "after\n42"))
+        finally Directory.Delete(directory,true)
+
+    [<Test>]
+    member _.``Quiet display does not suppress failure or replace failure with selected status`` () =
+        let root=findRepoRoot ()
+        let code,output,error=runCli root root ["--no-result"] (Some "Env.setExitCode 7\nraise \"boom\"")
+        Assert.That(code,Is.EqualTo(3))
+        Assert.That(output,Is.Empty)
+        Assert.That(error,Does.Contain("boom"))
+
+    [<Test>]
+    member _.``No-result is a build option and is not accepted for IR artifacts`` () =
+        let root=findRepoRoot ()
+        let output=Path.Combine(Path.GetTempPath(),"fscript-no-result-ir-"+Guid.NewGuid().ToString("N"))
+        let code,_,error=runCli root root ["compile";Path.Combine(root,"samples","hello.fss");"--target";"ir";"--no-result";"--output";output] None
+        Assert.That(code,Is.EqualTo(1),error)
+        Assert.That(Directory.Exists output,Is.False)

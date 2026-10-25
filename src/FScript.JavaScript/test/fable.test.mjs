@@ -163,3 +163,11 @@ test("attribute forms cannot declare exports", () => {
     }
   }
 });
+
+test("JavaScript ignores exit status and preserves the returned value", () => {
+  assert.equal(run("Env.setExitCode 7\n42").value, 42n);
+  assert.equal(run("Env.setExitCode 256\n42").value, 42n);
+  assert.equal(run("Env.setExitCode (0-1)\n42").value, 42n);
+  const loaded = load("export let configure code =\n    Env.setExitCode code\n    code+1\n42");
+  assert.equal(invoke(loaded, "configure", [7]).value, 8n);
+});

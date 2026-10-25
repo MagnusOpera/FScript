@@ -28,7 +28,8 @@ type LirValue =
 
 type ExecutionResult =
     { Value: LirValue
-      Stdout: string list }
+      Stdout: string list
+      ExitCode: int }
 
 type HostExternal =
     { Name: string
@@ -44,9 +45,11 @@ type LoadedProgram =
 type LoadResult =
     { Program: LoadedProgram
       Value: LirValue
-      Stdout: string list }
+      Stdout: string list
+      ExitCode: int }
 
 module LirInterpreter =
+    let private currentExitCode = AsyncLocal<int ref>()
     let private currentOutput = AsyncLocal<ResizeArray<string>>()
     let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
     let private currentHostExternals = AsyncLocal<Map<string, HostExternal>>()
@@ -128,6 +131,8 @@ module LirInterpreter =
                 | entry :: rest -> loop (entry :: acc) rest
             loop [] entries |> List.sortBy (fst >> formatValue)
         match name, arguments with
+        | "Env.setExitCode", [VInt code] when code >= 0L && code <= 255L -> currentExitCode.Value.Value <- int code; Ok VUnit
+        | "Env.setExitCode", [VInt _] -> fail "FSI3027" span "Env.setExitCode expects a code between 0 and 255."
         | "Console.readLine", [ VUnit ] ->
             match System.Console.ReadLine() with
             | null -> Ok(VOption None)
@@ -637,6 +642,7 @@ module LirInterpreter =
 
     let private loadValidated (context: InterpreterContext) (hostExternals: HostExternal list) (program: Lir.Program) =
         let output = ResizeArray<string>()
+        currentExitCode.Value <- ref 0
         currentOutput.Value <- output
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         currentHostExternals.Value <- hostExternals |> List.map (fun external -> external.Name, external) |> Map.ofList
@@ -682,7 +688,8 @@ module LirInterpreter =
                   Exports = exports
                   HostExternals = currentHostExternals.Value }
               Value = value
-              Stdout = List.ofSeq output }
+              Stdout = List.ofSeq output
+              ExitCode = currentExitCode.Value.Value }
         match failure, program.Entry with
         | Some errors, _ -> Error errors
         | None, Some entry -> evaluate environment.Value entry |> Result.map finish
@@ -695,10 +702,14 @@ module LirInterpreter =
         : Result<LoadResult, CompilerDiagnostic> =
         match LirValidation.validate program with
         | Error diagnostics -> Error diagnostics.Head
-        | Ok validated -> loadValidated context hostExternals validated
+        | Ok validated ->
+            let previous=currentExitCode.Value
+            try loadValidated context hostExternals validated
+            finally currentExitCode.Value <- previous
 
-    let invoke (loaded: LoadedProgram) (exportName: string) (arguments: LirValue list) : Result<ExecutionResult, CompilerDiagnostic> =
+    let private invokeCore (loaded: LoadedProgram) (exportName: string) (arguments: LirValue list) : Result<ExecutionResult, CompilerDiagnostic> =
         let output = ResizeArray<string>()
+        currentExitCode.Value <- ref 0
         currentOutput.Value <- output
         currentFunctions.Value <- loaded.Program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         currentHostExternals.Value <- loaded.HostExternals
@@ -717,7 +728,12 @@ module LirInterpreter =
                 |> Option.defaultValue (Span.mk (Span.pos 0 0) (Span.pos 0 0))
             arguments
             |> List.fold (fun state argument -> state |> Result.bind (fun fn -> applyValue span fn argument)) (Ok exported)
-            |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output })
+            |> Result.map (fun value -> { Value = value; Stdout = List.ofSeq output; ExitCode = currentExitCode.Value.Value })
+
+    let invoke loaded exportName arguments =
+        let previous=currentExitCode.Value
+        try invokeCore loaded exportName arguments
+        finally currentExitCode.Value <- previous
 
     let executeWithHostExternals
         (context: InterpreterContext)
@@ -725,7 +741,7 @@ module LirInterpreter =
         (program: Lir.Program)
         : Result<ExecutionResult, CompilerDiagnostic> =
         load context hostExternals program
-        |> Result.map (fun result -> { Value = result.Value; Stdout = result.Stdout })
+        |> Result.map (fun result -> { Value = result.Value; Stdout = result.Stdout; ExitCode = result.ExitCode })
 
     let execute (context: InterpreterContext) (program: Lir.Program) : Result<ExecutionResult, CompilerDiagnostic> =
         executeWithHostExternals context [] program

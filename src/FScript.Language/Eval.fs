@@ -11,10 +11,14 @@ module Eval =
     type ProgramState =
         { TypeDefs: Map<string, Type>
           Env: Env
-          LastValue: Value }
+          LastValue: Value
+          ExitCode: int }
+
+    type InvocationResult = { Value: Value; ExitCode: int }
 
     type private RuntimeState =
         { SyncRoot: obj
+          ExitCode: int ref
           Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
           BackgroundFailure: EvalError option ref
@@ -438,6 +442,11 @@ module Eval =
           Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
           SpawnTask = spawnTaskValue runtime typeDefs
           AwaitTask = awaitTaskValue runtime
+#if FABLE_COMPILER
+          SetExitCode = ignore
+#else
+          SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
+#endif
           CheckRuntime = fun () ->
               raiseIfBackgroundFailed runtime
 #if !FABLE_COMPILER
@@ -765,6 +774,7 @@ module Eval =
         | EStructuralRecordUpdate(target, updates, span) -> return! updateRecord runtime typeDefs env target updates span true
         | EFieldGet(target, field, span) ->
             let rec qualified = function
+                | EVar("Env", _) when field="setExitCode" -> Some "Env"
                 | EVar(name, _) when not (env.ContainsKey name) -> Some name
                 | EFieldGet(parent, name, _) -> qualified parent |> Option.map (fun prefix -> prefix + "." + name)
                 | _ -> None
@@ -831,9 +841,10 @@ module Eval =
             return invalidOp "Immediate expressions are handled before compound evaluation."
     }
 
-    let invokeValue (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : Value =
+    let invokeValueWithExitCode (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : InvocationResult =
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None
@@ -874,8 +885,12 @@ module Eval =
                 let next = applyFunctionValue runtime typeDefs unknownSpan value nextArg |> Execution.run
                 applyMany next tailArgs
 
-        try applyMany fnValue args
+        try
+            let value=applyMany fnValue args
+            {Value=value;ExitCode=withRuntimeLock runtime (fun () -> runtime.ExitCode.Value)}
         finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+
+    let invokeValue typeDefs fnValue args = (invokeValueWithExitCode typeDefs fnValue args).Value
 
     let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -965,11 +980,13 @@ module Eval =
 
         { TypeDefs = typeDefs
           Env = env
-          LastValue = lastValue }
+          LastValue = lastValue
+          ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref state.ExitCode
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None
@@ -991,6 +1008,7 @@ module Eval =
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
             { SyncRoot = obj ()
+              ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
               BackgroundFailure = ref None

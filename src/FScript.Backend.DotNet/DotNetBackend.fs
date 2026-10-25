@@ -12,7 +12,7 @@ module DotNetBackend =
     let private diagnostic code message =
         { Code=code; Stage=DotNetGeneration; Message=message; Span=None }
 
-    let generate (options: DotNetOptions) (program: Lir.Program) =
+    let generateWithResultOutput printResult (options: DotNetOptions) (program: Lir.Program) =
         try
             let referencesExist = options.References |> List.forall File.Exists
             if not referencesExist then
@@ -22,7 +22,7 @@ module DotNetBackend =
                 Error [diagnostic "FSN7001" "AssemblyName must be a nonempty file name without path separators."]
             else
                 let csharpOptions: CSharpOptions = { Namespace=options.Namespace; ClassName=options.ClassName; References=options.References }
-                match CSharpBackend.generateForAssembly DotNetOptimization.optimize csharpOptions program with
+                match CSharpBackend.generateForAssembly printResult DotNetOptimization.optimize csharpOptions program with
                 | Error diagnostics -> Error diagnostics
                 | Ok files ->
                     let trees = files |> List.filter (fun f -> f.RelativePath.EndsWith(".cs",StringComparison.Ordinal)) |> List.map (fun f ->
@@ -60,10 +60,12 @@ module DotNetBackend =
                         else Ok files
         with ex -> Error [diagnostic "FSN7000" ex.Message]
 
+    let generate options program = generateWithResultOutput true options program
+
     /// Produce one self-contained executable for an explicit .NET runtime identifier.
-    let generateExecutable executable options program =
+    let generateExecutableWithResultOutput printResult executable options program =
         DotNetPackaging.validate executable options.OutputKind
-        |> Result.bind (fun () -> generate options program)
+        |> Result.bind (fun () -> generateWithResultOutput printResult options program)
         |> Result.bind (fun files ->
             let assembly=files |> List.find (fun file -> file.RelativePath=options.AssemblyName+".dll")
             use stream=new MemoryStream(assembly.Content,false)
@@ -75,3 +77,5 @@ module DotNetBackend =
             if executable.AheadOfTime && legacyBridge then
                 Error [diagnostic "FSN7105" "Native AOT requires static compiled FFI bindings. Add FScriptCompiledFunctions/FScriptCompiledTypes companions or bind exact CLR methods/types with ClrBindings; provider-factory SDK dispatch cannot be safely pruned. Managed single-file output still supports legacy providers."]
             else DotNetPackaging.publish executable (not legacyBridge) options files)
+
+    let generateExecutable executable options program = generateExecutableWithResultOutput true executable options program

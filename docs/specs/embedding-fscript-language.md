@@ -471,3 +471,9 @@ lets hosts control scheduling of background FScript continuations.
 CLI environment binding. See [debugger behavior](debugger.md) for callback affinity,
 watch restrictions, reference lifetime, and cancellation. The Extensibility SDK
 contract is unchanged, and Fable has no debugger support.
+
+## Execution-local shell status
+
+`Eval.ProgramState.ExitCode` and `ScriptHost.LoadedScript.ExitCode` report the status selected during evaluation. `ScriptHost.invokeWithExitCode` and `Eval.invokeValueWithExitCode` return `{ Value; ExitCode }` for an individual invocation. Each fresh evaluation/invocation starts at zero; interactive submissions preserve their session status. Existing value-returning APIs remain available. No API invokes process exit or mutates `System.Environment.ExitCode` on behalf of the script.
+
+The language-level `ExternalCallContext.SetExitCode` callback updates the evaluator's execution-local status. The separate extension SDK context and provider registration contract are unchanged. `Env.setExitCode` is a reserved, effectful core operation with portable range `0..255`; task writes share the owning execution and are synchronized, with scheduling-dependent last-write-wins ordering.

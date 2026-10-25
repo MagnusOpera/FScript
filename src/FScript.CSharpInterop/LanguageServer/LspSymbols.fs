@@ -37,6 +37,13 @@ let writeLine : string -> unit
 let readLine : unit -> string option
 """
 
+    let private envStdlibDoc =
+        stdlibDoc "Env.fss" """module Env
+
+// Effectful. Set the eventual shell status without stopping evaluation.
+let setExitCode : int -> unit
+"""
+
     let private taskStdlibDoc =
         stdlibDoc "Task.fss" """module Task
 
@@ -178,6 +185,7 @@ let queryValues : string -> string -> string list option
     let private stdlibVirtualSources : Map<string, string> =
         [ builtinsStdlibDoc
           consoleStdlibDoc
+          envStdlibDoc
           taskStdlibDoc
           listStdlibDoc
           optionStdlibDoc
@@ -214,6 +222,7 @@ let queryValues : string -> string -> string list option
 
     let private stdlibDefinitionEntries : (string * string * string) list =
         [ ("ignore", stdlibVirtualUri "Builtins.fss", "ignore")
+          ("Env.setExitCode", stdlibVirtualUri "Env.fss", "setExitCode")
           ("Console.writeLine", stdlibVirtualUri "Console.fss", "writeLine")
           ("Console.readLine", stdlibVirtualUri "Console.fss", "readLine")
           ("Task.spawn", stdlibVirtualUri "Task.fss", "spawn")
@@ -358,7 +367,8 @@ let queryValues : string -> string -> string list option
             |> Map.map (fun _ signature -> schemeTypeToString signature)
 
     let private builtinParameterNames : Map<string, string list> =
-        [ "ignore", [ "value" ]
+        [ "Env.setExitCode", [ "code" ]
+          "ignore", [ "value" ]
           "Int.tryParse", [ "value" ]
           "Float.tryParse", [ "value" ]
           "Bool.tryParse", [ "value" ]
@@ -3085,6 +3095,7 @@ let queryValues : string -> string -> string list option
 
                 match tryRecordFieldsForQualifier doc qualifier with
                 | Some fields ->
+                    let fields=if qualifier="Env" then fields @ ["setExitCode","int -> unit"] else fields
                     let filtered =
                         fields
                         |> List.filter (fun (name, _) ->
@@ -3095,7 +3106,7 @@ let queryValues : string -> string -> string list option
                         |> List.map (fun (name, fieldType) ->
                             let item = JsonObject()
                             item["label"] <- JsonValue.Create(name)
-                            item["kind"] <- JsonValue.Create(10)
+                            item["kind"] <- JsonValue.Create(if qualifier="Env" && name="setExitCode" then 3 else 10)
                             item["detail"] <- JsonValue.Create(fieldType)
                             item["filterText"] <- JsonValue.Create(name)
                             item["sortText"] <- JsonValue.Create($"0_{name}")

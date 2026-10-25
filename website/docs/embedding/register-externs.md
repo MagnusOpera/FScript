@@ -200,3 +200,5 @@ Complementary extensions may share opaque CLR values, such as NDArray. Depend on
 Providers can optionally declare `Pure` information for native compilation. Functions promise deterministic, effect-free, successful termination for valid inputs; external types promise deeply immutable visible data and payloads with safe, terminating registered field reads and structural observers. Constructors and ordinary methods do not inherit a receiver type's guarantee.
 
 The compiler reads optional `FScriptPureFunctions()` and `FScriptPureTypes()` provider methods returning registered script names. These declarations are trusted; ordinary interpreter execution and SDK validation remain unchanged. See [Pure FFI and external values](../compiler/compile-to-dotnet.md#pure-ffi-and-external-values) for the contract, examples, callback rules, and compiler API.
+
+Scripts can call the core `Env.setExitCode` operation without a registered extern. It updates execution-local status rather than terminating the host. .NET hosts can read `LoadedScript.ExitCode` or use `ScriptHost.invokeWithExitCode`; returned values remain separate from status.

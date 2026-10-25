@@ -2,7 +2,8 @@ namespace FScript.Language
 
 module BuiltinSignatures =
     let builtinSchemes : Map<string, Scheme> =
-        [ "ignore", Forall([ 0 ], TFun(TVar 0, TUnit))
+        [ "Env.setExitCode", Forall([], TFun(TInt, TUnit))
+          "ignore", Forall([ 0 ], TFun(TVar 0, TUnit))
           "Int.tryParse", Forall([], TFun(TString, TOption TInt))
           "Float.tryParse", Forall([], TFun(TString, TOption TFloat))
           "Bool.tryParse", Forall([], TFun(TString, TOption TBool))
@@ -58,7 +59,8 @@ module BuiltinSignatures =
         builtinSchemes
         |> Map.keys
         |> Seq.filter (fun name ->
-            name.StartsWith("List.", System.StringComparison.Ordinal)
+            name = "Env.setExitCode"
+            || name.StartsWith("List.", System.StringComparison.Ordinal)
             || name.StartsWith("Option.", System.StringComparison.Ordinal)
             || name.StartsWith("Map.", System.StringComparison.Ordinal))
         |> Set.ofSeq

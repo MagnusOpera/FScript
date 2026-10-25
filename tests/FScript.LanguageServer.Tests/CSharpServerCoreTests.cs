@@ -235,7 +235,7 @@ public sealed class CSharpServerCoreTests
                     ["uri"] = uri,
                     ["languageId"] = "fscript",
                     ["version"] = 1,
-                    ["text"] = "Env.Arguments |> List.length"
+                    ["text"] = "Env.setExitCode 0\nEnv.Arguments |> List.length"
                 }
             };
             LspClient.SendNotification(client, "textDocument/didOpen", didOpenParams);
