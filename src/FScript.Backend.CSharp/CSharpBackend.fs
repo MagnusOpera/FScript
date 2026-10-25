@@ -1076,6 +1076,7 @@ module CSharpBackend =
             |> Result.bind (if assemblyMode then specializeAssembly else LirMonomorphization.specialize)
             |> Result.map LirSimplification.optimize
             |> Result.map optimize
+            |> Result.map LirCommonSubexpressions.optimize
             |> Result.map (if assemblyMode then ClrBindings.pruneUnusedTypes else id)
             |> Result.bind LirValidation.validate
             |> Result.map (emit assemblyMode options)

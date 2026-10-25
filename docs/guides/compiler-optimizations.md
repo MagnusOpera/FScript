@@ -11,6 +11,7 @@ These passes run automatically. There is no FScript CLI optimization-level switc
 | Specialize reachable polymorphic uses | Yes | Yes |
 | Simplify constants, branches, aliases, and unused pure bindings in shared IR | Yes | Yes |
 | Use declared FFI purity and external-type guarantees | Yes | Yes |
+| Eliminate repeated proven-pure expressions | Yes | Yes |
 | Additional known-call and partial-application reduction | No | Yes |
 | Native methods for saturated calls | No | Yes |
 | Proven self-tail calls converted to loops | No | Yes |
@@ -79,6 +80,21 @@ Known list callbacks can lower to typed loops and direct calls for mapping, iter
 
 Constant Boolean terms and branches are simplified when doing so preserves evaluation. A condition such as `condition && true` can become `condition`. Short-circuiting still skips the right operand when the left operand determines the result. An effectful or potentially failing expression cannot be dropped merely because a later term is constant.
 
+## Common-subexpression elimination
+
+Both compiled targets reuse a proven-pure computation when the same typed expression has already been evaluated on every path reaching the later use:
+
+```fsharp
+let score n =
+    ((n + 1) * (n + 1), (n + 1) * (n + 1))
+```
+
+The addition and multiplication can each execute once per call to `score`. The pass also handles repeated intrinsic calls, explicitly pure FFI calls, immutable aggregates, and field observations backed by pure external-type contracts. It follows immutable aliases and preserves concrete types, lexical identities, and floating-point bits, including signed zero.
+
+Reuse starts at the first evaluation; the compiler does not move branch-local work ahead of its condition. A value computed before a branch can serve either arm, but values computed inside an arm do not escape into another arm or the continuation. Short-circuit operands, pattern guards, and loop bodies retain their conditional execution. Observable operations invalidate available computations; unmarked external values and potentially failing or nonterminating computations remain conservative.
+
+Shared values are ordinary local bindings or previously initialized globals. Function invocations and loop iterations have separate local evaluations. No runtime lookup table, persistent cache, or memoization is introduced. Computations that are not shared retain their original expression shape after temporary cleanup.
+
 ## Dead code and effects
 
 Generated-member reachability begins at program execution, result formatting, the executable entry point, and exported bindings. Unused generated methods, fields, runtime helpers, and types can be removed. Closed exports remain available to callers even if the script itself does not invoke them.
@@ -105,7 +121,7 @@ Curried application boundaries are retained in IR. Creating a pure function valu
 
 Failure is observable. Division is not considered pure unless its divisor and any signed-overflow case are proven safe. Explicit failures, potentially exhausted matches, and unproven recursive cycles remain observable even without mutation or I/O. Tail-call lowering does not establish termination. Observable generalized initializers that cannot be represented safely receive a diagnostic rather than silently disappearing.
 
-The contracts survive resolved inference, HIR, LIR, CLR linkage, specialization, and `.fsir` serialization. Older artifacts without them load conservatively. Provider declarations are trusted promises; FScript cannot generally verify their implementations. The current use is pruning and safe local propagation, not automatic memoization or general common-subexpression elimination.
+The contracts survive resolved inference, HIR, LIR, CLR linkage, specialization, and `.fsir` serialization. Older artifacts without them load conservatively. Provider declarations are trusted promises; FScript cannot generally verify their implementations. These contracts support pruning, safe local propagation, and common-subexpression elimination in both compiled targets. They do not enable automatic memoization.
 
 ## FFI pruning and executable publishing
 

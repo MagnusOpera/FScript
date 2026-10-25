@@ -11,6 +11,13 @@ open NUnit.Framework
 
 module ProviderFixture =
     open FScript.Extensibility
+    // Test-only instrumentation measures evaluation count; only Calculate is registered.
+    type CseProbe =
+        static let mutable calls=0
+        static member Reset() = calls<-0
+        static member Calls = calls
+        static member Calculate(value: int64) = calls<-calls+1;value+1L
+
     type QuietValue() =
         member _.Value = 7L
     type ConstructedValue(value: int64) =
@@ -66,6 +73,23 @@ module private Harness =
         let result=(programType.GetMethod("Run") |> nonNull).Invoke(null,[||])
         ((programType.GetMethod("FormatResult") |> nonNull).Invoke(null,[|result|]) |> nonNull) :?> string
     let execute program = executeWith options program
+    let csharpAssembly references program =
+        let files=match CSharpBackend.generate {Namespace="Generated";ClassName="Program";References=references} program with Ok files -> files | Error errors -> failwith (string errors)
+        let directory=Path.Combine(Path.GetTempPath(),"fscript-cse-csharp-"+Guid.NewGuid().ToString("N"))
+        try
+            Directory.CreateDirectory directory |> ignore
+            for file in files do File.WriteAllText(Path.Combine(directory,file.RelativePath),file.Content)
+            let start=Diagnostics.ProcessStartInfo("dotnet",WorkingDirectory=directory,RedirectStandardOutput=true,RedirectStandardError=true)
+            for arg in ["build";"-c";"Release";"--output";"compiled"] do start.ArgumentList.Add(arg)
+            use proc=Diagnostics.Process.Start(start) |> nonNull
+            let output=proc.StandardOutput.ReadToEndAsync()
+            let error=proc.StandardError.ReadToEndAsync()
+            if not (proc.WaitForExit(60000)) then proc.Kill(true);Assert.Fail("Generated C# build timed out.")
+            Assert.That(proc.ExitCode,Is.EqualTo(0),output.Result+error.Result)
+            Assembly.Load(File.ReadAllBytes(Path.Combine(directory,"compiled","Program.dll")))
+        finally
+            if Directory.Exists directory then Directory.Delete(directory,true)
+
 
 module private IL =
     let instructions (assembly: Assembly) =
@@ -102,6 +126,30 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    [<TestCase(false,false)>]
+    [<TestCase(false,true)>]
+    [<TestCase(true,false)>]
+    [<TestCase(true,true)>]
+    member _.``CSharp and assembly backends share only declared pure FFI evaluations`` (assemblyTarget: bool, isPure: bool) =
+        let external: CompilerExtern={Name="Host.calculate";Scheme=Forall([],TFun(TInt,TInt));Arity=1;Kind=UnsupportedHostExtern}
+        let contracts=if isPure then {PurityContracts.empty with PureFunctions=Set.singleton external.Name} else PurityContracts.empty
+        let source="(Host.calculate 7,Host.calculate 7)"
+        let program=match Compiler.compileWithPurity contracts {Program=Parser.parseProgram source;Externs=[external]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+        let native=typeof<ProviderFixture.CseProbe>
+        let program=ClrBindings.bindMethod external.Name (native.GetMethod("Calculate") |> nonNull) program
+        let references=[native.Assembly.Location]
+        let assembly=
+            if assemblyTarget then
+                let files=Harness.generate {Harness.options with References=references} program
+                Assembly.Load((files |> List.find (fun file -> file.RelativePath="CompiledScript.dll")).Content)
+            else Harness.csharpAssembly references program
+        ProviderFixture.CseProbe.Reset()
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let result=(typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+        let formatted=(typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|result|])
+        Assert.That(formatted,Is.EqualTo(box "(8, 8)"))
+        Assert.That(ProviderFixture.CseProbe.Calls,Is.EqualTo(if isPure then 1 else 2))
+
     [<Test>]
     member _.``A pure external type does not imply a pure constructor`` () =
         let native=typeof<ProviderFixture.ConstructedValue>

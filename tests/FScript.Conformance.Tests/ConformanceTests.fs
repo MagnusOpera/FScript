@@ -52,6 +52,17 @@ module private Harness =
         | Ok result -> Ok { Value = formatLir result.Value; Stdout = result.Stdout }
         | Error diagnostic -> Error diagnostic.Code
 
+    let cse source =
+        let lir=compile source |> _.Lir
+        let lir=match LirMonomorphization.specialize lir with Ok p -> p | Error diagnostics -> failwith (string diagnostics)
+        let lir=LirSimplification.optimize lir |> LirCommonSubexpressions.optimize
+        let lir=match LirValidation.validate lir with Ok p -> p | Error diagnostics -> failwith (string diagnostics)
+        let artifact=IrArtifact.serialize lir
+        let loaded=match IrArtifact.deserialize artifact with Ok p -> p | Error diagnostics -> failwith (string diagnostics)
+        match LirInterpreter.execute { ScriptName=None;Arguments=[] } loaded with
+        | Ok result -> Ok {Value=formatLir result.Value;Stdout=result.Stdout}
+        | Error diagnostic -> Error diagnostic.Code
+
     let legacyFailure source =
         try
             legacy source |> ignore
@@ -126,3 +137,25 @@ type ConformanceTests() =
         let expected = Harness.legacyFailure source
         Assert.That(expected.IsSome, Is.True, source)
         Assert.That(Harness.lirFailure source, Is.EqualTo(expected), source)
+
+    [<TestCase("let work n = ((n+1)*(n+1), (n+1)*(n+1))\n(work 3,work 4)")>]
+    [<TestCase("let outer x =\n    let inner y = (x+y,x+y)\n    inner\nlet first=outer 1\nlet second=outer 2\n(first 3,second 3)")>]
+    [<TestCase("let work n = ([n+1;n+2],[n+1;n+2],Some (n+1))\nwork 3")>]
+    [<TestCase("let work n =\n    let a=n+1\n    let a=n+2\n    (a,a,n+1)\nwork 3")>]
+    [<TestCase("let effect n =\n    Console.writeLine $\"{n}\"\n    n+1\n(effect 1,effect 1)")>]
+    [<TestCase("let guard n =\n    Console.writeLine $\"guard {n}\"\n    false\nmatch 1 with | n when guard n -> 0 | n when guard n -> 1 | _ -> 2")>]
+    [<TestCase("let work n = if n>0 then (n+1,n+1) else (n-1,n-1)\n(work 1,work 0)")>]
+    [<TestCase("let rec count n total = if n=0 then total else count (n-1) (total+1)\n(count 100 0,count 100 1)")>]
+    [<TestCase("let work x = ((false && raise \"skipped\"), (true || raise \"skipped\"), x+1,x+1)\nwork 7")>]
+    [<TestCase("let work n = match { [1]=n; [2]=n+1 } with | { [key]=value; ..rest } -> (key+value,key+value,Map.count rest) | _ -> (0,0,0)\nwork 3")>]
+    member _.``CSE preserves values output and serialized LIR execution`` source =
+        let expected=Harness.legacy source
+        match Harness.cse source with
+        | Ok actual -> Assert.That(actual,Is.EqualTo(expected))
+        | Error code -> Assert.Fail($"Optimized LIR failed: {code}")
+
+    [<TestCase("let fail n : int = raise \"failure\"\n(fail 1,fail 1)")>]
+    [<TestCase("let fail n = 1/n\n(fail 0,fail 0)")>]
+    [<TestCase("let fail n = match n with | 2 -> 0\n(fail 1,fail 1)")>]
+    member _.``CSE preserves failure categories`` source =
+        Assert.That(Harness.cse source,Is.EqualTo(Harness.lir source))

@@ -1,0 +1,8 @@
+entry
+  let %0 $cse recursive=False : (int * int)
+    operation IntAdd : int
+      const Int 1L : int
+      const Int 2L : int
+    tuple : (int * int)
+      load %0 : int
+      load %0 : int

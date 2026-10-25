@@ -8,6 +8,7 @@
     <Compile Include="HirTests.fs" />
     <Compile Include="IrArtifactTests.fs" />
     <Compile Include="PurityTests.fs" />
+    <Compile Include="CseTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

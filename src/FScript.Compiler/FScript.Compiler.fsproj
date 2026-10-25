@@ -13,6 +13,7 @@
     <Compile Include="NativeSpecialization.fs" />
     <Compile Include="LirMonomorphization.fs" />
     <Compile Include="LirSimplification.fs" />
+    <Compile Include="LirCommonSubexpressions.fs" />
     <Compile Include="ClrBindings.fs" />
     <Compile Include="IrArtifact.fs" />
     <Compile Include="Compiler.fs" />

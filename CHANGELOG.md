@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added shared common-subexpression elimination for C# and .NET compilation, reusing proven-pure computations without memoization.
+
 - Made String.replace total across interpreters and compiled backends: an empty search string returns the source unchanged.
 
 - Added trusted Pure contracts for FFI functions and external types, enabling stronger pruning while preserving failures and effects.
