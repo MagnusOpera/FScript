@@ -39,6 +39,8 @@ fscript compile program.fss --target csharp --output ./out/csharp
 dotnet run --project ./out/csharp/Program.csproj
 ```
 
+Compiled executables discard their final value after evaluation and write only explicit output, such as `Console.writeLine`. Scripting still displays final values.
+
 These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET](../compiler/compile-to-dotnet.md) and [Compile to C#](../compiler/compile-to-csharp.md).
 
 For a self-contained executable, add `--single-file` to the .NET target. For a Native AOT executable, use `--aot`. Publishing defaults to the current platform; pass `--runtime <rid>` to select another target. An explicitly supplied `--runtime` requires a value. Runtime identifiers use .NET names such as `osx-arm64`, `linux-x64`, and `win-x64`. Both options require a .NET 10 SDK for publishing and are rejected for other backends.

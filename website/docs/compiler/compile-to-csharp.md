@@ -24,6 +24,8 @@ dotnet run --project src/FScript -- compile samples/hello.fss --target csharp --
 
 Generation writes source and a project file; it does not invoke the SDK to build that project. After building, execution uses the generated program and its dependencies, without an interpreter, source script, or `.fsir` artifact.
 
+Generated executables evaluate the program without automatically printing its final value. Use `Console.writeLine` for output. `Run` still returns the program value, and `FormatResult` remains available for explicit API use. Scripting continues to display final values automatically.
+
 ## Project layout
 
 ```text

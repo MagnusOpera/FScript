@@ -1004,7 +1004,7 @@ module CSharpBackend =
         addType resultType
         addMember $"public static {csType resultType} Run() {{ {forceInitialization} return {result}; }}"
         addMember $"public static string FormatResult({csType resultType} value) => {fmtName resultType}(value);"
-        addMember "public static void Main(string[] args) { Console.WriteLine(FormatResult(Run())); }"
+        addMember "public static void Main(string[] args) { _ = Run(); }"
         if hasSdk then
             let sdk="global::FScript.Extensibility."
             let sv=sdk+"ScriptValue"

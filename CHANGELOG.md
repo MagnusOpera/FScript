@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Stopped compiled C# and .NET executables from automatically printing final values; explicit console output and scripting result display are preserved.
+
 - Defaulted single-file and Native AOT publishing to the current platform when --runtime is omitted.
 
 - Improved invalid .NET runtime-ID diagnostics with supported values and macOS spelling guidance, and clarified SDK requirements for compilation and publishing.

@@ -50,6 +50,8 @@ Closed exported bindings are specialization roots even when a library has no pro
 
 Scalars use `long`, `double`, `bool`, and `string`. Functions use typed `Func<A,B>` delegates. Lists use arrays, options use typed value structs, maps use sorted immutable entry arrays, tuples and records use generated immutable records, and unions use enums or sealed typed cases. Recursive records/unions use CLR references. Collection operations allocate changed values and retain source order. Structural equality and result formatting are generated per semantic type, including recursive aggregate equality and non-equality of functions/tasks.
 
+Generated console entry points call `Run` and discard its returned value. They do not invoke `FormatResult` or automatically write a result to stdout. This applies to C# projects, ordinary .NET assemblies, single-file bundles, and Native AOT output. Program evaluation, effects, and failures remain intact. `Run` and `FormatResult` remain available as explicit generated APIs; normal scripting retains automatic result display.
+
 Match targets are evaluated once. Typed checks/projections, repeated bindings, guards, and deterministic ordered-map selection follow the LIR pattern plans. An unbound variable key selects the first remaining entry; other key/value patterns select their first local match. Selection is committed before later clauses or remainder checks. Failures are ordinary runtime failures. Top-level initialization executes once and in source order through a lazy initializer outside CLR type initialization, allowing spawned tasks to call compiled functions without a type-initialization deadlock.
 
 ## Output and verification

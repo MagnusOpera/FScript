@@ -147,7 +147,7 @@ type CliTests() =
         Directory.CreateDirectory(tempRoot) |> ignore
         try
             let script=Path.Combine(tempRoot,"native.fss")
-            File.WriteAllText(script,"Ext.answer")
+            File.WriteAllText(script,"Console.writeLine (Int.toString Ext.answer)")
             let output=Path.Combine(tempRoot,"output")
             let code,_,error=runCli repoRoot tempRoot ["compile";script;"--target";target;"--output";output;"--extern-assembly";validProviderAssemblyPath()] None
             Assert.That(code,Is.Zero,error)
@@ -188,7 +188,7 @@ type CliTests() =
             let stderr=proc.StandardError.ReadToEnd()
             proc.WaitForExit()
             Assert.That(proc.ExitCode,Is.Zero,stderr)
-            Assert.That(stdout.Trim(),Is.EqualTo("42"))
+            Assert.That(stdout,Is.Empty)
             let irOutput=Path.Combine(directory,"ir")
             let code,_,error=runCli root directory ["compile";script;"--target";"ir";"--output";irOutput;"--extern-assembly";validProviderAssemblyPath()] None
             Assert.That(code,Is.Zero,error)
@@ -265,7 +265,7 @@ type CliTests() =
             let output=Path.Combine(directory,"output")
             let standalone=Path.Combine(directory,"standalone")
             Directory.CreateDirectory(standalone) |> ignore
-            let source=if ffi then "Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nEnv.Arguments"
+            let source=if ffi then "Console.writeLine (Int.toString (Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1))\n42" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nConsole.writeLine $\"{Env.Arguments}\""
             File.WriteAllText(script,source)
             let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
             let args=["compile";script;"--target";"dotnet";"--output";output;flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
@@ -292,7 +292,7 @@ type CliTests() =
             let stderr=proc.StandardError.ReadToEnd()
             Assert.That(proc.WaitForExit(60000),Is.True)
             Assert.That(proc.ExitCode,Is.Zero,stdout+stderr)
-            let expected=if ffi then "42" else "\"hello\"\n"+name+"\n[\"hello\"]"
+            let expected=if ffi then "42" else "\"hello\"\n"+name+"\n[hello]"
             Assert.That(stdout.Replace("\r\n","\n").Trim(),Is.EqualTo(expected))
         finally Directory.Delete(directory,true)
 

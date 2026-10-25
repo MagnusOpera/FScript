@@ -493,6 +493,6 @@ type BackendTests() =
             let error=proc.StandardError.ReadToEnd()
             Assert.That(proc.WaitForExit(60000),Is.True)
             Assert.That(proc.ExitCode,Is.EqualTo(0),output+error)
-            Assert.That(output.Trim(),Is.EqualTo("[2;3;4]"))
+            Assert.That(output,Is.Empty)
         finally
             if Directory.Exists directory then Directory.Delete(directory,true)

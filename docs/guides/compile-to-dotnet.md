@@ -19,6 +19,8 @@ dotnet run --project src/FScript -- compile samples/fibonacci.fss --target dotne
 dotnet out/fibonacci-dotnet/fibonacci.dll
 ```
 
+Compiled entry points evaluate the program and discard its final value. Output comes from explicit calls such as `Console.writeLine`; automatic result display belongs to scripting. Library callers can still retrieve values through `Run` and format them explicitly with `FormatResult`.
+
 Output includes a `.dll`, runtime configuration, and required external managed dependencies. The minimum runtime is .NET 10. Arguments after the assembly name become `Env.Arguments`.
 
 ```sh
