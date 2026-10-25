@@ -8,4 +8,4 @@ For the complete history, see the full [CHANGELOG.md](https://github.com/MagnusO
 
 ## Unreleased
 
-- Added typed HIR and executable LIR, versioned `.fsir` artifacts, a standalone LIR interpreter, and standalone .NET and C# backends.
+
