@@ -39,11 +39,11 @@ fscript compile program.fss --target csharp --output ./out/csharp
 dotnet run --project ./out/csharp/Program.csproj
 ```
 
-These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET or C#](../compiler/compile-to-dotnet.md).
+These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET](../compiler/compile-to-dotnet.md) and [Compile to C#](../compiler/compile-to-csharp.md).
 
 For a self-contained executable, add `--single-file --runtime <rid>` to the .NET target. For a Native AOT executable, use `--aot --runtime <rid>`. Runtime identifiers use .NET names such as `osx-arm64`, `linux-x64`, and `win-x64`. Both options require a .NET 10 SDK for publishing and are rejected for other backends.
 
-Continue with [Compile to .NET or C#](../compiler/compile-to-dotnet.md) or [Interpret IR](../compiler/interpret-ir.md).
+Continue with [Compilation](../compiler/compilation.md), [Compilation and optimizations](../compiler/compiler-optimizations.md), or [Interpret IR](../compiler/interpret-ir.md).
 
 ## From source
 

@@ -4,6 +4,8 @@
 
 Both backends share `LirMonomorphization` and `LirSimplification`. Reachable polymorphic uses receive concrete instantiations; reachable open results and effectful generalized initializers receive diagnostics.
 
+For target selection and executable workflows, see [Compilation](../guides/compilation.md). The user-facing [optimization guide](../guides/compiler-optimizations.md) compares both targets and illustrates the limits described below.
+
 ## Assembly optimization
 
 The .NET assembly pipeline additionally beta-reduces known nonrecursive calls with fresh lexical identities, propagates known partial applications, and hoists their top-level captures so effects execute once in source order. Recursive components are detected before expansion. Saturated calls use methods with multiple typed parameters. Exported or genuinely escaping functions retain typed delegates.

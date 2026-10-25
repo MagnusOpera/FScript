@@ -87,8 +87,8 @@ const config: Config = {
           position: 'left',
         },
         {
-          to: '/manual/compiler/dotnet',
-          label: 'Compile to .NET',
+          to: '/manual/compiler/overview',
+          label: 'Compilation',
           position: 'left',
         },
         {

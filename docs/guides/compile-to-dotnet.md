@@ -1,6 +1,6 @@
-# Compile to .NET or C#
+# Compile to .NET
 
-Both targets compile typed HIR/LIR to ordinary methods and delegates. Generated programs do not require the source script, a `.fsir` file, `ScriptHost`, or an interpreter.
+The .NET backend compiles a typed FScript program into an optimized .NET assembly. For a buildable source project, use [the C# backend](./compile-to-csharp.md). Generated programs do not require the source script, a `.fsir` file, `ScriptHost`, or an interpreter.
 
 ## Runnable .NET assembly
 
@@ -18,7 +18,7 @@ dotnet out/basic-dotnet/basic.dll samples/basic/helloworld.bas
 
 Compiled filesystem operations use the process working directory and OS permissions. Interpreter sandbox and execution-budget settings do not apply to standalone binaries.
 
-Assembly compilation resolves known calls and partial applications, lowers self tail calls to loops, and removes unused generated support code. Functions that escape into collections or FFI still use typed delegates. These optimizations apply to the assembly target; the C# source target retains its existing output policy.
+Assembly compilation resolves known calls and partial applications, lowers self tail calls to loops, and removes unused generated support code. Functions that escape into collections or FFI still use typed delegates. These optimizations apply to the assembly target. See [Compilation and optimizations](./compiler-optimizations.md) for the pass-by-pass comparison and its limits.
 
 ## Single-file and Native AOT executables
 
@@ -52,12 +52,7 @@ The compiler packages its optimized assembly; it does not recompile the script t
 
 ## C# source project
 
-```sh
-dotnet run --project src/FScript -- compile samples/fibonacci.fss --target csharp --output out/fibonacci-csharp
-dotnet run --project out/fibonacci-csharp/Program.csproj
-```
-
-The project contains `Program.cs` and BCL helpers in `Runtime.cs`. Extension programs also contain `RuntimeSDK.cs` and explicit SDK references. Build and edit this project independently with the .NET SDK.
+`--target csharp` generates source instead of an assembly. Its project layout, build commands, and reference handling are covered in [Compile to C#](./compile-to-csharp.md).
 
 ## Existing FFI providers
 
@@ -105,4 +100,4 @@ Use `Compiler.compileWithRegistration` for host signatures. `ClrBindings.bindMet
 
 `DotNetBackend.generate` accepts `OutputKind = Library` for library assemblies or `ConsoleApplication` for executables. Generated classes expose `Run`, `FormatResult`, and exported bindings. `CSharpBackend.generate` emits source files instead. See the [backend specification](../specs/dotnet-backends.md).
 
-C# diagnostics use `FSC6xxx`; assembly diagnostics use `FSN7xxx`. Roslyn errors or warnings prevent assembly output. Reachable open polymorphic results and generalized initializers with effects remain compilation diagnostics under whole-program specialization.
+Representation and CLR linkage diagnostics use `FSC6xxx`, including failures from the assembly target's shared emitter. Assembly emission and publishing diagnostics use `FSN7xxx`. Frontend and IR errors retain their own codes and source spans. Roslyn errors or warnings prevent assembly output. Reachable open polymorphic results and generalized initializers with effects remain compilation diagnostics under whole-program specialization.

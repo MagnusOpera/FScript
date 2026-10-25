@@ -20,6 +20,12 @@ It is designed for host applications that need:
 - **Host-first extensibility**: add external functions with explicit type schemes and runtime implementations.
 - **Security-aware embedding**: script capabilities are defined by what the host exposes.
 
+## Compilation
+
+FScript also compiles to optimized .NET assemblies and independently buildable C# projects. The .NET backend supports self-contained single-file and Native AOT executables, including typed FFI bindings.
+
+See [Compilation](docs/guides/compilation.md) for target selection, [.NET output](docs/guides/compile-to-dotnet.md), [C# projects](docs/guides/compile-to-csharp.md), and [optimization behavior](docs/guides/compiler-optimizations.md).
+
 ## Language Snapshot
 
 FScript currently includes:

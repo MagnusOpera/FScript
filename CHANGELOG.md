@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Added a Compilation documentation section with dedicated .NET, C#, and optimization guides.
+
 - Enforced `export let` as the only export declaration syntax across .NET and JavaScript.
 
 - Removed the Go backend, CLI target, and toolchain requirements; retained the shared IR and .NET optimizations.

@@ -10,11 +10,17 @@ This folder is organized into three layers:
 
 - Tutorial: [`guides/getting-started-tutorial.md`](./guides/getting-started-tutorial.md)
 - REPL guide: [`guides/repl.md`](./guides/repl.md)
-- Compiler CLI: [`guides/compiler-cli.md`](./guides/compiler-cli.md)
-- Compile to .NET or C#: [`guides/compile-to-dotnet.md`](./guides/compile-to-dotnet.md)
-- Compile and interpret IR: [`guides/interpret-ir.md`](./guides/interpret-ir.md)
 - FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)
 - Language rationale: [`guides/language-choices.md`](./guides/language-choices.md)
+
+## Compilation
+
+- [Choose a compilation target](./guides/compilation.md)
+- [Compile to .NET](./guides/compile-to-dotnet.md): assemblies, single-file executables, Native AOT, and typed FFI
+- [Compile to C#](./guides/compile-to-csharp.md): generated projects, source layout, and managed references
+- [Compilation and optimizations](./guides/compiler-optimizations.md): shared passes, assembly-only transformations, and pruning limits
+- [Compiler CLI reference](./guides/compiler-cli.md)
+- [Compile and interpret IR](./guides/interpret-ir.md)
 
 ## User references
 
