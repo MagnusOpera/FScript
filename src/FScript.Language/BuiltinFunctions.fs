@@ -16,16 +16,20 @@ module BuiltinFunctions =
         | None -> failwith $"Missing builtin signature for '{name}'"
 
     open Execution
-    let private implementations = Collections.Generic.Dictionary<ExternalFunction, (Value -> Value -> Execution<Value>) -> Value list -> Execution<Value>>(HashIdentity.Reference)
+    // Keep functions inside a record so Fable does not curry a dictionary value
+    // again when TryGetValue writes it through its out parameter.
+    type private ResumableImplementation =
+        { Invoke: (Value -> Value -> Execution<Value>) -> Value list -> Execution<Value> }
+    let private implementations = Collections.Generic.Dictionary<ExternalFunction, ResumableImplementation>(HashIdentity.Reference)
     let private resumable name arity implementation =
         let descriptor =
             { Name = name; Scheme = scheme name; Arity = arity
               Impl = fun context arguments -> implementation (fun f a -> Execution.result(context.Apply f a)) arguments |> Execution.run }
-        implementations.Add(descriptor, implementation)
+        implementations.Add(descriptor, { Invoke = implementation })
         descriptor
     let internal tryExecution descriptor =
         match implementations.TryGetValue descriptor with
-        | true, implementation -> Some implementation
+        | true, implementation -> Some implementation.Invoke
         | false, _ -> None
 
     let private tryParseInt64 (text: string) =

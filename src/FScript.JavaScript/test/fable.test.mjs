@@ -26,6 +26,32 @@ test("run returns tagged primitive values", () => {
   assert.equal(result.value, 42n);
 });
 
+test("sandbox Values demo runs collection callbacks in programs and sessions", () => {
+  const source = `let add x y = x + y
+let numbers = [1; 2; 3; 4]
+let total = List.fold add 0 numbers
+total`;
+  assert.deepEqual(run(source), { kind: "int", value: 10n });
+  const session = createSession();
+  assert.equal(submit(session, source).value.value, 10n);
+  assert.equal(submit(session, "List.fold add total numbers").value.value, 20n);
+});
+
+test("resumable built-ins preserve callbacks across the JavaScript registry", () => {
+  const cases = [
+    ["List.map (fun x -> x + 1) [1; 2]", "[2;3]"],
+    ["List.filter (fun x -> x > 1) [1; 2; 3]", "[2;3]"],
+    ["List.fold (fun acc x -> acc + x) 7 []", "7"],
+    ["Option.map (fun x -> x + 1) (Some 41)", "Some 42"],
+    ["Option.defaultWith (fun () -> 42) None", "42"],
+    ['Map.fold (fun acc key value -> acc + value) 0 { ["a"] = 1; ["b"] = 2 }', "3"],
+    ["List.fold (fun acc x -> acc + List.fold (fun sum y -> sum + y) 0 x) 0 [[1; 2]; [3; 4]]", "10"],
+  ];
+  for (const [source, expected] of cases) {
+    assert.equal(formatValue(run(source)), expected, source);
+  }
+});
+
 test("String.replace always returns, including empty search strings", () => {
   for (const [search, replacement, source, expected] of [
     ["", "x", "abc", "abc"],

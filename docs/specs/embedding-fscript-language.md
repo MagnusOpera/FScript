@@ -50,6 +50,8 @@ JavaScript hosts should use the Fable-compiled package surface instead of raw F#
 
 The JavaScript package targets Node and browser-compatible ESM hosts. It embeds `FScript.Language` through Fable and does not include the .NET `FScript.Runtime` extern catalog.
 
+Synchronous collection built-ins (including `List.fold`, `List.map`, `Map.fold`, and `Option.map`) invoke script callbacks in both JavaScript program and session execution. The website sandbox uses this same runtime; its Values demo returns `10`.
+
 ## Running scripts
 
 ```fsharp
