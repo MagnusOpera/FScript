@@ -114,12 +114,12 @@ module Eval =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
-            && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
-            && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
+            && (xf |> Map.forall (fun key value ->
+                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
         | VMap xf, VMap yf ->
             xf.Count = yf.Count
-            && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
-            && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
+            && (xf |> Map.forall (fun key value ->
+                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
         | VOption None, VOption None -> true
         | VOption (Some x), VOption (Some y) -> valueEquals x y
         | VUnionCase (tx, cx, px), VUnionCase (ty, cy, py) ->

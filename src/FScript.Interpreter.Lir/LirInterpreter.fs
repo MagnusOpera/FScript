@@ -160,7 +160,11 @@ module LirInterpreter =
         | "List.length", [ VList values ] -> Ok(VInt(int64 values.Length))
         | "List.empty", [] -> Ok(VList [])
         | "List.map", [ callback; VList values ] -> mapCallback callback [] values |> Result.map VList
-        | "List.iter", [ callback; VList values ] -> mapCallback callback [] values |> Result.map (fun _ -> VUnit)
+        | "List.iter", [ callback; VList values ] ->
+            let rec loop = function
+                | [] -> Ok VUnit
+                | value :: rest -> apply callback value |> Result.bind (fun _ -> loop rest)
+            loop values
         | "List.choose", [ callback; VList values ] ->
             mapCallback callback [] values |> Result.bind (fun mapped ->
                 mapped |> List.fold (fun state value ->
@@ -172,7 +176,7 @@ module LirInterpreter =
         | "List.collect", [ callback; VList values ] ->
             mapCallback callback [] values |> Result.bind (fun mapped ->
                 mapped |> List.fold (fun state value ->
-                    match state, value with Ok acc, VList items -> Ok(acc @ items) | Ok _, _ -> fail "FSI3022" span "List.collect callback must return list." | Error errors, _ -> Error errors) (Ok []) |> Result.map VList)
+                    match state, value with Ok acc, VList items -> Ok(items :: acc) | Ok _, _ -> fail "FSI3022" span "List.collect callback must return list." | Error errors, _ -> Error errors) (Ok []) |> Result.map (List.rev >> List.concat >> VList))
         | "List.exists", [ callback; VList values ] ->
             let rec loop = function [] -> Ok(VBool false) | value :: rest -> apply callback value |> expectBool |> Result.bind (fun found -> if found then Ok(VBool true) else loop rest)
             loop values

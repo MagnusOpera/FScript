@@ -1138,8 +1138,8 @@ module TypeInfer =
             for item in items do
                 let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) item
                 sAcc <- compose s1 sAcc
-                inferred <- inferred @ [ applyType sAcc t1 ]
-            let tRes = TTuple inferred
+                inferred <- applyType sAcc t1 :: inferred
+            let tRes = TTuple (List.rev inferred)
             sAcc, tRes, asTyped telemetry expr tRes
         | ERecord (fields, span) ->
             let mutable sAcc = emptySubst
@@ -1743,6 +1743,8 @@ module TypeInfer =
         let expressionTypes = expressions |> List.fold (fun state item -> Map.add item.Expr item.Type state) Map.empty
         let mutable nextSymbol = 0
         let symbols = ResizeArray<ResolvedSymbol>()
+        // Preserve the first matching occurrence when callers supply overlapping spans.
+        let symbolsByLocation = System.Collections.Generic.Dictionary<ResolvedSymbolKind * string * Span, ResolvedSymbol>()
         let references = ResizeArray<ResolvedSymbolReference>()
         let patternBindingIds = ResizeArray<Span * int>()
         let normalizeScheme (Forall(variables, schemeType)) =
@@ -1785,7 +1787,10 @@ module TypeInfer =
         let allocate name kind span scheme =
             let id = nextSymbol
             nextSymbol <- nextSymbol + 1
-            symbols.Add { SymbolId = id; Name = name; Kind = kind; Span = span; Scheme = Option.map normalizeScheme scheme }
+            let symbol = { SymbolId = id; Name = name; Kind = kind; Span = span; Scheme = Option.map normalizeScheme scheme }
+            symbols.Add symbol
+            let key = kind, name, span
+            if not (symbolsByLocation.ContainsKey key) then symbolsByLocation.Add(key, symbol)
             id
         let syntheticSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
         let mutable globalEnvironment = Map.empty
@@ -1828,7 +1833,7 @@ module TypeInfer =
             | TSExpr _ -> ()
         let recordReference environment name expression span =
             environment |> Map.tryFind name |> Option.iter (fun id ->
-                let symbol = symbols |> Seq.find (fun symbol -> symbol.SymbolId = id)
+                let symbol = symbols[id]
                 references.Add
                     { SymbolId = id
                       Name = name
@@ -1906,9 +1911,7 @@ module TypeInfer =
             | EInterpolatedString(parts, _) -> parts |> List.iter (function IPText _ -> () | IPExpr item -> visitSame item)
             | EUnit _ | ELiteral _ | ENone _ -> ()
         let allocated kind name span =
-            symbols
-            |> Seq.find (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
-            |> _.SymbolId
+            symbolsByLocation[(kind, name, span)].SymbolId
         let mutable resolutionEnvironment = builtinEnvironment
         for statement in typed do
             match statement with
@@ -1937,7 +1940,11 @@ module TypeInfer =
             | TSBackendImport(name, _, _, span) ->
                 resolutionEnvironment <- Map.add name (allocated DeclarationSymbol name span) resolutionEnvironment
         let resolvedReferences = references |> Seq.toList
-        let mutable remainingReferenceOccurrences = resolvedReferences
+        let referenceOccurrences = System.Collections.Generic.Dictionary<Span, ResizeArray<ResolvedSymbolReference>>()
+        for reference in resolvedReferences do
+            match referenceOccurrences.TryGetValue reference.Span with
+            | true, occurrences -> occurrences.Add reference
+            | _ -> referenceOccurrences.Add(reference.Span, ResizeArray([ reference ]))
         let finalType expression = expressionTypes |> Map.tryFind expression |> Option.defaultValue TUnit |> normalizeTypeVariables
         let declarations =
             (BuiltinTypes.typeDefs |> List.map (fun definition -> definition.Name, definition))
@@ -1963,8 +1970,7 @@ module TypeInfer =
             | LBool value -> ResolvedBool value
             | LString value -> ResolvedString value
         let symbolAt kind name span =
-            symbols
-            |> Seq.find (fun symbol -> symbol.Kind = kind && symbol.Name = name && symbol.Span = span)
+            symbolsByLocation[(kind, name, span)]
         let bindingAt kind name span bindingType =
             let id =
                 if kind = PatternBindingSymbol then
@@ -1982,15 +1988,17 @@ module TypeInfer =
                 | EVar(name, _) | ENameOf(name, _) | ETypeOf(name, _) -> Some name
                 | EFieldGet(EVar(moduleName, _), fieldName, _) -> Some $"{moduleName}.{fieldName}"
                 | _ -> None
-            let matches (item: ResolvedSymbolReference) =
-                item.Span = span && expectedName |> Option.forall ((=) item.Name)
-            let rec consume preceding = function
-                | [] -> None
-                | item :: tail when matches item ->
-                    remainingReferenceOccurrences <- List.rev preceding @ tail
-                    Some item
-                | item :: tail -> consume (item :: preceding) tail
-            consume [] remainingReferenceOccurrences
+            match referenceOccurrences.TryGetValue span with
+            | true, occurrences ->
+                let mutable index = 0
+                while index < occurrences.Count && not (expectedName |> Option.forall ((=) occurrences[index].Name)) do
+                    index <- index + 1
+                if index = occurrences.Count then None
+                else
+                    let reference = occurrences[index]
+                    occurrences.RemoveAt index
+                    Some reference
+            | _ -> None
         let rec resolvePattern (expected: Type) (pattern: Pattern) : ResolvedPattern =
             let span = Ast.spanOfPattern pattern
             let make node : ResolvedPattern = { Type = expected; Span = span; Node = node }
@@ -2164,8 +2172,7 @@ module TypeInfer =
                     let inferred = match fn.Type with TFun(argument, _) -> Some argument | _ -> None
                     match fn.Node with
                     | ResolvedReference reference ->
-                        symbols |> Seq.tryFind (fun symbol -> symbol.SymbolId = reference.SymbolId)
-                        |> Option.bind _.Scheme
+                        symbols[reference.SymbolId].Scheme
                         |> Option.bind (fun (Forall(_, signature)) ->
                             match signature with TFun(TRecord fields, _) -> Some(TRecord fields) | _ -> None)
                         |> Option.orElse inferred

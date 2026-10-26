@@ -1,7 +1,7 @@
 namespace FScript.Language
 
 module Parser =
-    type private TokenStream(tokens: Token list) =
+    type private TokenStream(tokens: Token array) =
         let mutable index = 0
         member _.Peek() = tokens.[index]
         member _.PeekAt(offset: int) = tokens.[index + offset]
@@ -61,7 +61,7 @@ module Parser =
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
     let rec private parseProgramWithSourceNameAndOrigin (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Program =
-        let tokens = Lexer.tokenizeWithSourceNameAndOrigin sourceName startLine startColumn src
+        let tokens = Lexer.tokenizeArrayWithSourceNameAndOrigin sourceName startLine startColumn src
         let stream = TokenStream(tokens)
 
         let parseSingleExpression (originLine: int) (originColumn: int) (exprText: string) =

@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
@@ -6,6 +6,12 @@ build:
 test:
 	dotnet test FScript.sln -c Release
 	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
+
+benchmark-interpreters:
+	dotnet run --project benchmarks/FScript.Interpreter.Benchmarks -c Release -- $(or $(iterations),5) $(or $(size),2000)
+
+benchmark-front-end:
+	dotnet run --project benchmarks/FScript.FrontEnd.Benchmarks -c Release -- $(or $(iterations),5) $(or $(size),200)
 
 benchmark-inference:
 	dotnet run --project benchmarks/FScript.Inference.Benchmarks/FScript.Inference.Benchmarks.fsproj -c Release -- $(iterations) $(bindings)

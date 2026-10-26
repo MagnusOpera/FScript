@@ -174,3 +174,28 @@ type ResolvedInferenceTests() =
         Assert.That(attribute.Name, Is.EqualTo("BackendHint"))
         Assert.That(attribute.Arguments = [ "fast"; "stable" ], Is.True)
         Assert.That(attribute.Span.Start.Line, Is.EqualTo(1))
+
+    [<Test>]
+    member _.``References with repeated spans retain occurrence order and lexical identity`` () =
+        let sharedSpan = Span.mk (Span.pos 10 1) (Span.pos 10 6)
+        let program =
+            Helpers.parse "let first (value: int) = value\nlet second (value: int) = value"
+            |> List.map (function
+                | SLet(name, parameters, annotation, EVar(variable, _), recursive, exported, span) ->
+                    SLet(name, parameters, annotation, EVar(variable, sharedSpan), recursive, exported, span)
+                | statement -> statement)
+        let resolved = TypeInfer.inferResolvedProgram program
+        let parameterIds =
+            resolved.Symbols
+            |> List.filter (fun symbol -> symbol.Kind = TypeInfer.ParameterSymbol)
+            |> List.map _.SymbolId
+        let referenceIds =
+            resolved.ResolvedStatements
+            |> List.collect _.Expressions
+            |> List.collect flatten
+            |> List.choose (fun expression ->
+                match expression.Node with
+                | TypeInfer.ResolvedReference reference -> Some reference.SymbolId
+                | _ -> None)
+        Assert.That(parameterIds.Length, Is.EqualTo(2))
+        Assert.That((referenceIds = parameterIds), Is.True)

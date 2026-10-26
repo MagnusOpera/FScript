@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.fs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/FScript.Interpreter.Lir/FScript.Interpreter.Lir.fsproj" /></ItemGroup>
+</Project>

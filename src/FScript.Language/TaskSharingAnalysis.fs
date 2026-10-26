@@ -131,7 +131,12 @@ module TaskSharingAnalysis =
             }
         let makeClosure env binding body =
             let capturedIds = references body |> Set.ofSeq
-            let captured = env |> Map.filter (fun id _ -> Set.contains id capturedIds)
+            let captured =
+                capturedIds
+                |> Set.fold (fun state id ->
+                    match Map.tryFind id env with
+                    | Some value -> Map.add id value state
+                    | None -> state) Map.empty
             let captures = captured |> Map.toList |> List.map snd |> combine
             { captures with Callables = [Closure(binding.SymbolId, binding, body, ref captured)] }
         let rec bindPattern env (pattern: ResolvedPattern) value =

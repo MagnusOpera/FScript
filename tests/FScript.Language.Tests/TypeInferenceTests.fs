@@ -940,3 +940,12 @@ type TypeInferenceTests () =
         Types.typeToString (TMap(TString, TInt)) |> should equal "int map"
         Types.typeToString (TMap(TInt, TString)) |> should equal "string map[int]"
         Types.typeToString (TMap(TBool, TList TInt)) |> should equal "int list map[bool]"
+
+    [<Test>]
+    member _.``Wide tuples preserve element types and order`` () =
+        let elements = [ for _ in 1..100 -> [ "1"; "true"; "2.5"; "\"text\"" ] ] |> List.concat
+        let source = "(" + String.concat ", " elements + ")"
+        let expected = [ for _ in 1..100 -> [ TInt; TBool; TFloat; TString ] ] |> List.concat
+        match Helpers.infer source |> List.last with
+        | TypeInfer.TSExpr expression -> Assert.That(expression.Type = TTuple expected, Is.True)
+        | _ -> Assert.Fail("Expected a tuple expression")

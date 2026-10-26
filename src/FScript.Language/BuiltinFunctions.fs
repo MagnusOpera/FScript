@@ -120,12 +120,12 @@ module BuiltinFunctions =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
-            && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
-            && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
+            && (xf |> Map.forall (fun key value ->
+                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
         | VMap xf, VMap yf ->
             xf.Count = yf.Count
-            && (Set.ofSeq xf.Keys = Set.ofSeq yf.Keys)
-            && (xf |> Map.forall (fun k xv -> valueEquals xv yf.[k]))
+            && (xf |> Map.forall (fun key value ->
+                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
         | VOption None, VOption None -> true
         | VOption (Some x), VOption (Some y) -> valueEquals x y
         | VUnionCase (tx, cx, px), VUnionCase (ty, cy, py) ->
@@ -325,14 +325,14 @@ module BuiltinFunctions =
         resumable "List.choose" 2 (fun apply args -> execution {
             match args with
             | [ callback; VList values ] ->
-                let! results =
-                    Execution.map (fun value -> execution {
-                        let! result = apply callback value
-                        match result with
-                        | VOption result -> return result
-                        | _ -> return fail "List.choose chooser must return option"
-                    }) values
-                return VList(List.choose id results)
+                let mutable results = []
+                for value in values do
+                    let! result = apply callback value
+                    match result with
+                    | VOption(Some item) -> results <- item :: results
+                    | VOption None -> ()
+                    | _ -> fail "List.choose chooser must return option"
+                return VList(List.rev results)
             | _ -> return fail "List.choose expects (callback, values)"
         })
 

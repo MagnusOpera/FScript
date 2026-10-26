@@ -156,3 +156,14 @@ type TaskSharingAnalysisTests() =
     member _.``Possible callees do not establish unconditional await ordering`` () =
         let source = "let work condition =\n    let value = Host.make 0\n    let first = Task.spawn (fun () -> Host.read value)\n    let wait = if condition then (fun () -> Task.await first |> ignore) else (fun () -> ())\n    wait ()\n    Host.read value"
         Assert.That(valueWarnings source, Is.Not.Empty)
+
+    [<Test>]
+    member _.``Closures capture referenced handles without sharing unrelated visible handles`` () =
+        let source =
+            "let unused = Host.make 0\nlet used = Host.make 1\nlet read () = Host.read used\nlet first = Task.spawn read\nlet second = Task.spawn read\nTask.await first + Task.await second"
+        let warnings = valueWarnings source
+        Assert.That(warnings, Is.Not.Empty)
+        Assert.That(warnings |> List.forall (fun warning -> warning.Message.Contains("Handle")), Is.True)
+        let isolated =
+            "let unused = Host.make 0\nlet first = Task.spawn (fun () -> Host.read (Host.make 1))\nlet second = Task.spawn (fun () -> 42)\nTask.await first + Task.await second"
+        Assert.That(valueWarnings isolated, Is.Empty)

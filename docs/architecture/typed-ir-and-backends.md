@@ -21,6 +21,14 @@ Validated LIR consumers are separate leaf assemblies: `FScript.Interpreter.Lir` 
 
 ## IR boundaries
 
+The parser uses an array-backed token stream for constant-time lookahead and backtracking;
+the public lexer API still returns a token list. Resolved inference indexes symbols by
+source identity, groups reference occurrences by span, and accesses sequential symbol IDs
+directly, while retaining ordered symbol and reference lists in its public result. Tuple inference accumulates elements
+in reverse and restores source order once. Task-sharing analysis looks up referenced
+captures in the environment rather than scanning every visible binding. These indexes
+are local to each invocation and do not cache scripts or host registrations.
+
 HIR consumes the semantic resolved tree rather than parser AST nodes or compatibility telemetry. It retains complete semantic types, schemes, attributes, declaration shapes, imports, exports, source spans, and explicit record conversions. Source IDs remain unchanged; compiler-synthesized IDs occupy a separate higher range. HIR and LIR contain no target-language storage types.
 
 LIR is structured, executable, and non-SSA. Lambdas become lifted functions with explicit ordered captures; closure creation references function IDs. Pattern matching becomes ordered projection, check, binding, and map-consumption plans. Consumers execute these plans rather than interpreting source patterns. A scrutinee is evaluated once, guards follow source order, and repeated bindings require structural equality.
@@ -46,6 +54,13 @@ The .NET backend can publish its optimized PE as a self-contained single-file or
 ## Interpretation, runtime context, and FFI
 
 The LIR interpreter uses its own tagged values and environments, not source AST nodes or the reference evaluator. It implements the pure scalar, string, list, option, and ordered-map catalog, with curried callback invocation and structural equality. Explicit tail calls run through a stack-safe trampoline. It can initialize a validated program once and invoke exports repeatedly without repeating top-level effects.
+
+Collection reducers preserve callback order and failures while avoiding discarded
+intermediate values: AST `List.choose` builds only selected results; LIR `List.iter`
+discards each callback result immediately, and LIR `List.collect` concatenates its
+validated chunks once. AST record/map equality checks counts and matching keys
+without building temporary key sets. These changes retain debugger suspension and
+host-managed field comparison behavior.
 
 Host linkage in artifacts consists of names, schemes, arity, and target descriptors, never executable delegates or opaque payloads. Unused unsupported handles are inert; fully applying unsupported linkage produces a stage-specific diagnostic. Interpreter callback registrations are separate from serialized LIR. Task signatures survive every IR stage, although fully applied tasks without interpreter adapters report `FSI3021`.
 

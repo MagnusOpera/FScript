@@ -650,3 +650,28 @@ type EvalTests () =
         let externs = Registry.all host
         let act () = Helpers.evalWithExterns externs "Task.spawn (fun _ -> 1)" |> ignore
         act |> should throw typeof<EvalException>
+
+    [<TestCase("{ [\"a\"] = 1 } = { [\"a\"] = 1 }", true)>]
+    [<TestCase("{ [\"a\"] = 1 } = { [\"b\"] = 1 }", false)>]
+    [<TestCase("{ [\"a\"] = 1 } = { [\"a\"] = 2 }", false)>]
+    [<TestCase("List.length (List.distinct [{ [\"a\"] = 1 }; { [\"b\"] = 1 }]) = 2", true)>]
+    [<TestCase("List.length (List.distinct [{ [\"a\"] = 1 }; { [\"a\"] = 1 }]) = 1", true)>]
+    member _.``Map equality retains key and value semantics`` (source: string, expected: bool) =
+        Helpers.eval source |> assertBool expected
+
+    [<Test>]
+    member _.``Choose preserves callback order selection and failures`` () =
+        let calls = ResizeArray<int64>()
+        let mark : ExternalFunction =
+            { Name = "Host.mark"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1
+              Impl = fun _ args ->
+                match args with
+                | [VInt value] -> calls.Add value; VInt value
+                | _ -> failwith "Expected int" }
+        let result = Helpers.evalWithExterns [mark] "List.choose (fun x -> let value = Host.mark x\n    if value % 2 = 0 then Some value else None) [1; 2; 3; 4]"
+        result |> assertListInt [2L; 4L]
+        Assert.That((List.ofSeq calls = [1L; 2L; 3L; 4L]), Is.True)
+        calls.Clear()
+        let failing () = Helpers.evalWithExterns [mark] "List.choose (fun x -> if Host.mark x = 3 then raise \"stop\" else Some x) [1; 2; 3; 4]" |> ignore
+        Assert.Throws<EvalException>(System.Action failing) |> ignore
+        Assert.That((List.ofSeq calls = [1L; 2L; 3L]), Is.True)

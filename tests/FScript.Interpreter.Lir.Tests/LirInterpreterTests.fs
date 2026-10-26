@@ -469,3 +469,33 @@ type LirInterpreterTests() =
         match LirInterpreter.execute {ScriptName=None;Arguments=[]} compiled with
         | Ok _ -> Assert.Fail("Expected an invalid exit code")
         | Error diagnostic -> Assert.That(diagnostic.Code,Is.EqualTo("FSI3027"))
+
+    [<Test>]
+    member _.``Collect preserves chunk order empty chunks and callback effects`` () =
+        let source = "List.collect (fun x ->\n    Console.writeLine (Int.toString x)\n    if x % 2 = 0 then [] else [x; x + 10]) [1; 2; 3; 4]"
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+            | Ok result ->
+                Assert.That(result.Value, Is.EqualTo(LirValue.VList [LirValue.VInt 1L; LirValue.VInt 11L; LirValue.VInt 3L; LirValue.VInt 13L]))
+                Assert.That((result.Stdout = ["1"; "2"; "3"; "4"]), Is.True)
+
+    [<TestCase("List.iter (fun x -> if Host.mark x = 3 then raise \"stop\" else ()) [1; 2; 3; 4]")>]
+    [<TestCase("List.collect (fun x -> if Host.mark x = 3 then raise \"stop\" else [x]) [1; 2; 3; 4]")>]
+    member _.``Collection callbacks stop at the first failure`` (source: string) =
+        let calls = ResizeArray<int64>()
+        let external : CompilerExtern =
+            { Name = "Host.mark"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1; Kind = UnsupportedHostExtern }
+        let host : HostExternal =
+            { Name = "Host.mark"
+              Invoke = function
+                | [LirValue.VInt value] -> calls.Add value; Ok(LirValue.VInt value)
+                | _ -> Error "Expected int" }
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [external] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            let result = LirInterpreter.executeWithHostExternals { ScriptName = None; Arguments = [] } [host] compiled.Lir
+            Assert.That(Result.isError result, Is.True)
+            Assert.That((List.ofSeq calls = [1L; 2L; 3L]), Is.True)

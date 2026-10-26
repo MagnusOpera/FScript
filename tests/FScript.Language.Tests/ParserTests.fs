@@ -848,3 +848,17 @@ type ParserTests () =
     member _.``Rejects backend imports with bodies`` () =
         let act () = Helpers.parse "[<Import(\"strings\", \"ToUpper\")>] let upper : string -> string = fun value -> value" |> ignore
         act |> should throw typeof<ParseException>
+
+    [<Test>]
+    member _.``Large programs preserve declaration order and source locations`` () =
+        let source = [ for i in 1..1000 -> $"let value{i} = {i}" ] |> String.concat "\n"
+        let program = Parser.parseProgramWithSourceName (Some "large.fss") source
+        Assert.That(program.Length, Is.EqualTo(1000))
+        program |> List.iteri (fun index statement ->
+            match statement with
+            | SLet(name, [], _, ELiteral(LInt value, _), _, _, span) ->
+                Assert.That(name, Is.EqualTo($"value{index + 1}"))
+                Assert.That(value, Is.EqualTo(int64 (index + 1)))
+                Assert.That(span.Start.File, Is.EqualTo(Some "large.fss"))
+                Assert.That(span.Start.Line, Is.EqualTo(index + 1))
+            | _ -> Assert.Fail("Expected an ordered literal declaration"))

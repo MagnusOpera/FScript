@@ -162,7 +162,7 @@ module Lexer =
         let raw = if contentLen <= 0 then "" else src.Substring(start, contentLen)
         raw, idx, cLine, cCol
 
-    let tokenizeWithSourceNameAndOrigin (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Token list =
+    let private tokenizeCore (sourceName: string option) (startLine: int) (startColumn: int) (src: string) =
         let tokens = ResizeArray<Token>()
         let indentStack = ResizeArray<int>()
         indentStack.Add(0)
@@ -410,7 +410,13 @@ module Lexer =
             indentStack.RemoveAt(indentStack.Count - 1)
             addToken Dedent (mkSpan sourceName line col 1) tokens
         addToken EOF (mkSpan sourceName line col 1) tokens
-        tokens |> Seq.toList
+        tokens
+
+    let internal tokenizeArrayWithSourceNameAndOrigin sourceName startLine startColumn src : Token array =
+        (tokenizeCore sourceName startLine startColumn src).ToArray()
+
+    let tokenizeWithSourceNameAndOrigin sourceName startLine startColumn src : Token list =
+        tokenizeCore sourceName startLine startColumn src |> Seq.toList
 
     let tokenizeWithSourceName (sourceName: string option) (src: string) : Token list =
         tokenizeWithSourceNameAndOrigin sourceName 1 1 src

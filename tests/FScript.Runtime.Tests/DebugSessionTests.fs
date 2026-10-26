@@ -234,3 +234,18 @@ type DebugSessionTests() =
             session.Resume(stopped.TaskId,"continue",true)
         Assert.That(completion.Wait(5000),Is.True)
         Assert.That(session.ResultSummary,Is.EqualTo("104"))
+
+    [<Test>]
+    member _.``Choose resumes selected and discarded callbacks without repetition`` () =
+        let source = "let choose x =\n    let local = x + 1\n    if local % 2 = 0 then Some local else None\nList.choose choose [1; 2; 3]"
+        let session,events,completion,thread,path = create source false
+        use session = session
+        session.SetBreakpoints(path,[(3,5)]) |> ignore
+        thread.Start()
+        for expected in [2;3;4] do
+            let stopped = nextStop events
+            let frame = session.StackTrace(stopped.TaskId)[0]
+            Assert.That(session.Evaluate(frame.Id,"local").Value,Is.EqualTo(string expected))
+            session.Resume(stopped.TaskId,"continue",true)
+        Assert.That(completion.Wait(5000),Is.True)
+        Assert.That(session.ResultSummary,Is.EqualTo("[2;4]"))
