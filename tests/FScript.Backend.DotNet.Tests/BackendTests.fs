@@ -392,6 +392,18 @@ type BackendTests() =
             Directory.SetCurrentDirectory(previous)
             Directory.Delete(directory,true)
 
+    [<Test>]
+    member _.``Shipped Roslyn assemblies are portable across release targets`` () =
+        for assembly in [typeof<Microsoft.CodeAnalysis.Compilation>.Assembly; typeof<Microsoft.CodeAnalysis.CSharp.CSharpCompilation>.Assembly] do
+            use stream = File.OpenRead(assembly.Location)
+            use image = new System.Reflection.PortableExecutable.PEReader(stream)
+            let headers = image.PEHeaders
+            let clr = headers.CorHeader |> nonNull
+            Assert.That(headers.CoffHeader.Machine, Is.EqualTo(System.Reflection.PortableExecutable.Machine.I386), assembly.FullName)
+            Assert.That(clr.Flags.HasFlag(System.Reflection.PortableExecutable.CorFlags.ILOnly), Is.True, assembly.FullName)
+            Assert.That(clr.Flags.HasFlag(System.Reflection.PortableExecutable.CorFlags.Requires32Bit), Is.False, assembly.FullName)
+            Assert.That(clr.ManagedNativeHeaderDirectory.Size, Is.Zero, assembly.FullName)
+
     [<TestCase(false)>]
     [<TestCase(true)>]
     member _.``Typed CLR companions marshal nested callbacks and record constructors`` (csharp: bool) =

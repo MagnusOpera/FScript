@@ -143,3 +143,7 @@ The view runtime is embedded only for assembly generation and pruned when unused
 Both compiled targets implement materialized filters with compact 32-bit selection masks and exactly sized output arrays. Known native callbacks remain direct calls, and unknown callbacks use typed runtime helpers. Workers evaluate predicates once in source order, form a mask per word, then copy selected elements through a local readonly span. Small inputs keep the mask in a scalar; empty results reuse the empty array. Predicate failures stop execution immediately.
 
 Private view adapters expose array and offset metadata, with spans constructed locally rather than returned by generated helpers, preserving independent IL verification. The bit operations are backend details: no FScript syntax, public HIR/LIR node, artifact format, or interpreted execution change is required. Pure pipeline fusion can remove materialized filters before emission.
+
+## Compiler dependency portability
+
+Both CLR backends reference the pinned portable `Microsoft.CodeAnalysis.CSharp` NuGet package, which supplies Roslyn and its common dependencies. They do not copy Roslyn binaries from the build SDK. SDK binaries may contain host-specific ReadyToRun code and cannot be bundled safely when publishing a CLI for a different OS or architecture. Release CI exercises the cross-built macOS CLI archive on macOS ARM64, including manifest discovery and FFI compilation.

@@ -112,3 +112,32 @@ jobs:
             .out/*.nupkg
             .out/*.tgz
             vscode-fscript/*.vsix
+
+  verify-macos-artifact:
+    needs: build-and-release
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Download cross-built macOS CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          mkdir -p "${RUNNER_TEMP}/fscript-release"
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern "fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" --dir "${RUNNER_TEMP}/fscript-release"
+          unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" \
+            -d "${RUNNER_TEMP}/fscript-release/unpacked"
+
+      - name: Verify released CLI compilation and automatic FFI configuration
+        shell: bash
+        run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${GITHUB_REF_NAME}"

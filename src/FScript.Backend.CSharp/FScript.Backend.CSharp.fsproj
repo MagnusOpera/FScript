@@ -8,8 +8,5 @@
     <EmbeddedResource Include="RuntimeSDK.cs" LogicalName="FScript.Backend.CSharp.RuntimeSDK.cs" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../FScript.Compiler/FScript.Compiler.fsproj" /></ItemGroup>
-  <ItemGroup>
-    <Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath><Private>true</Private></Reference>
-  </ItemGroup>
+  <ItemGroup><PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" /></ItemGroup>
 </Project>

@@ -8,4 +8,5 @@ For the complete history, see the full [CHANGELOG.md](https://github.com/MagnusO
 
 ## Unreleased
 
-
+- Fix FFI compilation across platforms, enable teapot Native AOT builds, add compilation progress, and document fscript.toml support for compile and analyze.
+- Present script iteration, optimized compilation, and typed .NET FFI together on the website homepage and introduction.
