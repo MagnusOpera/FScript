@@ -7,7 +7,7 @@ const latestReleasedVersion = versions[0] ?? 'current';
 
 const config: Config = {
   title: 'FScript',
-  tagline: 'A typed language for embedded rules, executable IR, and native .NET programs.',
+  tagline: 'Fast script iteration, optimized .NET compilation, and typed FFI.',
   favicon: 'img/favicon.ico',
 
   future: {

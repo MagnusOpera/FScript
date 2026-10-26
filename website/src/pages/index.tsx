@@ -6,7 +6,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 
 import styles from './index.module.css';
 
-type DemoKey = 'script' | 'dotnet' | 'javascript';
+type DemoKey = 'script' | 'compile' | 'dotnet' | 'javascript';
 
 const demos: Record<DemoKey, {label: string; filename: string; language: string; code: string}> = {
   script: {
@@ -26,6 +26,26 @@ export let quote (customer: Customer) =
     | _ -> 9
 
   basePrice * customer.Seats`,
+  },
+  compile: {
+    label: 'Compile',
+    filename: 'terminal',
+    language: 'Shell',
+    code: `# Iterate with the interpreter
+fscript pricing.fss
+
+# Build an optimized .NET assembly
+fscript compile pricing.fss --target dotnet \\
+  --output out/pricing
+dotnet out/pricing/pricing.dll
+
+# Publish a native executable for this platform
+fscript compile pricing.fss --target dotnet \\
+  --aot --output out/pricing-native
+
+# Or generate a buildable C# project
+fscript compile pricing.fss --target csharp \\
+  --output out/pricing-csharp`,
   },
   dotnet: {
     label: '.NET host',
@@ -81,9 +101,9 @@ function DemoWindow() {
       <div className={styles.windowBar}>
         <div className={styles.windowDots} aria-hidden="true"><i /><i /><i /></div>
         <span className={styles.windowTitle}>{demo.filename}</span>
-        <span className={styles.liveBadge}><i /> in-process</span>
+        <span className={styles.liveBadge}><i /> {activeDemo === 'compile' ? 'standalone' : 'in-process'}</span>
       </div>
-      <div className={styles.demoTabs} role="tablist" aria-label="Embedding example">
+      <div className={styles.demoTabs} role="tablist" aria-label="Interpret, compile, or embed FScript">
         {(Object.keys(demos) as DemoKey[]).map((key) => (
           <button
             key={key}
@@ -120,20 +140,21 @@ function HomepageHeader() {
       <div className={styles.orbTwo} aria-hidden="true" />
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}><span>Open source</span> · Embed in .NET and JavaScript · Compile to .NET</div>
+          <div className={styles.eyebrow}><span>Open source</span> · Interpreter · Compiler · FFI</div>
           <Heading as="h1" className={styles.heroTitle}>
-            Change the rules.<br /><em>Keep the host.</em>
+            Iterate in scripts.<br /><em>Compile for speed.</em>
           </Heading>
           <p className={styles.heroLead}>
-            Load <code>.fss</code> files, check their types, and run them inside your process. Or compile
-            them into a standalone .NET program.
+            FScript is a typed scripting language with an interpreter for fast iteration and an optimizing
+            compiler for .NET and native executables. Call your .NET libraries through typed FFI, or embed
+            scripts in .NET and JavaScript applications.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
               Try FScript <Arrow />
             </Link>
-            <Link className={styles.secondaryAction} to="/manual/learn/quickstart">
-              Install and run
+            <Link className={styles.secondaryAction} to="/manual/compiler/overview">
+              Compile a script
             </Link>
           </div>
           <div className={styles.installLine}>
@@ -142,23 +163,23 @@ function HomepageHeader() {
           </div>
           <div className={styles.heroProof}>
             <span>Static type inference</span>
-            <span>Pattern matching</span>
-            <span>Versioned IR</span>
-            <span>.NET backend</span>
+            <span>Optimized .NET code</span>
+            <span>Native AOT</span>
+            <span>Typed FFI</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
           <div className={styles.mascotMark}>
             <img src={mascot} alt="" width="92" height="92" />
-            <span>YOUR APP</span>
+            <span>YOUR CODE</span>
           </div>
           <DemoWindow />
         </div>
       </div>
       <div className={styles.heroTicker} aria-label="How FScript runs">
         <div>
-          <span>LOAD .FSS</span><i>✦</i><span>CHECK TYPES</span><i>✦</i><span>BUILD HIR</span><i>✦</i>
-          <span>EXECUTE LIR</span><i>✦</i><span>COMPILE .NET</span><i>✦</i><span>LOAD .FSS</span><i>✦</i>
+          <span>EDIT .FSS</span><i>✦</i><span>RUN A SCRIPT</span><i>✦</i><span>COMPILE .NET</span><i>✦</i>
+          <span>PUBLISH NATIVE AOT</span><i>✦</i><span>CALL .NET LIBRARIES</span><i>✦</i>
         </div>
       </div>
     </header>
@@ -168,10 +189,48 @@ function HomepageHeader() {
 export default function Home() {
   return (
     <Layout
-      title="FScript: embed typed rules or compile them to .NET"
-      description="Run typed FScript rules in .NET or JavaScript, execute validated LIR, or generate standalone .NET programs.">
+      title="FScript: fast script iteration, optimized compilation, typed FFI"
+      description="Iterate with the FScript interpreter, compile optimized .NET assemblies or Native AOT executables, and call .NET libraries through typed FFI. Embed scripts in .NET or JavaScript.">
       <HomepageHeader />
       <main className={styles.main}>
+        <section className={styles.workflowScene}>
+          <div className={`container ${styles.workflowGrid}`}>
+            <div>
+              <p className={styles.sectionLabel}>Optimizing compiler</p>
+              <Heading as="h2">Take the script.<br />Build the program.</Heading>
+              <p>
+                Start with <code>fscript program.fss</code> for an edit-and-run workflow. When execution
+                speed matters, compile to an optimized .NET assembly. Publish a self-contained executable
+                or use Native AOT to produce a native binary. Generated programs run without an FScript interpreter.
+              </p>
+              <p>
+                The .NET compiler specializes functions, turns self tail calls into loops, and removes unused
+                code. Eligible pure collection pipelines fuse into loops that avoid intermediate arrays.
+                You can also generate a C# project to inspect or integrate into your own build.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/compiler/overview">Compile your first program <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/compiler/optimizations">Explore the optimizations <Arrow /></Link>
+            </div>
+            <div>
+              <p className={styles.sectionLabel}>Typed .NET FFI</p>
+              <Heading as="h2">Put your libraries<br />to work.</Heading>
+              <p>
+                Expose .NET functions and host-provided types to scripts through typed extern bindings.
+                Pass records and callbacks, and work with opaque resources. The host chooses which
+                operations scripts can call.
+              </p>
+              <p>
+                Compiled programs support existing FFI providers through adapters. Typed CLR bindings enable
+                direct .NET calls and support trimming and Native AOT when the libraries are compatible.
+                The graphics sample puts scene generation and animation in FScript, with OpenGL rendering
+                supplied by a .NET provider.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/examples/ffi-graphics">Explore the graphics sample <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/compiler/dotnet">Compile with FFI <Arrow /></Link>
+            </div>
+          </div>
+        </section>
+
         <section className={styles.languageScene}>
           <div className={`container ${styles.sceneIntro}`}>
             <p className={styles.sectionLabel}>Language lineage</p>

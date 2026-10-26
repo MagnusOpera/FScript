@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Present script iteration, optimized compilation, and typed .NET FFI together on the website homepage and introduction.
+
 ## [0.86.0]
 
 

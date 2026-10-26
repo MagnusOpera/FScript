@@ -433,3 +433,12 @@
 @media (prefers-reduced-motion: reduce) {
   .primaryAction, .secondaryAction { transition: none; }
 }
+
+.workflowScene { padding: clamp(4rem, 7vw, 7rem) 0; background: #f4f2e9; }
+.workflowGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(3rem, 7vw, 7rem); }
+.workflowGrid h2 { margin: 0 0 1.5rem; font-size: clamp(2rem, 3.5vw, 3.5rem); line-height: 1.05; letter-spacing: -.04em; }
+.workflowGrid p:not(.sectionLabel) { color: #4f544e; font-size: 1.04rem; line-height: 1.78; }
+.workflowGrid .inlineLink { display: flex; width: fit-content; margin-top: 1rem; }
+@media (max-width: 900px) {
+  .workflowGrid { grid-template-columns: 1fr; }
+}
