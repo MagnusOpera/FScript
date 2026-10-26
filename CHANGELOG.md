@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.86.0]
+
+
 - Speed up compiled programs with fewer closures and temporary values, fused collection loops, and lower-allocation list operations.
 - Add opt-in, size-bounded FFI IL inlining and reproducible FScript/F# performance benchmarks.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.85.0...0.86.0
 
 ## [0.85.0]
 
