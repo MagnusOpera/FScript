@@ -4,9 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.86.3]
+
+
 - Reduce interpreter allocations for record/map equality and list selection, and speed up LIR list collection and iteration.
 
 - Speed up parsing, resolved analysis, and compilation of large scripts, reduce wide-tuple inference allocations, and streamline task-sharing closure analysis.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.86.2...0.86.3
 
 ## [0.86.2]
 
