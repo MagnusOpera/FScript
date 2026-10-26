@@ -4,8 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.86.1]
+
+
 - Fix FFI compilation across platforms, enable teapot Native AOT builds, add compilation progress, and document fscript.toml support for compile and analyze.
 - Present script iteration, optimized compilation, and typed .NET FFI together on the website homepage and introduction.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.86.0...0.86.1
 
 ## [0.86.0]
 
