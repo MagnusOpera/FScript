@@ -13,6 +13,8 @@
     <Compile Include="LirTraversal.fs" />
     <Compile Include="NativeSpecialization.fs" />
     <Compile Include="LirMonomorphization.fs" />
+    <Compile Include="LirAggregateElimination.fs" />
+    <Compile Include="LirTupleElimination.fs" />
     <Compile Include="LirSimplification.fs" />
     <Compile Include="LirCommonSubexpressions.fs" />
     <Compile Include="ClrBindings.fs" />

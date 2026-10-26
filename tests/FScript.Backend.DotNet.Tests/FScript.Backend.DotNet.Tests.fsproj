@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable><GenerateProgramFile>false</GenerateProgramFile></PropertyGroup>
-  <ItemGroup><Compile Include="BackendTests.fs" /><Compile Include="Program.fs" /></ItemGroup>
+  <ItemGroup><Compile Include="BackendTests.fs" /><Compile Include="ComparisonTests.fs" /><Compile Include="InlineTests.fs" /><Compile Include="Program.fs" /></ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="NUnit" Version="4.4.0" />
@@ -8,6 +8,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/FScript.Backend.DotNet/FScript.Backend.DotNet.fsproj" />
+    <ProjectReference Include="../../benchmarks/FScript.DotNet.Comparison/FScript.DotNet.Comparison.fsproj" />
     <ProjectReference Include="../../src/FScript.Runtime/FScript.Runtime.fsproj" />
   </ItemGroup>
 </Project>

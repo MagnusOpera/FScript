@@ -1,0 +1,84 @@
+// Runtime seed parameters prevent the harness from timing a constant result.
+type Event = { Id: int; Amount: int; Lane: int }
+type Adjustment = { Gross: int; Credit: int }
+type Decision =
+    | Reject
+    | Accept of Event
+    | Revise of Adjustment
+
+// This type and function are intentionally unused pruning probes.
+type UnusedPayload = { Label: string; Value: int }
+let unused_helper value = { Label = "unreachable"; Value = value * value }
+
+let affine scale bias value = value * scale + bias
+
+export let numeric (seed: int) =
+    let bias = seed % 97
+    let step = affine 17 bias
+    let rec loop remaining state total =
+        if remaining = 0 then total
+        else
+            let next = step state % 1000003
+            let weight = (remaining % 7) + 1
+            let repeated = next * next + 3 * next + 11
+            let contribution = repeated + (next * next + 3 * next + 11)
+            loop (remaining - 1) next ((total + contribution * weight) % 1000000007)
+    loop 100000 ((seed % 1000003) + 1) 0
+
+let make_event price seed index =
+    let row = { Id = index; Amount = price ((index * 37 + seed) % 1009); Lane = (index + seed) % 7 }
+    { row with Amount = row.Amount + 7 }
+
+export let pipeline (seed: int) =
+    let price = affine ((seed % 5) + 2) (seed % 17)
+    let values = [1..5000] |> List.map (make_event price seed)
+    values
+    |> List.filter (fun row -> if row.Amount % 3 = 0 then false else true)
+    |> List.fold (fun total row -> total + row.Amount * (row.Lane + 1) + row.Id) 0
+
+let classify seed index =
+    let amount = (index * 73 + seed) % 1009
+    if index % 5 = 0 then Reject
+    elif index % 3 = 0 then Revise { Gross = amount * 4; Credit = (amount % 19) + 1 }
+    else Accept { Id = index; Amount = amount; Lane = (index + seed) % 7 }
+
+let decision_value decision =
+    match decision with
+    | Reject -> 0
+    | Accept row -> row.Amount * (row.Lane + 1) + row.Id
+    | Revise adjustment -> adjustment.Gross - adjustment.Credit
+
+export let routing (seed: int) =
+    [1..5000]
+    |> List.map (classify seed)
+    |> List.fold (fun total decision -> total + decision_value decision) 0
+
+let rec quicksort values =
+    match values with
+    | [] -> []
+    | pivot :: rest ->
+        let smaller = rest |> List.filter (fun value -> value < pivot)
+        let greater = rest |> List.filter (fun value -> value >= pivot)
+        (quicksort smaller) @ [pivot] @ (quicksort greater)
+
+export let sorting (seed: int) =
+    let values = [0..511] |> List.map (fun index -> (index * 7919 + seed * 17) % 10007)
+    let sorted = quicksort values
+    let (count, checksum) =
+        sorted |> List.fold (fun state value ->
+            let (index, total) = state
+            (index + 1, total + (index + 1) * value)) (0, 0)
+    checksum + count
+
+// Diagnostic variant: the same pipeline with explicit nominal record boundaries.
+let make_event_nominal (price: int -> int) (seed: int) (index: int) : Event =
+    let as_event (row: Event) = row
+    let row = as_event { Id = index; Amount = price ((index * 37 + seed) % 1009); Lane = (index + seed) % 7 }
+    { row with Amount = row.Amount + 7 }
+
+export let pipeline_nominal (seed: int) =
+    let price = affine ((seed % 5) + 2) (seed % 17)
+    let values = [1..5000] |> List.map (make_event_nominal price seed)
+    values
+    |> List.filter (fun (row: Event) -> if row.Amount % 3 = 0 then false else true)
+    |> List.fold (fun total (row: Event) -> total + row.Amount * (row.Lane + 1) + row.Id) 0

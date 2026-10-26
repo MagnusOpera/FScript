@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><Optimize>true</Optimize></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="IlInspection.fs" />
+    <Compile Include="Comparison.fs" />
+    <Compile Include="Program.fs" />
+    <None Include="workloads.fss" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FScript.Backend.DotNet/FScript.Backend.DotNet.fsproj" />
+    <ProjectReference Include="../FScript.DotNet.Reference/FScript.DotNet.Reference.fsproj" />
+  </ItemGroup>
+</Project>

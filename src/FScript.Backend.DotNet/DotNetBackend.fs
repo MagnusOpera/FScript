@@ -45,19 +45,23 @@ module DotNetBackend =
                     let diagnostics = result.Diagnostics |> Seq.filter (fun d -> d.Severity=DiagnosticSeverity.Error || d.Severity=DiagnosticSeverity.Warning) |> Seq.map (fun d -> diagnostic "FSN7002" (d.ToString())) |> Seq.toList
                     if not result.Success || not diagnostics.IsEmpty then Error diagnostics
                     else
-                        let binary = { RelativePath=options.AssemblyName+".dll"; Content=output.ToArray() }
-                        let runtimeConfig =
-                            "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"},\"rollForward\":\"LatestMinor\"}}\n"
-                        let dependencies =
-                            ClrBindings.referencedDependencies binary.Content options.References
-                            |> List.filter (fun path -> Path.GetFileNameWithoutExtension path <> options.AssemblyName)
-                            |> List.map (fun path ->
-                                let name=Reflection.AssemblyName.GetAssemblyName(path).Name |> nonNull
-                                { RelativePath=name+".dll"; Content=File.ReadAllBytes path })
-                        let files = binary :: dependencies
-                        if options.OutputKind=ConsoleApplication then
-                            Ok(files @ [{ RelativePath=options.AssemblyName+".runtimeconfig.json"; Content=Encoding.UTF8.GetBytes(runtimeConfig) }])
-                        else Ok files
+                        let rewritten = DotNetIlInlining.rewrite program options.References (output.ToArray())
+                        match rewritten with
+                        | Error diagnostics -> Error diagnostics
+                        | Ok bytes ->
+                          let binary = { RelativePath=options.AssemblyName+".dll"; Content=bytes }
+                          let runtimeConfig =
+                              "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"},\"rollForward\":\"LatestMinor\"}}\n"
+                          let dependencies =
+                              ClrBindings.referencedDependencies binary.Content options.References
+                              |> List.filter (fun path -> Path.GetFileNameWithoutExtension path <> options.AssemblyName)
+                              |> List.map (fun path ->
+                                  let name=Reflection.AssemblyName.GetAssemblyName(path).Name |> nonNull
+                                  { RelativePath=name+".dll"; Content=File.ReadAllBytes path })
+                          let files = binary :: dependencies
+                          if options.OutputKind=ConsoleApplication then
+                              Ok(files @ [{ RelativePath=options.AssemblyName+".runtimeconfig.json"; Content=Encoding.UTF8.GetBytes(runtimeConfig) }])
+                          else Ok files
         with ex -> Error [diagnostic "FSN7000" ex.Message]
 
     let generate options program = generateWithResultOutput true options program

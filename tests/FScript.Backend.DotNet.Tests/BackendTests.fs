@@ -31,6 +31,13 @@ module ProviderFixture =
         static member Reset() = reads <- 0
         static member Reads = reads
         member _.Value = reads <- reads+1; 7L
+    type ProjectionValue(value: int64, extra: int64) =
+        static let mutable reads = 0
+        new() = ProjectionValue(7L,9L)
+        static member Reset() = reads <- 0
+        static member Reads = reads
+        member _.Value = reads <- reads+1;value
+        member _.Extra = extra
     type Provider =
         static member Provide() : ExtensionRegistration =
             let descriptor={Name="Secret"; Fields=Map.ofList ["Name",TString]; HostManaged=true}
@@ -400,9 +407,10 @@ type BackendTests() =
         let program=program |> ClrBindings.bindType "Buffer" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor([|typeof<string>|]) |> nonNull) |> ClrBindings.bindMethod "Native.text" (native.GetMethod("ToString",[||]) |> nonNull)
         Assert.That(Harness.execute program, Is.EqualTo("(5, \"hello\")"))
 
-    [<Test>]
-    member _.``Roslyn produces deterministic portable PE files`` () =
-        let program=Harness.compile "40+2"
+    [<TestCase("40+2")>]
+    [<TestCase("type Row={ A:int; B:int }\nexport let compute (n:int)=\n    let step x=x+n\n    let row={ A=step 1; B=n+1 }\n    let changed={ row with B=row.B+1 }\n    changed.A+changed.B")>]
+    member _.``Roslyn produces deterministic portable PE files`` (source: string) =
+        let program=Harness.compile source
         let first=Harness.generate Harness.options program
         let second=Harness.generate Harness.options program
         Assert.That((first=second), Is.True)
@@ -509,3 +517,291 @@ type BackendTests() =
         Assert.That((typ.GetProperty("ExitCode") |> nonNull).GetValue(null),Is.EqualTo(box 7))
         Assert.That(Environment.ExitCode,Is.EqualTo(original))
         if not noResult then Assert.That(value,Is.EqualTo(box 42L))
+
+
+    [<TestCase("let make bias =\n    let step x=x+bias\n    let rec loop n value=if n=0 then (fun x -> value+x) else loop (n-1) (step value)\n    loop 5 0\nlet a=make 2\nlet b=make 7\n(a 1,b 1,a 3)")>]
+    [<TestCase("let make bias =\n    let step x=x+bias\n    let rec loop n value=if n=0 then value else loop (n-1) (step value)\n    loop\nlet a=make 2\nlet b=make 7\n(a 5 0,b 5 0,a 3 1)")>]
+    [<TestCase("let make bias =\n    let step x=x+bias\n    let rec even n=if n=0 then step 1 else odd (n-1)\n    and odd n=if n=0 then step 2 else even (n-1)\n    even\n(make 3 20,make 7 21)")>]
+    member _.``Capture specialization preserves escaping closures and distinct environments`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+
+    [<Test>]
+    member _.``Nonescaping record updates and width conversions allocate no containers`` () =
+        let source="type Row={ A:int; B:int }\nexport let compute (n:int)=\n    let row={ A=n; B=n+1 }\n    let changed={ row with B=row.B+1 }\n    let narrow (value: {| A:int |})=value\n    let small=narrow changed\n    small.A+changed.B"
+        let assembly=IL.load source
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        for input in 1L..100L do Assert.That(run.Invoke input,Is.EqualTo(input*2L+2L))
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let mutable result=0L
+        for input in 1L..1000L do result <- run.Invoke input
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result,Is.EqualTo(2002L))
+        Assert.That(allocated,Is.Zero)
+
+    [<TestCase("let field name value=\n    Console.writeLine name\n    value\nlet result ()=\n    let row={| Z=field \"first\" 1; A=field \"second\" 2 |}\n    let changed={| row with A=field \"third\" (row.A+1) |}\n    changed.A\nresult ()", "first\nsecond\nthird\n")>]
+    [<TestCase("let field name value=\n    Console.writeLine name\n    value\nlet result ()=\n    let row={| Z=field \"first\" 1; A=field \"second\" 2 |}\n    let narrow (value: {| A:int |})=value\n    let small=narrow row\n    small.A\nresult ()", "first\nsecond\n")>]
+    member _.``Scalar replacement preserves all field effects in source order`` (source: string, output: string) =
+        let previous=Console.Out
+        use captured=new StringWriter()
+        try
+            Console.SetOut captured
+            let result=Harness.execute (Harness.compile source)
+            Assert.That(result,Is.EqualTo(if output.Contains("third",StringComparison.Ordinal) then "3" else "2"))
+            Assert.That(captured.ToString().Replace("\r\n","\n"),Is.EqualTo(output))
+        finally Console.SetOut previous
+
+    [<Test>]
+    member _.``Unused record fields still fail before a selected field returns`` () =
+        let source="let fail () : int=raise \"field failed\"\nlet select ()=\n    let row={| A=1; B=fail () |}\n    row.A\nselect ()"
+        let error=Assert.Throws<TargetInvocationException>(fun () -> Harness.execute (Harness.compile source) |> ignore)
+        Assert.That((nonNull (nonNull error).InnerException).Message,Does.Contain("field failed"))
+
+    [<Test>]
+    member _.``CSharp target shares record scalar replacement`` () =
+        let source="type Row={ A:int; B:int }\nlet compute n=\n    let row={ A=n; B=n+1 }\n    let changed={ row with B=row.B+1 }\n    let narrow (value: {| A:int |})=value\n    let small=narrow changed\n    small.A+changed.B\ncompute 20"
+        let program=Harness.compile source
+        let assembly=Harness.csharpAssembly [] program
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        Assert.That((typ.GetMethod("Run") |> nonNull).Invoke(null,[||]),Is.EqualTo(box 42L))
+
+    [<TestCase("dotnet")>]
+    [<TestCase("csharp")>]
+    member _.``Explicit external record conversions preserve unmarked getters`` (backend: string) =
+        let native=typeof<ProviderFixture.ProjectionValue>
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt;"Extra",TInt];HostManaged=false}]}
+        let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
+        let source="Native.create ()"
+        let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[external]} with Ok value -> value.Lir | Error errors -> failwith (string errors)
+        let original=program.Entry |> Option.get
+        let target=TRecord(Map.ofList ["Value",TInt])
+        let converted: Lir.Expression={Type=target;Span=original.Span;Node=Lir.RecordConvert(original,target)}
+        let result: Lir.Expression={Type=TInt;Span=original.Span;Node=Lir.Constant(Lir.Int 42L)}
+        let program={program with Entry=Some {result with Node=Lir.Let(Lir.SymbolId 1000000,"copy",false,converted,result)}}
+        let linked=program |> ClrBindings.bindType "NativeValue" native |> ClrBindings.bindMethod "Native.create" (native.GetConstructor(System.Type.EmptyTypes) |> nonNull)
+        let references=[native.Assembly.Location]
+        ProviderFixture.ProjectionValue.Reset()
+        let assembly=
+            if backend="dotnet" then
+                let file=Harness.generate {Harness.options with References=references} linked |> List.find (fun file -> file.RelativePath="CompiledScript.dll")
+                Assembly.Load file.Content
+            else Harness.csharpAssembly references linked
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        Assert.That((typ.GetMethod("Run") |> nonNull).Invoke(null,[||]),Is.EqualTo(box 42L))
+        Assert.That(ProviderFixture.ProjectionValue.Reads,Is.EqualTo(1))
+
+    [<Test>]
+    member _.``Shared simplification removes local record construction from CSharp methods`` () =
+        let source="type Row={ A:int; B:int }\nlet compute n=\n    let row={ A=n; B=n+1 }\n    let changed={ row with B=row.B+1 }\n    changed.A+changed.B\ncompute 20"
+        let files=match CSharpBackend.generate {Namespace="Generated";ClassName="Program";References=[]} (Harness.compile source) with Ok files -> files | Error errors -> failwith (string errors)
+        let source=(files |> List.find (fun file -> file.RelativePath="Program.cs")).Content
+        Assert.That(source,Does.Not.Contain("new v_Row("))
+
+    [<TestCase("type Row={A:int;B:int}\nlet values=[1..5] |> List.map (fun n -> {A=n;B=n+1})\nlet selected=values |> List.filter (fun (row:Row) -> row.A>2)\n(List.length values,selected |> List.fold (fun sum (row:Row) -> sum+row.B) 0)")>]
+    [<TestCase("type Row={A:int;B:int}\nlet build n=[1..n] |> List.map (fun x -> {A=x;B=x+1})\nlet values=build 3\n(values,values |> List.filter (fun (row:Row) -> row.A>1))")>]
+    [<TestCase("type Row={A:int;B:int}\nlet consume predicate values=List.filter predicate values\nlet values=[1..5] |> List.map (fun n -> {A=n;B=n+1})\nconsume (fun (row:Row) -> row.A>2) values")>]
+    member _.``Collection representation propagation preserves escaping and shared values`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+
+    [<Test>]
+    member _.``Collection callbacks with effects retain stage order`` () =
+        let source="let mapped n=\n    Console.writeLine $\"map {n}\"\n    n+1\nlet filtered n=\n    Console.writeLine $\"filter {n}\"\n    true\nlet folded total n=\n    Console.writeLine $\"fold {n}\"\n    total+n\n[1;2] |> List.map mapped |> List.filter filtered |> List.fold folded 0"
+        let capture action =
+            let previous=Console.Out
+            use output=new StringWriter()
+            try Console.SetOut output;let result=action () in result,output.ToString()
+            finally Console.SetOut previous
+        Assert.That(capture (fun () -> Harness.execute (Harness.compile source)),Is.EqualTo(capture (fun () -> Harness.legacy source)))
+
+    [<TestCase("[1..8] |> List.map (fun x -> x*3) |> List.filter (fun x -> x%2=0) |> List.fold (fun sum x -> sum+x) 0")>]
+    [<TestCase("[8..1] |> List.map (fun x -> x*3) |> List.filter (fun x -> x%2=0) |> List.fold (fun sum x -> sum*10+x) 0")>]
+    [<TestCase("[] |> List.map (fun (x:int) -> x+1) |> List.fold (fun sum x -> sum+x) 7")>]
+    [<TestCase("let input=[1;3;7]\ninput |> List.map (fun x -> x+1) |> List.map (fun x -> x*2) |> List.fold (fun sum x -> sum+x) 0")>]
+    [<TestCase("let values=[1..4] |> List.map (fun x -> x+1)\n(values,values |> List.fold (fun sum x -> sum+x) 0)")>]
+    member _.``Fused collection loops preserve endpoints order empty and escaping inputs`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+
+    [<Test>]
+    member _.``Possible map failure remains ahead of downstream effects`` () =
+        let source="let mapped x=if x=2 then raise \"map failed\" else x\nlet folded total x=\n    Console.writeLine \"folded\"\n    total+x\n[1;2] |> List.map mapped |> List.fold folded 0"
+        let previous=Console.Out
+        use output=new StringWriter()
+        try
+            Console.SetOut output
+            let error=Assert.Throws<TargetInvocationException>(fun () -> Harness.execute (Harness.compile source) |> ignore) |> nonNull
+            Assert.That((nonNull error.InnerException).Message,Does.Contain("map failed"))
+            Assert.That(output.ToString(),Is.Empty)
+        finally Console.SetOut previous
+
+    [<TestCase("[9223372036854775806..9223372036854775807]", "13")>]
+    [<TestCase("[(0 - 9223372036854775807)..(0 - 9223372036854775807 - 1)]", "-15")>]
+    member _.``Fused ranges terminate at integer limits without increment overflow`` (range: string, expected: string) =
+        let source=range+" |> List.map (fun x -> x%10) |> List.fold (fun sum x -> sum+x) 0"
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(expected))
+
+    [<Test>]
+    member _.``Local tuple construction and projection leave no carrier type`` () =
+        let source="export let compute (n:int)=\n    let packed=(n,n+1)\n    let (a,b)=packed\n    a+b"
+        let assembly=IL.load source
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        Assert.That(run.Invoke 20L,Is.EqualTo(41L))
+        Assert.That(assembly.GetTypes() |> Array.exists (fun typ -> not (isNull (typ.GetProperty("Item0")))),Is.False)
+
+    [<Test>]
+    member _.``Tuple fold accumulators allocate no per-iteration objects`` () =
+        let source="export let compute (n:int)=\n    let (count,total)=[1..1000] |> List.map (fun x -> x+n) |> List.fold (fun state x ->\n        let (count,total)=state\n        (count+1,total+x)) (0,0)\n    count+total"
+        let assembly=IL.load source
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        for _ in 1..10 do run.Invoke 20L |> ignore
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let result=run.Invoke 20L
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result,Is.EqualTo(521500L))
+        Assert.That(allocated,Is.Zero)
+        Assert.That(assembly.GetTypes() |> Array.exists (fun typ -> typ.IsValueType && not (isNull (typ.GetProperty("Item0")))),Is.True)
+
+    [<TestCase("let field name value=\n    Console.writeLine name\n    value\nlet values=(field \"first\" 1,field \"second\" 2)\nlet (a,b)=values\nConsole.writeLine \"third\"\na+b")>]
+    [<TestCase("let tuple=(1,2)\nmatch tuple with | (a,b) when a>2 -> a | _ -> 42")>]
+    [<TestCase("let make n=\n    let tuple=(n,n+1)\n    fun () -> tuple\nlet first=make 1\nlet second=make 5\n(first (),second ())")>]
+    [<TestCase("let nested=((1,2),(3,4))\nlet ((a,b),(c,d))=nested\n(a+b,c+d)")>]
+    member _.``Tuple elimination preserves effects guards repeated bindings and escaping values`` (source: string) =
+        let capture action =
+            let previous=Console.Out
+            use output=new StringWriter()
+            try Console.SetOut output;let result=action () in result,output.ToString()
+            finally Console.SetOut previous
+        Assert.That(capture (fun () -> Harness.execute (Harness.compile source)),Is.EqualTo(capture (fun () -> Harness.legacy source)))
+
+    [<Test>]
+    member _.``Tuple elimination retains compiled repeated-binding equality checks`` () =
+        // The AST evaluator overwrites repeated tuple names; compiled patterns
+        // already check equality. This optimization must retain that behavior.
+        Assert.That(Harness.execute (Harness.compile "let tuple=(1,2)\nmatch tuple with | (x,x) -> 9 | _ -> 42"),Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``Native tail-recursive list traversal allocates no suffix arrays`` () =
+        let source="let values=[1..1000]\nexport let compute (extra:int)=\n    let rec loop values total=\n        match values with\n        | [] -> total\n        | head::tail -> loop tail (total+head)\n    loop values extra"
+        let assembly=IL.load source
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        for _ in 1..10 do run.Invoke 20L |> ignore
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let result=run.Invoke 20L
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result,Is.EqualTo(500520L))
+        Assert.That(allocated,Is.Zero)
+
+    [<TestCase("List.tail [1]")>]
+    [<TestCase("let values=[1;2;3;4]\nlet rest=List.tail (List.tail values)\n(rest=[3;4],[3;4]=rest,List.tryHead rest,List.tryItem 9 rest,List.length rest)")>]
+    [<TestCase("let values=[1;2;3]\nlet rest=if true then List.tail values else values\n$\"{rest}\"")>]
+    [<TestCase("let values=[1;2;3]\nlet make ()=\n    let rest=List.tail values\n    fun () -> rest\nlet get=make ()\n(get (),get ())")>]
+    [<TestCase("let values=[1;2;3]\nlet rest=List.tail values\n(Some rest,(rest,values),Json.serialize rest)")>]
+    [<TestCase("let values=[1;2;3;4]\nlet rest=List.tail values\n(List.map (fun x -> x+1) rest,List.filter (fun x -> x%2=0) rest,List.rev rest,List.distinct rest,List.tryFind (fun x -> x>2) rest,List.tryGet (fun x -> x=3) rest)")>]
+    member _.``List views preserve empty nested formatting equality and escaping semantics`` (source: string) =
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+
+    [<Test>]
+    member _.``Native list exports and unknown callbacks retain array signatures`` () =
+        let source="export let tail (values:int list)=List.tail values\nexport let consume (fn:int list -> int)=fn (List.tail [1;2;3])"
+        let assembly=IL.load source
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let tail=((typ.GetProperty("v_tail") |> nonNull).GetValue(null) |> nonNull) :?> Func<int64 array,int64 array>
+        Assert.That(tail.Invoke [|1L;2L;3L|] = [|2L;3L|],Is.True)
+        let consume=((typ.GetProperty("v_consume") |> nonNull).GetValue(null) |> nonNull) :?> Func<Func<int64 array,int64>,int64>
+        Assert.That(consume.Invoke(Func<int64 array,int64>(fun values -> Array.sum values)),Is.EqualTo(5L))
+
+    [<TestCase("dotnet")>]
+    [<TestCase("csharp")>]
+    member _.``Empty list tail fails in both compiled targets`` (backend: string) =
+        let program=Harness.compile "let empty () : int list=[]\nList.tail (empty ())"
+        let assembly=
+            if backend="dotnet" then
+                let file=Harness.generate Harness.options program |> List.find (fun file -> file.RelativePath="CompiledScript.dll")
+                Assembly.Load file.Content
+            else Harness.csharpAssembly [] program
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let error=Assert.Throws<TargetInvocationException>(fun () -> (typ.GetMethod("Run") |> nonNull).Invoke(null,[||]) |> ignore) |> nonNull
+        Assert.That((nonNull error.InnerException).Message,Does.Contain("List.tail expects a non-empty list"))
+
+    [<Test>]
+    member _.``List views retain compiled structural contains and distinct semantics`` () =
+        // The legacy contains builtin currently handles scalar needles only.
+        let source="let values=[[1;2;3];[2;3]]\nlet rest=List.tail [1;2;3]\n(List.contains rest values,List.distinct [rest;[2;3]])"
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo("(true, [[2;3]])"))
+
+    [<TestCase("let left ()=\n    Console.writeLine \"left\"\n    [1]\nlet right ()=\n    Console.writeLine \"right\"\n    2\n(left ()) @ [right ()]")>]
+    [<TestCase("let left ()=\n    Console.writeLine \"left\"\n    1\nlet right ()=\n    Console.writeLine \"right\"\n    [2;3]\n(left ()) :: (right ())")>]
+    [<TestCase("let left ()=\n    Console.writeLine \"left\"\n    [1;2]\nlet right ()=\n    Console.writeLine \"right\"\n    [3;4]\nList.append (left ()) (right ())")>]
+    member _.``Native span concatenation preserves operand evaluation order`` (source: string) =
+        let capture action =
+            let previous=Console.Out
+            use output=new StringWriter()
+            try Console.SetOut output;let result=action () in result,output.ToString()
+            finally Console.SetOut previous
+        Assert.That(capture (fun () -> Harness.execute (Harness.compile source)),Is.EqualTo(capture (fun () -> Harness.legacy source)))
+
+    [<Test>]
+    member _.``Captured collection bindings keep a consistent representation`` () =
+        let source="type Row={A:int;B:int}\nexport let compute (n:int)=\n    let values=[1..100] |> List.map (fun x -> {A=x+n;B=x})\n    values |> List.filter (fun (row:Row) -> List.length values>0 && row.A>0) |> List.fold (fun sum (row:Row) -> sum+row.A) 0"
+        let assembly=IL.load source
+        let run=((assembly.GetType("Generated.Program") |> nonNull).GetProperty("v_compute") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
+        for _ in 1..10 do run.Invoke 10L |> ignore
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let result=run.Invoke 10L
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result,Is.EqualTo(6050L))
+        Assert.That(allocated,Is.LessThan(50000L),"A callback must not adapt its entire captured array on every item.")
+
+    [<TestCase(0)>]
+    [<TestCase(1)>]
+    [<TestCase(31)>]
+    [<TestCase(32)>]
+    [<TestCase(33)>]
+    [<TestCase(64)>]
+    [<TestCase(65)>]
+    member _.``Mask filters preserve order and word boundaries for known and unknown callbacks`` (length: int) =
+        let values=[for n in 1..length -> string n] |> String.concat ";"
+        let source = $"let make () : int list=[{values}]\nlet values=make ()\nexport let select (predicate:int -> bool)=List.filter predicate values\n(values |> List.filter (fun n -> n%%3=1),values |> List.filter (fun n -> true),values |> List.filter (fun n -> false))"
+        Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))
+        let assembly=IL.load source
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let select=((typ.GetProperty("v_select") |> nonNull).GetValue(null) |> nonNull) :?> Func<Func<int64,bool>,int64 array>
+        let visited=ResizeArray<int64>()
+        let actual=select.Invoke(Func<int64,bool>(fun n -> visited.Add n; n%3L=1L))
+        Assert.That(visited.ToArray() = [|1L..int64 length|],Is.True)
+        Assert.That((actual = ([|1L..int64 length|] |> Array.filter (fun n -> n%3L=1L))),Is.True)
+
+    [<Test>]
+    member _.``Mask filter stops at first failing predicate`` () =
+        let assembly=IL.load "export let select (predicate:int -> bool)=List.filter predicate [1..65]"
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let select=((typ.GetProperty("v_select") |> nonNull).GetValue(null) |> nonNull) :?> Func<Func<int64,bool>,int64 array>
+        let visited=ResizeArray<int64>()
+        Assert.Throws<InvalidOperationException>(fun () -> select.Invoke(Func<int64,bool>(fun n -> visited.Add n; if n=33L then invalidOp "stop" else true)) |> ignore) |> ignore
+        Assert.That(visited.ToArray() = [|1L..33L|],Is.True)
+
+    [<Test>]
+    member _.``Source target mask filters preserve effects and exact selections`` () =
+        let source="let select predicate values=List.filter predicate values\nlet predicate n=\n    Console.writeLine $\"{n}\"\n    n%32=0\nselect predicate [1..65]"
+        let program=Harness.compile source
+        let assembly=Harness.csharpAssembly [] program
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        use output=new StringWriter()
+        let original=Console.Out
+        try
+            Console.SetOut output
+            let result=(typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+            let formatted=(typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|result|])
+            Assert.That(formatted,Is.EqualTo("[32;64]"))
+            Assert.That(output.ToString(),Is.EqualTo(String.concat Environment.NewLine [for n in 1..65 -> string n]+Environment.NewLine))
+        finally Console.SetOut original
+
+    [<Test>]
+    member _.``Materialized native filter allocates only mask and exact output`` () =
+        let assembly=IL.load "let values=[1..512]\nexport let select (seed:int)=List.filter (fun n -> n%2=seed) values"
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let select=((typ.GetProperty("v_select") |> nonNull).GetValue(null) |> nonNull) :?> Func<int64,int64 array>
+        for _ in 1..30 do select.Invoke 0L |> ignore
+        let before=GC.GetAllocatedBytesForCurrentThread()
+        let result=select.Invoke 0L
+        let allocated=GC.GetAllocatedBytesForCurrentThread()-before
+        Assert.That(result.Length,Is.EqualTo(256))
+        Assert.That(allocated,Is.LessThanOrEqualTo(2200L))

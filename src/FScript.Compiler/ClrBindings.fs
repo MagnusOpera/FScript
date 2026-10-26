@@ -15,7 +15,8 @@ type ClrMethodLink =
       MemberName: string
       Parameters: string array
       IsStatic: bool
-      IsConstructor: bool }
+      IsConstructor: bool
+      Inline: bool }
 
 module ClrBindings =
     /// Keep only explicitly supplied dependencies referenced by the emitted PE and their
@@ -76,12 +77,16 @@ module ClrBindings =
               MemberName = method.Name
               Parameters = method.GetParameters() |> Array.map (fun parameter -> typeName parameter.ParameterType)
               IsStatic = method.IsStatic
-              IsConstructor = method.IsConstructor })
+              IsConstructor = method.IsConstructor; Inline = false })
 
     let tryMethodLink (path: string) : ClrMethodLink option =
         if path.StartsWith("clr:{", StringComparison.Ordinal) then
             try JsonSerializer.Deserialize<ClrMethodLink>(path.Substring(4)) |> Option.ofObj with :? JsonException -> None
         else None
+
+    /// Stable temporary assembly-only call-site marker, removed by IL expansion.
+    let inlineMarkerName (path:string) =
+        "FScriptInline_" + (Security.Cryptography.SHA256.HashData(Text.Encoding.UTF8.GetBytes path) |> Convert.ToHexString).Substring(0,16)
 
     /// Bind an existing host-external declaration to an exact CLR overload.
     /// Instance methods take their receiver as the first curried FScript argument.
@@ -109,6 +114,17 @@ module ClrBindings =
                     { declaration with Value = { declaration.Value with Node = Lir.TargetImport(target,declaration.Name) } }
                 else declaration)
         { program with Declarations = declarations }
+
+    /// Explicit permission to expand this exact typed FFI call in the .NET backend.
+    /// Independent of purity; legacy SDK adapters are not eligible.
+    let bindInlineMethod name (method: MethodInfo) program =
+        let linked = bindMethod name method program
+        let declarations = linked.Declarations |> List.map (fun declaration ->
+            if declaration.Name <> name then declaration
+            else
+                let link = tryMethodLink (methodLink method) |> Option.get
+                { declaration with Value = { declaration.Value with Node = Lir.TargetImport("clr:" + JsonSerializer.Serialize({ link with Inline = true }), method.Name) } })
+        { linked with Declarations = declarations }
 
     /// Retain a native type projection in the ordinary serialized target-type linkage.
     let bindType name (clrType: System.Type) (program: Lir.Program) =
@@ -209,12 +225,24 @@ module ClrBindings =
                         if program.Types |> List.exists (fun declaration -> declaration.Name=binding.Key) then program <- bindType binding.Key binding.Value program
                 | _ -> invalidOp $"{typ.FullName}.FScriptCompiledTypes must return IEnumerable<KeyValuePair<string, Type>>."
             | None -> ()
-            match companion "FScriptCompiledFunctions" with
-            | Some factory ->
-                match factory.Invoke(null,[||]) with
-                | :? Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string,MethodInfo>> as bindings ->
-                    for binding in bindings do
-                        if program.Declarations |> List.exists (fun declaration -> declaration.Name=binding.Key) then program <- bindMethod binding.Key binding.Value program
-                | _ -> invalidOp $"{typ.FullName}.FScriptCompiledFunctions must return IEnumerable<KeyValuePair<string, MethodInfo>>."
-            | None -> ()
+            let inlineNames =
+                match companion "FScriptInlineFunctions" with
+                | None -> Set.empty
+                | Some factory ->
+                    match factory.Invoke(null,[||]) with
+                    | :? Collections.Generic.IEnumerable<string> as names ->
+                        names |> Seq.map (fun name -> if String.IsNullOrWhiteSpace name then invalidOp "FScriptInlineFunctions contains an empty name." else name) |> Set.ofSeq
+                    | _ -> invalidOp "FScriptInlineFunctions must return IEnumerable<string>."
+            let bindings =
+                match companion "FScriptCompiledFunctions" with
+                | None -> []
+                | Some factory ->
+                    match factory.Invoke(null,[||]) with
+                    | :? Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string,MethodInfo>> as bindings -> Seq.toList bindings
+                    | _ -> invalidOp $"{typ.FullName}.FScriptCompiledFunctions must return IEnumerable<KeyValuePair<string, MethodInfo>>."
+            let unknown = Set.difference inlineNames (bindings |> List.map _.Key |> Set.ofList)
+            if not unknown.IsEmpty then invalidOp ("Inline requires an exact FScriptCompiledFunctions binding: " + String.concat ", " unknown)
+            for binding in bindings do
+                if program.Declarations |> List.exists (fun declaration -> declaration.Name = binding.Key) then
+                    program <- if inlineNames.Contains binding.Key then bindInlineMethod binding.Key binding.Value program else bindMethod binding.Key binding.Value program
         program

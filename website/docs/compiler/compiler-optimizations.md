@@ -16,10 +16,17 @@ These passes run automatically. There is no FScript CLI optimization-level switc
 | Simplify constants, branches, aliases, and unused pure bindings in shared IR | Yes | Yes |
 | Use declared FFI purity and external-type guarantees | Yes | Yes |
 | Eliminate repeated proven-pure expressions | Yes | Yes |
+| Scalar-replace nonescaping internal records and forward compatible projections | Yes | Yes |
 | Additional known-call and partial-application reduction | No | Yes |
 | Native methods for saturated calls | No | Yes |
+| Explicit per-binding FFI IL expansion | No | Opt-in |
 | Proven self-tail calls converted to loops | No | Yes |
 | Typed loops for known collection callbacks | No | Yes |
+| Propagate compatible record layouts through known collection consumers | No | Yes |
+| Fuse proven-pure map/filter/fold pipelines and range producers | No | Yes |
+| Eliminate local tuple temporaries and use small value-type tuple carriers | No | Yes |
+| Traverse native list tails through array views | No | Yes |
+| Materialize filters with compact masks and exactly sized output arrays | Yes | Yes |
 | Aggressive pruning of generated methods, fields, and support types | No | Yes |
 | FScript-managed single-file or Native AOT publishing | No | Yes, when requested |
 
@@ -51,6 +58,12 @@ List.map increment [1..4]
 This need not allocate a general partial-application object on each iteration. Known applications can become direct work in a typed collection loop. Captured expressions still evaluate once at the correct source position.
 
 Functions that escape, depend on an unknown higher-order parameter, or cross an FFI callback boundary may retain typed delegates and captured environments. Compilation does not remove every closure, delegate invocation, or allocation.
+
+## Capture cleanup after tail-loop lowering
+
+The assembly backend specializes known captured functions before native lowering. A local partial function whose implementation and captures are known can become direct arithmetic in its consumer, including a recursive loop. Actual captures remain explicit; separate invocations retain separate immutable environments.
+
+After tail calls become loops, the backend removes unused private native parameters and their inert arguments, then removes unreachable local closure cycles and capture snapshots. These passes iterate to a fixed point before member pruning. Delegate method-group references retain their original signatures. Calls and external property reads with possible effects or failures remain ordered. Escaping functions and unknown callbacks can still require delegates. This cleanup does not change interpreter execution or serialized LIR.
 
 ## Tail recursion
 
@@ -149,3 +162,60 @@ For API contracts, representations, and validation details, see the [.NET backen
 Compile with `--no-result` to remove the entry value as a reachability root before specialization. Pure and total computations used only for that value can disappear, including their functions, helpers, and dependencies. This can also permit an unused open pure value such as `None` to be discarded. Observable calls, potential failures, and `Env.setExitCode` writes remain roots; the option never licenses dropping failures or effects. No result-based exit-code inference is performed.
 
 Printing remains the default. Setting an exit code is never pure, including when two writes use the same integer. Tasks may share this status, so synchronized writes remain scheduling-dependent and are not deduplicated or reordered.
+
+## Temporary records and representation conversions
+
+Both compiled targets scalar-replace internal record temporaries used only by field projections, updates, or compatible width conversions. Field expressions keep their original evaluation order and execute once, including unused fields that perform I/O or fail. A projection through a compatible internal record conversion can read the original field directly. A record returned under a different internal record signature can be constructed in the destination representation.
+
+The .NET backend repeats this cleanup after known-call reduction and reachability pruning, so removing an unused closure can expose further temporary records. Records that escape through unknown consumers or captures remain ordinary values. Imported record constructors/getters and nested field adaptations are conservative boundaries; this pass does not treat them as plain field copies. Record scalar replacement alone does not fuse collection pipelines or eliminate their materialized result collections; the assembly-only fusion pass described below can remove intermediate arrays and expose further record elimination.
+
+## Comparing generated IL with F#
+
+A [reproducible compiler comparison](https://github.com/MagnusOpera/FScript/tree/main/benchmarks/FScript.DotNet.Comparison) checks equivalent FScript and F# programs covering tail loops, record pipelines, payload unions, and recursive quicksort. In a source checkout, run `make benchmark-dotnet-comparison` to validate results, measure warmed execution and allocations, and inspect both assemblies' IL. F# list and array baselines help distinguish compiler optimizations from collection representation costs.
+
+The measurements exclude interpretation, startup, and compilation. IL summaries describe static code before the .NET JIT performs its own optimizations; they are not machine-code performance guarantees. The accompanying correctness and IL checks run in the test suite without timing thresholds.
+
+## Explicit FFI IL expansion
+
+An FFI provider can mark individual typed bindings with `FScriptInlineFunctions()`, independently of `Pure`. The .NET backend copies eligible IL into the caller after source emission, remaps its control flow and locals, and cleans up argument slots and exposed integer constants. Exact forwarding adapters collapse to direct calls. This is an explicit backend transformation, not a JIT inlining hint.
+
+Effects and possible failures remain ordered. Unmarked aliases of the same native method remain calls, and unsupported reachable bodies receive diagnostics rather than silently ignoring the opt-in. The initial subset excludes exception handlers, type initializers, instance methods, private references, pointers, open generics, and stack-sensitive implementations. Provider authors must ensure removing the call frame is semantically safe. See [the Inline contract](./compile-to-dotnet.md#explicit-ffi-inline-contracts) for eligibility and examples.
+
+Expansion is also bounded by size: 16-byte tiny and 100-byte candidate screens, post-cleanup growth checks, and a cumulative caller budget. Exact forwarding adapters avoid duplication; oversized or unprofitable bodies remain ordinary typed calls. These are conservative starting heuristics, not a guarantee of optimal native code. See [the size policy](./compile-to-dotnet.md#size-and-growth-policy).
+
+
+## Collection representation propagation
+
+The assembly backend carries a consistent internal record element representation through known `List.map`, `List.filter`, and `List.fold` consumers. Single-use lifted callbacks can receive the producer's representation directly; their original field semantics are preserved by explicit conversions that subsequent scalar replacement can remove. A private collection binding can share that representation between compatible consumers without converting the complete array.
+
+Public returns, escaping/captured collection bindings, imported records, and unknown callbacks retain conversion boundaries. Callback evaluations and stage order are unchanged. This pass does not require callbacks to be pure because it changes representations rather than interleaving their execution. The C# source target and serialized IR retain their existing representations.
+
+
+## Pure collection pipeline fusion
+
+The assembly backend fuses single-consumer `List.map` and `List.filter` chains ending in `List.fold` when the complete region is proven pure and total. It evaluates callback setup once, constructs a bounded tail-recursive loop in private LIR, and reuses native call reduction, scalar replacement, and tail-loop lowering. Intermediate arrays disappear; nonescaping mapped records can disappear as well. Shared or escaping producer bindings remain materialized.
+
+Range sources can feed the loop directly, including descending ranges. The last endpoint is processed before deciding whether to increment, avoiding overflow at signed integer limits. Other list sources are evaluated once and indexed with a checked, typed option decision. Unknown calls, I/O, tasks, possible failures and incomplete matches prevent fusion; their existing stage order remains intact. The shared effect analysis proves unguarded exhaustive union matches and irrefutable typed tuple/record patterns total, while retaining guards and repeated-binding checks as possible failures. No public IR node or serialization change is needed.
+
+
+## Native tuple temporaries
+
+The assembly backend replaces local tuple constructors used only for irrefutable destructuring with independent item bindings. Every item still evaluates once in source order. Guards, repeated bindings, nested coercions and escaping uses retain normal pattern decisions and values.
+
+Small tuples of up to four simple scalar/reference fields use generated readonly value types in the .NET target, allowing native fold accumulators and method arguments to avoid heap carriers. Larger or nested/opaque layouts retain reference carriers. The source target keeps its existing tuple representation. Both targets preserve the semantic tuple type and dedicated structural equality/formatting; no CLR record equality or boxing is required for typed native tuple operations. Value-type constructor `newobj` instructions do not themselves imply heap allocation, so allocation measurements remain the check for per-iteration cost.
+
+
+## Private list-tail views
+
+Native method parameters, local list values and list-pattern bindings can use a readonly view of an owned array plus offset and length. `List.tail` and cons-pattern remainders then advance a view instead of copying every suffix. Native tail-call reassignment preserves that representation; known collection loops use a value-type enumerator or index the view directly. Equality and formatting have typed view consumers. Native cons/append helpers copy spans directly into an exactly sized result buffer; appending a singleton avoids a separate one-element array, and appending an empty list can reuse the immutable view. Readonly collection interfaces retain efficient counted access for fallback BCL consumers.
+
+Exports, ordinary delegates, aggregate fields and FFI keep their array representation. Partial views materialize at those array boundaries; a complete view can reuse its already owned array. Escaping closure captures take an array snapshot when the closure is created, rather than repeatedly materializing on invocation or retaining an unrelated array prefix. Existing array-returning native methods keep their ownership boundary. Some fallback enumerable consumers can still allocate iterator objects.
+
+The view runtime is embedded only for assembly generation and pruned when unused. Source projects retain arrays. Empty `List.tail` raises the documented evaluation error in both compiled targets; a nonempty singleton tail is an empty list. Source reachability follows implicit conversion operators and converted types so all required view/array adapters survive pruning. There is no public view type in the FScript language or IR artifact.
+
+
+## Exact-size compiled filters
+
+Materialized `List.filter` operations in both compiled targets record selection decisions in compact 32-bit masks, count accepted elements, then allocate and fill an exactly sized result array. Inputs of up to 32 elements keep their mask in a scalar; larger inputs allocate one bit per element rounded to mask words. Empty results reuse the empty array. Workers build masks a word at a time and copy selected elements from a local readonly span, without growing element buffers. This trades compact decision storage and a second traversal for fewer result-buffer allocations; allocation savings depend on input size and selection density. Known callbacks retain direct typed calls; unknown callbacks use a typed runtime helper.
+
+Predicates run exactly once per element in source order, including effectful predicates. A failing predicate stops the operation immediately. The second traversal only copies accepted values and does not invoke the predicate again. These are private backend bit operations; no bit-operation syntax or public IR change is introduced. Pure pipeline fusion can still eliminate materialized filters entirely.

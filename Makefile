@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-inference benchmark-evaluation vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
 build:
 	dotnet build FScript.sln -c Release
@@ -12,6 +12,11 @@ benchmark-inference:
 
 benchmark-evaluation:
 	dotnet run --project benchmarks/FScript.Evaluation.Benchmarks/FScript.Evaluation.Benchmarks.fsproj -c Release -- $(or $(iterations),20) $(or $(size),10000)
+
+# Compile once, then compare exported native functions against optimized F#.
+benchmark-dotnet-comparison:
+	dotnet build benchmarks/FScript.DotNet.Comparison/FScript.DotNet.Comparison.fsproj -c Release
+	DOTNET_TieredCompilation=0 DOTNET_ReadyToRun=0 dotnet benchmarks/FScript.DotNet.Comparison/bin/Release/net10.0/FScript.DotNet.Comparison.dll $(or $(iterations),500) $(or $(rounds),9) "$(or $(output),out/benchmarks/dotnet-vs-fsharp)" $(if $(filter true,$(verify)),--verify-only)
 
 fable-build:
 	dotnet tool restore

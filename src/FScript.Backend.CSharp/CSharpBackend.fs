@@ -46,7 +46,10 @@ module CSharpBackend =
         render value
 
     let private emit assemblyMode printResult options (program: Lir.Program) =
-        let hasSdk = program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)
+        let hasSdk =
+            (program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)) ||
+            (program.Types |> List.exists (fun declaration ->
+                match declaration.Definition with THostManaged _ -> declaration.Import.IsNone | _ -> false))
         let definitions = program.Types |> List.map (fun d -> d.Name, d.Definition) |> Map.ofList
         let imports = program.ImportedRecords |> List.map (fun d -> d.Name, d) |> Map.ofList
         let nativeTypes =
@@ -74,6 +77,10 @@ module CSharpBackend =
                 | None -> ident name
             | (TRecord _ | TTuple _ | TUnion _) as value -> "Shape_" + hash value
             | value -> fail "FSC6004" $"Cannot represent open type '{Types.typeToString value}' in C#." None
+        let nativeType t =
+            match t with
+            | TList item when assemblyMode -> $"ListView<{csType item}>"
+            | _ -> csType t
         let fieldName target name =
             match target with
             | TNamed typeName | THostManaged(typeName, _) when nativeTypes.ContainsKey typeName -> "@" + name
@@ -170,6 +177,11 @@ module CSharpBackend =
             | Lir.Bool value -> if value then "true" else "false"
             | Lir.String value -> quote value
         let eqName t = "Equal_" + hash t
+        let eqViewName t = "EqualView_" + hash t
+        let equal t left right =
+            match t with
+            | TList _ when assemblyMode -> $"{eqViewName t}(({nativeType t})({left}), ({nativeType t})({right}))"
+            | _ -> $"{eqName t}({left}, {right})"
         let fmtName t = "Format_" + hash t
         let interpName t = "Interpolate_" + hash t
         let encName t = "Encode_" + hash t
@@ -260,18 +272,18 @@ module CSharpBackend =
             | "List.choose", _ -> build (fun a _ -> $"{a.[1]}.Select(item => {a.[0]}(item)).Where(item => item.HasValue).Select(item => item.Value).ToArray()")
             | "List.collect", _ -> build (fun a _ -> $"{a.[1]}.SelectMany(item => {a.[0]}(item)).ToArray()")
             | "List.exists", _ -> build (fun a _ -> $"{a.[1]}.Any(item => {a.[0]}(item))")
-            | "List.contains", _ -> build (fun a _ -> $"{a.[1]}.Any(item => {eqName parameters.[0]}({a.[0]}, item))")
+            | "List.contains", _ -> build (fun a _ -> $"{a.[1]}.Any(item => {equal parameters.[0] a.[0] itemCode})")
             | "List.rev", _ -> build (fun a _ -> $"{a.[0]}.Reverse().ToArray()")
             | "List.distinct", _ -> build (fun a _ -> $"FsRuntime.Distinct({a.[0]}, {eqName (arrayType parameters.[0])})")
             | "List.fold", _ -> build (fun a _ -> $"FsRuntime.Fold({a.[0]}, {a.[1]}, {a.[2]})")
-            | "List.filter", _ -> build (fun a _ -> $"{a.[1]}.Where(item => {a.[0]}(item)).ToArray()")
+            | "List.filter", _ -> build (fun a _ -> $"FsRuntime.Filter({a.[0]}, {a.[1]})")
             | "List.length", _ -> build (fun a _ -> $"{a.[0]}.LongLength")
             | "List.tryFind", _ -> build (fun a _ -> $"FsRuntime.Find({a.[0]}, {a.[1]})")
             | "List.tryGet", _ -> build (fun a _ -> $"FsRuntime.FindIndex({a.[0]}, {a.[1]})")
             | "List.tryItem", _ -> build (fun a _ -> $"FsRuntime.At({a.[0]}, {a.[1]})")
             | "List.tryHead", _ -> build (fun a _ -> $"FsRuntime.At(0, {a.[0]})")
-            | "List.tail", _ -> build (fun a _ -> $"{a.[0]}.Skip(1).ToArray()")
-            | "List.append", _ -> build (fun a _ -> $"{a.[0]}.Concat({a.[1]}).ToArray()")
+            | "List.tail", _ -> build (fun a _ -> if assemblyMode then $"FsRuntime.TailView({a.[0]})" else $"FsRuntime.Tail({a.[0]})")
+            | "List.append", _ -> build (fun a _ -> if assemblyMode then $"FsRuntime.AppendView<{csType (arrayType parameters.[0])}>({a.[0]}, {a.[1]})" else $"{a.[0]}.Concat({a.[1]}).ToArray()")
             | "Option.defaultValue", _ -> build (fun a _ -> $"({a.[1]}.HasValue ? {a.[1]}.Value : {a.[0]})")
             | "Option.defaultWith", _ -> build (fun a _ -> $"({a.[1]}.HasValue ? {a.[1]}.Value : {a.[0]}(default(Unit)))")
             | "Option.isNone", _ -> build (fun a _ -> $"!{a.[0]}.HasValue")
@@ -345,6 +357,7 @@ module CSharpBackend =
                     let original = fresh "foreignOption"
                     wrap (csType semantic) $"var {original}={code}; return {original} is null ? default : {csType semantic}.Some({fromClr (native.GetGenericArguments().[0]) item (valueMember original)});"
                 | _ -> code
+        let inlineMarkers = Collections.Generic.Dictionary<string,string>()
         let sdkProviders = Collections.Generic.Dictionary<string,string>()
         let targetImport (path: string) memberName signature span supplied =
           if path.StartsWith("clr-sdk:",StringComparison.Ordinal) then
@@ -391,8 +404,22 @@ module CSharpBackend =
                     let converted = List.map3 (fun t native value -> toClr t native value) semanticInputs (Array.toList parameterTypes) inputs |> String.concat comma
                     let call = if link.IsConstructor then $"new {typeName declaring}({converted})" elif link.IsStatic then $"{typeName declaring}.@{memberName}({converted})" else $"({args.[0]}).@{memberName}({converted})"
                     let returnType = match method with :? MethodInfo as m -> m.ReturnType | _ -> declaring
+                    let call =
+                        if assemblyMode && link.Inline then
+                            let name=ClrBindings.inlineMarkerName path
+                            if not (inlineMarkers.ContainsKey name) then
+                                let receiver=if receiverCount=1 then [typeName declaring+" receiver"] else []
+                                let parameters=parameterTypes |> Array.mapi (fun index typ -> typeName typ+" p"+string index) |> Array.toList
+                                let values=parameterTypes |> Array.mapi (fun index _ -> "p"+string index) |> String.concat comma
+                                let target=if link.IsConstructor then $"new {typeName declaring}({values})" elif link.IsStatic then $"{typeName declaring}.@{memberName}({values})" else $"receiver.@{memberName}({values})"
+                                let returnCode=if returnType=typeof<Void> then "void" else typeName returnType
+                                inlineMarkers.Add(name,$"private static {returnCode} {name}({String.concat comma (receiver @ parameters)}) => {target};")
+                            let receiver=if receiverCount=1 then args.[0]+(if converted="" then "" else comma) else ""
+                            name+"("+receiver+converted+")"
+                        else call
                     fromClr returnType result call)
         for declaration in program.Declarations do knownBindings.[declaration.Id] <- declaration.Value
+        let mutable recursiveClosureEnvironment: Map<Lir.SymbolId,string> option=None
         let mutable available=Set.ofSeq globalIds
         let within ids action =
             let previous=available
@@ -449,7 +476,7 @@ module CSharpBackend =
                         | None -> []
                     let setup=order |> List.map (fun (index,argument) ->
                         if index=0 && collectionCallback.IsSome then
-                            callbackCaptures |> List.map (fun (id,name) -> $"{csType symbolTypes.[id]} {name}={sym id};") |> String.concat space
+                            callbackCaptures |> List.map (fun (id,name) -> $"{nativeType symbolTypes.[id]} {name}={sym id};") |> String.concat space
                         else $"var {names.[index]}={emit argument};") |> String.concat space
                     let arguments=List.map2 (fun (index,(arg: Lir.Expression)) expected -> coerce arg.Type expected names.[index]) args (parameters |> List.take args.Length)
                     let result=
@@ -483,11 +510,14 @@ module CSharpBackend =
                                 | "List.exists",_ -> $"foreach (var {item} in {source}) {{ if ({call}) return true; }} return false;"
                                 | "List.tryFind",_ -> $"foreach (var {item} in {source}) {{ if ({call}) return {csType value.Type}.Some({item}); }} return default;"
                                 | "List.tryGet",_ -> $"for (int {index}=0; {index}<{source}.Length; {index}++) {{ var {item}={source}[{index}]; if ({call}) return {csType value.Type}.Some({index}); }} return default;"
-                                | "List.filter",_ -> $"var {result}=new System.Collections.Generic.List<{csType itemType}>(); foreach (var {item} in {source}) {{ if ({call}) {result}.Add({item}); }} return {result}.ToArray();"
+                                | "List.filter",_ ->
+                                    // Record each predicate result once; allocate only the exact output payload.
+                                    let span= $"FsRuntime.ListBuffer({source}).AsSpan(FsRuntime.ListOffset({source}),{source}.Length)"
+                                    $"System.ReadOnlySpan<{csType itemType}> items={span}; int length=items.Length; int words=length==0 ? 0 : ((length-1)>>5)+1; uint[]? masks=words>1 ? new uint[words] : null; uint smallMask=0; int count=0; for(int index=0;index<length;) {{ int start=index; int size=Math.Min(32,length-index); uint mask=0; for(int bit=0;bit<size;bit++,index++) {{ var {item}=items[index]; if({call}) {{ mask |= 1u << bit; count++; }} }} if(masks is null) smallMask=mask; else masks[start>>5]=mask; }} if(count==0) return System.Array.Empty<{csType itemType}>(); var {result}=new {csType itemType}[count]; int destination=0; for(int word=0;word<words;word++) {{ uint mask=masks is null ? smallMask : masks[word]; int start=word<<5; while(mask!=0) {{ int bit=System.Numerics.BitOperations.TrailingZeroCount(mask); {result}[destination++]=items[start+bit]; mask &= mask-1; }} }} return {result};"
                                 | "List.collect",TList output -> $"var {result}=new System.Collections.Generic.List<{csType output}>(); foreach (var {item} in {source}) {{ {result}.AddRange({call}); }} return {result}.ToArray();"
                                 | "List.choose",TList output -> $"var {result}=new System.Collections.Generic.List<{csType output}>(); foreach (var {item} in {source}) {{ var chosen={call}; if(chosen.HasValue) {result}.Add(chosen.Value); }} return {result}.ToArray();"
                                 | _ -> invalidOp "Invalid specialized collection callback."
-                            wrap (csType value.Type) $"var {source}={arguments.[sourceIndex]}; {body}"
+                            wrap (nativeType value.Type) $"var {source}={arguments.[sourceIndex]}; {body}"
                         | _,Lir.Intrinsic name | _,Lir.HostExternal(name,_) -> intrinsic name root.Type arguments
                         | _,Lir.TargetImport(path,name) -> targetImport path name root.Type root.Span arguments
                         | _,Lir.MakeClosure(id,captures) ->
@@ -501,7 +531,7 @@ module CSharpBackend =
                     let setup = names |> Map.fold (fun (setup: string) _ name ->
                         if Text.RegularExpressions.Regex.IsMatch(result, @"\b" + Text.RegularExpressions.Regex.Escape(name) + @"\b") then setup
                         else setup.Replace($"var {name}=", "_=")) setup
-                    Some(wrap (csType value.Type) $"{setup} return {result};")
+                    Some(wrap (nativeType value.Type) $"{setup} return {result};")
             let code =
                 match (if assemblyMode then directApplication () else None) with
                 | Some direct -> direct
@@ -512,16 +542,21 @@ module CSharpBackend =
                     | Lir.MakeClosure(id,captures) ->
                         let fn = functions.[id]
                         let parameter = fresh "closureArg"
-                        let captures = captures |> List.filter (fun id -> not (globalIds.Contains id)) |> List.map sym
-                        let snapshots = if assemblyMode then captures |> List.map (fun original -> original,fresh "nativeCapture") else []
-                        let passedCaptures=if assemblyMode then List.map snd snapshots else captures
+                        let captureIds = captures |> List.filter (fun id -> not (globalIds.Contains id))
+                        let shared = recursiveClosureEnvironment |> Option.filter (fun environment -> captureIds |> List.forall environment.ContainsKey)
+                        let captures = captureIds |> List.map sym
+                        let snapshots = if assemblyMode && shared.IsNone then captures |> List.map (fun original -> original,fresh "nativeCapture") else []
+                        let passedCaptures=
+                            match shared with
+                            | Some environment -> captureIds |> List.map (fun id -> environment.[id])
+                            | None -> if assemblyMode then List.map snd snapshots else captures
                         let parameterType,resultType = match value.Type with TFun(a,b) -> a,b | _ -> fn.ParameterType,fn.ReturnType
                         let args = String.concat comma (passedCaptures @ [coerce parameterType fn.ParameterType parameter])
                         let call=coerce fn.ReturnType resultType $"{funName id}({args})"
                         let closure= $"(({csType value.Type})(({csType parameterType} {parameter}) => {call}))"
                         if assemblyMode && not snapshots.IsEmpty then
-                            let setup=snapshots |> List.map (fun (original,snapshot) -> $"var {snapshot}={original};") |> String.concat space
-                            wrap (csType value.Type) $"{setup} return {closure};"
+                            let setup=List.zip captureIds snapshots |> List.map (fun (id,(original,snapshot)) -> $"{csType symbolTypes.[id]} {snapshot}={original};") |> String.concat space
+                            wrap (nativeType value.Type) $"{setup} return {closure};"
                         else closure
                     | Lir.CallClosure(fn,arg) | Lir.TailCallClosure(fn,arg) ->
                         let parameterType,resultType = match fn.Type with TFun(a,b) -> a,b | _ -> arg.Type,value.Type
@@ -530,11 +565,11 @@ module CSharpBackend =
                         let parameter = fresh "pipelineArgument"
                         let parameterType,resultType=match fn.Type with TFun(a,b) -> a,b | _ -> arg.Type,value.Type
                         let call=coerce resultType value.Type $"({emit fn}).Invoke({coerce arg.Type parameterType parameter})"
-                        wrap (csType value.Type) $"var {parameter} = {emit arg}; return {call};"
+                        wrap (nativeType value.Type) $"var {parameter} = {emit arg}; return {call};"
                     | Lir.Branch(condition,yes,no) ->
                         let yesCode=coerce yes.Type value.Type (emit yes)
                         let noCode=coerce no.Type value.Type (emit no)
-                        if assemblyMode then $"({emit condition} ? ({csType value.Type})({yesCode}) : ({csType value.Type})({noCode}))"
+                        if assemblyMode then $"({emit condition} ? ({nativeType value.Type})({yesCode}) : ({nativeType value.Type})({noCode}))"
                         else $"({emit condition} ? {yesCode} : {noCode})"
                     | Lir.Operation(operation,[left;right]) ->
                         let op =
@@ -544,7 +579,7 @@ module CSharpBackend =
                             | Lir.IntRemainder -> "%" | Lir.NumericLessThan -> "<" | Lir.NumericGreaterThan -> ">"
                             | Lir.NumericLessThanOrEqual -> "<=" | Lir.NumericGreaterThanOrEqual -> ">="
                             | Lir.BooleanAnd -> "&&" | Lir.BooleanOr -> "||" | Lir.StructuralEqual -> "="
-                        if op = "=" then $"{eqName left.Type}({emit left}, {coerce right.Type left.Type (emit right)})" else $"({emit left} {op} {emit right})"
+                        if op = "=" then equal left.Type (emit left) (coerce right.Type left.Type (emit right)) else $"({emit left} {op} {emit right})"
                     | Lir.Tuple items ->
                         let itemTypes=match value.Type with TTuple items -> items | _ -> items |> List.map (fun (item: Lir.Expression) -> item.Type)
                         let args=List.map2 (fun t (item: Lir.Expression) -> coerce item.Type t (emit item)) itemTypes items |> String.concat comma
@@ -564,7 +599,7 @@ module CSharpBackend =
                             let setup = temporaries |> List.map (fun (_, (temp,item)) -> $"var {temp}={emit item};") |> String.concat space
                             let temporaries = Map.ofList temporaries
                             let args = destination |> List.map (fun (name,t) -> let temp,item=temporaries.[name] in coerce item.Type t temp) |> String.concat comma
-                            wrap (csType value.Type) $"{setup} return new {csType value.Type}({args});"
+                            wrap (nativeType value.Type) $"{setup} return new {csType value.Type}({args});"
                     | Lir.FieldGet(target,name) ->
                         let code = readField target.Type name (emit target)
                         let nativeName = match target.Type with TNamed name | THostManaged(name,_) -> Some name | _ -> None
@@ -582,19 +617,37 @@ module CSharpBackend =
                     | Lir.NoneValue -> $"default({csType value.Type})"
                     | Lir.Cons(head,tail) ->
                         let itemType=match value.Type with TList t -> t | _ -> head.Type
-                        $"new[] {{ {coerce head.Type itemType (emit head)} }}.Concat({coerce tail.Type value.Type (emit tail)}).ToArray()"
-                    | Lir.Append(a,b) -> $"({coerce a.Type value.Type (emit a)}).Concat({coerce b.Type value.Type (emit b)}).ToArray()"
+                        if assemblyMode then $"FsRuntime.ConsView<{csType itemType}>({coerce head.Type itemType (emit head)}, {coerce tail.Type value.Type (emit tail)})"
+                        else $"new[] {{ {coerce head.Type itemType (emit head)} }}.Concat({coerce tail.Type value.Type (emit tail)}).ToArray()"
+                    | Lir.Append(a,b) ->
+                        let itemType=match value.Type with TList t -> t | _ -> invalidOp "Expected appended list."
+                        if assemblyMode then
+                            match b.Node with
+                            | Lir.List [item] -> $"FsRuntime.AppendItemView<{csType itemType}>({coerce a.Type value.Type (emit a)}, {coerce item.Type itemType (emit item)})"
+                            | _ -> $"FsRuntime.AppendView<{csType itemType}>({coerce a.Type value.Type (emit a)}, {coerce b.Type value.Type (emit b)})"
+                        else $"({coerce a.Type value.Type (emit a)}).Concat({coerce b.Type value.Type (emit b)}).ToArray()"
                     | Lir.Let(id,_,recursive,binding,body) ->
                         let result=within [id] (fun () -> if assemblyMode then coerce body.Type value.Type (emit body) else emit body)
                         let bindingCode=if recursive then within [id] (fun () -> emit binding) else emit binding
-                        if recursive then wrap (csType value.Type) $"{csType binding.Type} {sym id} = default!; {sym id} = {bindingCode}; return {result};"
-                        else wrap (csType value.Type) $"{csType binding.Type} {sym id} = {bindingCode}; return {result};"
+                        if recursive then wrap (nativeType value.Type) $"{nativeType binding.Type} {sym id} = default!; {sym id} = {bindingCode}; return {result};"
+                        else wrap (nativeType value.Type) $"{nativeType binding.Type} {sym id} = {bindingCode}; return {result};"
                     | Lir.LetRecursiveGroup(bindings,body) ->
+                        let groupIds=bindings |> List.map (fun (id,_,_,_) -> id) |> Set.ofList
+                        let snapshots=
+                            if assemblyMode then
+                                bindings |> List.collect (fun (_,_,_,binding) -> match binding.Node with Lir.MakeClosure(_,captures) -> captures | _ -> [])
+                                |> List.filter (fun id -> not (groupIds.Contains id || globalIds.Contains id)) |> List.distinct
+                                |> List.map (fun id -> id,fresh "groupCapture")
+                            else []
+                        let previous=recursiveClosureEnvironment
+                        if assemblyMode then recursiveClosureEnvironment <- Some(Map.ofList ((groupIds |> Set.toList |> List.map (fun id -> id,sym id)) @ snapshots))
                         let declarations = bindings |> List.map (fun (id,_,t,_) -> $"{csType t} {sym id} = default!;") |> String.concat space
                         let scope=bindings |> List.map (fun (id,_,_,_) -> id)
                         let assignments = within scope (fun () -> bindings |> List.map (fun (id,_,_,v) -> $"{sym id} = {emit v};") |> String.concat space)
+                        recursiveClosureEnvironment <- previous
+                        let snapshotCode=snapshots |> List.map (fun (id,name) -> $"{csType symbolTypes.[id]} {name}={sym id};") |> String.concat space
                         let result=within scope (fun () -> if assemblyMode then coerce body.Type value.Type (emit body) else emit body)
-                        wrap (csType value.Type) $"{declarations} {assignments} return {result};"
+                        wrap (nativeType value.Type) $"{declarations} {snapshotCode} {assignments} return {result};"
                     | Lir.Fail message -> $"FsRuntime.Fail<{csType value.Type}>({emit message})"
                     | Lir.Range(first,last) -> $"FsRuntime.Range({emit first}, {emit last})"
                     | Lir.RecordUpdate(target,updates) ->
@@ -603,13 +656,13 @@ module CSharpBackend =
                         let changed = Map.ofList changed
                         let args = fields value.Type |> Map.toList |> List.map (fun (name,t) ->
                             match changed.TryFind name with Some(source,code) -> coerce source t code | None -> coerce (fields target.Type).[name] t $"{original}.{fieldName target.Type name}") |> String.concat comma
-                        wrap (csType value.Type) $"var {original} = {emit target}; {String.concat space setup} return new {csType value.Type}({args});"
+                        wrap (nativeType value.Type) $"var {original} = {emit target}; {String.concat space setup} return new {csType value.Type}({args});"
                     | Lir.RecordConvert(target,t) -> coerce target.Type t (emit target)
                     | Lir.IndexGet(target,index) ->
                         match target.Type with
                         | TList _ ->
                             let values=fresh "indexedValues"
-                            wrap (csType value.Type) $"var {values}={emit target}; return FsRuntime.At({emit index}, {values});"
+                            wrap (nativeType value.Type) $"var {values}={emit target}; return FsRuntime.At({emit index}, {values});"
                         | _ -> $"({emit target}).Find({emit index})"
                     | Lir.Interpolate parts ->
                         parts |> List.map (function Lir.TextPart text -> quote text | Lir.ValuePart item -> $"{interpName item.Type}({emit item})") |> function [] -> "\"\"" | parts -> "(" + String.concat " + " parts + ")"
@@ -624,7 +677,7 @@ module CSharpBackend =
                         let operations = entries |> List.map (function
                             | Lir.KeyValue(key,item) -> $"{target} = {target}.Add({emit key}, {emit item});"
                             | Lir.Spread item -> $"foreach (var entry in ({emit item}).Entries) {{ if (!{target}.Find(entry.Key).HasValue) {target} = {target}.Add(entry.Key,entry.Value); }}") |> String.concat space
-                        wrap (csType value.Type) $"var {target} = new {csType value.Type}(); {operations} return {target};"
+                        wrap (nativeType value.Type) $"var {target} = new {csType value.Type}(); {operations} return {target};"
                     | Lir.Intrinsic name | Lir.HostExternal(name,_) -> intrinsic name value.Type []
                     | Lir.TargetImport(path,memberName) -> targetImport path memberName value.Type value.Span []
                     | Lir.RuntimeContext ->
@@ -671,7 +724,7 @@ module CSharpBackend =
                         let code,t =
                             match step,resolve rootType with
                             | Lir.ListHead,TList t -> $"({root})[0]",t
-                            | Lir.ListTail,TList t -> $"({root}).Skip(1).ToArray()",TList t
+                            | Lir.ListTail,TList t -> (if assemblyMode then $"FsRuntime.TailView({root})" else $"({root}).Skip(1).ToArray()"),TList t
                             | Lir.TupleItem index,TTuple items -> $"({root}).Item{index}",items.[index]
                             | Lir.RecordField name,(TRecord fields | THostManaged(_,fields)) -> readField rootType name root,fields.[name]
                             | Lir.OptionValue,TOption t -> $"({root}).Value",t
@@ -685,7 +738,7 @@ module CSharpBackend =
             let rec bindings (plan: Lir.PatternPlan) =
                 plan.Bindings @ (plan.Maps |> List.collect (fun map -> (map.Clauses |> List.collect (fun clause -> bindings clause.Key @ bindings clause.Value)) @ (map.Tail |> Option.map bindings |> Option.defaultValue [])))
             let caseCode (case: Lir.DecisionCase) =
-                let declared = bindings case.Plan |> List.distinctBy _.Id |> List.map (fun b -> $"{csType b.Type} {sym b.Id} = default!;") |> String.concat space
+                let declared = bindings case.Plan |> List.distinctBy _.Id |> List.map (fun b -> $"{nativeType b.Type} {sym b.Id} = default!;") |> String.concat space
                 let rec planCode root rootType (plan: Lir.PatternPlan) seen success =
                     let checks = plan.Checks |> List.map (fun check ->
                         let checkAt path predicate = let code,t=projection plan.Checks root rootType path in predicate code t
@@ -703,7 +756,7 @@ module CSharpBackend =
                     let mutable seen = seen
                     let bindingCode = plan.Bindings |> List.map (fun b ->
                         let projected,sourceType = projection plan.Checks root rootType b.Projection
-                        if Set.contains b.Id seen then $"if (!{eqName b.Type}({sym b.Id},{projected})) return false;"
+                        if Set.contains b.Id seen then $"if (!{equal b.Type (sym b.Id) projected}) return false;"
                         else seen <- Set.add b.Id seen; $"{sym b.Id} = {coerce sourceType b.Type projected};") |> String.concat space
                     let boundIds plan = bindings plan |> List.map _.Id |> Set.ofList
                     let rec maps (remaining: Lir.MapPlan list) seen =
@@ -748,9 +801,9 @@ module CSharpBackend =
                     | Some emit -> $"{{ {declared} bool {matcher}() {{ {test} }} if ({matcher}() && ({guard})) {{ {emit case.Body} }} }}"
                     | None -> $"{{ {declared} bool {matcher}() {{ {test} }} if ({matcher}() && ({guard})) return {coerce case.Body.Type resultType (expression case.Body)}; }}")
             let cases = cases |> List.map caseCode |> String.concat "\n"
-            let targetType=if assemblyMode then csType target.Type else "var"
+            let targetType=if assemblyMode then nativeType target.Type else "var"
             let statements= $"{targetType} {root} = {expression target}; {cases} throw new InvalidOperationException(\"Pattern match failure\");"
-            match returnBody with Some _ -> statements | None -> wrap (csType resultType) statements
+            match returnBody with Some _ -> statements | None -> wrap (nativeType resultType) statements
         let typeDeclarations = StringBuilder()
         let addLine (value: string) = typeDeclarations.AppendLine(value) |> ignore
         let emittedTypes = Collections.Generic.HashSet<string>()
@@ -760,7 +813,11 @@ module CSharpBackend =
                 match resolve t with
                 | TTuple items ->
                     let args = items |> List.mapi (fun i t -> $"{csType t} Item{i}") |> String.concat comma
-                    addLine $"public sealed record {name}({args});"
+                    let smallItem = function
+                        | TInt | TFloat | TBool | TString | TUnit | TFun _ | TTask _ | TList _ | TRecord _ | TUnion _ -> true
+                        | _ -> false
+                    let kind=if assemblyMode && items.Length<=4 && List.forall smallItem items then "readonly record struct" else "sealed record"
+                    addLine $"public {kind} {name}({args});"
                 | TRecord fields ->
                     let args = fields |> Map.toList |> List.map (fun (field,t) -> $"{csType t} {fieldName t field}") |> String.concat comma
                     addLine $"public sealed record {name}({args});"
@@ -811,6 +868,13 @@ module CSharpBackend =
                             $"{csType t}.{ident case} item => {result}") |> String.concat comma
                         $"(a,b) switch {{ {equal}, _ => false }}",$"value switch {{ {format}, _ => throw new InvalidOperationException() }}"
                     | value -> fail "FSC6004" $"Unsupported compiled value '{Types.typeToString value}'." None
+                if assemblyMode then
+                    match t with
+                    | TList item ->
+                        addHelper $"private static bool {eqViewName t}({nativeType t} a, {nativeType t} b) {{ if(a.Length!=b.Length) return false; for(int i=0;i<a.Length;i++) if(!{eqName item}(a[i],b[i])) return false; return true; }}"
+                        addHelper $"private static string {fmtName t}({nativeType t} value) {{ var text=new System.Text.StringBuilder(\"[\"); var separator=\"\"; foreach(var item in value) {{ text.Append(separator);text.Append({fmtName item}(item));separator=\";\"; }} return text.Append(']').ToString(); }}"
+                        addHelper $"private static string {interpName t}({nativeType t} value) => {fmtName t}(value);"
+                    | _ -> ()
                 addHelper $"private static bool {eqName t}({csType t} a, {csType t} b) => {equalBody};"
                 addHelper $"private static string {fmtName t}({csType t} value) => {formatBody};"
                 let interpolation =
@@ -965,7 +1029,7 @@ module CSharpBackend =
                     let temps=args |> List.map (fun (index,_) -> index,fresh "tailNext") |> Map.ofList
                     let setup=order |> List.map (fun (index,arg) ->
                         let parameter=List.item index chain
-                        $"{csType parameter.ParameterType} {temps.[index]}={coerce arg.Type parameter.ParameterType (expression arg)};")
+                        $"{nativeType parameter.ParameterType} {temps.[index]}={coerce arg.Type parameter.ParameterType (expression arg)};")
                     let assign=chain |> List.mapi (fun index parameter -> $"{sym parameter.Parameter}={temps.[index]};")
                     String.concat space (setup @ assign @ ["continue;"])
                 else
@@ -973,7 +1037,7 @@ module CSharpBackend =
                     | Lir.Let(id,_,false,binding,body) ->
                         let bindingCode=expression binding
                         let bodyCode=within [id] (fun () -> emitReturn body)
-                        $"{{ {csType binding.Type} {sym id}={bindingCode}; {bodyCode} }}"
+                        $"{{ {nativeType binding.Type} {sym id}={bindingCode}; {bodyCode} }}"
                     | Lir.Branch(condition,yes,no) -> $"if ({expression condition}) {{ {emitReturn yes} }} else {{ {emitReturn no} }}"
                     | Lir.DecisionTree(target,cases) -> decision target cases final.ReturnType (Some emitReturn)
                     | _ -> $"return {coerce value.Type final.ReturnType (expression value)};"
@@ -988,7 +1052,8 @@ module CSharpBackend =
             if assemblyMode then
                 let chain=functionChain Set.empty fn.Id
                 let last=List.last chain
-                let parameters=String.concat comma (captures @ (chain |> List.map (fun parameter -> $"{csType parameter.ParameterType} {sym parameter.Parameter}")))
+                let captures=fn.Captures |> List.filter (fun id -> not (globalIds.Contains id)) |> List.map (fun id -> $"{nativeType symbolTypes.[id]} {sym id}")
+                let parameters=String.concat comma (captures @ (chain |> List.map (fun parameter -> $"{nativeType parameter.ParameterType} {sym parameter.Parameter}")))
                 let body=within (fn.Captures @ (chain |> List.map _.Parameter)) (fun () -> nativeBody fn chain)
                 addMember $"private static {csType last.ReturnType} Native{funName fn.Id}({parameters}) {{ {body} }}"
         let needsInitialization=not assemblyMode || not program.Declarations.IsEmpty
@@ -1036,16 +1101,22 @@ module CSharpBackend =
             let method=declaring.GetMethods(BindingFlags.Public ||| BindingFlags.Static) |> Array.find (fun m -> m.Name=link.MemberName && m.GetParameters().Length=link.Parameters.Length)
             let call=if method.ReturnType.FullName="FScript.Extensibility.ExtensionRegistration" then call else $"new {sdk}ExtensionRegistration({empty sdkHostType},{empty sdkHostUnion},{call})"
             addMember $"private static readonly Lazy<{sdk}ExtensionRegistration> {name} = new(() => {call});"
+        for marker in inlineMarkers.Values do addMember marker
         let header = "#nullable enable\nusing System;\nusing System.IO;\nusing System.Linq;\nusing System.Globalization;\nusing System.Text.Json;\nusing System.Threading.Tasks;\n"
         let source = $"{header}\nnamespace {options.Namespace};\n{typeDeclarations}\npublic static class {options.ClassName} {{\n{helpers}\n{members}\n}}\n"
         use stream = typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.Runtime.cs") |> nonNull
         use reader = new StreamReader(stream)
         let runtime = reader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)
+        let runtime = if assemblyMode then runtime.Replace("internal static class FsRuntime","internal static partial class FsRuntime") else runtime
         let escapeXml (value: string) = System.Security.SecurityElement.Escape(value) |> nonNull
         let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path |> nonNull)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
-        let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "")
+        let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "") + (if assemblyMode then "<Compile Include=\"RuntimeListViews.cs\"/>" else "")
         let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{compileItems}{references}</ItemGroup></Project>\n"
         [ yield { RelativePath = "Program.cs"; Content = source }; yield { RelativePath = "Runtime.cs"; Content = runtime }; yield { RelativePath = "Program.csproj"; Content = project }
+          if assemblyMode then
+              use viewStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeListViews.cs") |> nonNull
+              use viewReader=new StreamReader(viewStream)
+              yield {RelativePath="RuntimeListViews.cs";Content=viewReader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)}
           if hasSdk then
               use sdkStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeSDK.cs") |> nonNull
               use sdkReader=new StreamReader(sdkStream)

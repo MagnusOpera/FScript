@@ -59,6 +59,7 @@ module LirSimplification =
         | _ -> expression
 
     let optimize (program: Lir.Program) =
+        let program = LirAggregateElimination.optimize program
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let declarations = program.Declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
         let effect = LirEffects.create program

@@ -75,8 +75,22 @@ module LirEffects =
             | _,[left;{Node=Lir.Constant(Lir.Int divisor)}] when divisor<>0L ->
                 divisor <> -1L || (match left.Node with Lir.Constant(Lir.Int dividend) -> dividend<>System.Int64.MinValue | _ -> false)
             | _ -> false
-        let exhaustive (cases: Lir.DecisionCase list) =
-            cases |> List.tryLast |> Option.exists (fun (case: Lir.DecisionCase) -> case.Guard.IsNone && case.Plan.Checks.IsEmpty && case.Plan.Maps.IsEmpty)
+        let exhaustive targetType (cases: Lir.DecisionCase list) =
+            let bindingsUnique (case: Lir.DecisionCase) =
+                case.Plan.Bindings |> List.map _.Id |> List.distinct |> List.length = case.Plan.Bindings.Length
+            let irrefutable = function Lir.TupleArityCheck _ | Lir.RecordFieldCheck _ -> true | _ -> false
+            let unconditional (case: Lir.DecisionCase) = case.Guard.IsNone && case.Plan.Maps.IsEmpty && bindingsUnique case && List.forall irrefutable case.Plan.Checks
+            if cases |> List.tryLast |> Option.exists unconditional then true else
+                let definition=match targetType with TNamed name -> Map.tryFind name types |> Option.map _.Definition |> Option.defaultValue targetType | _ -> targetType
+                match definition with
+                | TUnion(name,declared) ->
+                    let covered=cases |> List.choose (fun case ->
+                        if case.Guard.IsSome || not case.Plan.Maps.IsEmpty || not (bindingsUnique case) then None else
+                            let tags=case.Plan.Checks |> List.choose (function Lir.UnionCaseCheck([],owner,tag,_) when owner=name -> Some tag | _ -> None)
+                            let other=case.Plan.Checks |> List.filter (function Lir.UnionCaseCheck([],owner,_,_) when owner=name -> false | _ -> true)
+                            match tags with [tag] when List.forall irrefutable other -> Some tag | _ -> None) |> Set.ofList
+                    Set.ofSeq declared.Keys=covered
+                | _ -> false
         let rec effect environment (value: Lir.Expression) =
             let child = effect environment
             match value.Node with
@@ -108,7 +122,7 @@ module LirEffects =
                 let scoped=bindings |> List.fold (fun scoped (id,_,_,binding) -> Map.add id binding scoped) environment
                 combine (effect scoped body :: (bindings |> List.map (fun (_,_,_,binding) -> effect scoped binding)))
             | Lir.DecisionTree(target,cases) ->
-                if not (stable Set.empty target.Type && exhaustive cases) then Observable else
+                if not (stable Set.empty target.Type && exhaustive target.Type cases) then Observable else
                 combine (child target :: (cases |> List.collect (fun case -> child case.Body :: (case.Guard |> Option.map child |> Option.toList))))
             | Lir.RecordUpdate(target,fields) -> if stable Set.empty target.Type && not (externalConstruction value.Type) then combine (child target :: (fields |> List.map (snd >> child))) else Observable
             | Lir.Interpolate parts ->

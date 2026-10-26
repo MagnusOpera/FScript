@@ -168,6 +168,35 @@ The compiler can remove an unused pure call and then prune its binding, adapters
 
 Declarations are trusted, not verified by executing arbitrary provider code. Incorrect claims can remove behavior or failures after optimization. Normal AST interpretation and SDK boundary validation are unchanged. See [Compilation and optimizations](./compiler-optimizations.md#trusted-external-purity) for the pruning rules.
 
+## Explicit FFI Inline contracts
+
+A provider can opt individual typed bindings into .NET **IL expansion**, independently of `Pure` or thread safety:
+
+```csharp
+public static IEnumerable<string> FScriptInlineFunctions() => new[]
+{
+    "Ext.add"
+};
+```
+
+Every name must also appear in `FScriptCompiledFunctions()`. This is compiler-controlled rewriting after Roslyn emission, not `AggressiveInlining` or a request left to the JIT. A profitable eligible callee body replaces its marked call sites; arguments still evaluate once in source order. Two script names may link the same CLR method while only one opts in. Compiler API users can select a binding with `ClrBindings.bindInlineMethod name methodInfo lir`.
+
+`Inline` permits code expansion but promises neither purity nor successful termination. Effectful calls and failures remain observable. Providers must select call-site-independent implementations: method identity, caller-sensitive reflection, stack walking, security-stack behavior, and stack traces cannot be preserved when a frame is removed. Do not opt such implementations in. No unmarked external helper body is copied automatically.
+
+The initial supported bodies are public static nongeneric managed methods using public operands. Parameters/results/locals must not require pointer or by-reference support. Methods with module/type initializers, exception handlers, recursive self calls, unsupported prefixes/call-frame instructions, synchronized/native/runtime implementations, or `NoInlining` are rejected. Calls to public checked helpers can remain inside an expanded body. Instance methods and constructors are not supported yet. A reachable unsupported request reports `FSN7201`; metadata/rewrite failures report `FSN7202`. Unused bindings impose no body-eligibility requirement.
+
+Expansion remaps parameters, locals, branches, and returns, preserves fresh zeroed callee locals, substitutes safe argument temporaries, folds total integer arithmetic with CLR wraparound semantics, and removes temporary markers. Exact forwarders become direct calls without introducing spill locals. Newly unreferenced provider dependencies can disappear. Emission remains deterministic, and tests JIT-check the results and independently check representative rewrites with ILVerify when installed.
+
+The opt-in survives `.fsir` serialization in CLR linkage. Older links default to no expansion. C# output retains ordinary typed calls; interpreters ignore this compiler-only metadata. It does not inline SDK delegate transport. A provider can expose typed `HostManagedValue` entry points to retain its existing SDK host-value representation while avoiding general SDK dispatch; all payload, aliasing, identity, and validation guarantees still belong to the provider.
+
+### Size and growth policy
+
+`Inline` is permission, not a force-inline directive. The initial byte screens follow [.NET 10 RyuJIT](https://github.com/dotnet/runtime/blob/v10.0.0/src/coreclr/jit/inline.h#L1017-L1023): up to **16 original IL bytes** is tiny; **17–100 bytes** is discretionary; over [the normal 100-byte screen](https://github.com/dotnet/runtime/blob/v10.0.0/src/coreclr/jit/compiler.h#L10260-L10266) remains a typed call. This is not a claim of universally optimal thresholds or a reproduction of RyuJIT's profile/native-cost model. F#'s [weighted expression threshold](https://github.com/dotnet/fsharp/blob/main/src/Compiler/Optimize/Optimizer.fs) uses different units and is not copied as an IL byte limit.
+
+The backend tries expansion in a private copy of the caller and measures encoded IL after argument cleanup and constant folding. Tiny sites may add at most **32 bytes**; discretionary sites at most **16 bytes**. Each caller has a cumulative growth allowance of `max(32, min(256, originalCallerBytes))`. Candidates with more than 32 arguments or locals stay calls. Rejected trials leave no spill locals, markers, or changed exception regions. Unprofitable or oversized requests are not compilation errors; eligibility diagnostics apply to bodies selected for attempted expansion.
+
+Exact forwarding adapters collapse without body duplication or positive growth, so they do not consume that budget. The JIT remains free to optimize retained calls. This keeps NDArray's tiny adapters eligible while larger checked kernels remain calls. Thresholds can be revisited against the checked-in comparisons; there is no force override or new CLI tuning flag.
+
 ## Compiler APIs
 
 Use `Compiler.compileWithRegistration` for host signatures. `ClrBindings.bindMethod` links an exact public CLR method or constructor; instance receivers are explicit first arguments. `ClrBindings.bindType` projects a native CLR type. `ClrBindings.bindProvider` preserves SDK providers. These declarative links survive IR serialization.

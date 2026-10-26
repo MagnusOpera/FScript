@@ -38,6 +38,44 @@ public sealed class OrderedMap<K, V>
 }
 internal static class FsRuntime
 {
+    internal static T[] ListBuffer<T>(T[] values) => values;
+    internal static int ListOffset<T>(T[] values) => 0;
+    // Compact selection masks preserve predicate order and avoid growing element buffers.
+    public static T[] Filter<T>(Func<T,bool> predicate,T[] source)
+    {
+        ReadOnlySpan<T> items=source.AsSpan();
+        int length=items.Length;
+        int words=length==0 ? 0 : ((length-1)>>5)+1;
+        uint[]? masks=words>1 ? new uint[words] : null;
+        uint smallMask=0;
+        int count=0;
+        for(int index=0;index<length;)
+        {
+            int start=index;
+            int size=Math.Min(32,length-index);
+            uint mask=0;
+            for(int bit=0;bit<size;bit++,index++)
+                if(predicate(items[index])) { mask |= 1u << bit; count++; }
+            if(masks is null) smallMask=mask;
+            else masks[start>>5]=mask;
+        }
+        if(count==0) return Array.Empty<T>();
+        var result=new T[count];
+        int destination=0;
+        for(int word=0;word<words;word++)
+        {
+            uint mask=masks is null ? smallMask : masks[word];
+            int start=word<<5;
+            while(mask!=0)
+            {
+                int bit=System.Numerics.BitOperations.TrailingZeroCount(mask);
+                result[destination++]=items[start+bit];
+                mask &= mask-1;
+            }
+        }
+        return result;
+    }
+
     public static string JsonString(string value) => "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
     public static string Quote(string value) => "\"" + value.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r","\\r").Replace("\n","\\n").Replace("\t","\\t") + "\"";
     public static T Fail<T>(string message) => throw new InvalidOperationException(message);
@@ -52,6 +90,7 @@ internal static class FsRuntime
         else { for (long value = first;; value--) { result.Add(value); if (value == last) break; } }
         return result.ToArray();
     }
+    public static T[] Tail<T>(T[] values) => values.Length==0 ? throw new InvalidOperationException("List.tail expects a non-empty list") : values.Skip(1).ToArray();
     public static Option<T> At<T>(long index, T[] values) => index >= 0 && index < values.LongLength ? Option<T>.Some(values[index]) : default;
     public static Unit Iter<T>(Func<T,Unit> fn, T[] values) { foreach(var value in values) fn(value); return default; }
     public static S Fold<T,S>(Func<S,Func<T,S>> fn, S state, T[] values) { foreach(var value in values) state = fn(state)(value); return state; }

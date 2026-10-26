@@ -167,3 +167,15 @@ type PurityTests() =
         let compiled=compile HostInterop.empty PurityContracts.empty [] "None"
         let optimized=compiled.Lir |> LirResultPolicy.discard |> optimize
         Assert.That(optimized.Declarations,Is.Empty)
+
+    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n -> n | B -> 0\nchoose (A 1)", true)>]
+    [<TestCase("let choose value=match value with | (a,b) -> a+b\nchoose (1,2)", true)>]
+    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n -> n\nchoose (A 1)", false)>]
+    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n when n>0 -> n | B -> 0\nchoose (A 1)", false)>]
+    [<TestCase("let choose value=match value with | (x,x) -> x\nchoose (1,1)", false)>]
+    member _.``Total match proofs require complete unguarded coverage and unique bindings`` (source: string, expected: bool) =
+        let compiled=(compile HostInterop.empty PurityContracts.empty [] source).Lir
+        let program=match LirMonomorphization.specialize compiled with Ok value -> value | Error errors -> failwith (string errors)
+        let effect=LirEffects.create program
+        let fn=program.Functions |> List.find (fun fn -> fn.Name="value")
+        Assert.That(effect fn.Body=LirEffects.Pure,Is.EqualTo(expected))

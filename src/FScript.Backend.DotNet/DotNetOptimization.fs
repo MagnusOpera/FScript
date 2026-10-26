@@ -35,7 +35,7 @@ module internal DotNetOptimization =
         | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, recurse source, recurse body))
         | _ -> expression
 
-    let optimize (program: Lir.Program) =
+    let private optimizeCore (program: Lir.Program) =
         let mutable functions = program.Functions |> List.map (fun fn -> fn.Id,fn) |> Map.ofList
         let mutable origins = program.Functions |> List.map (fun fn -> fn.Id,fn.Id) |> Map.ofList
         let mutable nextFunction=program.Functions |> List.map (fun fn -> Lir.functionNumber fn.Id) |> List.fold max -1 |> (+) 1
@@ -163,6 +163,7 @@ module internal DotNetOptimization =
                     | _ -> None
                 | _ -> None
             match constant with Some constant -> {value with Node=Lir.Constant constant} | None -> value
+        let specialized=System.Collections.Generic.Dictionary<Lir.FunctionId * (Lir.SymbolId * Lir.Expression) list,Lir.FunctionId>()
         let rec rewrite active (known: Map<Lir.SymbolId,Lir.Expression>) (expression: Lir.Expression) =
             let recurse = rewrite active known
             let reduceCall (fn: Lir.Expression) (argument: Lir.Expression) pipe =
@@ -183,6 +184,30 @@ module internal DotNetOptimization =
                         rewrite active known {expression with Node=Lir.Let(id,name,false,binding,{expression with Node=Lir.CallClosure(body,argument)})}
                 | _ -> {expression with Node=if pipe then Lir.PipeClosure(argument,fn) else Lir.CallClosure(fn,argument)}
             match expression.Node with
+            | Lir.MakeClosure(id,captures) ->
+                let bindings = captures |> List.choose (fun capture ->
+                    Map.tryFind capture known |> Option.bind (fun value ->
+                        match value.Node with
+                        | Lir.MakeClosure(functionId,_) when not (Set.contains origins.[functionId] recursiveFunctions) -> Some(capture,value)
+                        | Lir.Intrinsic _ | Lir.Constant _ -> Some(capture,value)
+                        | _ -> None))
+                if bindings.IsEmpty then expression else
+                    let key=id,bindings
+                    let specializedId=
+                        match specialized.TryGetValue key with
+                        | true, existing -> existing
+                        | _ ->
+                            let newId=Lir.FunctionId nextFunction
+                            nextFunction <- nextFunction+1
+                            specialized.Add(key,newId)
+                            let original=functions.[id]
+                            origins <- Map.add newId origins.[id] origins
+                            functions <- Map.add newId {original with Id=newId} functions
+                            let parameter,body=clone original captures
+                            let body=rewrite (Set.add origins.[id] active) (Map.ofList bindings) body
+                            functions <- Map.add newId {original with Id=newId;Parameter=parameter;Body=body} functions
+                            newId
+                    {expression with Node=Lir.MakeClosure(specializedId,captures)}
             | Lir.Load id ->
                 match Map.tryFind id known with
                 | Some {Node=Lir.MakeClosure(functionId,_)} when Set.contains origins.[functionId] recursiveFunctions -> expression
@@ -219,5 +244,13 @@ module internal DotNetOptimization =
                 Functions=optimizedFunctions @ clonedFunctions |> List.sortBy _.Id
                 Declarations=optimizedDeclarations
                 Entry=optimizedEntry }
-        result |> LirOptimization.optimize
+        let rec eliminateAggregates previous =
+            let next=previous |> LirAggregateElimination.optimize |> LirTupleElimination.optimize |> LirOptimization.optimize
+            if next=previous then next else eliminateAggregates next
+        result |> eliminateAggregates |> DotNetCollectionRepresentations.optimize |> eliminateAggregates
 
+
+    let optimize program =
+        let optimized=optimizeCore program
+        let fused=DotNetCollectionFusion.optimize optimized
+        if fused=optimized then optimized else optimizeCore fused

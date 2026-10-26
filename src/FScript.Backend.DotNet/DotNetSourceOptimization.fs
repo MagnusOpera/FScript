@@ -134,6 +134,10 @@ module internal DotNetSourceOptimization =
             if retained.Contains node then base.VisitMethodDeclaration(node) else null
         override this.VisitPropertyDeclaration(node) =
             if retained.Contains node then base.VisitPropertyDeclaration(node) else null
+        override this.VisitConversionOperatorDeclaration(node) =
+            if retained.Contains node then base.VisitConversionOperatorDeclaration(node) else null
+        override this.VisitIndexerDeclaration(node) =
+            if retained.Contains node then base.VisitIndexerDeclaration(node) else null
         override this.VisitFieldDeclaration(node) =
             if retained.Contains node then base.VisitFieldDeclaration(node) else null
         override this.VisitConstructorDeclaration(node) =
@@ -165,7 +169,7 @@ module internal DotNetSourceOptimization =
             compilation.SyntaxTrees |> Seq.map (fun tree ->
                 let root=Lowering(compilation.GetSemanticModel(tree, false),className).Visit(tree.GetRoot()) |> nonNull
                 CSharpSyntaxTree.Create(root :?> CSharpSyntaxNode, tree.Options :?> CSharpParseOptions,tree.FilePath,tree.Encoding) ) |> Seq.toList
-        let compilation=compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(lowered)
+        let compilation=compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(lowered) |> DotNetDeadCaptures.optimize className
         let candidates=HashSet<ISymbol>(SymbolEqualityComparer.Default)
         let reads=HashSet<ISymbol>(SymbolEqualityComparer.Default)
         for tree in compilation.SyntaxTrees do
@@ -248,6 +252,12 @@ module internal DotNetSourceOptimization =
                     info.CandidateSymbols |> Seq.iter symbol
                     let t=model.GetTypeInfo child
                     if not (isNull t.Type) then symbol (nonNull t.Type)
+                    if not (isNull t.ConvertedType) then symbol (nonNull t.ConvertedType)
+                    match child with
+                    | :? ExpressionSyntax as expression ->
+                        let conversion=model.GetConversion expression
+                        if conversion.IsUserDefined && not (isNull conversion.MethodSymbol) then symbol (nonNull conversion.MethodSymbol)
+                    | _ -> ()
                 | _ -> ()
         let trees=compilation.SyntaxTrees |> Seq.map (fun tree ->
             let root=Pruning(retained).Visit(tree.GetRoot()) |> nonNull
