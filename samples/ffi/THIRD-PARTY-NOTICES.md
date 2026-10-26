@@ -29,3 +29,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## GLFW
+
+The renderer embeds the unmodified GLFW 3.4 binaries distributed by `Ultz.Native.GLFW` 3.4.0. The [GLFW license](Renderer/GLFW-LICENSE.md) is included in the renderer assembly alongside those binaries.

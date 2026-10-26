@@ -60,14 +60,28 @@ let runCompileCommand (argv: string array) =
                 usage ()
             else
                 try
+                    let timer = Diagnostics.Stopwatch.StartNew()
+                    let report (message: string) = Console.WriteLine(message)
+                    let targetDescription =
+                        match normalizedTarget with
+                        | "dotnet" when aot -> $".NET (Native AOT, {runtime.Value})"
+                        | "dotnet" when singleFile -> $".NET (single-file, {runtime.Value})"
+                        | "dotnet" -> ".NET"
+                        | "csharp" -> "C#"
+                        | _ -> "IR"
+                    report $"Compiling {argv.[1]} to {targetDescription}..."
                     let outputDirectory = Path.GetFullPath(output)
+                    let complete path =
+                        report $"Compiled successfully in {timer.Elapsed.TotalSeconds:F1}s. Output: {path}"
+                        0
                     let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
                     let allOptions name = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value=name && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
-                    let loaded =
-                        EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) sourceRoot sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
-                        |> Result.bind EnvironmentLoader.loadWithInfo
-                        |> function Ok environment -> environment | Error message -> failwith message
+                    let settings =
+                        EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) (Directory.GetCurrentDirectory()) sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
+                        |> function Ok settings -> settings | Error message -> failwith message
+                    settings.ConfigurationPath |> Option.iter (fun path -> report $"Loading configuration {path}...")
+                    let loaded = EnvironmentLoader.loadWithInfo settings |> function Ok environment -> environment | Error message -> failwith message
                     let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
                     let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
                     let purity = FScript.Compiler.ClrBindings.providerPurity (loaded.ProviderMethods |> List.map snd)
@@ -89,20 +103,25 @@ let runCompileCommand (argv: string array) =
                                 | null | "" -> "program"
                                 | value -> value
                             let name = baseName + ".fsir"
+                            report "Writing IR artifact..."
                             File.WriteAllBytes(Path.Combine(outputDirectory, name), FScript.Compiler.IrArtifact.serialize lir)
-                            0
+                            complete (Path.Combine(outputDirectory, name))
                         | "csharp" ->
+                            report "Generating C# project..."
                             match FScript.Compiler.CSharpBackend.generateWithResultOutput (not (Array.contains "--no-result" argv)) {Namespace="FScript.Generated"; ClassName="Program"; References=references} lir with
                             | Error diagnostics ->
                                 diagnostics |> List.iter (fun d -> Console.Error.WriteLine($"{d.Code}: {d.Message}"))
                                 4
-                            | Ok files -> files |> List.iter (writeGeneratedFile outputDirectory); 0
+                            | Ok files ->
+                                files |> List.iter (writeGeneratedFile outputDirectory)
+                                complete (Path.Combine(outputDirectory, "Program.csproj"))
                         | "dotnet" ->
                             let options: FScript.Compiler.DotNetOptions =
                                 { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
                                   OutputKind=FScript.Compiler.ConsoleApplication; References=references }
+                            report "Generating .NET assembly..."
                             let generated=
-                                if executable then FScript.Compiler.DotNetBackend.generateExecutableWithResultOutput (not (Array.contains "--no-result" argv)) {RuntimeIdentifier=runtime.Value;AheadOfTime=aot} options lir
+                                if executable then FScript.Compiler.DotNetBackend.generateExecutableWithResultOutputAndProgress (not (Array.contains "--no-result" argv)) report {RuntimeIdentifier=runtime.Value;AheadOfTime=aot} options lir
                                 else FScript.Compiler.DotNetBackend.generateWithResultOutput (not (Array.contains "--no-result" argv)) options lir
                             match generated with
                             | Error diagnostics ->
@@ -114,7 +133,11 @@ let runCompileCommand (argv: string array) =
                                     File.WriteAllBytes(path,file.Content)
                                     if executable && not (OperatingSystem.IsWindows()) && not (runtime.Value.StartsWith("win-",StringComparison.Ordinal)) then
                                         File.SetUnixFileMode(path,UnixFileMode.UserRead ||| UnixFileMode.UserWrite ||| UnixFileMode.UserExecute ||| UnixFileMode.GroupRead ||| UnixFileMode.GroupExecute ||| UnixFileMode.OtherRead ||| UnixFileMode.OtherExecute)
-                                0
+                                let name =
+                                    if not executable then options.AssemblyName + ".dll"
+                                    elif runtime.Value.StartsWith("win-", StringComparison.Ordinal) then options.AssemblyName + ".exe"
+                                    else options.AssemblyName
+                                complete (Path.Combine(outputDirectory, name))
                         | _ -> usage ()
                 with
                 | ParseException error -> Console.Error.WriteLine($"Parse error: {error.Message}"); 1

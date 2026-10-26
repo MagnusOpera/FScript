@@ -5,58 +5,70 @@ open System.Numerics
 open FScript.Extensibility
 open FScript.Ffi.Rendering
 
-[<FScriptHostType("Vec3", ScriptConstructible = true)>]
+// Explicit printing and array-backed geometry keep reflection-based F# formatting
+// and collection metadata out of the native runtime. Script records retain their
+// descriptor-defined equality and list semantics.
+[<NoEquality; NoComparison; FScriptHostType("Vec3", ScriptConstructible = true)>]
 type Vec3 =
     { [<FScriptVisible>] X: float
       [<FScriptVisible>] Y: float
       [<FScriptVisible>] Z: float }
+    override _.ToString() = "Vec3"
 
-[<FScriptHostType("Color", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Color", ScriptConstructible = true)>]
 type Color =
     { [<FScriptVisible>] R: float
       [<FScriptVisible>] G: float
       [<FScriptVisible>] B: float }
+    override _.ToString() = "Color"
 
-[<FScriptHostType("Vertex", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Vertex", ScriptConstructible = true)>]
 type Vertex =
     { [<FScriptVisible>] Position: Vec3
       [<FScriptVisible>] Normal: Vec3 }
+    override _.ToString() = "Vertex"
 
-[<FScriptHostType("Geometry", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Geometry", ScriptConstructible = true)>]
 type Geometry =
     { [<FScriptVisible>] Name: string
-      [<FScriptVisible>] Vertices: Vertex list
-      [<FScriptVisible>] Indices: int64 list }
+      [<FScriptVisible>] Vertices: Vertex array
+      [<FScriptVisible>] Indices: int64 array }
+    override _.ToString() = "Geometry"
 
-[<FScriptHostType("Camera", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Camera", ScriptConstructible = true)>]
 type Camera =
     { [<FScriptVisible>] Eye: Vec3
       [<FScriptVisible>] Target: Vec3
       [<FScriptVisible>] FieldOfView: float }
+    override _.ToString() = "Camera"
 
-[<FScriptHostType("Light", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Light", ScriptConstructible = true)>]
 type Light =
     { [<FScriptVisible>] Position: Vec3
       [<FScriptVisible>] Color: Color
       [<FScriptVisible>] Ambient: float }
+    override _.ToString() = "Light"
 
-[<FScriptHostType("Material", ScriptConstructible = true)>]
+[<NoEquality; NoComparison; FScriptHostType("Material", ScriptConstructible = true)>]
 type Material =
     { [<FScriptVisible>] Color: Color
       [<FScriptVisible>] Shininess: float }
+    override _.ToString() = "Material"
 
-[<FScriptHostType("Window")>]
+[<NoEquality; NoComparison; FScriptHostType("Window")>]
 type Window =
     { [<FScriptVisible>] Title: string
       Backend: IGraphics }
+    override _.ToString() = "Window"
 
-[<FScriptHostType("Mesh")>]
+[<NoEquality; NoComparison; FScriptHostType("Mesh")>]
 type Mesh =
     { [<FScriptVisible>] Name: string
       [<FScriptVisible>] VertexCount: int64
       [<FScriptVisible>] TriangleCount: int64
       Backend: IGraphics
       Resource: int }
+    override _.ToString() = "Mesh"
 
 module Graphics =
     let private scalar name value =
@@ -68,25 +80,25 @@ module Graphics =
         Vector3(scalar name value.X, scalar name value.Y, scalar name value.Z)
 
     let private color (value: Color) =
-        let channels = [value.R; value.G; value.B]
-        if channels |> List.exists (fun v -> not (Double.IsFinite v) || v < 0.0 || v > 1.0) then
+        let channels = [|value.R; value.G; value.B|]
+        if channels |> Array.exists (fun v -> not (Double.IsFinite v) || v < 0.0 || v > 1.0) then
             invalidArg "color" "Color channels must be between zero and one."
         Vector3(float32 value.R, float32 value.G, float32 value.B)
 
     let upload (window: Window) (geometry: Geometry) : Mesh =
-        if List.isEmpty geometry.Vertices || List.isEmpty geometry.Indices || geometry.Indices.Length % 3 <> 0 then
+        if Array.isEmpty geometry.Vertices || Array.isEmpty geometry.Indices || geometry.Indices.Length % 3 <> 0 then
             invalidArg "geometry" "Geometry requires vertices and complete index triangles."
         let vertexCount = geometry.Vertices.Length
         let vertices =
-            geometry.Vertices |> List.collect (fun vertex ->
+            geometry.Vertices |> Array.collect (fun vertex ->
                 let p = vector "Position" vertex.Position
                 let n = vector "Normal" vertex.Normal
                 if n.LengthSquared() < 0.000001f then invalidArg "Normal" "Normals must be nonzero."
-                [p.X; p.Y; p.Z; n.X; n.Y; n.Z]) |> List.toArray
-        let indices = geometry.Indices |> List.map (fun index ->
+                [|p.X; p.Y; p.Z; n.X; n.Y; n.Z|])
+        let indices = geometry.Indices |> Array.map (fun index ->
             if index < 0L || index >= int64 vertexCount then
                 invalidArg "Indices" "A triangle index is outside the vertex list."
-            uint32 index) |> List.toArray
+            uint32 index)
         let resource = window.Backend.Upload(vertices, indices)
         { Name = geometry.Name; VertexCount = int64 vertexCount
           TriangleCount = int64 (indices.Length / 3); Backend = window.Backend; Resource = resource }
@@ -114,6 +126,29 @@ module Graphics =
             invalidArg "Shininess" "Shininess must be between one and 256."
         window.Backend.Draw(mesh.Resource, vector "rotation" rotation, color material.Color, float32 material.Shininess)
 
+    let private runFrames headless frames (initialize: IGraphics -> unit) frame =
+        if frames < (if headless then 1L else 0L) || frames > int64 Int32.MaxValue then
+            invalidArg "frames" "Use a nonnegative frame limit (zero runs until close); headless mode requires a positive limit."
+        if headless then
+            let backend = RecordingGraphics()
+            initialize backend
+            for index in 0 .. int frames - 1 do frame (float index / 60.0)
+            Console.WriteLine("Headless: {0} mesh uploads; {1} frames", backend.Meshes.Count, backend.Rotations.Count)
+        else
+            use backend = new OpenGlGraphics()
+            backend.Run((fun () -> initialize backend), frame, int frames)
+            if frames > 0L then
+                Console.WriteLine("OpenGL: {0} frames; {1} teapot-colored pixels", backend.FramesRendered, backend.ColoredPixels)
+                if backend.ColoredPixels < 100 then invalidOp "The framebuffer did not contain the teapot."
+
+    let runCompiled headless frames (setup: Func<Window, Action<float>>) =
+        try
+            let mutable render = Action<float>(fun _ -> invalidOp "The scene has not been initialized.")
+            let initialize backend =
+                render <- setup.Invoke { Title = "FScript FFI — Utah teapot"; Backend = backend }
+            runFrames headless frames initialize (fun seconds -> render.Invoke seconds)
+        with error -> raise (InvalidOperationException("Graphics window loop failed: " + error.Message, error))
+
     // Callbacks use the explicit descriptor API: typed adapters deliberately do not
     // marshal script functions. Apply keeps execution in the current interpreter.
     let private run headless : ExternalFunction =
@@ -137,17 +172,7 @@ module Graphics =
                               | VUnit -> ()
                               | _ -> invalidOp "The render callback must return unit."
                           | None -> invalidOp "The scene has not been initialized."
-                      if headless then
-                          let backend = RecordingGraphics()
-                          initialize backend
-                          for index in 0 .. int frames - 1 do frame (float index / 60.0)
-                          printfn "Headless: %d mesh uploads; %d frames" backend.Meshes.Count backend.Rotations.Count
-                      else
-                          use backend = new OpenGlGraphics()
-                          backend.Run((fun () -> initialize backend), frame, int frames)
-                          if frames > 0L then
-                              printfn "OpenGL: %d frames; %d teapot-colored pixels" backend.FramesRendered backend.ColoredPixels
-                              if backend.ColoredPixels < 100 then invalidOp "The framebuffer did not contain the teapot."
+                      runFrames headless frames initialize frame
                       VUnit
                   | _ -> invalidArg "frames" "Use a nonnegative frame limit (zero runs until close); headless mode requires a positive limit."
               with
@@ -179,3 +204,26 @@ type GraphicsProvider =
     // Discovery only builds descriptors and adapters. It never opens a window.
     [<FScriptExternProvider>]
     static member Provide() : ExtensionRegistration = Graphics.registration
+
+    // Compiler companions bind typed calls directly and let AOT discard SDK discovery.
+    static member Upload(window: Window, geometry: Geometry) = Graphics.upload window geometry
+    static member Clear(window: Window, color: Color) = Graphics.clear window color
+    static member SetCamera(window: Window, camera: Camera) = Graphics.setCamera window camera
+    static member SetLight(window: Window, light: Light) = Graphics.setLight window light
+    static member Draw(window: Window, mesh: Mesh, rotation: Vec3, material: Material) = Graphics.draw window mesh rotation material
+    static member ToFloat(value: int64) = float value
+    static member Sqrt(value: float) = Math.Sqrt value
+    static member Sin(value: float) = Math.Sin value
+    static member Run(frames: int64, setup: Func<Window, Action<float>>) = Graphics.runCompiled false frames setup
+    static member RunHeadless(frames: int64, setup: Func<Window, Action<float>>) = Graphics.runCompiled true frames setup
+    static member FScriptCompiledTypes() : Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string, Type>> =
+        [| Collections.Generic.KeyValuePair("Window", typeof<Window>)
+           Collections.Generic.KeyValuePair("Mesh", typeof<Mesh>) |]
+    static member FScriptCompiledFunctions() : Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string, Reflection.MethodInfo>> =
+        [| for name, methodName in
+               [ "Graphics.uploadMesh", "Upload"; "Graphics.clear", "Clear"
+                 "Graphics.setCamera", "SetCamera"; "Graphics.setLight", "SetLight"
+                 "Graphics.draw", "Draw"; "Math.toFloat", "ToFloat"
+                 "Math.sqrt", "Sqrt"; "Math.sin", "Sin"
+                 "Graphics.run", "Run"; "Graphics.runHeadless", "RunHeadless" ] do
+               yield Collections.Generic.KeyValuePair(name, typeof<GraphicsProvider>.GetMethod(methodName) |> nonNull) |]

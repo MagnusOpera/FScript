@@ -4,10 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix FFI compilation and teapot Native AOT builds, add compilation progress, and document fscript.toml support for compile and analyze.
 - Present script iteration, optimized compilation, and typed .NET FFI together on the website homepage and introduction.
 
 ## [0.86.0]
-
 
 - Speed up compiled programs with fewer closures and temporary values, fused collection loops, and lower-allocation list operations.
 - Add opt-in, size-bounded FFI IL inlining and reproducible FScript/F# performance benchmarks.
@@ -16,7 +16,6 @@ All notable changes to FScript are documented in this file.
 
 ## [0.85.0]
 
-
 - Add runnable FFI task-sharing samples for unsafe sharing, hidden state, ordered access, and thread-safe effects.
 - Document FFI task-sharing warnings and keep analysis separate from compilation, with built-in console I/O recognized as thread-safe.
 - Add opt-in static warnings for potential FFI sharing across tasks in CLI analysis and interpreted hosting.
@@ -24,7 +23,6 @@ All notable changes to FScript are documented in this file.
 **Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.84.0...0.85.0
 
 ## [0.84.0]
-
 
 - Added C# and .NET compilation with FFI support, self-contained executables, and Native AOT publishing.
 - Added typed HIR/LIR, versioned `.fsir` artifacts, and a reference LIR interpreter, with specialization, `Pure`-guided pruning, common-subexpression elimination, and .NET tail-call optimizations.

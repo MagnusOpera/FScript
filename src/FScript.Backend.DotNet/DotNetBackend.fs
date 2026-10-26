@@ -29,7 +29,7 @@ module DotNetBackend =
                         CSharpSyntaxTree.ParseText(f.Content, CSharpParseOptions(LanguageVersion.Latest), f.RelativePath, Encoding.UTF8))
                     let platformReferences =
                         match AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") with
-                        | :? string as paths -> paths.Split(Path.PathSeparator) |> Array.toList
+                        | :? string as paths -> paths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries) |> Array.toList
                         | _ -> [typeof<obj>.Assembly.Location; typeof<Console>.Assembly.Location]
                     let references =
                         platformReferences @ [typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location] @ options.References
@@ -67,7 +67,7 @@ module DotNetBackend =
     let generate options program = generateWithResultOutput true options program
 
     /// Produce one self-contained executable for an explicit .NET runtime identifier.
-    let generateExecutableWithResultOutput printResult executable options program =
+    let generateExecutableWithResultOutputAndProgress printResult report executable options program =
         DotNetPackaging.validate executable options.OutputKind
         |> Result.bind (fun () -> generateWithResultOutput printResult options program)
         |> Result.bind (fun files ->
@@ -80,6 +80,12 @@ module DotNetBackend =
                 metadata.GetString(typ.Name)="SdkInterop" && metadata.GetString(typ.Namespace)=options.Namespace)
             if executable.AheadOfTime && legacyBridge then
                 Error [diagnostic "FSN7105" "Native AOT requires static compiled FFI bindings. Add FScriptCompiledFunctions/FScriptCompiledTypes companions or bind exact CLR methods/types with ClrBindings; provider-factory SDK dispatch cannot be safely pruned. Managed single-file output still supports legacy providers."]
-            else DotNetPackaging.publish executable (not legacyBridge) options files)
+            else
+                let mode = if executable.AheadOfTime then "Native AOT" else "self-contained single-file"
+                report $"Publishing {mode} executable for {executable.RuntimeIdentifier}..."
+                DotNetPackaging.publish executable (not legacyBridge) options files)
+
+    let generateExecutableWithResultOutput printResult executable options program =
+        generateExecutableWithResultOutputAndProgress printResult ignore executable options program
 
     let generateExecutable executable options program = generateExecutableWithResultOutput true executable options program

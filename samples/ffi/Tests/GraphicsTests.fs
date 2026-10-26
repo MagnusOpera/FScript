@@ -21,10 +21,10 @@ type GraphicsTests() =
     let white : Color = { R = 1.0; G = 1.0; B = 1.0 }
     let triangle : Geometry =
         { Name = "triangle"
-          Vertices = [ { Position = zero; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } }
-                       { Position = { zero with X = 1.0 }; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } }
-                       { Position = { zero with Z = 1.0 }; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } } ]
-          Indices = [0L; 1L; 2L] }
+          Vertices = [| { Position = zero; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } };
+                       { Position = { zero with X = 1.0 }; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } };
+                       { Position = { zero with Z = 1.0 }; Normal = { X = 0.0; Y = 1.0; Z = 0.0 } } |]
+          Indices = [|0L; 1L; 2L|] }
     let call name args =
         let fn = Graphics.registration.Functions |> List.find (fun f -> f.Name = name)
         let context = ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)
@@ -96,14 +96,14 @@ type GraphicsTests() =
     [<TestCase(3L)>]
     member _.``bad triangle indices fail before backend allocation`` index =
         let backend = RecordingGraphics()
-        let geometry = { triangle with Indices = [0L; 1L; index] }
+        let geometry = { triangle with Indices = [|0L; 1L; index|] }
         Assert.That(Action(fun () -> call "Graphics.uploadMesh" [window backend; wrap geometry] |> ignore), Throws.Exception)
         Assert.That(backend.Meshes.Count, Is.Zero)
 
     [<Test>]
     member _.``invalid graphics values fail before submission``() =
         let backend = RecordingGraphics()
-        let bad = { triangle with Vertices = [{ triangle.Vertices.Head with Position = { zero with X = Double.NaN } }] }
+        let bad = { triangle with Vertices = [|{ triangle.Vertices[0] with Position = { zero with X = Double.NaN } }|] }
         Assert.That(Action(fun () -> call "Graphics.uploadMesh" [window backend; wrap bad] |> ignore), Throws.Exception)
         Assert.That(backend.Meshes.Count, Is.Zero)
         let camera : Camera = { Eye = zero; Target = zero; FieldOfView = 0.6 }
@@ -169,3 +169,54 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
         if expectedExit = 0 then
             Assert.That(output.GetAwaiter().GetResult(), Does.Contain "1 mesh uploads; 3 frames")
         else Assert.That(errors.GetAwaiter().GetResult(), Does.Contain "frame limit")
+
+    [<Test>]
+    member _.``native executable compiles the real teapot with automatic FFI configuration and runs alone``() =
+        let root = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "../../.."))
+#if DEBUG
+        let configuration = "Debug"
+#else
+        let configuration = "Release"
+#endif
+        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net10.0/fscript.dll")
+        let directory = Path.Combine(Path.GetTempPath(), "fscript-teapot-native-" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        let run executable arguments timeout =
+            let start = Diagnostics.ProcessStartInfo(executable, WorkingDirectory=directory, RedirectStandardOutput=true, RedirectStandardError=true)
+            for argument in arguments do start.ArgumentList.Add(argument)
+            start.Environment["DOTNET_ROOT"] <- Path.Combine(directory, "absent-runtime")
+            use proc = Diagnostics.Process.Start(start) |> nonNull
+            let output = proc.StandardOutput.ReadToEndAsync()
+            let errors = proc.StandardError.ReadToEndAsync()
+            if not (proc.WaitForExit(timeout: int)) then proc.Kill(true); Assert.Fail "Teapot command did not terminate."
+            proc.ExitCode, output.Result, errors.Result
+        try
+            let source = Path.Combine(directory, "source")
+            let output = Path.Combine(directory, "output")
+            Directory.CreateDirectory(source) |> ignore
+            for path in Directory.GetFiles(Path.Combine(root, "samples/ffi"), "*.fss") do
+                File.Copy(path, Path.Combine(source, Path.GetFileName path |> nonNull))
+            let provider = typeof<GraphicsProvider>.Assembly.Location.Replace('\\', '/')
+            File.WriteAllText(Path.Combine(source, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{provider}']")
+            let code, stdout, error = run "dotnet" [cli; "compile"; Path.Combine(source, "main.fss"); "--target"; "dotnet"; "--aot"; "--output"; output] 300000
+            Assert.That(code, Is.Zero, stdout + error)
+            let name = if OperatingSystem.IsWindows() then "main.exe" else "main"
+            Assert.That(Directory.GetFiles(output) |> Array.map Path.GetFileName, Is.EqualTo(box [|name|]))
+            let executable = Path.Combine(directory, name)
+            File.Move(Path.Combine(output, name), executable)
+            Directory.Delete(source, true)
+            Directory.Delete(output, true)
+            let code, stdout, error = run executable ["--headless"; "5"] 60000
+            Assert.That(code, Is.Zero, error)
+            Assert.That(stdout, Does.Contain("1 mesh uploads; 5 frames"))
+            let code, _, error = run executable ["--headless"; "0"] 60000
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(error, Does.Contain("frame limit"))
+        finally Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``renderer carries native GLFW resources without initializing the library``() =
+        let resources = typeof<IGraphics>.Assembly.GetManifestResourceNames() |> Array.map (fun name -> name.Replace('\\', '/'))
+        Assert.That(resources |> Array.exists (fun name -> name.Contains("osx-arm64/native/libglfw.3.dylib")), Is.True)
+        Assert.That(resources |> Array.exists (fun name -> name.Contains("win-x64/native/glfw3.dll")), Is.True)
+        Assert.That(resources |> Array.exists (fun name -> name.Contains("linux-x64/native/libglfw.so.3")), Is.True)

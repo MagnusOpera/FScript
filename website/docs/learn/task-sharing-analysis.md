@@ -20,11 +20,37 @@ fscript analyze program.fss
 ```
 
 The command parses and type-checks the script, resolves its imports, and reads the
-same configured FFI environment used for execution. It supports assembly and
-NuGet providers selected through `fscript.toml`:
+same configured FFI environment used for execution and compilation.
+
+### Automatic `fscript.toml` discovery
+
+`analyze` automatically loads `fscript.toml` beside the entry script, even when
+invoked from another directory. It uses the manifest's local assembly and NuGet
+providers without requiring extra `--extern-assembly` flags. For example, a
+manifest beside `program.fss` can contain:
+
+```toml
+[runtime]
+extern-assemblies = ["extensions/MyProvider.dll"]
+```
+
+Build local provider projects before analyzing scripts that use their DLLs.
+Assembly paths in the manifest resolve from its directory. Imported scripts share
+the entry script's environment. Discovery checks only that script's directory;
+it does not search parent directories or fall back to the working directory.
+Without a manifest, the default environment applies.
+
+`compile` follows the same discovery and path rules, so analysis and compilation
+use the same providers.
+
+To choose another manifest, pass `--config <path>`, resolved from the working
+directory. Use `--no-config` to disable manifest loading. The two options cannot
+be combined. Explicit `--extern-assembly` paths also resolve from the working
+directory and add providers to the selected environment:
 
 ```sh
-fscript analyze program.fss --config fscript.toml
+fscript analyze program.fss --config configs/fscript.toml
+fscript analyze program.fss --no-config
 fscript analyze program.fss --extern-assembly ./MyProvider.dll
 ```
 

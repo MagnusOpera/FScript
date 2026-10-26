@@ -55,6 +55,7 @@ module internal DotNetPackaging =
         <SelfContained>true</SelfContained><UseAppHost>true</UseAppHost>
         <PublishSingleFile>{bundle}</PublishSingleFile><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
         <PublishAot>{aot}</PublishAot><PublishTrimmed>{trim}</PublishTrimmed>
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
         <!-- FSharp.Core requests removal of optional compiler metadata resources that
              may already be absent. IL2040 concerns only these resource removals;
              reflection, trimming and AOT compatibility warnings remain errors. -->

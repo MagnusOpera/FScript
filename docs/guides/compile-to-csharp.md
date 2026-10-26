@@ -48,7 +48,19 @@ See [Compilation and optimizations](./compiler-optimizations.md) for the full di
 
 ## .NET FFI and references
 
-Provider selection uses the same `fscript.toml`, `--config`, `--extern-assembly`, and `--no-default-externs` options as other CLR compilation workflows. Add explicit dependencies with repeated `--reference` arguments:
+The C# target automatically loads `fscript.toml` beside the entry script, just like `analyze` and the .NET target. Local FFI assemblies and NuGet providers selected by that manifest do not need to be repeated as flags. Compilation also includes their colocated managed dependencies.
+
+Manifest assembly paths resolve from the manifest directory. `--config <path>` chooses another manifest relative to the working directory; `--no-config` disables manifest loading. These options are mutually exclusive. Discovery checks only the entry script's directory, without searching parents or falling back to the working directory.
+
+For the teapot sample, build the provider first and use its existing manifest:
+
+```sh
+dotnet build samples/ffi/FfiSample.fsproj -c Release
+fscript analyze samples/ffi/main.fss
+fscript compile samples/ffi/main.fss --target csharp --output out/ffi-csharp
+```
+
+You can also add providers with `--extern-assembly` and disable built-in externs with `--no-default-externs`. Use repeated `--reference` arguments for additional managed assemblies outside the discovered dependency closure. Explicit assembly flag paths resolve from the working directory. For example, without a manifest:
 
 ```sh
 fscript compile extension.fss --target csharp --output out/extension-csharp --extern-assembly path/to/Provider.dll --reference path/to/Dependency.dll

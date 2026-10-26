@@ -47,7 +47,7 @@ Standalone applications use the process working directory and operating-system p
 
 ## Host integration
 
-Both targets support .NET FFI selected through the normal environment configuration. Existing SDK providers can run through generated adapters. Typed CLR mappings enable direct calls and make provider code suitable for trimming and Native AOT when its dependencies support them.
+Both targets automatically load `fscript.toml` beside the entry script to select local .NET FFI assemblies and NuGet providers. `fscript analyze` loads the same manifest, so providers do not need to be repeated with assembly flags for either command. Manifest assembly paths resolve from its directory; `--config <path>` selects another manifest relative to the working directory, and `--no-config` disables manifest loading. Discovery checks only the entry script's directory. Existing SDK providers can run through generated adapters. Typed CLR mappings enable direct calls and make provider code suitable for trimming and Native AOT when its dependencies support them.
 
 See [Compile to .NET](./compile-to-dotnet.md) for FFI configuration, typed bindings, publishing, and runtime identifiers, or [Compile to C#](./compile-to-csharp.md) for project layout and reference handling.
 

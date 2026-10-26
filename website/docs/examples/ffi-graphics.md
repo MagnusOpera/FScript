@@ -42,6 +42,18 @@ fscript samples/ffi/main.fss -- --headless
 
 The default scene generates 2,592 vertices and 4,096 triangles and renders three recorded frames in headless mode. This exercises script execution and conversions; it does not test OpenGL. For a bounded graphical check, use `-- --frames 3` to render three frames, check for teapot-colored pixels in the framebuffer, and exit.
 
+### Compile to Native AOT
+
+With the provider built, compile the same script without explicit assembly flags:
+
+```sh
+dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --aot --output out/ffi
+out/ffi/main --headless
+out/ffi/main --frames 3
+```
+
+The compiler reports its phases and output path. The result is one executable, `main.exe` on Windows. Publishing requires the .NET 10 SDK and the platform's native compiler; running the result requires no .NET installation. The provider supplies static CLR companions and typed setup/render delegates. GLFW binaries are embedded in the renderer and extracted only for graphical startup. Desktop graphics and OpenGL drivers are still required for a window.
+
 ## Find your way through the files
 
 All sample code lives under [`samples/ffi`](https://github.com/MagnusOpera/FScript/tree/main/samples/ffi).
@@ -252,4 +264,4 @@ dotnet test samples/ffi/Tests/FfiSample.Tests.fsproj -c Release
 
 ## Extension SDK dependency
 
-The provider's only FScript package reference is `MagnusOpera.FScript.Extensibility` 1.0.0. Open `FScript.Extensibility` for attributes, descriptors, `HostTypes`, and `HostFunctions`. This independently versioned SDK contains no interpreter implementation. The renderer remains a separate project; only the integration test harness references Runtime. Window callbacks use opaque SDK handles through `ExternalCallContext`, preserving the CLI/config entry point and cleanup behavior.
+The provider's only FScript package reference is `MagnusOpera.FScript.Extensibility` 1.0.0. Open `FScript.Extensibility` for attributes, descriptors, `HostTypes`, and `HostFunctions`. This independently versioned SDK contains no interpreter implementation. The renderer remains a separate project; only the integration test harness references Runtime. Interpreted window callbacks use opaque SDK handles through `ExternalCallContext`; compiled callbacks use `Func<Window, Action<double>>`. Both paths share validation and the frame loop. The renderer calls GLFW/OpenGL through unmanaged function pointers so Native AOT does not need reflection or dynamic delegate generation.

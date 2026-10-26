@@ -126,8 +126,12 @@ type CliTests() =
         try
             Directory.CreateDirectory(tempRoot) |> ignore
             File.WriteAllText(script, "let add x y = x + y\nadd 1 2")
-            let code, _, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "ir"; "--output"; output ] None
+            let code, progress, stderr = runCli repoRoot repoRoot [ "compile"; script; "--target"; "ir"; "--output"; output ] None
             Assert.That(code, Is.EqualTo(0), stderr)
+            Assert.That(progress, Does.Contain("to IR..."))
+            Assert.That(progress, Does.Contain("Writing IR artifact..."))
+            Assert.That(progress, Does.Contain("Compiled successfully in"))
+            Assert.That(progress, Does.Contain(Path.Combine(output, "program.fsir")))
             let artifact = Path.Combine(output, "program.fsir")
             Assert.That(File.Exists artifact, Is.True)
             let expected = File.ReadAllBytes(artifact)
@@ -269,8 +273,12 @@ type CliTests() =
             File.WriteAllText(script,"Env.setExitCode 7\n"+source)
             let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
             let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result";flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
-            let code,_,error=runCli root directory args None
+            let code,progress,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
+            Assert.That(progress,Does.Contain("Generating .NET assembly..."))
+            let mode=if flag="--aot" then "Native AOT" else "self-contained single-file"
+            Assert.That(progress,Does.Contain($"Publishing {mode} executable for"))
+            Assert.That(progress,Does.Contain("Compiled successfully in"))
             let name="native"+(if OperatingSystem.IsWindows() then ".exe" else "")
             let files=Directory.GetFiles(output)
             Assert.That(files.Length,Is.EqualTo(1))
@@ -609,12 +617,94 @@ type CliTests() =
         finally Directory.Delete(dir, true)
 
     [<Test>]
+    member _.``Compile failure reports its phase without claiming success`` () =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), "fscript-progress-failure-" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let script = Path.Combine(directory, "broken.fss")
+            let output = Path.Combine(directory, "output")
+            File.WriteAllText(script, "missingFunction 42")
+            let code, progress, error = runCli repo repo ["compile"; script; "--target"; "dotnet"; "--output"; output] None
+            Assert.That(code, Is.EqualTo(4))
+            Assert.That(progress, Does.Contain("Compiling"))
+            Assert.That(progress, Does.Not.Contain("Compiled successfully"))
+            Assert.That(progress, Does.Not.Contain("Publishing"))
+            Assert.That(error, Does.Contain("missingFunction"))
+            Assert.That(Directory.Exists(output), Is.False)
+        finally Directory.Delete(directory, true)
+
+    [<Test>]
     member _.``Provider data records can be constructed and updated by scripts`` () =
         let repo = findRepoRoot ()
         let source = "let point = { X = 1 }\nExt.acceptPoint { point with X = 42 }"
         let code, output, error = runCli repo repo ["--extern-assembly"; validProviderAssemblyPath ()] (Some source)
         Assert.That(code, Is.EqualTo(0), error)
         Assert.That(output.Trim(), Is.EqualTo("42"))
+
+    [<TestCase("analyze")>]
+    [<TestCase("ir")>]
+    [<TestCase("csharp")>]
+    [<TestCase("dotnet")>]
+    member _.``Analysis and compilation discover providers beside the entry script`` (command: string) =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), $"fscript-command-config-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let providerFile = Path.GetFileName(validProviderAssemblyPath ()) |> nonNull
+            File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
+            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
+            let script = Path.Combine(directory, "main.fss")
+            File.WriteAllText(script, "Ext.answer")
+            let args = if command = "analyze" then [command; script] else ["compile"; script; "--target"; command; "--output"; Path.Combine(directory, "out")]
+            let code, progress, error = runCli repo repo args None
+            Assert.That(code, Is.Zero, error)
+            if command <> "analyze" then Assert.That(progress, Does.Contain(Path.Combine(directory, "fscript.toml")))
+            let code, _, error = runCli repo repo (args @ ["--no-config"]) None
+            Assert.That(code, Is.Not.Zero)
+            Assert.That(error, Does.Contain("Ext"))
+            // Explicit flag paths resolve from cwd, even with an entry script elsewhere.
+            let relativeManifest = Path.GetRelativePath(repo, Path.Combine(directory, "fscript.toml"))
+            let code, _, error = runCli repo repo (args @ ["--config"; relativeManifest]) None
+            Assert.That(code, Is.Zero, error)
+        finally Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``Published single file CLI analyzes and compiles configured FFI`` () =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), $"fscript-published-cli-{Guid.NewGuid():N}")
+        Directory.CreateDirectory(directory) |> ignore
+        let run executable arguments =
+            let start = ProcessStartInfo(executable, WorkingDirectory=repo, RedirectStandardOutput=true, RedirectStandardError=true, UseShellExecute=false)
+            for argument in arguments do start.ArgumentList.Add(argument)
+            // Keep extraction isolated so cleanup also verifies the compiler releases its files.
+            start.Environment.["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] <- Path.Combine(directory, "extracted")
+            use proc = Process.Start(start) |> nonNull
+            let stdout = proc.StandardOutput.ReadToEndAsync()
+            let stderr = proc.StandardError.ReadToEndAsync()
+            if not (proc.WaitForExit(120000)) then proc.Kill(true); Assert.Fail("Published CLI command timed out.")
+            proc.ExitCode, stdout.Result, stderr.Result
+        try
+            let published = Path.Combine(directory, "cli")
+            let code, output, error = run "dotnet" ["publish"; Path.Combine(repo, "src", "FScript", "FScript.fsproj"); "-c"; "Release"; "-r"; System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier; "--self-contained"; "true"; "-p:PublishSingleFile=true"; "-o"; published]
+            Assert.That(code, Is.Zero, output + error)
+            let executable = Path.Combine(published, if OperatingSystem.IsWindows() then "fscript.exe" else "fscript")
+            let script = Path.Combine(directory, "answer.fss")
+            let providerFile = Path.GetFileName(validProviderAssemblyPath ()) |> nonNull
+            File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
+            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
+            File.WriteAllText(script, "Ext.answer")
+            let code, _, error = run executable ["analyze"; script]
+            Assert.That(code, Is.Zero, error)
+            for target in ["csharp"; "dotnet"] do
+                let outputDirectory = Path.Combine(directory, target)
+                let code, _, error = run executable ["compile"; script; "--target"; target; "--output"; outputDirectory]
+                Assert.That(code, Is.Zero, error)
+                let args = if target = "dotnet" then [Path.Combine(outputDirectory, "answer.dll")] else ["run"; "--project"; outputDirectory; "-c"; "Release"]
+                let code, output, error = run "dotnet" args
+                Assert.That(code, Is.Zero, error)
+                Assert.That(output.Trim(), Is.EqualTo("42"))
+        finally Directory.Delete(directory, true)
 
     [<Test>]
     member _.``Automatic configuration is beside the script or in stdin cwd`` () =

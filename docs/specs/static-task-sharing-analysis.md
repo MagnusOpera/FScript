@@ -20,6 +20,8 @@ as other environment-loading commands do; this is not a sandbox for untrusted
 providers. `--config`, `--no-config`, `--root`, `--no-default-externs`, and repeated
 `--extern-assembly` flags use the ordinary CLI environment rules.
 
+Without an explicit override, `analyze` loads `fscript.toml` only from the entry script's directory, even when the working directory is elsewhere. It does not search parent directories or fall back to a working-directory manifest. The selected local assembly and NuGet providers are available without repeated assembly flags, and imported scripts share that environment. With no manifest, defaults apply. Manifest assembly paths resolve relative to the manifest directory; explicit `--config` and `--extern-assembly` paths resolve from the working directory. `--no-config` disables manifest loading and is mutually exclusive with `--config`. Local provider DLLs must already be built. `compile` follows the same selection rules. See [environment configuration](environment-configuration.md#cli).
+
 Warnings go to stderr and do not cause a nonzero exit code. Parse, type,
 configuration, and filesystem errors do. Analysis is a separate command; compilation
 does not run the pass or discover concurrency metadata. Check a script with

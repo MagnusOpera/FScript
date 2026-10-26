@@ -18,6 +18,15 @@ module ProviderFixture =
         static member Calls = calls
         static member Calculate(value: int64) = calls<-calls+1;value+1L
 
+    type CallbackPoint = { Z: int64; A: int64 }
+    type CallbackEnvelope = { Points: CallbackPoint list; Bias: int64 }
+    type TypedCallbacks =
+        static member Invoke(setup: Func<int, Action<int>>) =
+            setup.Invoke(40).Invoke(2)
+            42L
+        static member Read(value: CallbackEnvelope) =
+            value.Bias + (value.Points |> List.sumBy (fun point -> point.Z * 100L + point.A))
+
     type QuietValue() =
         member _.Value = 7L
     type ConstructedValue(value: int64) =
@@ -383,6 +392,34 @@ type BackendTests() =
             Directory.SetCurrentDirectory(previous)
             Directory.Delete(directory,true)
 
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Typed CLR companions marshal nested callbacks and record constructors`` (csharp: bool) =
+        let execute name methodName signature source =
+            let external: CompilerExtern = {Name=name;Scheme=Forall([],signature);Arity=1;Kind=UnsupportedHostExtern}
+            let program = match Compiler.compile {Program=Parser.parseProgram source;Externs=[external]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+            let method = typeof<ProviderFixture.TypedCallbacks>.GetMethod(methodName) |> nonNull
+            let program = ClrBindings.bindMethod name method program
+            let references = [typeof<ProviderFixture.TypedCallbacks>.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<unit>.Assembly.Location]
+            if csharp then
+                let assembly = Harness.csharpAssembly references program
+                let typ = assembly.GetType("Generated.Program") |> nonNull
+                let result = (typ.GetMethod("Run") |> nonNull).Invoke(null, [||])
+                ((typ.GetMethod("FormatResult") |> nonNull).Invoke(null, [|result|]) |> nonNull) :?> string
+            else Harness.executeWith {Harness.options with References=references} program
+        use output = new StringWriter()
+        let previous = Console.Out
+        try
+            Console.SetOut output
+            let signature = TFun(TFun(TInt, TFun(TInt,TUnit)), TInt)
+            let result = execute "Native.invoke" "Invoke" signature "Native.invoke (fun initial -> fun step -> Console.writeLine (Int.toString (initial + step)))"
+            Assert.That(result, Is.EqualTo("42"))
+            Assert.That(output.ToString().Trim(), Is.EqualTo("42"))
+        finally Console.SetOut previous
+        let signature = TFun(TNamed "Envelope", TInt)
+        let source = "type Point = { A:int; Z:int }\ntype Envelope = { Bias:int; Points:Point list }\nNative.read { Bias=40; Points=[{ A=2; Z=3 }; { A=5; Z=4 }] }"
+        Assert.That(execute "Native.read" "Read" signature source, Is.EqualTo("747"))
+
     [<Test>]
     member _.``Exact CLR calls survive serialization`` () =
         let external: CompilerExtern = {Name="Native.abs"; Scheme=Forall([],TFun(TInt,TInt)); Arity=1; Kind=UnsupportedHostExtern}
@@ -521,6 +558,7 @@ type BackendTests() =
 
     [<TestCase("let make bias =\n    let step x=x+bias\n    let rec loop n value=if n=0 then (fun x -> value+x) else loop (n-1) (step value)\n    loop 5 0\nlet a=make 2\nlet b=make 7\n(a 1,b 1,a 3)")>]
     [<TestCase("let make bias =\n    let step x=x+bias\n    let rec loop n value=if n=0 then value else loop (n-1) (step value)\n    loop\nlet a=make 2\nlet b=make 7\n(a 5 0,b 5 0,a 3 1)")>]
+    [<TestCase("let patch segments offset =\n    let sample i = i + segments\n    [0..segments] |> List.collect (fun u ->\n        [0..segments] |> List.map (fun v -> offset + sample u + sample v))\nlet generate n = [1;2] |> List.collect (fun offset -> patch n offset)\n(generate 2, generate 3)")>]
     [<TestCase("let make bias =\n    let step x=x+bias\n    let rec even n=if n=0 then step 1 else odd (n-1)\n    and odd n=if n=0 then step 2 else even (n-1)\n    even\n(make 3 20,make 7 21)")>]
     member _.``Capture specialization preserves escaping closures and distinct environments`` (source: string) =
         Assert.That(Harness.execute (Harness.compile source),Is.EqualTo(Harness.legacy source))

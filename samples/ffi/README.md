@@ -1,6 +1,6 @@
 # FFI graphics: a teapot made in FScript
 
-FScript builds a Utah teapot from 32 bicubic Bézier patches, computes surface normals and triangle indices, and supplies the camera, lighting, material, and animated rotation. A small .NET host uploads that geometry once and renders it with OpenGL 3.3 through Silk.NET.
+FScript builds a Utah teapot from 32 bicubic Bézier patches, computes surface normals and triangle indices, and supplies the camera, lighting, material, and animated rotation. A small .NET host uploads that geometry once and renders it with OpenGL 3.3 through GLFW and typed OpenGL function pointers.
 
 ## Run
 
@@ -37,12 +37,26 @@ dotnet test samples/ffi/Tests/FfiSample.Tests.fsproj -c Release
 
 Headless mode checks script execution and conversion; it does not exercise shaders or GPU rendering. Sample tests are included in `make test`, and `make smoke-tests` runs the headless sample. Native graphics libraries are loaded only when starting the graphical host.
 
+## Compile to Native AOT
+
+After building the provider, compile the same entry script without extra assembly flags:
+
+```sh
+dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --aot --output out/ffi
+out/ffi/main --headless
+out/ffi/main --frames 3
+```
+
+The output is one executable, `main.exe` on Windows, and requires no FScript installation or .NET runtime. Native AOT publishing needs the .NET 10 SDK and the platform's native compiler. GLFW binaries are embedded in the renderer and extracted to a content-addressed temporary cache when a graphical window starts. Headless mode does not initialize GLFW. Graphical execution still requires the platform's display and OpenGL drivers.
+
+`GraphicsProvider` supplies compiler companions that bind reachable functions to typed CLR methods. Compiled setup/render callbacks use `Func<Window, Action<double>>`; interpreted execution uses `ExternalCallContext.Apply`. Both paths share the same frame loop and validation. Geometry uses CLR arrays behind the boundary while scripts retain ordinary list values.
+
 ## Follow the example
 
 1. Read `scene.fss`: ordinary record literals create the camera, light, material, and rotation. `initialize` generates and uploads a mesh; `render` changes its rotation each frame.
 2. Read `teapot.fss`: the control points and patch connectivity are script data. Cubic Bézier evaluation, derivatives, cross products, normalized normals, and indexed tessellation all run in FScript. Change `Teapot.generate 8` in the scene to change the resolution (clamped to 2–32 segments per patch edge). Re-run the host after editing; this sample does not hot reload.
 3. Read `Graphics.fs`: attributes expose real F# records as script types. `HostTypes.describe` creates descriptors, and `HostFunctions.create` derives function schemes, arity, and conversions from typed handlers.
-4. Read `main.fss`: the entry script calls `Graphics.run` with a setup callback. That callback uploads the mesh and returns a render closure retaining it. The provider pumps native events and invokes the closure through `ExternalCallContext.Apply` until the window closes.
+4. Read `main.fss`: the entry script calls `Graphics.run` with a setup callback. That callback uploads the mesh and returns a render closure retaining it. The provider pumps native events and invokes the closure until the window closes. Interpreted execution uses `ExternalCallContext.Apply`; compiled execution calls typed delegates.
 5. Read `Renderer/`: the C# backend contains shaders, view/projection matrix construction, GPU buffers, and window/input handling. It contains no teapot model or scene choices.
 
 The dataset's provenance and license are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). This sample keeps collapsed pole triangles in the index buffer (the rasterizer ignores zero-area triangles) and supplies defined pole normals. The renderer draws both sides of the open teapot surfaces.

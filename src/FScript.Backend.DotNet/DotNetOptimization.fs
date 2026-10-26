@@ -205,9 +205,12 @@ module internal DotNetOptimization =
                             functions <- Map.add newId {original with Id=newId} functions
                             let parameter,body=clone original captures
                             let body=rewrite (Set.add origins.[id] active) (Map.ofList bindings) body
-                            functions <- Map.add newId {original with Id=newId;Parameter=parameter;Body=body} functions
+                            // Inlining a captured callback can introduce its own free symbols.
+                            // Record them before an enclosing clone renames lexical bindings.
+                            let captures = LirLowering.capturedReferences (Set.singleton parameter) body |> Set.toList |> List.sortBy Lir.symbolNumber
+                            functions <- Map.add newId {original with Id=newId;Parameter=parameter;Captures=captures;Body=body} functions
                             newId
-                    {expression with Node=Lir.MakeClosure(specializedId,captures)}
+                    {expression with Node=Lir.MakeClosure(specializedId,functions.[specializedId].Captures)}
             | Lir.Load id ->
                 match Map.tryFind id known with
                 | Some {Node=Lir.MakeClosure(functionId,_)} when Set.contains origins.[functionId] recursiveFunctions -> expression

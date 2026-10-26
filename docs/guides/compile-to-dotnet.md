@@ -78,10 +78,22 @@ The compiler packages its optimized assembly; it does not recompile the script t
 
 ## Existing FFI providers
 
-Compilation uses ordinary `fscript.toml` discovery. `--config`, `--no-config`, `--extern-assembly`, and `--no-default-externs` select the environment. Repeat `--reference <assembly.dll>` to add managed references.
+`compile` automatically loads `fscript.toml` beside the entry script, even when invoked from another directory. `analyze` uses the same discovery rule. The manifest selects local FFI assemblies and NuGet providers, so neither command needs those providers repeated as assembly flags. Compilation includes their colocated managed dependencies automatically; use `--reference <assembly.dll>` for additional managed assemblies.
+
+Manifest assembly paths resolve from the manifest directory. `--config <path>` selects another manifest relative to the working directory; `--no-config` disables manifest loading. These options are mutually exclusive. Discovery does not search parent directories or fall back to a working-directory manifest. Explicit `--extern-assembly` paths resolve from the working directory and add providers to the selected environment. `--no-default-externs` disables the built-in externs.
+
+For the teapot example, `samples/ffi/fscript.toml` supplies the provider path:
+
+```toml
+[runtime]
+extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+```
+
+Build the provider first, then analyze or compile without extra assembly flags:
 
 ```sh
 dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet run --project src/FScript -- analyze samples/ffi/main.fss
 dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --output out/graphics-dotnet
 dotnet out/graphics-dotnet/main.dll --headless
 ```

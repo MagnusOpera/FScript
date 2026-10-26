@@ -5,6 +5,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>fscript</ToolCommandName>
     <AssemblyName>fscript</AssemblyName>
+    <!-- Compilation reads SDK, FSharp.Core and platform assembly metadata from disk. -->
+    <IncludeAllContentForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeAllContentForSelfExtract>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>

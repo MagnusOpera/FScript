@@ -335,6 +335,29 @@ module CSharpBackend =
             elif csType semantic = typeName native then code
             elif native = typeof<int64> || native = typeof<int> || native = typeof<float> || native = typeof<float32> || native = typeof<bool> || native = typeof<string> then $"(({typeName native})({code}))"
             elif native = typeof<unit> then "default(global::Microsoft.FSharp.Core.Unit)"
+            elif native = typeof<obj> then code
+            elif typeof<MulticastDelegate>.IsAssignableFrom native then
+                let invoke = native.GetMethod("Invoke") |> nonNull
+                match semantic, invoke.GetParameters() with
+                | TFun(argument, result), [|parameter|] ->
+                    let original, value = fresh "callback", fresh "callbackArgument"
+                    let call = $"{original}({fromClr parameter.ParameterType argument value})"
+                    let body = if invoke.ReturnType = typeof<Void> then $"{call};" else $"return {toClr result invoke.ReturnType call};"
+                    wrap (typeName native) $"var {original}={code}; return new {typeName native}(({typeName parameter.ParameterType} {value}) => {{ {body} }});"
+                | _ -> fail "FSC6006" "Compiled CLR callbacks require a unary delegate matching the curried script function." None
+            elif (match resolve semantic with TRecord _ -> true | _ -> false) then
+                let members = fields semantic
+                let constructor = native.GetConstructors() |> Array.tryFind (fun ctor ->
+                    let parameters = ctor.GetParameters()
+                    parameters.Length = members.Count && parameters |> Array.forall (fun parameter -> members |> Map.exists (fun name _ -> String.Equals(name, parameter.Name, StringComparison.OrdinalIgnoreCase))))
+                match constructor with
+                | None -> fail "FSC6007" $"CLR record '{native.FullName}' requires a public constructor matching its script fields." None
+                | Some constructor ->
+                    let original = fresh "foreignRecord"
+                    let args = constructor.GetParameters() |> Array.map (fun parameter ->
+                        let name, fieldType = members |> Map.toSeq |> Seq.find (fun (name, _) -> String.Equals(name, parameter.Name, StringComparison.OrdinalIgnoreCase))
+                        toClr fieldType parameter.ParameterType (readField semantic name original)) |> String.concat comma
+                    wrap (typeName native) $"var {original}={code}; return new {typeName native}({args});"
             elif native.IsArray then
                 match semantic with TList item -> $"({code}).Select(item => {toClr item ((native.GetElementType() |> nonNull)) itemCode}).ToArray()" | _ -> code
             elif native.IsGenericType && native.GetGenericTypeDefinition() = typedefof<list<_>> then

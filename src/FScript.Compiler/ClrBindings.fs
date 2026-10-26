@@ -44,8 +44,30 @@ module ClrBindings =
         visitBytes assemblyBytes
         used |> Seq.sort |> Seq.toList
 
+    // A self-contained CLI extracts framework DLLs beside its own dependencies.
+    // Those DLLs belong to the runtime, not the generated application's payload.
+    let private bundledFrameworkAssemblies () =
+        let names = Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        match Assembly.GetEntryAssembly() with
+        | null -> ()
+        | entry when String.IsNullOrEmpty entry.Location -> ()
+        | entry ->
+            let deps = Path.ChangeExtension(entry.Location, ".deps.json") |> nonNull
+            if File.Exists deps then
+                use document = JsonDocument.Parse(File.ReadAllText deps)
+                let mutable targets = Unchecked.defaultof<JsonElement>
+                if document.RootElement.TryGetProperty("targets", &targets) then
+                    for target in targets.EnumerateObject() do
+                        for library in target.Value.EnumerateObject() do
+                            if library.Name.StartsWith("runtimepack.Microsoft.NETCore.App.Runtime.", StringComparison.Ordinal) then
+                                let mutable runtime = Unchecked.defaultof<JsonElement>
+                                if library.Value.TryGetProperty("runtime", &runtime) then
+                                    for asset in runtime.EnumerateObject() do names.Add(Path.GetFileName asset.Name |> nonNull) |> ignore
+        names
+
     /// Include managed dependencies colocated with explicit reference assemblies.
     let referenceClosure paths =
+        let framework = bundledFrameworkAssemblies ()
         let seen=Collections.Generic.HashSet<string>(StringComparer.Ordinal)
         let result=ResizeArray<string>()
         let rec visit path =
@@ -59,7 +81,7 @@ module ClrBindings =
                     for handle in metadata.AssemblyReferences do
                         let name=metadata.GetString(metadata.GetAssemblyReference(handle).Name)
                         let adjacent=Path.Combine(Path.GetDirectoryName(path) |> nonNull,name+".dll")
-                        if File.Exists adjacent then visit adjacent
+                        if not (framework.Contains(name+".dll")) && File.Exists adjacent then visit adjacent
         List.iter visit paths
         result |> Seq.distinctBy Path.GetFileName |> Seq.sort |> Seq.toList
 
