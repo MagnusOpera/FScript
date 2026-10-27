@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Present scripting, .NET and JavaScript embedding, and compilation as the three main paths on the website and in the introduction.
+
 ## [0.86.3]
 
 

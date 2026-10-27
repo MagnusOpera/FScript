@@ -7,7 +7,7 @@ const latestReleasedVersion = versions[0] ?? 'current';
 
 const config: Config = {
   title: 'FScript',
-  tagline: 'Fast script iteration, optimized .NET compilation, and typed FFI.',
+  tagline: 'Script. Embed. Compile.',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -84,6 +84,11 @@ const config: Config = {
         {
           to: '/sandbox',
           label: 'Playground',
+          position: 'left',
+        },
+        {
+          to: '/manual/embedding/overview',
+          label: 'Embedding',
           position: 'left',
         },
         {

@@ -140,21 +140,21 @@ function HomepageHeader() {
       <div className={styles.orbTwo} aria-hidden="true" />
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}><span>Open source</span> · Interpreter · Compiler · FFI</div>
+          <div className={styles.eyebrow}><span>Open source</span> · Script · Embed · Compile</div>
           <Heading as="h1" className={styles.heroTitle}>
-            Iterate in scripts.<br /><em>Compile for speed.</em>
+            Script. Embed.<br /><em>Compile.</em>
           </Heading>
           <p className={styles.heroLead}>
-            FScript is a typed scripting language with an interpreter for fast iteration and an optimizing
-            compiler for .NET and native executables. Call your .NET libraries through typed FFI, or embed
-            scripts in .NET and JavaScript applications.
+            FScript is a typed, functional scripting language for standalone programs and application scripting.
+            Run scripts with the interpreter, embed them in .NET and JavaScript applications, or compile
+            them to optimized .NET and native executables.
           </p>
           <div className={styles.heroActions}>
             <Link className={styles.primaryAction} to="/sandbox">
               Try FScript <Arrow />
             </Link>
-            <Link className={styles.secondaryAction} to="/manual/compiler/overview">
-              Compile a script
+            <Link className={styles.secondaryAction} to="#run-scripts">
+              Explore the options
             </Link>
           </div>
           <div className={styles.installLine}>
@@ -163,9 +163,9 @@ function HomepageHeader() {
           </div>
           <div className={styles.heroProof}>
             <span>Static type inference</span>
-            <span>Optimized .NET code</span>
-            <span>Native AOT</span>
-            <span>Typed FFI</span>
+            <span>.NET &amp; JavaScript embedding</span>
+            <span>Typed host APIs</span>
+            <span>Optimized compilation</span>
           </div>
         </div>
         <div className={styles.heroVisual}>
@@ -178,8 +178,8 @@ function HomepageHeader() {
       </div>
       <div className={styles.heroTicker} aria-label="How FScript runs">
         <div>
-          <span>EDIT .FSS</span><i>✦</i><span>RUN A SCRIPT</span><i>✦</i><span>COMPILE .NET</span><i>✦</i>
-          <span>PUBLISH NATIVE AOT</span><i>✦</i><span>CALL .NET LIBRARIES</span><i>✦</i>
+          <span>RUN SCRIPTS</span><i>✦</i><span>EMBED IN .NET</span><i>✦</i><span>EMBED IN JAVASCRIPT</span><i>✦</i>
+          <span>COMPILE .NET</span><i>✦</i><span>PUBLISH NATIVE AOT</span><i>✦</i>
         </div>
       </div>
     </header>
@@ -189,44 +189,57 @@ function HomepageHeader() {
 export default function Home() {
   return (
     <Layout
-      title="FScript: fast script iteration, optimized compilation, typed FFI"
-      description="Iterate with the FScript interpreter, compile optimized .NET assemblies or Native AOT executables, and call .NET libraries through typed FFI. Embed scripts in .NET or JavaScript.">
+      title="FScript: Script. Embed. Compile."
+      description="FScript is a typed, functional scripting language for standalone programs and application scripting. Run scripts, embed in .NET and JavaScript, or compile to .NET and native executables.">
       <HomepageHeader />
       <main className={styles.main}>
-        <section className={styles.workflowScene}>
+        <section className={styles.workflowScene} aria-label="Three ways to use FScript">
           <div className={`container ${styles.workflowGrid}`}>
             <div>
-              <p className={styles.sectionLabel}>Optimizing compiler</p>
-              <Heading as="h2">Take the script.<br />Build the program.</Heading>
+              <p className={styles.sectionLabel}>Script</p>
+              <Heading as="h2" id="run-scripts">Run scripts.</Heading>
               <p>
-                Start with <code>fscript program.fss</code> for an edit-and-run workflow. When execution
-                speed matters, compile to an optimized .NET assembly. Publish a self-contained executable
-                or use Native AOT to produce a native binary. Generated programs run without an FScript interpreter.
+                Write standalone programs, automate everyday tasks, and explore ideas in the REPL.
+                Run <code>fscript program.fss</code> for a simple edit-and-run workflow, with static
+                type inference checking your code before execution.
               </p>
               <p>
-                The .NET compiler specializes functions, turns self tail calls into loops, and removes unused
-                code. Eligible pure collection pipelines fuse into loops that avoid intermediate arrays.
-                You can also generate a C# project to inspect or integrate into your own build.
+                Use immutable data, pattern matching, and the standard library to express your logic.
+                Connect to .NET libraries through typed FFI when your program needs more.
               </p>
-              <Link className={styles.inlineLink} to="/manual/compiler/overview">Compile your first program <Arrow /></Link>
-              <Link className={styles.inlineLink} to="/manual/compiler/optimizations">Explore the optimizations <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/learn/quickstart">Install and run <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/sandbox">Try the playground <Arrow /></Link>
             </div>
             <div>
-              <p className={styles.sectionLabel}>Typed .NET FFI</p>
-              <Heading as="h2">Put your libraries<br />to work.</Heading>
+              <p className={styles.sectionLabel}>Embed</p>
+              <Heading as="h2">Script your app.</Heading>
               <p>
-                Expose .NET functions and host-provided types to scripts through typed extern bindings.
-                Pass records and callbacks, and work with opaque resources. The host chooses which
-                operations scripts can call.
+                Embed FScript in .NET and JavaScript applications to make pricing, eligibility,
+                workflows, or customer-specific rules configurable. Load scripts, inspect exported
+                function types, and invoke their exports from your application.
               </p>
               <p>
-                Compiled programs support existing FFI providers through adapters. Typed CLR bindings enable
-                direct .NET calls and support trimming and Native AOT when the libraries are compatible.
-                The graphics sample puts scene generation and animation in FScript, with OpenGL rendering
-                supplied by a .NET provider.
+                The host chooses which typed functions and resources scripts can use and where
+                imported source comes from. Load updated rules without rebuilding the application.
               </p>
-              <Link className={styles.inlineLink} to="/manual/examples/ffi-graphics">Explore the graphics sample <Arrow /></Link>
-              <Link className={styles.inlineLink} to="/manual/compiler/dotnet">Compile with FFI <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/embedding/overview">Embed FScript <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/embedding/register-externs">Expose typed host APIs <Arrow /></Link>
+            </div>
+            <div>
+              <p className={styles.sectionLabel}>Compile</p>
+              <Heading as="h2">Build programs.</Heading>
+              <p>
+                Compile standalone programs to optimized .NET assemblies, publish self-contained
+                executables, or use Native AOT to produce native binaries. Generated programs run
+                without an FScript interpreter.
+              </p>
+              <p>
+                The compiler specializes functions, turns self tail calls into loops, and fuses eligible
+                pure collection pipelines. Use typed .NET FFI bindings, or generate a C# project
+                to integrate into your own build.
+              </p>
+              <Link className={styles.inlineLink} to="/manual/compiler/overview">Compile a program <Arrow /></Link>
+              <Link className={styles.inlineLink} to="/manual/compiler/optimizations">Explore the optimizations <Arrow /></Link>
             </div>
           </div>
         </section>
@@ -290,6 +303,8 @@ export default function Home() {
             <nav aria-label="Start using FScript">
               <Link to="/sandbox">Open the sandbox</Link>
               <Link to="/manual/learn/quickstart">Install and run</Link>
+              <Link to="/manual/embedding/overview">Embed FScript</Link>
+              <Link to="/manual/compiler/overview">Compile a program</Link>
               <a href="https://github.com/MagnusOpera/FScript">GitHub <Arrow /></a>
             </nav>
           </div>

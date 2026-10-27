@@ -4,9 +4,13 @@ title: Introduction
 slug: /
 ---
 
-FScript is a typed scripting language with an F#/ML-style syntax, an interpreter for fast iteration, and an optimizing compiler for .NET. Run `.fss` files as you develop, then compile them into .NET assemblies, self-contained executables, or native binaries with Native AOT. Typed .NET FFI connects scripts to your libraries and host-provided types.
+FScript is a typed, functional scripting language for standalone programs and application scripting. It combines F#/ML-style syntax, static type inference, and immutable data with three ways to run your code: script, embed, and compile.
 
-You can also embed the interpreter in .NET applications, browsers, and Node.js to load scripts and call their exported functions without rebuilding the host application.
+## Script. Embed. Compile.
+
+- **Run scripts**: write standalone programs, automate everyday tasks, and explore ideas with the interpreter and REPL. Start with [Quickstart](./learn/quickstart).
+- **Embed FScript**: load scripts in .NET applications, browsers, and Node.js, inspect exported function types, and invoke exports without rebuilding the host application. Your host controls the typed APIs and resources scripts can use. Start with [Embedding](./embedding/overview.md).
+- **Compile programs**: build optimized .NET assemblies, self-contained executables, or native binaries with Native AOT. You can also generate a buildable C# project. Start with [Compilation](./compiler/compilation.md).
 
 ## Iterate, then compile
 
@@ -48,8 +52,8 @@ Use it for automation, application rules, embedded scripting, and standalone pro
 1. Start with [Quickstart](./learn/quickstart) to install FScript and run your first script.
 2. Take the [Language Tour](./learn/language-tour), then follow the Language chapters beginning with [Values and Bindings](./language/values-and-bindings).
 3. Use [Examples](./examples/guided-examples) to practice complete script patterns and [Stdlib](./stdlib/overview) to explore the built-in modules.
-4. Follow [Compilation](./compiler/compilation.md) to build a .NET assembly or publish an executable.
-5. Study [Embedding](./embedding/overview) for host integration and [compiled FFI](./compiler/compile-to-dotnet.md#existing-ffi-providers) to use providers in compiled programs.
+4. Choose [Embedding](./embedding/overview) to integrate scripts into your application, or [Compilation](./compiler/compilation.md) to build a .NET assembly or publish an executable.
+5. Explore [typed host APIs](./embedding/register-externs.md) and [compiled FFI](./compiler/compile-to-dotnet.md#existing-ffi-providers) to connect scripts and programs to your libraries.
 
 ## Manual structure
 
