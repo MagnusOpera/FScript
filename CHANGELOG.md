@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.87.2]
+
+
 - Configure compiler backend, AOT, size optimization, runtime, and output defaults in `fscript.toml`, with CLI overrides and conventional build directories.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.87.1...0.87.2
 
 ## [0.87.1]
 
