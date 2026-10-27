@@ -44,15 +44,25 @@ The default scene generates 2,592 vertices and 4,096 triangles and renders three
 
 ### Compile to Native AOT
 
-With the provider built, compile the same script without explicit assembly flags:
+The sample's `fscript.toml` configures the .NET backend, AOT, and size optimization. With the provider built, compile without extra options:
 
 ```sh
-dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --aot --output out/ffi
+fscript compile samples/ffi/main.fss
+# On macOS ARM64:
+samples/ffi/bin/main/dotnet/osx-arm64/aot/main --headless
+```
+
+Other platforms use their own .NET runtime identifier in the path. Windows adds `.exe`. The compiler prints the output location. From the sample directory, use `fscript compile main.fss`.
+
+To retain full framework diagnostics and choose a different output directory:
+
+```sh
+dotnet run --project src/FScript -- compile samples/ffi/main.fss --no-size-optimized --output out/ffi
 out/ffi/main --headless
 out/ffi/main --frames 3
 ```
 
-Add `--size-optimized` to trade culture support and framework diagnostics for a smaller executable. It enables invariant globalization, replaces framework exception messages with resource keys, and disables runtime stack traces and EventSource. Ordinary `--aot` keeps those facilities. Both modes optimize native code for size and embed only the selected platform's GLFW library; the provider DLL remains portable for interpreted execution.
+The sample enables `size-optimized = true` in its manifest to trade culture support and framework diagnostics for a smaller executable. It enables invariant globalization, replaces framework exception messages with resource keys, and disables runtime stack traces and EventSource. Use `--no-size-optimized` to override that default. AOT without configured size optimization keeps those facilities. Both modes optimize native code for size and embed only the selected platform's GLFW library; the provider DLL remains portable for interpreted execution.
 
 
 On macOS ARM64 with .NET SDK 10.0.403, the executable shrank from 4,378,616 bytes to 2,181,464 bytes with ordinary AOT, or 1,882,776 bytes with `--size-optimized`. Both profiles passed headless and real OpenGL checks. Sizes depend on SDK and platform; see [Native AOT executable size](../compiler/compile-to-dotnet.md#native-aot-executable-size) for the investigation and runtime tradeoffs.

@@ -17,6 +17,8 @@ FScript can run inside a host application or compile into a program that runs on
 
 The [optimization guide](./compiler-optimizations.md) explains the shared passes and the additional work performed by the assembly target.
 
+Compile settings can live in `[compile]` in the script's `fscript.toml`, so `fscript compile main.fss` needs no backend or output flags. With no settings it emits a managed .NET assembly under `bin/main/dotnet/` beside the script. Explicit CLI options override manifest values. See [Compile defaults](../reference/environment-configuration.md#compile-defaults).
+
 ## Compile a first program
 
 Save this as `hello.fss`:

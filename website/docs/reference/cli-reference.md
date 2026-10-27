@@ -22,6 +22,8 @@ fscript version
 
 ## Compile programs
 
+`fscript compile program.fss` uses `[compile]` defaults from the selected `fscript.toml`. Without configuration, it emits a .NET assembly under `bin/program/dotnet/` beside the script. `--target` and `--output` override those defaults. Use `--no-aot`, `--no-size-optimized`, or `--no-single-file` to disable configured booleans. See [Compile defaults](./environment-configuration.md#compile-defaults) for the full schema and output convention.
+
 Generate one versioned whole-program IR artifact:
 
 ```bash

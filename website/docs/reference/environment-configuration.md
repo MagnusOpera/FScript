@@ -4,7 +4,7 @@ title: Environment Configuration
 slug: /reference/environment-configuration
 ---
 
-An optional `fscript.toml` describes the external-function environment available to scripts. The CLI and VS Code use the same assembly-provider registration metadata for execution and type checking.
+An optional `fscript.toml` describes the external-function environment and compile defaults available to scripts. The CLI and VS Code use the same assembly-provider registration metadata for execution and type checking.
 
 ```toml
 [runtime]
@@ -26,7 +26,50 @@ All runtime properties are optional:
 | `runtime.extern-assemblies` | Array of strings | Empty |
 | `runtime.packages` | Array of package tables | Empty |
 
-Unknown sections/properties, incorrect value types, and malformed TOML are errors. Each package table requires `name` and optionally accepts an exact string `version`. Unknown properties, invalid IDs/versions, and repeated names are errors. There is no script entry point, build configuration, or import declaration in this file.
+Unknown sections/properties, incorrect value types, and malformed TOML are errors. Each package table requires `name` and optionally accepts an exact string `version`. Unknown properties, invalid IDs/versions, and repeated names are errors. There is no script entry point or import declaration in this file. Compile defaults use the separate table below.
+
+## Compile defaults
+
+The same manifest can set defaults for `fscript compile`:
+
+```toml
+[compile]
+backend = "dotnet"
+aot = true
+size-optimized = true
+# output = "artifacts"   # optional, relative to this manifest
+# runtime = "osx-arm64" # optional, otherwise use the build host for executables
+# single-file = false
+```
+
+Then run `fscript compile main.fss`. The entry script is still a positional argument; the manifest does not select it. The CLI uses the same beside-script discovery, `--config`, and `--no-config` rules as execution. Compile settings have no effect on interpretation, analysis, or editor evaluation, and reading them never starts a compiler.
+
+| Property | Type | Default |
+| --- | --- | --- |
+| `compile.backend` | String: `dotnet`, `csharp`, or `ir` | `dotnet` |
+| `compile.aot` | Boolean | `false` |
+| `compile.size-optimized` | Boolean | `false` |
+| `compile.single-file` | Boolean | `false` |
+| `compile.runtime` | Nonempty string | Build host RID for executable publishing |
+| `compile.output` | Nonempty path string | Conventional directory below the entry script |
+
+Explicit CLI options override manifest values. `--target` overrides `backend`; `--output` and `--runtime` override their corresponding properties. `--aot` / `--no-aot`, `--size-optimized` / `--no-size-optimized`, and `--single-file` / `--no-single-file` override booleans in either direction. Supplying both positive and negative forms of one flag is an error. Explicit options missing their value are errors, even if the manifest defines a fallback.
+
+Selecting C# or IR ignores inherited .NET publishing defaults. Explicit .NET publishing flags on those backends remain errors. `--single-file` replaces inherited AOT and size optimization; `--aot` replaces inherited single-file mode. `--no-aot` also clears inherited size optimization. An explicit `--size-optimized` still requires effective AOT. If both publishing modes are enabled together, AOT takes precedence, matching the existing CLI behavior. Inherited runtime identifiers apply only to executable publishing; explicit `--runtime` without a publishing mode remains an error.
+
+Without `output`, generated files go under the entry script's directory:
+
+| Output | Directory |
+| --- | --- |
+| .NET assembly | `bin/<script-name>/dotnet/` |
+| C# project | `bin/<script-name>/csharp/` |
+| IR artifact | `bin/<script-name>/ir/` |
+| Native AOT | `bin/<script-name>/dotnet/<rid>/aot/` |
+| Managed single-file | `bin/<script-name>/dotnet/<rid>/single-file/` |
+
+`<script-name>` excludes the script extension. Backend, script, runtime, and publishing directories keep conventional builds separate. Configured output paths resolve relative to the manifest directory; CLI output paths resolve relative to the working directory. An explicit output directory always takes precedence over this convention. Existing unrelated files in an output directory are preserved.
+
+For example, `fscript compile main.fss --no-size-optimized` keeps configured AOT but retains normal framework diagnostics and culture support. `fscript compile main.fss --no-aot` emits a managed DLL, and `fscript compile main.fss --target csharp` emits a C# project. `--no-config` ignores both compile and runtime settings, so providers must then be supplied through CLI options when needed.
 
 ## NuGet packages
 

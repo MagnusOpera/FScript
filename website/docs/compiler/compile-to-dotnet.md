@@ -36,6 +36,21 @@ Compiled filesystem operations use the process working directory and OS permissi
 
 Assembly compilation resolves known calls and partial applications, lowers self tail calls to loops, and removes unused generated support code. Functions that escape into collections or FFI still use typed delegates. These optimizations apply to the assembly target. See [Compilation and optimizations](./compiler-optimizations.md) for the pass-by-pass comparison and its limits.
 
+## Project defaults and output
+
+`fscript compile main.fss` defaults to a managed .NET assembly in `bin/main/dotnet/` beside the entry script. `--target` and `--output` are optional. Add a `[compile]` table to the script's `fscript.toml` to choose a different default:
+
+```toml
+[compile]
+backend = "dotnet"
+aot = true
+size-optimized = true
+```
+
+With this manifest, the same command publishes one native executable to `bin/main/dotnet/<rid>/aot/`, using the build host's runtime identifier. Set `output = "artifacts"` to choose a directory relative to the manifest instead. CLI paths remain relative to the working directory.
+
+Explicit CLI options take precedence. Use `--no-size-optimized` to keep configured AOT with full framework diagnostics, `--no-aot` for a managed DLL, or `--target csharp` for source output. See [Compile defaults](../reference/environment-configuration.md#compile-defaults) for all properties, mode precedence, and output conventions.
+
 ## Single-file and Native AOT executables
 
 Both options produce one executable containing the compiled program and its dependencies. A .NET runtime installation is not required on the destination machine.
@@ -136,7 +151,7 @@ Build the provider first, then analyze or compile without extra assembly flags:
 ```sh
 dotnet build samples/ffi/FfiSample.fsproj -c Release
 dotnet run --project src/FScript -- analyze samples/ffi/main.fss
-dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --output out/graphics-dotnet
+dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --no-aot --output out/graphics-dotnet
 dotnet out/graphics-dotnet/main.dll --headless
 ```
 

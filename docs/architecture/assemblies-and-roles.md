@@ -220,7 +220,7 @@ The macOS release entitlement permits external native dependency signatures for 
 
 ## CLI manifest discovery
 
-The CLI supplies the entry script directory (or cwd for stdin/REPL) to Runtime’s `EnvironmentConfiguration.resolveForCli`. This selects only that directory’s `fscript.toml`, then delegates to the existing explicit parser/merger and atomic provider loader. Discovery never changes roots, searches parents, or loads per-import environments. Embedders and the language server retain explicit `resolve` semantics. VS Code’s run task passes its selected `--config`, or `--no-config` when no environment is selected, so CLI discovery cannot override editor selection.
+The CLI supplies the entry script directory (or cwd for stdin/REPL) to Runtime’s `EnvironmentConfiguration.resolveForCli`. This selects only that directory’s `fscript.toml`, then delegates to the existing explicit parser/merger and atomic provider loader. Discovery never changes roots, searches parents, or loads per-import environments. Embedders and the language server retain explicit `resolve` semantics. VS Code’s run task passes its selected `--config`, or `--no-config` when no environment is selected, so CLI discovery cannot override editor selection. Runtime parses optional compile defaults alongside environment settings without depending on a compiler. The CLI's `CompileOptions` module resolves those defaults with explicit positive/negative flags and conventional output paths before provider loading or generation. Compiler embedding APIs keep explicit options and do not discover configuration.
 
 ## Foreign union registration
 

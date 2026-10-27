@@ -38,6 +38,14 @@ type EnvironmentConfigurationTests() =
         let disabled = EnvironmentConfiguration.parse configPath "[runtime]\ndefault-externs = false" |> get
         Assert.That((EnvironmentConfiguration.merge directory directory (Some disabled) None false []).DefaultExterns, Is.False)
 
+    [<TestCase("[compile]\nbackend = 'go'", "compile.backend")>]
+    [<TestCase("[compile]\naot = 'true'", "compile.aot")>]
+    [<TestCase("[compile]\nsize-optimized = 1", "compile.size-optimized")>]
+    [<TestCase("[compile]\nsingle-file = 'false'", "compile.single-file")>]
+    [<TestCase("[compile]\noutput = ''", "compile.output")>]
+    [<TestCase("[compile]\nruntime = false", "compile.runtime")>]
+    [<TestCase("[compile]\ntarget = 'dotnet'", "compile.target")>]
+    [<TestCase("compile = true", "compile")>]
     [<TestCase("[runtime]\nroot = 1", "runtime.root")>]
     [<TestCase("[runtime]\ndefault-externs = 'true'", "runtime.default-externs")>]
     [<TestCase("[runtime]\nextern-assemblies = ['A.dll', 1]", "runtime.extern-assemblies")>]
@@ -83,3 +91,15 @@ type EnvironmentConfigurationTests() =
             let explicitOnly = EnvironmentConfiguration.resolve None directory dir None false [] |> get
             Assert.That(explicitOnly.ConfigurationPath, Is.EqualTo None)
         finally Directory.Delete(dir, true)
+
+    [<Test>]
+    member _.``Compile defaults preserve omission and normalize manifest output paths`` () =
+        let empty = EnvironmentConfiguration.parse configPath "" |> get
+        Assert.That(empty.Compilation, Is.EqualTo(CompileConfiguration.empty))
+        let parsed = EnvironmentConfiguration.parse configPath "[compile]\nbackend = 'DOTNET'\naot = true\nsize-optimized = false\nsingle-file = false\nruntime = 'osx-arm64'\noutput = '../artifacts'" |> get
+        Assert.That(parsed.Compilation.Backend, Is.EqualTo(Some "dotnet"))
+        Assert.That(parsed.Compilation.AheadOfTime, Is.EqualTo(Some true))
+        Assert.That(parsed.Compilation.MinimizeSize, Is.EqualTo(Some false))
+        Assert.That(parsed.Compilation.OutputDirectory, Is.EqualTo(Some(Path.Combine(directory, "artifacts"))))
+        let settings = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
+        Assert.That(settings.Compilation, Is.EqualTo(parsed.Compilation))

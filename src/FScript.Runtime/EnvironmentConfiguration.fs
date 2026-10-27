@@ -8,13 +8,28 @@ open Tomlyn.Model
 /// A NuGet extension package; omitted versions resolve to the latest stable release.
 type ExtensionPackage = { Name: string; Version: string option }
 
+/// Compile-only defaults; parsing these never runs a compiler or loads providers.
+type CompileConfiguration =
+    { Backend: string option
+      AheadOfTime: bool option
+      MinimizeSize: bool option
+      SingleFile: bool option
+      RuntimeIdentifier: string option
+      OutputDirectory: string option }
+
+module CompileConfiguration =
+    let empty =
+        { Backend=None; AheadOfTime=None; MinimizeSize=None; SingleFile=None
+          RuntimeIdentifier=None; OutputDirectory=None }
+
 /// Parsed configuration; omitted properties remain distinct from defaults.
 type EnvironmentConfiguration =
     { Path: string
       Root: string option
       DefaultExterns: bool option
       ExternAssemblies: string list option
-      Packages: ExtensionPackage list option }
+      Packages: ExtensionPackage list option
+      Compilation: CompileConfiguration }
 
 /// Effective environment, containing absolute paths and its configuration provenance.
 type EnvironmentSettings =
@@ -23,7 +38,8 @@ type EnvironmentSettings =
       RootDirectory: string
       DefaultExterns: bool
       ExternAssemblies: string list
-      Packages: ExtensionPackage list }
+      Packages: ExtensionPackage list
+      Compilation: CompileConfiguration }
 
 module EnvironmentConfiguration =
     let normalizePath (baseDirectory: string) (path: string) =
@@ -44,7 +60,7 @@ module EnvironmentConfiguration =
                     | _ -> path
                 invalidArg property $"{location}: {property}: {message}"
             for key in document.Keys do
-                if key <> "runtime" then invalid document key key "Unknown configuration section or property."
+                if key <> "runtime" && key <> "compile" then invalid document key key "Unknown configuration section or property."
             let runtime =
                 match document.TryGetValue "runtime" with
                 | false, _ -> TomlTable()
@@ -94,10 +110,37 @@ module EnvironmentConfiguration =
                             | _ -> invalid entry "version" "runtime.packages.version" "Expected a version string."
                         { Name = name; Version = version }) |> Seq.toList |> Some
                 | _ -> invalid runtime "packages" "runtime.packages" "Expected an array of package tables ([[runtime.packages]])."
+            let compile =
+                match document.TryGetValue "compile" with
+                | false, _ -> TomlTable()
+                | true, (:? TomlTable as table) -> table
+                | _ -> invalid document "compile" "compile" "Expected a table."
+            for key in compile.Keys do
+                if not (List.contains key ["backend"; "aot"; "size-optimized"; "single-file"; "runtime"; "output"]) then
+                    invalid compile key $"compile.{key}" "Unknown configuration property."
+            let textOption key =
+                match compile.TryGetValue key with
+                | false, _ -> None
+                | true, (:? string as value) when not (String.IsNullOrWhiteSpace value) -> Some value
+                | _ -> invalid compile key $"compile.{key}" "Expected a nonempty string."
+            let boolOption key =
+                match compile.TryGetValue key with
+                | false, _ -> None
+                | true, (:? bool as value) -> Some value
+                | _ -> invalid compile key $"compile.{key}" "Expected a boolean."
+            let backend = textOption "backend" |> Option.map (fun value -> value.ToLowerInvariant())
+            match backend with
+            | Some value when not (List.contains value ["ir"; "csharp"; "dotnet"]) ->
+                invalid compile "backend" "compile.backend" "Expected ir, csharp, or dotnet."
+            | _ -> ()
             let fullPath = Path.GetFullPath path
             let directory = Path.GetDirectoryName fullPath
             Ok { Path = fullPath; Root = root |> Option.map (normalizePath directory)
                  DefaultExterns = defaults; Packages = packages
+                 Compilation =
+                    { Backend=backend; AheadOfTime=boolOption "aot"; MinimizeSize=boolOption "size-optimized"
+                      SingleFile=boolOption "single-file"; RuntimeIdentifier=textOption "runtime"
+                      OutputDirectory=textOption "output" |> Option.map (normalizePath directory) }
                  ExternAssemblies = assemblies |> Option.map (List.map (normalizePath directory)) }
         with ex -> Error $"Unable to read environment configuration '{path}': {ex.Message}"
 
@@ -115,6 +158,7 @@ module EnvironmentConfiguration =
             |> Option.defaultValue defaultRoot |> Path.GetFullPath
           DefaultExterns = not disableDefaults && (configuration |> Option.bind (fun c -> c.DefaultExterns) |> Option.defaultValue true)
           Packages = configuration |> Option.bind (fun c -> c.Packages) |> Option.defaultValue []
+          Compilation = configuration |> Option.map (fun c -> c.Compilation) |> Option.defaultValue CompileConfiguration.empty
           ExternAssemblies =
             (configuration |> Option.bind (fun c -> c.ExternAssemblies) |> Option.defaultValue [])
             @ (assemblyArguments |> List.map (normalizePath baseDirectory))

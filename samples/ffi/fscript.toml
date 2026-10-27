@@ -2,3 +2,9 @@
 # Select this configuration in VS Code to get Graphics/Math functions and host types.
 [runtime]
 extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+
+# fscript compile main.fss uses these defaults; explicit CLI options override them.
+[compile]
+backend = "dotnet"
+aot = true
+size-optimized = true

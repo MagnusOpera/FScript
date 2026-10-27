@@ -39,10 +39,20 @@ Headless mode checks script execution and conversion; it does not exercise shade
 
 ## Compile to Native AOT
 
-After building the provider, compile the same entry script without extra assembly flags:
+The sample's `fscript.toml` sets `[compile]` defaults for the .NET backend, AOT, and size optimization. After building the provider, compile without backend or output flags:
 
 ```sh
-dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --aot --output out/ffi
+fscript compile samples/ffi/main.fss
+# On macOS ARM64:
+samples/ffi/bin/main/dotnet/osx-arm64/aot/main --headless
+```
+
+The compiler prints the selected output path. Other platforms use their own .NET runtime identifier, and Windows adds `.exe`. From the sample directory, `fscript compile main.fss` is enough. Source invocation is `dotnet run --project src/FScript -c Release -- compile samples/ffi/main.fss`.
+
+To override the sample's size profile and output directory:
+
+```sh
+dotnet run --project src/FScript -- compile samples/ffi/main.fss --no-size-optimized --output out/ffi
 out/ffi/main --headless
 out/ffi/main --frames 3
 ```
@@ -57,7 +67,7 @@ out/ffi-small/main --headless
 out/ffi-small/main --frames 3
 ```
 
-`--size-optimized` opts into invariant globalization, replaces framework exception text with resource keys, and disables runtime stack traces and EventSource. Ordinary `--aot` keeps those facilities. Both modes optimize native code for size, retain reflection analysis, and include only the target's GLFW library. The ordinary provider DLL still includes every supported GLFW platform for interpreted execution. Resource selection uses the `FScript.NativeAssets.<rid>` linker switches described in the [.NET backend specification](../../docs/specs/dotnet-backends.md).
+`--size-optimized` opts into invariant globalization, replaces framework exception text with resource keys, and disables runtime stack traces and EventSource. `--no-size-optimized` overrides the sample manifest and keeps those facilities. AOT without configured size optimization also retains them. Both modes optimize native code for size, retain reflection analysis, and include only the target's GLFW library. The ordinary provider DLL still includes every supported GLFW platform for interpreted execution. Resource selection uses the `FScript.NativeAssets.<rid>` linker switches described in the [.NET backend specification](../../docs/specs/dotnet-backends.md).
 
 On macOS ARM64 with SDK 10.0.403, the original 4,378,616-byte executable shrank to 2,181,464 bytes with ordinary AOT, or 1,882,776 bytes with `--size-optimized`. Sizes vary with SDK and platform. See the [size investigation](../../docs/architecture/native-aot-size.md) for measurements and rejected options.
 

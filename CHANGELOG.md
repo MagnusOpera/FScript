@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Configure compiler backend, AOT, size optimization, runtime, and output defaults in `fscript.toml`, with CLI overrides and conventional build directories.
+
 ## [0.87.1]
 
 

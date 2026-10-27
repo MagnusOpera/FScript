@@ -23,7 +23,7 @@ let reportTaskSharingWarning (warning: TaskSharingAnalysis.Diagnostic) =
 
 let runCompileCommand (argv: string array) =
     let usage () =
-        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--size-optimized] [--no-result]")
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> [--target <ir|csharp|dotnet>] [--output <directory>] [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--size-optimized|--no-size-optimized] [--no-aot] [--no-single-file] [--no-result]")
         1
     if argv.Length < 2 then usage ()
     else
@@ -31,18 +31,21 @@ let runCompileCommand (argv: string array) =
         let tryOption name =
             argv |> Array.tryFindIndex ((=) name)
             |> Option.bind (fun index -> if index + 1 < argv.Length then Some argv.[index + 1] else None)
-        match tryOption "--target", tryOption "--output" with
-        | Some target, Some output when File.Exists scriptPath ->
-            let normalizedTarget = target.ToLowerInvariant()
-            let singleFile=Array.contains "--single-file" argv
-            let aot=Array.contains "--aot" argv
-            let minimizeSize=Array.contains "--size-optimized" argv
-            let executable=singleFile || aot
-            let hasRuntime=Array.contains "--runtime" argv
-            let requestedRuntime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
-            let runtime=
-                if executable && not hasRuntime then Some System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
-                else requestedRuntime
+        let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
+        let allOptions name = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value=name && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
+        let resolved =
+            EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) (Directory.GetCurrentDirectory()) sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
+            |> Result.bind (fun settings -> CompileOptions.resolve argv scriptPath settings.Compilation |> Result.map (fun compilation -> settings, compilation))
+        match resolved with
+        | Ok (settings, compilation) when File.Exists scriptPath ->
+            let normalizedTarget = compilation.Backend
+            let singleFile = compilation.SingleFile
+            let aot = compilation.AheadOfTime
+            let minimizeSize = compilation.MinimizeSize
+            let executable = singleFile || aot
+            let hasRuntime = Array.contains "--runtime" argv
+            let requestedRuntime = compilation.RuntimeIdentifier
+            let runtime = requestedRuntime
             if not (List.contains normalizedTarget ["ir"; "csharp"; "dotnet"]) then usage ()
             elif Array.contains "--analyze-task-sharing" argv then
                 Console.Error.WriteLine("Task-sharing analysis is a separate command: fscript analyze <program.fss>")
@@ -74,16 +77,11 @@ let runCompileCommand (argv: string array) =
                         | "csharp" -> "C#"
                         | _ -> "IR"
                     report $"Compiling {argv.[1]} to {targetDescription}..."
-                    let outputDirectory = Path.GetFullPath(output)
+                    let outputDirectory = compilation.OutputDirectory
                     let complete path =
                         report $"Compiled successfully in {timer.Elapsed.TotalSeconds:F1}s. Output: {path}"
                         0
-                    let sourceRoot = Path.GetDirectoryName(scriptPath) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
-                    let allOptions name = argv |> Array.indexed |> Array.choose (fun (index,value) -> if value=name && index+1<argv.Length then Some(Path.GetFullPath argv.[index+1]) else None) |> Array.toList
-                    let settings =
-                        EnvironmentConfiguration.resolveForCli (tryOption "--config") (Array.contains "--no-config" argv) (Directory.GetCurrentDirectory()) sourceRoot None (Array.contains "--no-default-externs" argv) (allOptions "--extern-assembly")
-                        |> function Ok settings -> settings | Error message -> failwith message
                     settings.ConfigurationPath |> Option.iter (fun path -> report $"Loading configuration {path}...")
                     let loaded = EnvironmentLoader.loadWithInfo settings |> function Ok environment -> environment | Error message -> failwith message
                     let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
@@ -149,8 +147,8 @@ let runCompileCommand (argv: string array) =
                 | :? UnauthorizedAccessException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
                 | :? IOException as ex -> Console.Error.WriteLine($"FSA5101: Cannot write compiler output: {ex.Message}"); 4
                 | ex -> Console.Error.WriteLine(ex.Message); 4
-        | Some _, Some _ -> Console.Error.WriteLine($"File not found: {scriptPath}"); 1
-        | _ -> usage ()
+        | Ok _ -> Console.Error.WriteLine($"File not found: {scriptPath}"); 1
+        | Error message -> Console.Error.WriteLine(message); usage ()
 
 let formatSpan (span: Span) =
     match span.Start.File with

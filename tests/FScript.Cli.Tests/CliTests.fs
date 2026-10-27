@@ -199,6 +199,45 @@ type CliTests() =
             Assert.That(File.ReadAllText(Path.Combine(irOutput,"pure.fsir")),Does.Contain("\"pure\": true"))
         finally Directory.Delete(directory,true)
 
+    [<TestCase("dotnet", "main.dll")>]
+    [<TestCase("ir", "main.fsir")>]
+    [<TestCase("csharp", "Program.csproj")>]
+    member _.``Compile uses manifest backend with conventional output and CLI overrides``(backend: string, artifact: string) =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), "fscript-compile-config-" + Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let script = Path.Combine(directory, "main.fss")
+            File.WriteAllText(script, "42")
+            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[compile]\nbackend = '{backend}'")
+            let code, _, error = runCli repo repo ["compile";script] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(File.Exists(Path.Combine(directory, "bin", "main", backend, artifact)), Is.True)
+            let output = Path.Combine(directory, "override")
+            let code, _, error = runCli repo repo ["compile";script;"--target";"ir";"--output";output] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(File.Exists(Path.Combine(output, "main.fsir")), Is.True)
+            let code, _, error = runCli repo repo ["compile";script;"--no-config"] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(File.Exists(Path.Combine(directory, "bin", "main", "dotnet", "main.dll")), Is.True)
+        finally Directory.Delete(directory, true)
+
+    [<Test>]
+    member _.``Explicit compile manifest output resolves beside that manifest rather than cwd or script``() =
+        let repo = findRepoRoot ()
+        let directory = Path.Combine(Path.GetTempPath(), "fscript-compile-output-" + Guid.NewGuid().ToString("N"))
+        let configDirectory = Path.Combine(directory, "config")
+        Directory.CreateDirectory(configDirectory) |> ignore
+        try
+            let script = Path.Combine(directory, "main.fss")
+            File.WriteAllText(script, "42")
+            let config = Path.Combine(configDirectory, "project.toml")
+            File.WriteAllText(config, "[compile]\nbackend = 'ir'\noutput = 'artifacts'")
+            let code, _, error = runCli repo repo ["compile";script;"--config";Path.GetRelativePath(repo, config)] None
+            Assert.That(code, Is.Zero, error)
+            Assert.That(File.Exists(Path.Combine(configDirectory, "artifacts", "main.fsir")), Is.True)
+        finally Directory.Delete(directory, true)
+
     [<TestCase("unknown")>]
     [<TestCase("go")>]
     [<TestCase("GO")>]
@@ -274,9 +313,15 @@ type CliTests() =
             Directory.CreateDirectory(standalone) |> ignore
             let source=if ffi then "Console.writeLine (Int.toString (Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1))\n42" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nConsole.writeLine $\"{Env.Arguments}\""
             File.WriteAllText(script,"Env.setExitCode 7\n"+source)
-            let flagArgs=if flag="--size-optimized" then ["--aot";flag] else [flag]
+            let flagArgs=
+                if flag="--size-optimized" then
+                    let configuredOutput = output.Replace('\\', '/')
+                    File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[compile]\nbackend = 'dotnet'\naot = true\nsize-optimized = true\noutput = '{configuredOutput}'")
+                    []
+                else [flag]
             let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
-            let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result"] @ flagArgs @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
+            let compileArgs = if flag="--size-optimized" then ["compile";script;"--no-result"] else ["compile";script;"--target";"dotnet";"--output";output;"--no-result"]
+            let args=compileArgs @ flagArgs @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
             let code,progress,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
             Assert.That(progress,Does.Contain("Generating .NET assembly..."))

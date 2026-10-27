@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <Compile Include="CliArgs.fs" />
+    <Compile Include="CompileOptions.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
