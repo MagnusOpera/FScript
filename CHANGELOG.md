@@ -4,7 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.87.0]
+
+
 - Present scripting, .NET and JavaScript embedding, and compilation as the three main paths on the website and in the introduction.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.86.3...0.87.0
 
 ## [0.86.3]
 
