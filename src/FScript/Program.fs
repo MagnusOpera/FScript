@@ -23,7 +23,7 @@ let reportTaskSharingWarning (warning: TaskSharingAnalysis.Diagnostic) =
 
 let runCompileCommand (argv: string array) =
     let usage () =
-        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--no-result]")
+        Console.Error.WriteLine("Usage: fscript compile <program.fss> --target <ir|csharp|dotnet> --output <directory> [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--size-optimized] [--no-result]")
         1
     if argv.Length < 2 then usage ()
     else
@@ -36,6 +36,7 @@ let runCompileCommand (argv: string array) =
             let normalizedTarget = target.ToLowerInvariant()
             let singleFile=Array.contains "--single-file" argv
             let aot=Array.contains "--aot" argv
+            let minimizeSize=Array.contains "--size-optimized" argv
             let executable=singleFile || aot
             let hasRuntime=Array.contains "--runtime" argv
             let requestedRuntime=tryOption "--runtime" |> Option.filter (fun value -> not (value.StartsWith("--",StringComparison.Ordinal)))
@@ -48,6 +49,9 @@ let runCompileCommand (argv: string array) =
                 usage ()
             elif normalizedTarget="ir" && Array.contains "--no-result" argv then
                 Console.Error.WriteLine("--no-result applies to script execution and C#/ .NET compilation, not IR artifacts.")
+                usage ()
+            elif minimizeSize && (normalizedTarget<>"dotnet" || not aot) then
+                Console.Error.WriteLine("--size-optimized requires --target dotnet --aot. It uses invariant globalization, resource-key framework errors, and disables stack traces and EventSource.")
                 usage ()
             elif normalizedTarget<>"dotnet" && (executable || Array.contains "--runtime" argv) then
                 Console.Error.WriteLine("--single-file, --aot, and --runtime are only supported with --target dotnet.")
@@ -121,7 +125,7 @@ let runCompileCommand (argv: string array) =
                                   OutputKind=FScript.Compiler.ConsoleApplication; References=references }
                             report "Generating .NET assembly..."
                             let generated=
-                                if executable then FScript.Compiler.DotNetBackend.generateExecutableWithResultOutputAndProgress (not (Array.contains "--no-result" argv)) report {RuntimeIdentifier=runtime.Value;AheadOfTime=aot} options lir
+                                if executable then FScript.Compiler.DotNetBackend.generateExecutableWithResultOutputAndProgress (not (Array.contains "--no-result" argv)) report {RuntimeIdentifier=runtime.Value;AheadOfTime=aot;MinimizeSize=minimizeSize} options lir
                                 else FScript.Compiler.DotNetBackend.generateWithResultOutput (not (Array.contains "--no-result" argv)) options lir
                             match generated with
                             | Error diagnostics ->

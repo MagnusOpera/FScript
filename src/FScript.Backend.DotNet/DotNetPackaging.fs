@@ -9,10 +9,15 @@ open System.Security
 module internal DotNetPackaging =
     let private diagnostic code message = {Code=code;Stage=DotNetGeneration;Message=message;Span=None}
 
+    // Providers may use these switches in embedded ILLink substitutions to discard
+    // native resources for other targets without changing ordinary managed output.
+    let private supported =
+        set ["osx-x64";"osx-arm64";"linux-x64";"linux-arm64";"linux-arm";"linux-musl-x64";"linux-musl-arm64";"linux-musl-arm";"win-x64";"win-arm64";"win-x86"]
+
     let validate executable outputKind =
-        let supported=
-            set ["osx-x64";"osx-arm64";"linux-x64";"linux-arm64";"linux-arm";"linux-musl-x64";"linux-musl-arm64";"linux-musl-arm";"win-x64";"win-arm64";"win-x86"]
-        if outputKind<>ConsoleApplication then
+        if executable.MinimizeSize && not executable.AheadOfTime then
+            Error [diagnostic "FSN7101" "Size-minimized executable publishing requires Native AOT."]
+        elif outputKind<>ConsoleApplication then
             Error [diagnostic "FSN7101" "Single-file and Native AOT output require a console application, not a library."]
         elif not (Set.contains executable.RuntimeIdentifier supported) then
             let rid=executable.RuntimeIdentifier
@@ -48,6 +53,17 @@ module internal DotNetPackaging =
                 let aot=if executable.AheadOfTime then "true" else "false"
                 let trim=if trim then "true" else "false"
                 let bundle=if executable.AheadOfTime then "false" else "true"
+                let nativeAssets =
+                    supported
+                    |> Set.toList
+                    |> List.map (fun rid ->
+                        let enabled = if rid = executable.RuntimeIdentifier then "true" else "false"
+                        $"<RuntimeHostConfigurationOption Include=\"FScript.NativeAssets.{rid}\" Value=\"{enabled}\" Trim=\"true\" />")
+                    |> String.concat "\n"
+                let sizeSettings =
+                    if executable.MinimizeSize then
+                        "<InvariantGlobalization>true</InvariantGlobalization><UseSystemResourceKeys>true</UseSystemResourceKeys><StackTraceSupport>false</StackTraceSupport><EventSourceSupport>false</EventSourceSupport>"
+                    else ""
                 let project= $"""<Project Sdk="Microsoft.NET.Sdk">
       <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
@@ -55,6 +71,8 @@ module internal DotNetPackaging =
         <SelfContained>true</SelfContained><UseAppHost>true</UseAppHost>
         <PublishSingleFile>{bundle}</PublishSingleFile><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
         <PublishAot>{aot}</PublishAot><PublishTrimmed>{trim}</PublishTrimmed>
+        <OptimizationPreference Condition="'$(PublishAot)' == 'true'">Size</OptimizationPreference>
+        {sizeSettings}
         <TrimmerSingleWarn>false</TrimmerSingleWarn>
         <!-- FSharp.Core requests removal of optional compiler metadata resources that
              may already be absent. IL2040 concerns only these resource removals;
@@ -66,7 +84,7 @@ module internal DotNetPackaging =
         <ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <Deterministic>true</Deterministic><EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
       </PropertyGroup>
-      <ItemGroup><Compile Include="Entry.cs"/>{references}</ItemGroup>
+      <ItemGroup><Compile Include="Entry.cs"/>{references}{nativeAssets}</ItemGroup>
       <Target Name="UseFScriptAssembly" AfterTargets="CoreCompile">
         <Copy SourceFiles="$(MSBuildProjectDirectory)/payload/{xml options.AssemblyName}.dll" DestinationFiles="@(IntermediateAssembly)"/>
       </Target>

@@ -2,10 +2,11 @@
   <PropertyGroup><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Ultz.Native.GLFW" Version="3.4.0" GeneratePathProperty="true" />
+    <EmbeddedResource Include="ILLink.Substitutions.xml" LogicalName="ILLink.Substitutions.xml" />
     <EmbeddedResource Include="GLFW-LICENSE.md" LogicalName="FScript.Ffi.Rendering.GLFW-LICENSE.md" />
     <EmbeddedResource Include="$(PkgUltz_Native_GLFW)/runtimes/**/*">
       <WithCulture>false</WithCulture>
-      <LogicalName>FScript.Ffi.Rendering.runtimes.%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <LogicalName>$([System.String]::Copy('FScript.Ffi.Rendering.runtimes.%(RecursiveDir)%(Filename)%(Extension)').Replace('\', '/'))</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

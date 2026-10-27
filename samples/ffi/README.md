@@ -47,7 +47,19 @@ out/ffi/main --headless
 out/ffi/main --frames 3
 ```
 
-The output is one executable, `main.exe` on Windows, and requires no FScript installation or .NET runtime. Native AOT publishing needs the .NET 10 SDK and the platform's native compiler. GLFW binaries are embedded in the renderer and extracted to a content-addressed temporary cache when a graphical window starts. Headless mode does not initialize GLFW. Graphical execution still requires the platform's display and OpenGL drivers.
+The output is one executable, `main.exe` on Windows, and requires no FScript installation or .NET runtime. Native AOT publishing needs the .NET 10 SDK and the platform's native compiler. The selected platform's GLFW binary is embedded in the executable and extracted to a content-addressed temporary cache when a graphical window starts. Headless mode does not initialize GLFW. Graphical execution still requires the platform's display and OpenGL drivers.
+
+For the smallest supported runtime profile:
+
+```sh
+dotnet run --project src/FScript -c Release -- compile samples/ffi/main.fss --target dotnet --aot --size-optimized --output out/ffi-small
+out/ffi-small/main --headless
+out/ffi-small/main --frames 3
+```
+
+`--size-optimized` opts into invariant globalization, replaces framework exception text with resource keys, and disables runtime stack traces and EventSource. Ordinary `--aot` keeps those facilities. Both modes optimize native code for size, retain reflection analysis, and include only the target's GLFW library. The ordinary provider DLL still includes every supported GLFW platform for interpreted execution. Resource selection uses the `FScript.NativeAssets.<rid>` linker switches described in the [.NET backend specification](../../docs/specs/dotnet-backends.md).
+
+On macOS ARM64 with SDK 10.0.403, the original 4,378,616-byte executable shrank to 2,181,464 bytes with ordinary AOT, or 1,882,776 bytes with `--size-optimized`. Sizes vary with SDK and platform. See the [size investigation](../../docs/architecture/native-aot-size.md) for measurements and rejected options.
 
 `GraphicsProvider` supplies compiler companions that bind reachable functions to typed CLR methods. Compiled setup/render callbacks use `Func<Window, Action<double>>`; interpreted execution uses `ExternalCallContext.Apply`. Both paths share the same frame loop and validation. Geometry uses CLR arrays behind the boundary while scripts retain ordinary list values.
 

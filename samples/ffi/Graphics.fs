@@ -86,15 +86,22 @@ module Graphics =
         Vector3(float32 value.R, float32 value.G, float32 value.B)
 
     let upload (window: Window) (geometry: Geometry) : Mesh =
-        if Array.isEmpty geometry.Vertices || Array.isEmpty geometry.Indices || geometry.Indices.Length % 3 <> 0 then
+        if geometry.Vertices.Length = 0 || geometry.Indices.Length = 0 || geometry.Indices.Length % 3 <> 0 then
             invalidArg "geometry" "Geometry requires vertices and complete index triangles."
         let vertexCount = geometry.Vertices.Length
-        let vertices =
-            geometry.Vertices |> Array.collect (fun vertex ->
-                let p = vector "Position" vertex.Position
-                let n = vector "Normal" vertex.Normal
-                if n.LengthSquared() < 0.000001f then invalidArg "Normal" "Normals must be nonzero."
-                [|p.X; p.Y; p.Z; n.X; n.Y; n.Z|])
+        let vertices = GC.AllocateUninitializedArray<float32>(Checked.(*) vertexCount 6)
+        for index = 0 to vertexCount - 1 do
+            let vertex = geometry.Vertices[index]
+            let p = vector "Position" vertex.Position
+            let n = vector "Normal" vertex.Normal
+            if n.LengthSquared() < 0.000001f then invalidArg "Normal" "Normals must be nonzero."
+            let offset = index * 6
+            vertices[offset] <- p.X
+            vertices[offset + 1] <- p.Y
+            vertices[offset + 2] <- p.Z
+            vertices[offset + 3] <- n.X
+            vertices[offset + 4] <- n.Y
+            vertices[offset + 5] <- n.Z
         let indices = geometry.Indices |> Array.map (fun index ->
             if index < 0L || index >= int64 vertexCount then
                 invalidArg "Indices" "A triangle index is outside the vertex list."
@@ -143,10 +150,11 @@ module Graphics =
 
     let runCompiled headless frames (setup: Func<Window, Action<float>>) =
         try
-            let mutable render = Action<float>(fun _ -> invalidOp "The scene has not been initialized.")
+            // An array slot keeps mutation out of F# ref cells and their structural equality.
+            let render = [| Action<float>(fun _ -> invalidOp "The scene has not been initialized.") |]
             let initialize backend =
-                render <- setup.Invoke { Title = "FScript FFI — Utah teapot"; Backend = backend }
-            runFrames headless frames initialize (fun seconds -> render.Invoke seconds)
+                render[0] <- setup.Invoke { Title = "FScript FFI — Utah teapot"; Backend = backend }
+            runFrames headless frames initialize (fun seconds -> render[0].Invoke seconds)
         with error -> raise (InvalidOperationException("Graphics window loop failed: " + error.Message, error))
 
     // Callbacks use the explicit descriptor API: typed adapters deliberately do not

@@ -52,6 +52,11 @@ out/ffi/main --headless
 out/ffi/main --frames 3
 ```
 
+Add `--size-optimized` to trade culture support and framework diagnostics for a smaller executable. It enables invariant globalization, replaces framework exception messages with resource keys, and disables runtime stack traces and EventSource. Ordinary `--aot` keeps those facilities. Both modes optimize native code for size and embed only the selected platform's GLFW library; the provider DLL remains portable for interpreted execution.
+
+
+On macOS ARM64 with .NET SDK 10.0.403, the executable shrank from 4,378,616 bytes to 2,181,464 bytes with ordinary AOT, or 1,882,776 bytes with `--size-optimized`. Both profiles passed headless and real OpenGL checks. Sizes depend on SDK and platform; see [Native AOT executable size](../compiler/compile-to-dotnet.md#native-aot-executable-size) for the investigation and runtime tradeoffs.
+
 The compiler reports its phases and output path. The result is one executable, `main.exe` on Windows. Publishing requires the .NET 10 SDK and the platform's native compiler; running the result requires no .NET installation. The provider supplies static CLR companions and typed setup/render delegates. GLFW binaries are embedded in the renderer and extracted only for graphical startup. Desktop graphics and OpenGL drivers are still required for a window.
 
 ## Find your way through the files

@@ -13,4 +13,6 @@ type GeneratedBinary = { RelativePath: string; Content: byte array }
 /// Executable publishing requires an explicit portable .NET runtime identifier.
 type DotNetExecutableOptions =
     { RuntimeIdentifier: string
-      AheadOfTime: bool }
+      AheadOfTime: bool
+      /// Opt in to invariant globalization, resource-key errors and reduced diagnostics.
+      MinimizeSize: bool }

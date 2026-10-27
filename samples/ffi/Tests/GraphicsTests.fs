@@ -73,6 +73,16 @@ type GraphicsTests() =
         Assert.That(Object.ReferenceEquals(mesh.Backend, backend), Is.True)
 
     [<Test>]
+    member _.``upload writes every position and normal into the packed vertex buffer``() =
+        let backend = RecordingGraphics()
+        Graphics.upload { Title = "test"; Backend = backend } triangle |> ignore
+        let struct (vertices, indices) = backend.Meshes[0]
+        Assert.That(vertices, Is.EqualTo(box [|0.f; 0.f; 0.f; 0.f; 1.f; 0.f;
+                                          1.f; 0.f; 0.f; 0.f; 1.f; 0.f;
+                                          0.f; 0.f; 1.f; 0.f; 1.f; 0.f|]))
+        Assert.That(indices, Is.EqualTo(box [|0u; 1u; 2u|]))
+
+    [<Test>]
     member _.``scene sends camera lighting and changing rotations without another upload``() =
         let backend = RecordingGraphics()
         let w = window backend
@@ -170,8 +180,9 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
             Assert.That(output.GetAwaiter().GetResult(), Does.Contain "1 mesh uploads; 3 frames")
         else Assert.That(errors.GetAwaiter().GetResult(), Does.Contain "frame limit")
 
-    [<Test>]
-    member _.``native executable compiles the real teapot with automatic FFI configuration and runs alone``() =
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``native executable compiles the real teapot with automatic FFI configuration and runs alone``(minimizeSize: bool) =
         let root = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "../../.."))
 #if DEBUG
         let configuration = "Debug"
@@ -198,12 +209,27 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
                 File.Copy(path, Path.Combine(source, Path.GetFileName path |> nonNull))
             let provider = typeof<GraphicsProvider>.Assembly.Location.Replace('\\', '/')
             File.WriteAllText(Path.Combine(source, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{provider}']")
-            let code, stdout, error = run "dotnet" [cli; "compile"; Path.Combine(source, "main.fss"); "--target"; "dotnet"; "--aot"; "--output"; output] 300000
+            let flags = if minimizeSize then ["--size-optimized"] else []
+            let code, stdout, error = run "dotnet" ([cli; "compile"; Path.Combine(source, "main.fss"); "--target"; "dotnet"; "--aot"; "--output"; output] @ flags) 300000
             Assert.That(code, Is.Zero, stdout + error)
             let name = if OperatingSystem.IsWindows() then "main.exe" else "main"
             Assert.That(Directory.GetFiles(output) |> Array.map Path.GetFileName, Is.EqualTo(box [|name|]))
             let executable = Path.Combine(directory, name)
             File.Move(Path.Combine(output, name), executable)
+            let image = File.ReadAllBytes(executable)
+            let renderer = typeof<IGraphics>.Assembly
+            let os = if OperatingSystem.IsMacOS() then "osx" elif OperatingSystem.IsWindows() then "win" else "linux"
+            let rid = os + "-" + Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()
+            for resource in renderer.GetManifestResourceNames() do
+                if resource.Contains(".runtimes.") then
+                    use stream = renderer.GetManifestResourceStream(resource) |> nonNull
+                    use bytes = new MemoryStream()
+                    stream.CopyTo(bytes)
+                    let present = MemoryExtensions.IndexOf<byte>(ReadOnlySpan<byte>(image), ReadOnlySpan<byte>(bytes.ToArray())) >= 0
+                    Assert.That(present, Is.EqualTo(resource.Replace('\\', '/').Contains(".runtimes." + rid + "/")), resource)
+            // Generous SDK headroom while catching a return of the all-platform payload.
+            if OperatingSystem.IsMacOS() && rid = "osx-arm64" then
+                Assert.That(image.Length, Is.LessThan(if minimizeSize then 2100000 else 2500000))
             Directory.Delete(source, true)
             Directory.Delete(output, true)
             let code, stdout, error = run executable ["--headless"; "5"] 60000

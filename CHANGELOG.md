@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Reduce Native AOT executable size and keep only the FFI teapot's target-platform GLFW library when publishing.
+- Add `compile --aot --size-optimized` for smaller executables with invariant globalization and reduced framework diagnostics.
+- Document Native AOT size measurements, publishing profiles, and their tradeoffs on the website.
+
 ## [0.87.0]
 
 

@@ -1,0 +1,14 @@
+<linker>
+  <!-- Ordinary builds retain every runtime. FScript executable publishing explicitly
+       disables resources for other RIDs; missing switches never remove resources. -->
+  <assembly fullname="Renderer">
+    <resource name="FScript.Ffi.Rendering.runtimes.linux-arm/native/libglfw.so.3" action="remove" feature="FScript.NativeAssets.linux-arm" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.linux-arm64/native/libglfw.so.3" action="remove" feature="FScript.NativeAssets.linux-arm64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.linux-x64/native/libglfw.so.3" action="remove" feature="FScript.NativeAssets.linux-x64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.osx-arm64/native/libglfw.3.dylib" action="remove" feature="FScript.NativeAssets.osx-arm64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.osx-x64/native/libglfw.3.dylib" action="remove" feature="FScript.NativeAssets.osx-x64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.win-arm64/native/glfw3.dll" action="remove" feature="FScript.NativeAssets.win-arm64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.win-x64/native/glfw3.dll" action="remove" feature="FScript.NativeAssets.win-x64" featurevalue="false" />
+    <resource name="FScript.Ffi.Rendering.runtimes.win-x86/native/glfw3.dll" action="remove" feature="FScript.NativeAssets.win-x86" featurevalue="false" />
+  </assembly>
+</linker>

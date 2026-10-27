@@ -43,7 +43,7 @@ Compiled executables display the final value by default. Compile with `--no-resu
 
 These targets support .NET FFI providers selected by the normal environment configuration. See [Compile to .NET](../compiler/compile-to-dotnet.md) and [Compile to C#](../compiler/compile-to-csharp.md).
 
-For a self-contained executable, add `--single-file` to the .NET target. For a Native AOT executable, use `--aot`. Publishing defaults to the current platform; pass `--runtime <rid>` to select another target. An explicitly supplied `--runtime` requires a value. Runtime identifiers use .NET names such as `osx-arm64`, `linux-x64`, and `win-x64`. Both options require a .NET 10 SDK for publishing and are rejected for other backends.
+For a self-contained executable, add `--single-file` to the .NET target. For a Native AOT executable, use `--aot`. Publishing defaults to the current platform; pass `--runtime <rid>` to select another target. An explicitly supplied `--runtime` requires a value. Runtime identifiers use .NET names such as `osx-arm64`, `linux-x64`, and `win-x64`. Both options require a .NET 10 SDK for publishing and are rejected for other backends. Add `--size-optimized` with `--aot` to use invariant globalization, resource-key framework errors, and disable runtime stack traces and EventSource. Ordinary `--aot` keeps those capabilities. See [Native AOT executable size](../compiler/compile-to-dotnet.md#native-aot-executable-size) for measurements and tradeoffs.
 
 Continue with [Compilation](../compiler/compilation.md), [Compilation and optimizations](../compiler/compiler-optimizations.md), or [Interpret IR](../compiler/interpret-ir.md).
 

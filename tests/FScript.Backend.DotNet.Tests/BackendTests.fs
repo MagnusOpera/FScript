@@ -479,16 +479,17 @@ type BackendTests() =
             | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code,Does.Contain(expected))
             | Ok _ -> Assert.Fail("Invalid publishing options must fail before publishing.")
         let current=System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
-        check {RuntimeIdentifier=current;AheadOfTime=false} Harness.options "FSN7101"
+        check {RuntimeIdentifier=current;AheadOfTime=false;MinimizeSize=false} Harness.options "FSN7101"
+        check {RuntimeIdentifier=current;AheadOfTime=false;MinimizeSize=true} {Harness.options with OutputKind=ConsoleApplication} "FSN7101"
         let console={Harness.options with OutputKind=ConsoleApplication}
-        check {RuntimeIdentifier="darwin";AheadOfTime=false} console "FSN7101"
+        check {RuntimeIdentifier="darwin";AheadOfTime=false;MinimizeSize=false} console "FSN7101"
         let foreign=if OperatingSystem.IsWindows() then "linux-x64" else "win-x64"
-        check {RuntimeIdentifier=foreign;AheadOfTime=true} console "FSN7104"
+        check {RuntimeIdentifier=foreign;AheadOfTime=true;MinimizeSize=false} console "FSN7104"
 
     [<Test>]
     member _.``Invalid Apple runtime spelling identifies the .NET spelling`` () =
         let options={Harness.options with OutputKind=ConsoleApplication}
-        match DotNetBackend.generateExecutable {RuntimeIdentifier="darwin-arm64";AheadOfTime=true} options (Harness.compile "42") with
+        match DotNetBackend.generateExecutable {RuntimeIdentifier="darwin-arm64";AheadOfTime=true;MinimizeSize=false} options (Harness.compile "42") with
         | Ok _ -> Assert.Fail("An invalid runtime identifier must not reach SDK publishing.")
         | Error diagnostics ->
             Assert.That(diagnostics.Head.Code,Is.EqualTo("FSN7101"))
@@ -512,7 +513,7 @@ type BackendTests() =
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.apply (fun n -> n+1) 41";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let program=ClrBindings.bindProvider ["Sdk.apply"] (typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull) program
         let options={Harness.options with OutputKind=ConsoleApplication;References=[typeof<ProviderFixture.Provider>.Assembly.Location;typeof<FScript.Extensibility.ScriptValue>.Assembly.Location;typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]}
-        match DotNetBackend.generateExecutable {RuntimeIdentifier=System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;AheadOfTime=true} options program with
+        match DotNetBackend.generateExecutable {RuntimeIdentifier=System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;AheadOfTime=true;MinimizeSize=false} options program with
         | Error diagnostics -> Assert.That(diagnostics |> List.map _.Code,Does.Contain("FSN7105"))
         | Ok _ -> Assert.Fail("Opaque factory dispatch requires a static binding for Native AOT.")
 

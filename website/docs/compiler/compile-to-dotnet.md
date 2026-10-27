@@ -76,6 +76,44 @@ Single-file publishing trims dependencies when all reachable FFI calls have stat
 
 The compiler packages its optimized assembly; it does not recompile the script through the C# source target. The ordinary DLL target remains available without invoking `dotnet publish`.
 
+## Native AOT executable size
+
+Since 0.87.1, Native AOT favors smaller native code through .NET's `OptimizationPreference=Size`. Ordinary `--aot` retains culture support, framework exception text, runtime stack traces, and EventSource.
+
+Add `--size-optimized` when the program can give up those facilities:
+
+```sh
+fscript compile samples/ffi/main.fss --target dotnet --aot --size-optimized --output out/ffi-small
+./out/ffi-small/main --headless
+```
+
+The FFI example requires its provider to be built first, as described in [FFI graphics](../examples/ffi-graphics.md). `--size-optimized` requires `--target dotnet --aot`; it cannot be used with ordinary DLL or managed single-file output.
+
+| Runtime capability | Ordinary `--aot` | With `--size-optimized` |
+| --- | --- | --- |
+| Globalization | Culture support retained | Invariant globalization; named cultures may fail |
+| Framework exception messages | Full messages | Resource keys |
+| Runtime stack traces | Retained | Disabled |
+| EventSource | Retained | Disabled |
+
+Provider and FScript error messages remain intact. Reflection analysis and trimming/AOT warnings remain enabled in both profiles.
+
+### Teapot measurements
+
+The FFI teapot executable on macOS ARM64 with .NET SDK 10.0.403 measured:
+
+| Build | Executable bytes | Reduction |
+| --- | ---: | ---: |
+| Before 0.87.1 | 4,378,616 | |
+| Ordinary `--aot` | 2,181,464 | 50.2% |
+| `--aot --size-optimized` | 1,882,776 | 57.0% |
+
+Sizes vary with SDK and target platform. These are executable file lengths, excluding optional debug-symbol files. Both profiles passed standalone headless execution and a real three-frame OpenGL check.
+
+Most of the removable payload was GLFW: the provider embedded eight native libraries totaling 2.22 MB. Executable publishing now retains only the selected target's library. The ordinary provider DLL keeps all supported platforms for interpreted execution. Changes to vertex-buffer allocation and callback storage also remove unnecessary FSharp.Core dependencies. FSharp.Core was already trimmed; its managed DLL size did not represent its contribution to the native executable.
+
+The smaller result is about 1.80 MiB, still 408,216 bytes larger than a 1,474,560-byte floppy. This includes the runtime, renderer, target GLFW library, and compiled script. The [investigation report](https://github.com/MagnusOpera/FScript/blob/main/docs/architecture/native-aot-size.md) records compiler-map analysis, measured alternatives, and rejected techniques. Microsoft's [Native AOT optimization guidance](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/optimizing) and [trimming options](https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/trimming-options) explain the supported settings and their tradeoffs.
+
 ## C# source project
 
 `--target csharp` generates source instead of an assembly. Its project layout, build commands, and reference handling are covered in [Compile to C#](./compile-to-csharp.md).

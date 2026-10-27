@@ -221,6 +221,8 @@ type CliTests() =
     [<TestCase("csharp", "--aot")>]
     [<TestCase("ir", "--single-file")>]
     [<TestCase("dotnet", "--runtime")>]
+    [<TestCase("dotnet", "--size-optimized")>]
+    [<TestCase("csharp", "--size-optimized")>]
     member _.``Executable options reject invalid combinations before creating output`` (target: string, flag: string) =
         let root=findRepoRoot ()
         let output=Path.Combine(Path.GetTempPath(),"fscript-invalid-publish-"+Guid.NewGuid().ToString("N"))
@@ -260,6 +262,7 @@ type CliTests() =
     [<TestCase("--aot", false)>]
     [<TestCase("--single-file", true)>]
     [<TestCase("--aot", true)>]
+    [<TestCase("--size-optimized", false)>]
     member _.``Self contained executables support default and explicit runtimes and run alone`` (flag: string, ffi: bool) =
         let root=findRepoRoot ()
         let directory=Path.Combine(Path.GetTempPath(),"fscript-contained-"+Guid.NewGuid().ToString("N"))
@@ -271,12 +274,13 @@ type CliTests() =
             Directory.CreateDirectory(standalone) |> ignore
             let source=if ffi then "Console.writeLine (Int.toString (Ext.readCounter (Ext.createCounter (Ext.answer - 1)) + 1))\n42" else "Console.writeLine (Option.defaultValue \"missing\" (Json.serialize \"hello\"))\nConsole.writeLine (Option.defaultValue \"missing\" Env.ScriptName)\nConsole.writeLine $\"{Env.Arguments}\""
             File.WriteAllText(script,"Env.setExitCode 7\n"+source)
+            let flagArgs=if flag="--size-optimized" then ["--aot";flag] else [flag]
             let runtimeArgs=if ffi then ["--runtime";System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier] else []
-            let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result";flag] @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
+            let args=["compile";script;"--target";"dotnet";"--output";output;"--no-result"] @ flagArgs @ runtimeArgs @ (if ffi then ["--extern-assembly";validProviderAssemblyPath()] else [])
             let code,progress,error=runCli root directory args None
             Assert.That(code,Is.Zero,error)
             Assert.That(progress,Does.Contain("Generating .NET assembly..."))
-            let mode=if flag="--aot" then "Native AOT" else "self-contained single-file"
+            let mode=if flag<>"--single-file" then "Native AOT" else "self-contained single-file"
             Assert.That(progress,Does.Contain($"Publishing {mode} executable for"))
             Assert.That(progress,Does.Contain("Compiled successfully in"))
             let name="native"+(if OperatingSystem.IsWindows() then ".exe" else "")
