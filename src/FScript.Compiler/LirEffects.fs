@@ -13,6 +13,7 @@ module LirEffects =
               "List.empty"; "List.contains"; "List.rev"; "List.distinct"; "List.length"; "List.tryItem"; "List.tryHead"; "List.append"
               "Option.defaultValue"; "Option.isNone"; "Option.isSome"
               "Map.empty"; "Map.tryGet"; "Map.containsKey"; "Map.add"; "Map.ofList"; "Map.count"; "Map.remove" ]
+        |> Set.union SupportLibrary.totalFunctions
 
     let higherOrder = set ["List.map";"List.iter";"List.choose";"List.collect";"List.exists";"List.fold";"List.filter";"List.tryFind";"List.tryGet";"Option.defaultWith";"Option.map";"Map.fold";"Map.filter";"Map.choose";"Map.map";"Map.iter"]
 

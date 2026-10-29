@@ -142,6 +142,25 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    static member SupportCases =
+        FScript.Tests.SupportLibraryCases.core @ FScript.Tests.SupportLibraryCases.runtime
+        |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Support native: " + name))
+
+    [<TestCaseSource(nameof BackendTests.SupportCases)>]
+    member _.``Expanded library compiles to native CLR`` (source: string,expected: string) =
+        Assert.That(Harness.compile source |> Harness.execute,Is.EqualTo(expected))
+
+    [<Test>]
+    member _.``Expanded library compiles to standalone CSharp`` () =
+        let cases=FScript.Tests.SupportLibraryCases.core @ FScript.Tests.SupportLibraryCases.runtime
+        let source="(" + (cases |> List.map (fun (_,source,_) -> "("+source+")") |> String.concat ",") + ")"
+        let expected="(" + (cases |> List.map (fun (_,_,expected) -> expected) |> String.concat ", ") + ")"
+        let assembly=Harness.csharpAssembly [] (Harness.compile source)
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let value=(typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+        let text=(typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|])
+        Assert.That(text,Is.EqualTo(expected))
+
     [<TestCase(false,false)>]
     [<TestCase(false,true)>]
     [<TestCase(true,false)>]

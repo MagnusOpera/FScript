@@ -5,6 +5,7 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" />
     <Compile Include="ConformanceTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

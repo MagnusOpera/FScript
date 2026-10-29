@@ -719,6 +719,15 @@ module BuiltinFunctions =
 #endif
               | _ -> fail "Env.setExitCode expects an integer." }
 
+    let private supportExterns =
+        SupportLibrary.signatures |> List.map (fun (name,_,parameters) ->
+            resumable name parameters.Length (fun apply arguments -> execution {
+                try return! SupportCollections.invoke valueEquals apply name arguments
+                with
+                | :? System.ArgumentException as error -> return fail $"{name}: {error.Message}"
+                | :? System.OverflowException -> return fail $"{name}: integer overflow."
+            }))
+
     let builtinExterns : ExternalFunction list =
         [ builtinSetExitCode
           builtinIgnore
@@ -770,4 +779,4 @@ module BuiltinFunctions =
           builtinMapChoose
           builtinMapMap
           builtinMapIter
-          builtinMapRemove ]
+          builtinMapRemove ] @ supportExterns

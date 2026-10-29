@@ -53,13 +53,15 @@ module BuiltinSignatures =
           "Map.map", Forall([ 0; 1; 2 ], TFun(TFun(TVar 0, TVar 2), TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 2))))
           "Map.iter", Forall([ 0; 1 ], TFun(TFun(TVar 1, TFun(TVar 0, TUnit)), TFun(TMap(TVar 1, TVar 0), TUnit)))
           "Map.remove", Forall([ 0; 1 ], TFun(TVar 1, TFun(TMap(TVar 1, TVar 0), TMap(TVar 1, TVar 0)))) ]
+        |> List.append (SupportLibrary.signatures |> List.map (fun (name,scheme,_) -> name,scheme))
         |> Map.ofList
 
     let builtinReservedNames : Set<string> =
         builtinSchemes
         |> Map.keys
         |> Seq.filter (fun name ->
-            name = "Env.setExitCode"
+            Set.contains name SupportLibrary.names
+            || name = "Env.setExitCode"
             || name.StartsWith("List.", System.StringComparison.Ordinal)
             || name.StartsWith("Option.", System.StringComparison.Ordinal)
             || name.StartsWith("Map.", System.StringComparison.Ordinal))

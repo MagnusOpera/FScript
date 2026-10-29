@@ -24,4 +24,4 @@ module Registry =
           TaskExterns.await_task
           JsonExterns.deserialize
           JsonExterns.serialize
-          XmlExterns.query_values ]
+          XmlExterns.query_values ] @ PureExterns.functions

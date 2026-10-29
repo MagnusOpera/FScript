@@ -59,6 +59,7 @@ type HirTests() =
               "Fs.parentDirectory"; "Fs.readText"; "Fs.writeText"
               "Guid.new"; "Hash.md5"; "Json.deserialize"; "Json.serialize"
               "Regex.matchGroups"; "Task.await"; "Task.spawn"; "Xml.queryValues" ]
+        let expected = expected @ (SupportLibrary.runtimeSignatures |> List.map (fun (name,_,_) -> name)) |> List.sort
         Assert.That((CompilerExternCatalog.defaults |> List.map _.Name |> List.sort) = expected, Is.True)
 
         match Compiler.compile { Program = Parser.parseProgram "Fs.exists \"missing\""; Externs = [] } with

@@ -173,3 +173,163 @@ Constructors and syntax are separate from function registration: `Some`/`None`, 
 `Json.deserialize` uses a runtime type token; its generic result scheme does not statically encode the relationship between that token and the result. `Guid.new` accepts an ignored argument; use `Guid.new ()`. `List.contains` compares scalars only; use `List.exists` with `=` for composite data.
 
 `Env.setExitCode : int -> unit` selects the eventual shell status without stopping evaluation; see [core builtins](../stdlib/builtins#envsetexitcode). It is effectful and accepts codes `0..255`.
+
+## Expanded pure support library
+
+Path, Glob, SemVer, scalar, and collection additions are core builtins. Encoding and SHA-256 are pure .NET runtime externs and need host registration. See each module for ordering, errors, and platform rules.
+
+### Int additions
+
+| Name | Signature |
+| --- | --- |
+| [`Int.abs`](../stdlib/scalars#intabs) | `int -> int` |
+| [`Int.sign`](../stdlib/scalars#intsign) | `int -> int` |
+| [`Int.min`](../stdlib/scalars#intmin) | `int -> int -> int` |
+| [`Int.max`](../stdlib/scalars#intmax) | `int -> int -> int` |
+| [`Int.clamp`](../stdlib/scalars#intclamp) | `int -> int -> int -> int` |
+| [`Int.toFloat`](../stdlib/scalars#inttofloat) | `int -> float` |
+
+### Float additions
+
+| Name | Signature |
+| --- | --- |
+| [`Float.abs`](../stdlib/scalars#floatabs) | `float -> float` |
+| [`Float.sign`](../stdlib/scalars#floatsign) | `float -> int` |
+| [`Float.min`](../stdlib/scalars#floatmin) | `float -> float -> float` |
+| [`Float.max`](../stdlib/scalars#floatmax) | `float -> float -> float` |
+| [`Float.clamp`](../stdlib/scalars#floatclamp) | `float -> float -> float -> float` |
+| [`Float.floor`](../stdlib/scalars#floatfloor) | `float -> float` |
+| [`Float.ceil`](../stdlib/scalars#floatceil) | `float -> float` |
+| [`Float.round`](../stdlib/scalars#floatround) | `float -> float` |
+| [`Float.truncate`](../stdlib/scalars#floattruncate) | `float -> float` |
+| [`Float.sqrt`](../stdlib/scalars#floatsqrt) | `float -> float` |
+| [`Float.log`](../stdlib/scalars#floatlog) | `float -> float` |
+| [`Float.log10`](../stdlib/scalars#floatlog10) | `float -> float` |
+| [`Float.exp`](../stdlib/scalars#floatexp) | `float -> float` |
+| [`Float.sin`](../stdlib/scalars#floatsin) | `float -> float` |
+| [`Float.cos`](../stdlib/scalars#floatcos) | `float -> float` |
+| [`Float.tan`](../stdlib/scalars#floattan) | `float -> float` |
+| [`Float.asin`](../stdlib/scalars#floatasin) | `float -> float` |
+| [`Float.acos`](../stdlib/scalars#floatacos) | `float -> float` |
+| [`Float.atan`](../stdlib/scalars#floatatan) | `float -> float` |
+| [`Float.pow`](../stdlib/scalars#floatpow) | `float -> float -> float` |
+| [`Float.atan2`](../stdlib/scalars#floatatan2) | `float -> float -> float` |
+| [`Float.isNaN`](../stdlib/scalars#floatisnan) | `float -> bool` |
+| [`Float.isInfinity`](../stdlib/scalars#floatisinfinity) | `float -> bool` |
+| [`Float.isFinite`](../stdlib/scalars#floatisfinite) | `float -> bool` |
+| [`Float.pi`](../stdlib/scalars#floatpi) | `float` |
+| [`Float.tryToInt`](../stdlib/scalars#floattrytoint) | `float -> int option` |
+
+### String additions
+
+| Name | Signature |
+| --- | --- |
+| [`String.compare`](../stdlib/string#stringcompare) | `string -> string -> int` |
+| [`String.length`](../stdlib/string#stringlength) | `string -> int` |
+| [`String.isEmpty`](../stdlib/string#stringisempty) | `string -> bool` |
+| [`String.isWhiteSpace`](../stdlib/string#stringiswhitespace) | `string -> bool` |
+| [`String.trim`](../stdlib/string#stringtrim) | `string -> string` |
+| [`String.trimStart`](../stdlib/string#stringtrimstart) | `string -> string` |
+| [`String.trimEnd`](../stdlib/string#stringtrimend) | `string -> string` |
+| [`String.splitLines`](../stdlib/string#stringsplitlines) | `string -> string list` |
+| [`String.startsWith`](../stdlib/string#stringstartswith) | `string -> string -> bool` |
+| [`String.contains`](../stdlib/string#stringcontains) | `string -> string -> bool` |
+| [`String.padLeft`](../stdlib/string#stringpadleft) | `int -> string -> string` |
+| [`String.padRight`](../stdlib/string#stringpadright) | `int -> string -> string` |
+| [`String.repeat`](../stdlib/string#stringrepeat) | `int -> string -> string` |
+
+### List additions
+
+| Name | Signature |
+| --- | --- |
+| [`List.isEmpty`](../stdlib/list#listisempty) | `'a list -> bool` |
+| [`List.forall`](../stdlib/list#listforall) | `('a -> bool) -> 'a list -> bool` |
+| [`List.mapi`](../stdlib/list#listmapi) | `(int -> 'a -> 'b) -> 'a list -> 'b list` |
+| [`List.indexed`](../stdlib/list#listindexed) | `'a list -> ((int * 'a)) list` |
+| [`List.init`](../stdlib/list#listinit) | `int -> (int -> 'a) -> 'a list` |
+| [`List.take`](../stdlib/list#listtake) | `int -> 'a list -> 'a list` |
+| [`List.skip`](../stdlib/list#listskip) | `int -> 'a list -> 'a list` |
+| [`List.takeWhile`](../stdlib/list#listtakewhile) | `('a -> bool) -> 'a list -> 'a list` |
+| [`List.skipWhile`](../stdlib/list#listskipwhile) | `('a -> bool) -> 'a list -> 'a list` |
+| [`List.partition`](../stdlib/list#listpartition) | `('a -> bool) -> 'a list -> ('a list * 'a list)` |
+| [`List.zip`](../stdlib/list#listzip) | `'a list -> 'b list -> (('a * 'b)) list` |
+| [`List.unzip`](../stdlib/list#listunzip) | `(('a * 'b)) list -> ('a list * 'b list)` |
+| [`List.chunkBySize`](../stdlib/list#listchunkbysize) | `int -> 'a list -> 'a list list` |
+| [`List.scan`](../stdlib/list#listscan) | `('d -> 'a -> 'd) -> 'd -> 'a list -> 'd list` |
+| [`List.sortWith`](../stdlib/list#listsortwith) | `('a -> 'a -> int) -> 'a list -> 'a list` |
+| [`List.sortBy`](../stdlib/list#listsortby) | `('a -> 'c) -> 'a list -> 'a list` |
+| [`List.distinctBy`](../stdlib/list#listdistinctby) | `('a -> 'c) -> 'a list -> 'a list` |
+| [`List.groupBy`](../stdlib/list#listgroupby) | `('a -> 'c) -> 'a list -> (('c * 'a list)) list` |
+| [`List.countBy`](../stdlib/list#listcountby) | `('a -> 'c) -> 'a list -> (('c * int)) list` |
+
+### Map additions
+
+| Name | Signature |
+| --- | --- |
+| [`Map.keys`](../stdlib/map#mapkeys) | `'a map['c] -> 'c list` |
+| [`Map.values`](../stdlib/map#mapvalues) | `'a map['c] -> 'a list` |
+| [`Map.toList`](../stdlib/map#maptolist) | `'a map['c] -> (('c * 'a)) list` |
+| [`Map.exists`](../stdlib/map#mapexists) | `('c -> 'a -> bool) -> 'a map['c] -> bool` |
+| [`Map.forall`](../stdlib/map#mapforall) | `('c -> 'a -> bool) -> 'a map['c] -> bool` |
+| [`Map.update`](../stdlib/map#mapupdate) | `'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]` |
+| [`Map.mergeWith`](../stdlib/map#mapmergewith) | `('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]` |
+
+### Option additions
+
+| Name | Signature |
+| --- | --- |
+| [`Option.bind`](../stdlib/option#optionbind) | `('a -> 'b option) -> 'a option -> 'b option` |
+| [`Option.flatten`](../stdlib/option#optionflatten) | `'a option option -> 'a option` |
+| [`Option.filter`](../stdlib/option#optionfilter) | `('a -> bool) -> 'a option -> 'a option` |
+| [`Option.orElse`](../stdlib/option#optionorelse) | `'a option -> 'a option -> 'a option` |
+| [`Option.orElseWith`](../stdlib/option#optionorelsewith) | `(unit -> 'a option) -> 'a option -> 'a option` |
+| [`Option.map2`](../stdlib/option#optionmap2) | `('a -> 'b -> 'd) -> 'a option -> 'b option -> 'd option` |
+| [`Option.toList`](../stdlib/option#optiontolist) | `'a option -> 'a list` |
+
+### Path additions
+
+| Name | Signature |
+| --- | --- |
+| [`Path.normalize`](../stdlib/path#pathnormalize) | `string -> string` |
+| [`Path.isAbsolute`](../stdlib/path#pathisabsolute) | `string -> bool` |
+| [`Path.combine`](../stdlib/path#pathcombine) | `string -> string -> string` |
+| [`Path.fileName`](../stdlib/path#pathfilename) | `string -> string` |
+| [`Path.extension`](../stdlib/path#pathextension) | `string -> string option` |
+| [`Path.fileNameWithoutExtension`](../stdlib/path#pathfilenamewithoutextension) | `string -> string` |
+| [`Path.parent`](../stdlib/path#pathparent) | `string -> string option` |
+| [`Path.relative`](../stdlib/path#pathrelative) | `string -> string -> string option` |
+
+### Glob additions
+
+| Name | Signature |
+| --- | --- |
+| [`Glob.isMatch`](../stdlib/glob#globismatch) | `string -> string -> bool` |
+| [`Glob.filter`](../stdlib/glob#globfilter) | `string -> string list -> string list` |
+
+### SemVer additions
+
+| Name | Signature |
+| --- | --- |
+| [`SemVer.tryParse`](../stdlib/semver#semvertryparse) | `string -> ({ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string }) option` |
+| [`SemVer.format`](../stdlib/semver#semverformat) | `{ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string } -> string` |
+| [`SemVer.compare`](../stdlib/semver#semvercompare) | `string -> string -> int option` |
+
+### Encoding additions
+
+| Name | Signature |
+| --- | --- |
+| [`Encoding.utf8Encode`](../stdlib/encoding#encodingutf8encode) | `string -> int list option` |
+| [`Encoding.utf8Decode`](../stdlib/encoding#encodingutf8decode) | `int list -> string option` |
+| [`Encoding.base64Encode`](../stdlib/encoding#encodingbase64encode) | `int list -> string option` |
+| [`Encoding.base64Decode`](../stdlib/encoding#encodingbase64decode) | `string -> int list option` |
+| [`Encoding.hexEncode`](../stdlib/encoding#encodinghexencode) | `int list -> string option` |
+| [`Encoding.hexDecode`](../stdlib/encoding#encodinghexdecode) | `string -> int list option` |
+| [`Encoding.uriEncode`](../stdlib/encoding#encodinguriencode) | `string -> string option` |
+| [`Encoding.uriDecode`](../stdlib/encoding#encodinguridecode) | `string -> string option` |
+
+### Hash additions
+
+| Name | Signature |
+| --- | --- |
+| [`Hash.sha256`](../stdlib/hash#hashsha256) | `string -> string option` |
+| [`Hash.sha256Bytes`](../stdlib/hash#hashsha256bytes) | `int list -> string option` |

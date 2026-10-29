@@ -115,6 +115,72 @@ module LirInterpreter =
 
     let rec private arityFromType = function TFun(_, result) -> 1 + arityFromType result | _ -> 0
 
+    exception private SupportCallbackFailure of CompilerDiagnostic
+
+    // Adapt only values at the boundary; library callback execution remains owned by LIR.
+    let private invokeSupport apply span name arguments =
+        let functions = System.Collections.Generic.Dictionary<ExternalFunction,LirValue>(HashIdentity.Reference)
+        let rec toLanguage = function
+            | VUnit -> Value.VUnit | VInt x -> Value.VInt x | VFloat x -> Value.VFloat x
+            | VBool x -> Value.VBool x | VString x -> Value.VString x
+            | VList xs -> Value.VList(List.map toLanguage xs)
+            | VTuple xs -> Value.VTuple(List.map toLanguage xs)
+            | VRecord fields -> Value.VRecord(Map.map (fun _ -> toLanguage) fields)
+            | VOption value -> Value.VOption(Option.map toLanguage value)
+            | VUnion(t,c,p) -> Value.VUnionCase(t,c,Option.map toLanguage p)
+            | VTypeToken t -> Value.VTypeToken t
+            | VMap entries ->
+                Value.VMap(entries |> List.map (fun (key,value) ->
+                    let key = match key with
+                              | VString x -> MKString x | VInt x -> MKInt x | VBool x -> MKBool x
+                              | VUnion(t,c,None) -> MKUnionCase(t,c)
+                              | _ -> invalidOp "Unsupported map key."
+                    key,toLanguage value) |> Map.ofList)
+            | value ->
+                let callback : ExternalFunction =
+                    { Name = "<lir callback>"; Arity = 1; Scheme = Forall([],TFun(TUnit,TUnit))
+                      Impl = fun _ -> function
+                          | [argument] -> match apply value (fromLanguage argument) with
+                                          | Ok result -> toLanguage result
+                                          | Error errors -> raise (SupportCallbackFailure errors)
+                          | _ -> invalidOp "Expected one callback argument." }
+                functions.Add(callback,value)
+                Value.VExternal(callback,[])
+        and fromLanguage = function
+            | Value.VUnit -> VUnit | Value.VInt x -> VInt x | Value.VFloat x -> VFloat x
+            | Value.VBool x -> VBool x | Value.VString x -> VString x
+            | Value.VList xs -> VList(List.map fromLanguage xs)
+            | Value.VTuple xs -> VTuple(List.map fromLanguage xs)
+            | Value.VRecord fields -> VRecord(Map.map (fun _ -> fromLanguage) fields)
+            | Value.VOption value -> VOption(Option.map fromLanguage value)
+            | Value.VUnionCase(t,c,p) -> VUnion(t,c,Option.map fromLanguage p)
+            | Value.VTypeToken t -> VTypeToken t
+            | Value.VMap entries ->
+                VMap(entries |> Map.toList |> List.map (fun (key,value) ->
+                    let key = match key with MKString x -> VString x | MKInt x -> VInt x | MKBool x -> VBool x | MKUnionCase(t,c) -> VUnion(t,c,None)
+                    key,fromLanguage value))
+            | Value.VExternal(callback,[]) when functions.ContainsKey callback -> functions[callback]
+            | _ -> invalidOp "Unsupported library result."
+        let rec context () : ExternalCallContext =
+            { Session = obj()
+              IsActive = (fun () -> true)
+              CheckRuntime = ignore
+              SetExitCode = ignore
+              SpawnTask = fun _ -> invalidOp "No task capability."
+              AwaitTask = fun _ -> invalidOp "No task capability."
+              Apply = fun callback argument ->
+                  match callback with
+                  | Value.VExternal(fn,[]) -> fn.Impl (context()) [argument]
+                  | _ -> invalidOp "Expected callback." }
+        try
+            let fn = BuiltinFunctions.builtinExterns |> List.find (fun fn -> fn.Name = name)
+            fn.Impl (context()) (List.map toLanguage arguments) |> fromLanguage |> Ok
+        with
+        | SupportCallbackFailure errors -> Error errors
+        | EvalException error -> fail "FSI3022" span error.Message
+        | :? System.ArgumentException as error -> fail "FSI3022" span error.Message
+        | :? System.OverflowException -> fail "FSI3022" span "Integer overflow."
+
     let private invokeIntrinsic apply span name arguments =
         let unsupported () = fail "FSI3020" span $"Intrinsic '{name}' is not yet executable in LIR."
         let expectBool = function Ok(VBool value) -> Ok value | Ok _ -> fail "FSI3022" span $"Intrinsic '{name}' callback must return bool." | Error errors -> Error errors
@@ -141,6 +207,7 @@ module LirInterpreter =
         | "Fs.readText", [ VString path ] ->
             try Ok(VOption(Some(VString(System.IO.File.ReadAllText(path)))))
             with _ -> Ok(VOption None)
+        | name, arguments when Set.contains name SupportLibrary.names -> invokeSupport apply span name arguments
         | "ignore", [ _ ] -> Ok VUnit
         | "Int.tryParse", [ VString value ] -> match System.Int64.TryParse value with true, parsed -> Ok(VOption(Some(VInt parsed))) | _ -> Ok(VOption None)
         | "Float.tryParse", [ VString value ] -> match System.Double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with true, parsed -> Ok(VOption(Some(VFloat parsed))) | _ -> Ok(VOption None)

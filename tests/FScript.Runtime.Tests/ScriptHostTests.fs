@@ -235,3 +235,14 @@ type ScriptHostTests () =
         let options = TaskSharingContracts.withRuntime replaced TaskSharingAnalysis.defaults
         Assert.That(options.ThreadSafeFunctions.Contains "Console.writeLine", Is.False)
         Assert.That(TaskSharingAnalysis.analyze replaced options resolved |> List.exists (fun warning -> warning.Code = "FST1002"), Is.True)
+
+    [<Test>]
+    member _.``Pure content contracts recognize implementations rather than names`` () =
+        let registration = { HostInterop.empty with Functions = PureExterns.functions }
+        let options = TaskSharingContracts.withRuntime registration TaskSharingAnalysis.defaults
+        for fn in PureExterns.functions do
+            Assert.That(options.ThreadSafeFunctions.Contains fn.Name, Is.True, fn.Name)
+        let hash = PureExterns.functions |> List.find (fun fn -> fn.Name = "Hash.sha256")
+        let replacement = { hash with Impl = fun _ _ -> VOption None }
+        let options = TaskSharingContracts.withRuntime { registration with Functions = [replacement] } TaskSharingAnalysis.defaults
+        Assert.That(options.ThreadSafeFunctions.Contains hash.Name, Is.False)

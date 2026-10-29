@@ -16,3 +16,31 @@ let digest = Hash.md5 "hello"
 ```
 
 Use this for compatibility checks or non-security fingerprints. MD5 is unsuitable for password storage or security-sensitive integrity checks.
+
+## Pure support additions
+
+### `Hash.sha256`
+
+```fsharp
+Hash.sha256 : string -> string option
+```
+
+Returns a lowercase SHA-256 digest of the supplied text’s strict UTF-8 bytes, without a BOM. Invalid UTF-16 returns `None`.
+
+```fsharp
+Hash.sha256 "abc"
+// Some "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+```
+
+### `Hash.sha256Bytes`
+
+```fsharp
+Hash.sha256Bytes : int list -> string option
+```
+
+Returns a lowercase SHA-256 digest of supplied bytes. Invalid byte values return `None`.
+
+```fsharp
+Hash.sha256Bytes [97;98;99]
+// Some "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+```

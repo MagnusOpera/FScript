@@ -201,6 +201,13 @@ let queryValues : string -> string -> string list option
           jsonStdlibDoc
           xmlStdlibDoc ]
         |> Map.ofList
+        |> fun sources ->
+            (SupportLibrary.signatures @ SupportLibrary.runtimeSignatures)
+            |> List.fold (fun sources (name,Forall(_,typ),_) ->
+                let parts = name.Split('.')
+                let uri = stdlibVirtualUri (parts[0] + ".fss")
+                let text = Map.tryFind uri sources |> Option.defaultValue ($"module {parts[0]}\n")
+                Map.add uri (text + $"\nlet {parts[1]} : {Types.typeToString typ}\n") sources) sources
 
     let private tryFindDefinitionSpan (sourceText: string) (localName: string) : Span option =
         let lines = sourceText.Replace("\r\n", "\n").Split('\n')
@@ -293,6 +300,9 @@ let queryValues : string -> string -> string list option
           ("Json.deserialize", stdlibVirtualUri "Json.fss", "deserialize")
           ("Json.serialize", stdlibVirtualUri "Json.fss", "serialize")
           ("Xml.queryValues", stdlibVirtualUri "Xml.fss", "queryValues") ]
+        |> List.append ((SupportLibrary.signatures @ SupportLibrary.runtimeSignatures) |> List.map (fun (name,_,_) ->
+            let parts=name.Split('.')
+            name,stdlibVirtualUri (parts[0]+".fss"),parts[1]))
 
     let private stdlibDefinitionMap : Map<string, string * Span> =
         stdlibDefinitionEntries
@@ -420,6 +430,7 @@ let queryValues : string -> string -> string list option
           "Map.map", [ "mapper"; "values" ]
           "Map.iter", [ "iterator"; "values" ]
           "Map.remove", [ "key"; "values" ] ]
+        |> List.append ((SupportLibrary.signatures @ SupportLibrary.runtimeSignatures) |> List.map (fun (name,_,parameters) -> name,parameters))
         |> Map.ofList
 
     let private buildInjectedFunctionData (externs: ExternalFunction list) =

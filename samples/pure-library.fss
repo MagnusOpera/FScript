@@ -1,0 +1,9 @@
+// These transformations do not read files, environment variables, or the clock.
+let paths = ["src/Parser.fs"; "src/TypeInfer.fs"; "docs/README.md"]
+let sources = Glob.filter "**/*.fs" paths
+let directories = sources |> List.groupBy (fun path -> Path.parent path)
+let versionOrder = SemVer.compare "1.0.0-rc.2" "1.0.0"
+let encoded = Encoding.utf8Encode "FScript" |> Option.bind Encoding.base64Encode
+let digest = Hash.sha256 "FScript"
+let squares = List.init 4 (fun index -> Float.pow (Int.toFloat index) 2.0)
+(sources, directories, versionOrder, encoded, digest, squares)

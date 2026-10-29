@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="CSharpBackend.fs" />
+    <EmbeddedResource Include="RuntimePure.cs" LogicalName="FScript.Backend.CSharp.RuntimePure.cs" />
     <EmbeddedResource Include="Runtime.cs" LogicalName="FScript.Backend.CSharp.Runtime.cs" />
     <EmbeddedResource Include="RuntimeListViews.cs" LogicalName="FScript.Backend.CSharp.RuntimeListViews.cs" />
     <EmbeddedResource Include="RuntimeSDK.cs" LogicalName="FScript.Backend.CSharp.RuntimeSDK.cs" />

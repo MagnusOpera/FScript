@@ -8,7 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" />
     <Compile Include="Helpers.fs" />
+    <Compile Include="SupportLibraryTests.fs" />
     <Compile Include="LexerTests.fs" />
     <Compile Include="IncludeResolverTests.fs" />
     <Compile Include="ParserTests.fs" />

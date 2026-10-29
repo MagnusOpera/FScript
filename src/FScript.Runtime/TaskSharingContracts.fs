@@ -9,11 +9,11 @@ module TaskSharingContracts =
     /// Add known runtime guarantees only for the actual built-in implementations.
     /// A provider rebinding the same name does not inherit these contracts.
     let withRuntime (registration: ExtensionRegistration) (options: TaskSharingAnalysis.Options) =
-        let consoleFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line]
+        let knownFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line] @ PureExterns.functions
         let known =
             registration.Functions
             |> List.choose (fun fn ->
-                if consoleFunctions |> List.exists (fun builtin -> Object.ReferenceEquals(fn.Impl, builtin.Impl)) then Some fn.Name
+                if knownFunctions |> List.exists (fun builtin -> Object.ReferenceEquals(fn.Impl, builtin.Impl)) then Some fn.Name
                 else None)
             |> Set.ofList
         { options with ThreadSafeFunctions = Set.union options.ThreadSafeFunctions known }

@@ -31,8 +31,10 @@
     <Compile Include="IncludeResolver.fs" />
     <Compile Include="BuiltinTypes.fs" />
     <Compile Include="HostInterop.fs" />
+    <Compile Include="SupportLibrary.fs" />
     <Compile Include="BuiltinSignatures.fs" />
     <Compile Include="Execution.fs" />
+    <Compile Include="SupportCollections.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="TaskSharingAnalysis.fs" />

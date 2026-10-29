@@ -4,14 +4,14 @@ title: Stdlib Overview
 slug: /stdlib/overview
 ---
 
-Start with lists, options, and maps for data transformations. Add runtime modules when a script needs files, console I/O, serialization, or concurrency.
+Start with lists, options, and maps for data transformations. Add runtime modules when a script needs files, console I/O, serialization, concurrency, or content encoding and hashing.
 
 ## Availability
 
 | Surface | Modules or names | Available when |
 | --- | --- | --- |
-| Core functions and values | `List`, `Option`, `Map`, `String`, `Int`, `Float`, `Bool`, `ignore` | Always, including JavaScript hosts |
-| Default .NET runtime externs | `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid` | The host registers them; the CLI enables them by default |
+| Core functions and values | `List`, `Option`, `Map`, `String`, `Int`, `Float`, `Bool`, `Path`, `Glob`, `SemVer`, `ignore` | Always, including JavaScript hosts |
+| Default .NET runtime externs | `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Encoding`, `Guid` | The host registers them; the CLI enables them by default |
 | Exit status | `Env.setExitCode : int -> unit` | Effectful core operation; never terminates the host |
 | Execution metadata | `Env : Environment` | Injected by the CLI/REPL or supplied by an embedding host |
 
@@ -34,7 +34,11 @@ No imports are needed for registered functions. An embedding host may expose a s
 | Decode and encode JSON | [Json](./json) |
 | Extract regular-expression capture groups | [Regex](./regex) |
 | Query XML element text and attributes | [Xml](./xml) |
-| Compute an MD5 digest | [Hash](./hash) |
+| Compute a SHA-256 or MD5 digest of supplied content | [Hash](./hash) |
+| Manipulate path strings without IO | [Path](./path) |
+| Match supplied paths against patterns | [Glob](./glob) |
+| Parse and compare semantic versions | [SemVer](./semver) |
+| Transform UTF-8, Base64, hex, or URI components | [Encoding](./encoding) |
 | Create a GUID string | [Guid](./guid) |
 
 ## Reading the signatures

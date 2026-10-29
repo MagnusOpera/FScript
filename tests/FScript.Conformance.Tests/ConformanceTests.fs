@@ -83,6 +83,28 @@ module private Harness =
 
 [<TestFixture>]
 type ConformanceTests() =
+    static member SupportCases =
+        FScript.Tests.SupportLibraryCases.core |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Support LIR: " + name))
+
+    [<Test>]
+    member _.``Expanded collection helpers preserve callback effects`` () =
+        let source = "let compare a b =\n    Console.writeLine $\"{a}:{b}\"\n    a-b\nList.sortWith compare [3;1;2;1]"
+        let expected=Harness.legacy source
+        match Harness.lir source,Harness.cse source with
+        | Ok plain,Ok optimized ->
+            Assert.That(plain,Is.EqualTo(expected))
+            Assert.That(optimized,Is.EqualTo(expected))
+        | plain,optimized -> Assert.Fail($"LIR: {plain}; optimized: {optimized}")
+
+    [<TestCaseSource(nameof ConformanceTests.SupportCases)>]
+    member _.``Expanded core library survives IR roundtrip and optimization`` (source: string,expected: string) =
+        Assert.That((Harness.legacy source).Value,Is.EqualTo(expected))
+        match Harness.lir source,Harness.cse source with
+        | Ok plain,Ok optimized ->
+            Assert.That(plain.Value,Is.EqualTo(expected))
+            Assert.That(optimized.Value,Is.EqualTo(expected))
+        | plain,optimized -> Assert.Fail($"LIR: {plain}; optimized: {optimized}")
+
     [<TestCase("[Some 1; None] = [Some 1; None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Address = { City: string; Zip: int }\nlet check value = match value with | {| City: string |} -> 1 | _ -> 2\ncheck { City=\"Paris\"; Zip=75000 }")>]

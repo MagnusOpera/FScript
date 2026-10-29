@@ -73,7 +73,11 @@ module CompilerExternCatalog =
           descriptor "Task.spawn" (Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))) 1 UnsupportedHostExtern
           descriptor "Task.await" (Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))) 1 UnsupportedHostExtern ]
 
-    let defaults = runtimeContext :: (portableRuntime @ unsupportedHostRuntime)
+    let pureRuntime =
+        SupportLibrary.runtimeSignatures |> List.map (fun (name,scheme,parameters) ->
+            descriptor name scheme parameters.Length UnsupportedHostExtern)
+
+    let defaults = runtimeContext :: (portableRuntime @ unsupportedHostRuntime @ pureRuntime)
 
 module Diagnostic =
     let hir code message span =

@@ -30,6 +30,7 @@
     <Compile Include="TaskExterns.fs" />
     <Compile Include="JsonExterns.fs" />
     <Compile Include="XmlExterns.fs" />
+    <Compile Include="PureExterns.fs" />
     <Compile Include="Registry.fs" />
     <Compile Include="ExtensionBridge.fs" />
     <Compile Include="EnvironmentConfiguration.fs" />

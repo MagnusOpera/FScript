@@ -34,6 +34,10 @@ internal static class SdkInterop
     private static SV Optional(Func<SV> action) { try { return SV.NewVOption(Some(action())); } catch { return SV.NewVOption(null); } }
     private static string Text(SV value) => ((SV.VString)value).Item;
     private static SV Strings(string[] values) => SV.NewVList(ListModule.OfArray(values.Select(SV.NewVString).ToArray()));
+    private static long[] Bytes(SV value) => ((SV.VList)value).Item.Select(item => ((SV.VInt)item).Item).ToArray();
+    private static SV ByteList(long[] bytes) => SV.NewVList(ListModule.OfArray(bytes.Select(SV.NewVInt).ToArray()));
+    private static SV TextOption(Option<string> value) => SV.NewVOption(value.HasValue ? Some(SV.NewVString(value.Value)) : null);
+    private static SV ByteOption(Option<long[]> value) => SV.NewVOption(value.HasValue ? Some(ByteList(value.Value)) : null);
     public static SV Default(string name, ExternalCallContext context, SV[] args)
     {
         switch(name)
@@ -55,6 +59,16 @@ internal static class SdkInterop
                 return SV.NewVUnionCase("FsKind",kind,kind == "Missing" ? null : Some(SV.NewVString(Path.GetRelativePath(Directory.GetCurrentDirectory(),Path.GetFullPath(path)).Replace('\\','/'))));
             case "Regex.matchGroups": var groups=FsRuntime.MatchGroups(Text(args[0]),Text(args[1])); return SV.NewVOption(groups.HasValue ? Some(Strings(groups.Value)) : null);
             case "Guid.new": return SV.NewVOption(Some(SV.NewVString(Guid.NewGuid().ToString())));
+            case "Encoding.utf8Encode": return ByteOption(FsPure.Utf8Encode(Text(args[0])));
+            case "Encoding.utf8Decode": return TextOption(FsPure.Utf8Decode(Bytes(args[0])));
+            case "Encoding.base64Encode": return TextOption(FsPure.Base64Encode(Bytes(args[0])));
+            case "Encoding.base64Decode": return ByteOption(FsPure.Base64Decode(Text(args[0])));
+            case "Encoding.hexEncode": return TextOption(FsPure.HexEncode(Bytes(args[0])));
+            case "Encoding.hexDecode": return ByteOption(FsPure.HexDecode(Text(args[0])));
+            case "Encoding.uriEncode": return TextOption(FsPure.UriEncode(Text(args[0])));
+            case "Encoding.uriDecode": return TextOption(FsPure.UriDecode(Text(args[0])));
+            case "Hash.sha256": return TextOption(FsPure.Sha256(Text(args[0])));
+            case "Hash.sha256Bytes": return TextOption(FsPure.Sha256Bytes(Bytes(args[0])));
             case "Hash.md5": return Optional(() => SV.NewVString(Convert.ToHexString(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(Text(args[0])))).ToLowerInvariant()));
             case "Json.serialize": return Optional(() => SV.NewVString(EncodeJson(args[0])));
             case "Json.deserialize": return Optional(() => { using var document=JsonDocument.Parse(Text(args[1])); return DecodeJson(((SV.VTypeToken)args[0]).Item,document.RootElement); });

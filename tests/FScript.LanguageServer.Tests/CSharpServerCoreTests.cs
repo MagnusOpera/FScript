@@ -482,6 +482,10 @@ public sealed class CSharpServerCoreTests
         }
     }
 
+    [TestCase("Path.normalize \"a/../b\"\n", 0, 6, "fscript-stdlib:///Path.fss")]
+    [TestCase("Glob.isMatch \"*.fs\" \"a.fs\"\n", 0, 7, "fscript-stdlib:///Glob.fss")]
+    [TestCase("Float.sqrt 9.0\n", 0, 8, "fscript-stdlib:///Float.fss")]
+    [TestCase("Encoding.hexEncode [1]\n", 0, 12, "fscript-stdlib:///Encoding.fss")]
     [TestCase("Console.writeLine \"hello\"\n", 0, 10, "fscript-stdlib:///Console.fss")]
     [TestCase("let pending = Task.spawn (fun () -> 42)\nTask.await pending\n", 1, 6, "fscript-stdlib:///Task.fss")]
     [TestCase("Map.empty |> Map.count\n", 0, 4, "fscript-stdlib:///Map.fss")]
@@ -529,6 +533,11 @@ public sealed class CSharpServerCoreTests
         }
     }
 
+    [TestCase("fscript-stdlib:///Path.fss", "module Path", "let normalize", "let relative")]
+    [TestCase("fscript-stdlib:///Glob.fss", "module Glob", "let isMatch", "let filter")]
+    [TestCase("fscript-stdlib:///SemVer.fss", "module SemVer", "let tryParse", "let compare")]
+    [TestCase("fscript-stdlib:///Encoding.fss", "module Encoding", "let utf8Encode", "let uriDecode")]
+    [TestCase("fscript-stdlib:///Float.fss", "module Float", "let sqrt", "let pi")]
     [TestCase("fscript-stdlib:///Console.fss", "module Console", "let writeLine", "let readLine")]
     [TestCase("fscript-stdlib:///Task.fss", "module Task", "let spawn", "let await")]
     [TestCase("fscript-stdlib:///Map.fss", "module Map", "let iter", "let remove")]

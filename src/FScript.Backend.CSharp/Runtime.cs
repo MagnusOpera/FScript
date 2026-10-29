@@ -19,6 +19,8 @@ public readonly record struct Option<T>(bool HasValue, T Value)
 public sealed class OrderedMap<K, V>
 {
     public readonly record struct Entry(K Key, V Value);
+    private static readonly IComparer<K> KeyOrder = Comparer<K>.Create((a,b) =>
+        a is string left && b is string right ? StringComparer.Ordinal.Compare(left,right) : Comparer<K>.Default.Compare(a,b));
     public Entry[] Entries { get; }
     public OrderedMap() : this(Array.Empty<Entry>()) { }
     public OrderedMap(Entry[] entries) { Entries = entries; }
@@ -31,7 +33,7 @@ public sealed class OrderedMap<K, V>
     public OrderedMap<K,V> Add(K key, V value)
     {
         var entries = Entries.Where(e => !EqualityComparer<K>.Default.Equals(e.Key, key))
-            .Append(new Entry(key,value)).OrderBy(e => e.Key, Comparer<K>.Default).ToArray();
+            .Append(new Entry(key,value)).OrderBy(e => e.Key, KeyOrder).ToArray();
         return new(entries);
     }
     public OrderedMap<K,V> Remove(K key) => new(Entries.Where(e => !EqualityComparer<K>.Default.Equals(e.Key,key)).ToArray());

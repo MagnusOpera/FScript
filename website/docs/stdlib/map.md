@@ -177,3 +177,96 @@ type Result = | Empty | Value of int
 ```
 
 `Json.serialize` encodes string, integer, and boolean keys as JSON object property names. It returns `None` for maps containing union keys.
+
+## Pure support additions
+
+### `Map.keys`
+
+```fsharp
+Map.keys : 'a map['c] -> 'c list
+```
+
+Returns keys in the map’s existing deterministic key order.
+
+```fsharp
+Map.keys { ["b"]=2; ["a"]=1 }
+// ["a";"b"]
+```
+
+### `Map.values`
+
+```fsharp
+Map.values : 'a map['c] -> 'a list
+```
+
+Returns values in the corresponding deterministic key order.
+
+```fsharp
+Map.values { ["b"]=2; ["a"]=1 }
+// [1;2]
+```
+
+### `Map.toList`
+
+```fsharp
+Map.toList : 'a map['c] -> (('c * 'a)) list
+```
+
+Returns `(key, value)` pairs in deterministic key order.
+
+```fsharp
+Map.toList { ["a"]=1 }
+// [("a", 1)]
+```
+
+### `Map.exists`
+
+```fsharp
+Map.exists : ('c -> 'a -> bool) -> 'a map['c] -> bool
+```
+
+Tests entries in key order and stops at the first true predicate result. Empty maps return false.
+
+```fsharp
+Map.exists (fun k v -> k="a" && v=1) { ["a"]=1 }
+// true
+```
+
+### `Map.forall`
+
+```fsharp
+Map.forall : ('c -> 'a -> bool) -> 'a map['c] -> bool
+```
+
+Tests entries in key order and stops at the first false predicate result. Empty maps return true.
+
+```fsharp
+Map.forall (fun k v -> v>0) { ["a"]=1 }
+// true
+```
+
+### `Map.update`
+
+```fsharp
+Map.update : 'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]
+```
+
+Calls the updater once with the current value option. `Some value` inserts or replaces the entry; `None` removes it.
+
+```fsharp
+Map.update "a" (fun v -> Some (Option.defaultValue 0 v + 1)) { ["a"]=1 } |> Map.tryGet "a"
+// Some 2
+```
+
+### `Map.mergeWith`
+
+```fsharp
+Map.mergeWith : ('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]
+```
+
+Combines both maps. The resolver is called only for shared keys, in right-map key order, with key, left value, then right value. Unique entries are retained.
+
+```fsharp
+Map.mergeWith (fun k a b -> a+b) { ["a"]=1 } { ["a"]=2; ["b"]=4 } |> Map.toList
+// [("a", 3);("b", 4)]
+```

@@ -162,3 +162,12 @@ Private view adapters expose array and offset metadata, with spans constructed l
 ## Compiler dependency portability
 
 Both CLR backends reference the pinned portable `Microsoft.CodeAnalysis.CSharp` NuGet package, which supplies Roslyn and its common dependencies. They do not copy Roslyn binaries from the build SDK. SDK binaries may contain host-specific ReadyToRun code and cannot be bundled safely when publishing a CLI for a different OS or architecture. Release CI exercises the cross-built macOS CLI archive on macOS ARM64, including manifest discovery and FFI compilation.
+
+
+## Pure support library integration
+
+`SupportLibrary` owns the added core schemes, parameter metadata, and portable scalar/path/glob/SemVer algorithms. `SupportCollections` implements callback-based transformations with `Execution`, preserving suspension and callback order. `BuiltinFunctions` exposes their descriptors; inference and the language server consume the same signature catalog.
+
+The LIR interpreter adapts its values and callable handles at the library boundary and preserves callback diagnostics, reusing the evaluator implementations for the expanded core catalog without evaluating source ASTs. Native code generation emits typed calls and includes BCL-only `RuntimePure.cs`; no interpreter or runtime assembly is added to compiled applications. Shared contract cases cover evaluator, artifact roundtrip, optimization, native .NET, generated C#, and JavaScript.
+
+Strict encodings and SHA-256 are separately registered by `PureExterns.functions`. Hosts can expose this content-only subset without granting IO. Their schemes live in the shared metadata catalog; CLI/native provider defaults and language-server references include them. Concurrency guarantees are recognized only for the actual built-in implementations, never arbitrary replacements sharing their names.

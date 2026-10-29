@@ -90,3 +90,10 @@ Debugger variables and watches expose only registered visible host fields. They
 never reflect over opaque payloads or execute functions to render values. Watches
 use a syntactic inspection allowlist; unclassified expressions are rejected.
 Debugging grants no variable-editing or arbitrary-evaluation capability.
+
+
+## Pure standard-library helpers
+
+Scalar math, collection/text transformations, lexical `Path`, string-only `Glob`, and `SemVer` operations do not grant IO capabilities. `Path` uses fixed slash-only lexical rules; it does not consult the filesystem, resolve symlinks, infer the current directory, or provide containment guarantees. `Glob` matches only supplied strings and never enumerates files.
+
+A .NET host can register only `FScript.Runtime.PureExterns.functions` to expose strict encoding/decoding and SHA-256 over supplied content. This registration requires no root directory and includes no console, filesystem, process, network, clock, or random access. Higher-order helpers retain the capabilities and effects of their supplied callbacks. Host CPU/memory/time limits still apply to pure computations.

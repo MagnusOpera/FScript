@@ -223,3 +223,132 @@ Result printing is independent of this status. `--no-result` suppresses automati
 
 
 Fable/JavaScript deliberately treats this operation as a no-op (including shell-range validation). Arguments still evaluate normally, returned values remain unchanged, and the website displays the returned value as before.
+
+
+## Pure support expansion
+
+The following functions extend the standard library. All core additions are reserved names, available without host externs, and implemented by the evaluator, artifact interpreter, both native backends, and JavaScript engine. Encoding/SHA-256 remain separately registered .NET runtime externs; native outputs include equivalent BCL-only implementations. Existing IO capabilities are unchanged. The sandbox grants no additional filesystem, network, process, environment, clock, or random capability.
+
+The website module references are the detailed behavioral contracts, including examples and failure behavior:
+
+- [scalars](../../website/docs/stdlib/scalars.md)
+- [string](../../website/docs/stdlib/string.md)
+- [list](../../website/docs/stdlib/list.md)
+- [map](../../website/docs/stdlib/map.md)
+- [option](../../website/docs/stdlib/option.md)
+- [hash](../../website/docs/stdlib/hash.md)
+- [path](../../website/docs/stdlib/path.md)
+- [glob](../../website/docs/stdlib/glob.md)
+- [semver](../../website/docs/stdlib/semver.md)
+- [encoding](../../website/docs/stdlib/encoding.md)
+
+### Added signatures
+
+- `Int.abs : int -> int`
+- `Int.sign : int -> int`
+- `Int.min : int -> int -> int`
+- `Int.max : int -> int -> int`
+- `Int.clamp : int -> int -> int -> int`
+- `Float.abs : float -> float`
+- `Float.sign : float -> int`
+- `Float.min : float -> float -> float`
+- `Float.max : float -> float -> float`
+- `Float.clamp : float -> float -> float -> float`
+- `Float.floor : float -> float`
+- `Float.ceil : float -> float`
+- `Float.round : float -> float`
+- `Float.truncate : float -> float`
+- `Float.sqrt : float -> float`
+- `Float.log : float -> float`
+- `Float.log10 : float -> float`
+- `Float.exp : float -> float`
+- `Float.sin : float -> float`
+- `Float.cos : float -> float`
+- `Float.tan : float -> float`
+- `Float.asin : float -> float`
+- `Float.acos : float -> float`
+- `Float.atan : float -> float`
+- `Float.pow : float -> float -> float`
+- `Float.atan2 : float -> float -> float`
+- `Float.isNaN : float -> bool`
+- `Float.isInfinity : float -> bool`
+- `Float.isFinite : float -> bool`
+- `Float.pi : float`
+- `Int.toFloat : int -> float`
+- `Float.tryToInt : float -> int option`
+- `String.length : string -> int`
+- `String.isEmpty : string -> bool`
+- `String.isWhiteSpace : string -> bool`
+- `String.trim : string -> string`
+- `String.trimStart : string -> string`
+- `String.trimEnd : string -> string`
+- `String.splitLines : string -> string list`
+- `String.startsWith : string -> string -> bool`
+- `String.contains : string -> string -> bool`
+- `String.padLeft : int -> string -> string`
+- `String.padRight : int -> string -> string`
+- `String.repeat : int -> string -> string`
+- `List.isEmpty : 'a list -> bool`
+- `List.forall : ('a -> bool) -> 'a list -> bool`
+- `List.mapi : (int -> 'a -> 'b) -> 'a list -> 'b list`
+- `List.indexed : 'a list -> ((int * 'a)) list`
+- `List.init : int -> (int -> 'a) -> 'a list`
+- `List.take : int -> 'a list -> 'a list`
+- `List.skip : int -> 'a list -> 'a list`
+- `List.takeWhile : ('a -> bool) -> 'a list -> 'a list`
+- `List.skipWhile : ('a -> bool) -> 'a list -> 'a list`
+- `List.partition : ('a -> bool) -> 'a list -> ('a list * 'a list)`
+- `List.zip : 'a list -> 'b list -> (('a * 'b)) list`
+- `List.unzip : (('a * 'b)) list -> ('a list * 'b list)`
+- `List.chunkBySize : int -> 'a list -> 'a list list`
+- `List.scan : ('d -> 'a -> 'd) -> 'd -> 'a list -> 'd list`
+- `List.sortWith : ('a -> 'a -> int) -> 'a list -> 'a list`
+- `List.sortBy : ('a -> 'c) -> 'a list -> 'a list`
+- `List.distinctBy : ('a -> 'c) -> 'a list -> 'a list`
+- `List.groupBy : ('a -> 'c) -> 'a list -> (('c * 'a list)) list`
+- `List.countBy : ('a -> 'c) -> 'a list -> (('c * int)) list`
+- `Map.keys : 'a map['c] -> 'c list`
+- `Map.values : 'a map['c] -> 'a list`
+- `Map.toList : 'a map['c] -> (('c * 'a)) list`
+- `Map.exists : ('c -> 'a -> bool) -> 'a map['c] -> bool`
+- `Map.forall : ('c -> 'a -> bool) -> 'a map['c] -> bool`
+- `Map.update : 'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]`
+- `Map.mergeWith : ('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]`
+- `Option.bind : ('a -> 'b option) -> 'a option -> 'b option`
+- `Option.flatten : 'a option option -> 'a option`
+- `Option.filter : ('a -> bool) -> 'a option -> 'a option`
+- `Option.orElse : 'a option -> 'a option -> 'a option`
+- `Option.orElseWith : (unit -> 'a option) -> 'a option -> 'a option`
+- `Option.map2 : ('a -> 'b -> 'd) -> 'a option -> 'b option -> 'd option`
+- `Option.toList : 'a option -> 'a list`
+- `Path.normalize : string -> string`
+- `Path.isAbsolute : string -> bool`
+- `Path.combine : string -> string -> string`
+- `Path.fileName : string -> string`
+- `Path.extension : string -> string option`
+- `Path.fileNameWithoutExtension : string -> string`
+- `Path.parent : string -> string option`
+- `Path.relative : string -> string -> string option`
+- `Glob.isMatch : string -> string -> bool`
+- `Glob.filter : string -> string list -> string list`
+- `SemVer.tryParse : string -> ({ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string }) option`
+- `SemVer.format : { Build: string; Major: string; Minor: string; Patch: string; PreRelease: string } -> string`
+- `SemVer.compare : string -> string -> int option`
+- `Encoding.utf8Encode : string -> int list option`
+- `Encoding.utf8Decode : int list -> string option`
+- `Encoding.base64Encode : int list -> string option`
+- `Encoding.base64Decode : string -> int list option`
+- `Encoding.hexEncode : int list -> string option`
+- `Encoding.hexDecode : string -> int list option`
+- `Encoding.uriEncode : string -> string option`
+- `Encoding.uriDecode : string -> string option`
+- `Hash.sha256 : string -> string option`
+- `Hash.sha256Bytes : int list -> string option`
+
+Scalar string operations use UTF-16 indices and ordinal comparisons. Numeric conversions truncate explicitly and reject invalid ranges. Integer abs overflow, reversed clamp bounds, invalid sizes, unequal zip lengths, invalid glob grammar, and invalid SemVer formatting raise errors; parse/decode operations return options.
+
+Higher-order helpers invoke callbacks through the evaluator trampoline. Sorts are stable bottom-up merge sorts with identical comparison order across .NET execution engines; sortBy computes projections once and compares scalar keys only. Group/distinct/count operations use structural equality and first occurrence order. Map operations preserve existing map key ordering. Callbacks retain their effects and failures; compiler purity remains conservative for partial or higher-order additions.
+
+Paths always use portable slash-only lexical rules. Glob patterns never enumerate files. SemVer follows 2.0.0 precedence with unbounded decimal string components. UTF-8 is strict, Base64 uses the standard alphabet, hex outputs lowercase, URI decoding preserves plus signs, and SHA-256 hashes supplied bytes or strict UTF-8 text.
+
+`String.compare : string -> string -> int` returns normalized ordinal ordering. Native ordered maps also use ordinal string ordering, matching evaluator maps independently of the current culture. Whitespace helpers use an explicit Unicode White_Space set shared by all engines rather than runtime-specific trim defaults.
