@@ -316,7 +316,52 @@ module TaskSharingAnalysis =
                 | [only] -> invoke only
                 | alternatives -> branches (alternatives |> List.map (fun callable -> fun () -> invoke callable))
         and invokeFunction span resultType name external arguments =
+            let completed value = value.Tasks |> Set.toList |> List.choose (fun id -> match tasks.TryGetValue id with true,result -> Some result | _ -> None)
+            let join completions =
+                if not (List.isEmpty completions) then clock <- mergeClock clock (completions |> List.map fst |> List.fold mergeClock Map.empty)
+                tick ()
+            let ready value =
+                nextTask <- nextTask + 1
+                tasks.[nextTask] <- clock,value
+                { empty with Tasks=Set.singleton nextTask }
+            let fork callback run =
+                let parent,parentClock=task,clock
+                tick ()
+                let forkClock=clock
+                nextTask <- nextTask + 1
+                let child=nextTask
+                task <- child
+                clock <- Map.add child 0 forkClock
+                let result=run (fun argument ->
+                    access (callSites |> List.tryHead |> Option.defaultValue span) callback.Resources
+                    apply span (match resultType with TTask typ -> typ | _ -> TUnit) callback argument)
+                tasks.[child] <- clock,result
+                task <- parent
+                clock <- mergeClock parentClock forkClock
+                tick ()
+                { empty with Tasks=Set.singleton child }
             match name, arguments with
+            | "Task.fromResult",[value] -> ready value
+            | "Task.delay",[_] -> ready empty
+            | "Task.continueWith",[callback;value] ->
+                let completions=completed value
+                fork callback (fun invoke -> join completions; invoke (completions |> List.map snd |> combine))
+            | "Task.whenAll",[callback;values] ->
+                let inputs=contents values
+                let completions=completed inputs
+                fork callback (fun invoke ->
+                    join completions
+                    invoke (container "$items" values.Count (completions |> List.map snd |> combine)))
+            | "Task.whenAny",[callback;values] ->
+                let completions=completed (contents values)
+                fork callback (fun invoke ->
+                    match completions with
+                    | [] -> invoke (contents values)
+                    | _ -> branches (completions |> List.map (fun (finished,value) -> fun () -> join [finished,value]; invoke value)))
+            | "Task.awaitAll",[values] ->
+                let completions=completed (contents values)
+                join completions
+                container "$items" values.Count (completions |> List.map snd |> combine)
             | "Task.spawn", [thunk] ->
                 let parent, parentClock = task, clock
                 tick ()

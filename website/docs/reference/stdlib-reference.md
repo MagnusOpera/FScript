@@ -157,8 +157,14 @@ This is the complete catalog of core functions/values and default .NET runtime e
 
 | Name | Signature |
 | --- | --- |
-| [`Task.await`](../stdlib/task) | `'a task -> 'a` |
-| [`Task.spawn`](../stdlib/task) | `(unit -> 'a) -> 'a task` |
+| [`Task.spawn`](../stdlib/task#taskspawn) | `(unit -> 'a) -> 'a task` |
+| [`Task.delay`](../stdlib/task#taskdelay) | `int -> unit task` |
+| [`Task.fromResult`](../stdlib/task#taskfromresult) | `'a -> 'a task` |
+| [`Task.continueWith`](../stdlib/task#taskcontinuewith) | `('a -> 'b) -> 'a task -> 'b task` |
+| [`Task.whenAll`](../stdlib/task#taskwhenall) | `('a list -> 'b) -> 'a task list -> 'b task` |
+| [`Task.whenAny`](../stdlib/task#taskwhenany) | `('a -> 'b) -> 'a task list -> 'b task` |
+| [`Task.await`](../stdlib/task#taskawait) | `'a task -> 'a` |
+| [`Task.awaitAll`](../stdlib/task#taskawaitall) | `'a task list -> 'a list` |
 
 ### Xml
 

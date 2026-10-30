@@ -352,3 +352,23 @@ Higher-order helpers invoke callbacks through the evaluator trampoline. Sorts ar
 Paths always use portable slash-only lexical rules. Glob patterns never enumerate files. SemVer follows 2.0.0 precedence with unbounded decimal string components. UTF-8 is strict, Base64 uses the standard alphabet, hex outputs lowercase, URI decoding preserves plus signs, and SHA-256 hashes supplied bytes or strict UTF-8 text.
 
 `String.compare : string -> string -> int` returns normalized ordinal ordering. Native ordered maps also use ordinal string ordering, matching evaluator maps independently of the current culture. Whitespace helpers use an explicit Unicode White_Space set shared by all engines rather than runtime-specific trim defaults.
+
+
+## Task composition
+
+The full optional runtime Task API is specified in the [Task reference](../../website/docs/stdlib/task.md). Additions:
+
+- `Task.delay : int -> unit task`
+- `Task.fromResult : 'a -> 'a task`
+- `Task.continueWith : ('a -> 'b) -> 'a task -> 'b task`
+- `Task.whenAll : ('a list -> 'b) -> 'a task list -> 'b task`
+- `Task.whenAny : ('a -> 'b) -> 'a task list -> 'b task`
+- `Task.awaitAll : 'a task list -> 'a list`
+
+Delays use timer waits, accepting only 0..2147483647 milliseconds. Completed-value tasks are completed immediately and preserve distinct task handles. Continuation callbacks are scheduled asynchronously, run once on successful prerequisites, receive ordinary values, and preserve nested task results without automatic flattening. All operations snapshot input list order. WhenAll/awaitAll preserve input order; empty all invokes the callback with [] and empty awaitAll returns []. Empty whenAny raises an error. Unit-valued candidates are ordinary homogeneous task lists. Different result types must first be mapped into an explicit user union; the type checker rejects heterogeneous task lists.
+
+WhenAny registers the race at invocation, consumes only its selected task, and does not cancel or consume losers. Already-completed inputs select the first completed list entry; other ties are scheduling-dependent. Failure remains fatal, including losing candidates. ContinueWith and WhenAll consume prerequisites but introduce a returned task that must itself be awaited. AwaitAll consumes all inputs. Unawaited completed tasks and nested results are errors, just like unawaited spawned tasks. The evaluator and generated Run boundaries enforce this policy; separately invoked native exports have host-owned task lifetimes. The evaluator retains its immediate global background-failure checks. Native task operations and Run completion check registered failures; already-running synchronous native code is not preempted by a background fault.
+
+The canonical evaluator/SDK task functions remain optional runtime registrations. Fable task execution and unadapted standalone LIR task calls fail explicitly; compiler catalogs and artifacts preserve the signatures and arities. Tasks are observable scheduling capabilities and receive no automatic compiler purity guarantee.
+
+Task continuation argument order is callback first and task/task list last. All three combinators support pipeline application and reusable partial application, e.g. `let increment = Task.continueWith (fun value -> value + 1)` followed by `Task.fromResult 41 |> increment`. Parameter metadata, evaluator/native/SDK dispatch, and static task-sharing analysis use this same order.

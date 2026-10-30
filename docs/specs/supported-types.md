@@ -160,3 +160,6 @@ Explicit host descriptors may mark a type `HostManaged`. Such values expose immu
 .NET hosts can derive host-managed descriptors from explicitly attributed CLR types using `FScript.Extensibility.HostTypes`. This is an opt-in host adapter, not a new script type category. Supported CLR field mappings and rejected shapes are specified in [host-managed types](./host-managed-types.md#optional-clr-projection-helpers).
 
 Host registrations may also supply nominal, script-constructible unions through `HostUnionDescriptor`. CLR union payloads and F# sets use the mappings described in [host types](./host-managed-types.md#constructible-foreign-unions).
+
+
+List literal inference accumulates substitutions from every preceding element before unifying the next element. This also enforces homogeneous task-result types: `[Task.fromResult 1; Task.fromResult "text"]` is a type error. A task callback may return another task; `Task.continueWith` and related operations preserve the resulting nested `TTask(TTask item)` type.

@@ -1,16 +1,16 @@
-function @0 %180 x captures=[]: 'a -> ('a -> 'a)
-  make-closure @1 captures=[180] : ('a -> 'a)
-function @1 %181 y captures=[180]: 'a -> 'a
+function @0 %186 x captures=[]: 'a -> ('a -> 'a)
+  make-closure @1 captures=[186] : ('a -> 'a)
+function @1 %187 y captures=[186]: 'a -> 'a
   operation NumericAdd : 'a
-    load %180 : 'a
-    load %181 : 'a
-decl %179 add: ('a -> ('a -> 'a))
+    load %186 : 'a
+    load %187 : 'a
+decl %185 add: ('a -> ('a -> 'a))
   make-closure @0 captures=[] : ('a -> ('a -> 'a))
-decl %182 $expression182: int
+decl %188 $expression188: int
   call-closure : int
     call-closure : (int -> int)
-      load %179 : (int -> (int -> int))
+      load %185 : (int -> (int -> int))
       const Int 1L : int
     const Int 2L : int
 entry
-  load %182 : int
+  load %188 : int

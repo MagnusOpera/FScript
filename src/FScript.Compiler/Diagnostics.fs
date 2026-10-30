@@ -70,8 +70,7 @@ module CompilerExternCatalog =
           descriptor "Json.deserialize" (Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption(TVar 0))))) 2 UnsupportedHostExtern
           descriptor "Json.serialize" (Forall([ 0 ], TFun(TVar 0, TOption TString))) 1 UnsupportedHostExtern
           descriptor "Xml.queryValues" (Forall([], TFun(TString, TFun(TString, TOption(TList TString))))) 2 UnsupportedHostExtern
-          descriptor "Task.spawn" (Forall([ 0 ], TFun(TFun(TUnit, TVar 0), TTask(TVar 0)))) 1 UnsupportedHostExtern
-          descriptor "Task.await" (Forall([ 0 ], TFun(TTask(TVar 0), TVar 0))) 1 UnsupportedHostExtern ]
+        ] @ (TaskFunctions.signatures |> List.map (fun (name,scheme,parameters) -> descriptor name scheme parameters.Length UnsupportedHostExtern))
 
     let pureRuntime =
         SupportLibrary.runtimeSignatures |> List.map (fun (name,scheme,parameters) ->

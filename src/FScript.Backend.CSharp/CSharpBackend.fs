@@ -45,7 +45,8 @@ module CSharpBackend =
             else "global::" + (value.FullName |> nonNull).Replace('+', '.')
         render value
 
-    let private emit assemblyMode printResult options (program: Lir.Program) =
+    let private emit externalArities assemblyMode printResult options (program: Lir.Program) =
+        let mutable usesTaskRuntime=false
         let hasSdk =
             (program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)) ||
             (program.Types |> List.exists (fun declaration ->
@@ -66,7 +67,7 @@ module CSharpBackend =
             | TFun(argument, result) -> $"Func<{csType argument}, {csType result}>"
             | TList item -> csType item + "[]"
             | TOption item -> $"Option<{csType item}>"
-            | TTask item -> $"Task<{csType item}>"
+            | TTask item -> usesTaskRuntime <- true; $"Task<{csType item}>"
             | TMap(key, value) -> $"OrderedMap<{csType key}, {csType value}>"
             | TNamed name | THostManaged(name, _) ->
                 match nativeTypes.TryFind name with
@@ -237,15 +238,30 @@ module CSharpBackend =
                     let call= $"{original}.Invoke({coerce ta sa argument})"
                     wrap (csType target) $"var {original}={code}; return ({csType ta} {argument}) => {coerce sr tr call};"
                 | _ -> code
-        let rec curryApplied supplied current args build =
-            match supplied,current with
-            | argument::rest,TFun(_,result) -> curryApplied rest result (args @ [argument]) build
-            | _,TFun(argument,result) ->
-                let parameter = fresh "argument"
-                $"(({csType current})(({csType argument} {parameter}) => {curryApplied [] result (args @ [parameter]) build}))"
-            | _,result -> build args result
-        let rec intrinsic name signature supplied =
-            let build body = curryApplied supplied signature [] body
+        let rec functionArity = function TFun(_,result) -> 1 + functionArity result | _ -> 0
+        let externalArity node signature =
+            match Map.tryFind node externalArities with
+            | Some count -> count
+            | None ->
+                match node with
+                | Lir.HostExternal(_,count) -> count
+                | Lir.Intrinsic name ->
+                    match Map.tryFind name BuiltinSignatures.builtinSchemes with
+                    | Some(Forall(_,typ)) -> functionArity typ
+                    | None -> CompilerExternCatalog.defaults |> List.tryFind (fun fn -> fn.Name=name) |> Option.map _.Arity |> Option.defaultValue (functionArity signature)
+                | _ -> functionArity signature
+        let rec curryApplied remaining supplied current args build =
+            if remaining=0 then build args current
+            else
+                match supplied,current with
+                | argument::rest,TFun(_,result) -> curryApplied (remaining-1) rest result (args @ [argument]) build
+                | _,TFun(argument,result) ->
+                    let parameter = fresh "argument"
+                    $"(({csType current})(({csType argument} {parameter}) => {curryApplied (remaining-1) [] result (args @ [parameter]) build}))"
+                | _ -> invalidOp "External function arity exceeds its signature."
+        let rec intrinsic (name: string) signature supplied =
+            if name.StartsWith("Task.",StringComparison.Ordinal) then usesTaskRuntime <- true
+            let build body = curryApplied (externalArity (Lir.Intrinsic name) signature) supplied signature [] body
             let arrayType = function TList item -> item | _ -> invalidOp "Expected list."
             let rec argsOf = function TFun(a,b) -> a :: argsOf b | _ -> []
             let parameters = argsOf signature
@@ -424,12 +440,14 @@ module CSharpBackend =
             | "Json.serialize", _ -> build (fun a _ -> $"FsRuntime.Try(() => {jsonEncodeName parameters.[0]}({a.[0]}))")
             | "Json.deserialize", _ -> build (fun a r -> match r with TOption item -> $"FsRuntime.ParseJson({a.[1]}, {jsonDecodeName item})" | _ -> invalidOp "Expected option.")
             | "Xml.queryValues", _ -> build (fun a _ -> $"FsRuntime.QueryXml({a.[0]}, {a.[1]})")
-            | "Task.spawn", _ -> build (fun a _ -> $"Task.Run(() => {a.[0]}(default(Unit)))")
-            | "Task.await", _ -> build (fun a _ -> $"{a.[0]}.GetAwaiter().GetResult()")
-            | "Task.map", _ -> build (fun a _ -> $"Task.Run(() => {a.[0]}({a.[1]}.GetAwaiter().GetResult()))")
-            | "Task.bind", _ -> build (fun a _ -> $"Task.Run(async () => await {a.[0]}(await {a.[1]}))")
-            | "Task.parallel", _ -> build (fun a _ -> $"Task.WhenAll({a.[0]})")
-            | "Task.ignore", _ -> build (fun a _ -> $"Task.Run(async () => {{ await {a.[0]}; return default(Unit); }})")
+            | "Task.spawn", _ -> build (fun a _ -> $"FsTasks.Spawn({a.[0]})")
+            | "Task.await", _ -> build (fun a _ -> $"FsTasks.Await({a.[0]})")
+            | "Task.delay", _ -> build (fun a _ -> $"FsTasks.Delay({a.[0]})")
+            | "Task.fromResult", _ -> build (fun a _ -> $"FsTasks.FromResult<{csType parameters.[0]}>({a.[0]})")
+            | "Task.continueWith", _ -> build (fun a _ -> $"FsTasks.Continue({a.[1]}, {a.[0]})")
+            | "Task.whenAll", _ -> build (fun a _ -> $"FsTasks.WhenAll({a.[1]}, {a.[0]})")
+            | "Task.whenAny", _ -> build (fun a _ -> $"FsTasks.WhenAny({a.[1]}, {a.[0]})")
+            | "Task.awaitAll", _ -> build (fun a _ -> $"FsTasks.AwaitAll({a.[0]})")
             | _ -> fail "FSC6005" $"External or intrinsic '{name}' has no compiled CLR implementation. Bind host functions with ClrBindings.bindMethod." None
         let rec toClr semantic (native: System.Type) code =
             if native = typeof<Void> then code
@@ -496,8 +514,8 @@ module CSharpBackend =
                     sdkProviders.Add(key,value)
                     value
             let rec argsOf = function TFun(a,b) -> a :: argsOf b | _ -> []
-            let argumentTypes=argsOf signature
-            curryApplied supplied signature [] (fun args result ->
+            let argumentTypes=argsOf signature |> List.take (externalArity (Lir.TargetImport(path,memberName)) signature)
+            curryApplied (externalArity (Lir.TargetImport(path,memberName)) signature) supplied signature [] (fun args result ->
                 let encoded=List.map2 (fun t arg -> $"{encName t}({arg})") argumentTypes args |> String.concat comma
                 $"{decName result}(SdkInterop.Invoke(SdkInterop.Find({provider}.Value, {quote memberName}), new global::FScript.Extensibility.ScriptValue[] {{ {encoded} }}))")
           else
@@ -518,11 +536,11 @@ module CSharpBackend =
                 let method = nonNull method
                 if method.IsStatic <> link.IsStatic || not method.IsPublic then fail "FSC6006" "CLR linkage accessibility or calling convention is invalid." (Some span)
                 let rec arguments = function TFun(a,b) -> a :: arguments b | _ -> []
-                let argumentTypes = arguments signature
+                let argumentTypes = arguments signature |> List.take (externalArity (Lir.TargetImport(path,memberName)) signature)
                 let receiverCount = if link.IsStatic || link.IsConstructor then 0 else 1
                 if argumentTypes.Length <> parameterTypes.Length + receiverCount && not (parameterTypes.Length = 0 && argumentTypes = [TUnit]) then
                     fail "FSC6006" $"CLR binding '{memberName}' does not match the FScript arity." (Some span)
-                curryApplied supplied signature [] (fun args result ->
+                curryApplied (externalArity (Lir.TargetImport(path,memberName)) signature) supplied signature [] (fun args result ->
                     let inputs = if parameterTypes.Length = 0 then [] else args |> List.skip receiverCount
                     let semanticInputs = if parameterTypes.Length = 0 then [] else argumentTypes |> List.skip receiverCount
                     let converted = List.map3 (fun t native value -> toClr t native value) semanticInputs (Array.toList parameterTypes) inputs |> String.concat comma
@@ -582,7 +600,7 @@ module CSharpBackend =
                 let rootNode=knownNode root
                 let supported =
                     match rootNode with
-                    | Lir.Intrinsic _ | Lir.HostExternal _ | Lir.TargetImport _ -> args.Length=parameters.Length
+                    | (Lir.Intrinsic _ | Lir.HostExternal _ | Lir.TargetImport _) as node -> args.Length=externalArity node root.Type
                     | Lir.MakeClosure(id,_) -> args.Length=(functionChain Set.empty id).Length
                     | _ -> false
                 if not supported || args.IsEmpty then None else
@@ -1100,7 +1118,7 @@ module CSharpBackend =
                             $"SdkInterop.Callable(argument => {encName b}(value({decName a}(argument))))",
                             $"({csType a} argument) => {decName b}(SdkInterop.Apply(value, {encName a}(argument)))"
                         | TTask item ->
-                            $"SdkInterop.TaskValue(Task.Run(async () => {encName item}(await value)))",$"Task.Run(() => {decName item}(SdkInterop.Await(value)))"
+                            $"SdkInterop.TaskValue(FsTasks.Convert(value, item => {encName item}(item)))",$"FsTasks.Convert(SdkInterop.PendingTask(value), {decName item})"
                         | TMap(k,v) ->
                             let encodedKey=keyEncode k "e.Key"
                             let decodedKey=keyDecode k "e.Key"
@@ -1192,7 +1210,16 @@ module CSharpBackend =
         let resultType = program.Entry |> Option.map _.Type |> Option.defaultValue TUnit
         let result = program.Entry |> Option.map expression |> Option.defaultValue "default(Unit)"
         addType resultType
-        addMember $"public static {csType resultType} Run() {{ {forceInitialization} return {result}; }}"
+        let rec containsTask = function
+            | TTask _ -> true
+            | TFun(a,b) | TMap(a,b) -> containsTask a || containsTask b
+            | TList item | TOption item -> containsTask item
+            | TTuple items -> List.exists containsTask items
+            | TRecord fields | THostManaged(_,fields) -> fields |> Map.exists (fun _ -> containsTask)
+            | _ -> false
+        let hasTasks=usesTaskRuntime || (program.Declarations |> List.exists (fun declaration -> containsTask declaration.Type))
+        if hasTasks then addMember $"public static {csType resultType} Run() => FsTasks.Run(() => {{ {forceInitialization} return {result}; }});"
+        else addMember $"public static {csType resultType} Run() {{ {forceInitialization} return {result}; }}"
         addMember $"public static string FormatResult({csType resultType} value) => {fmtName resultType}(value);"
         addMember "private static int ProcessExitCode = 0;"
         addMember "public static int ExitCode => System.Threading.Volatile.Read(ref ProcessExitCode);"
@@ -1234,9 +1261,12 @@ module CSharpBackend =
         let runtime = if assemblyMode then runtime.Replace("internal static class FsRuntime","internal static partial class FsRuntime") else runtime
         let escapeXml (value: string) = System.Security.SecurityElement.Escape(value) |> nonNull
         let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path |> nonNull)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
-        let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/><Compile Include=\"RuntimePure.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "") + (if assemblyMode then "<Compile Include=\"RuntimeListViews.cs\"/>" else "")
+        let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/><Compile Include=\"RuntimePure.cs\"/><Compile Include=\"RuntimeTasks.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "") + (if assemblyMode then "<Compile Include=\"RuntimeListViews.cs\"/>" else "")
         let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{compileItems}{references}</ItemGroup></Project>\n"
         [ yield { RelativePath = "Program.cs"; Content = source }; yield { RelativePath = "Runtime.cs"; Content = runtime }; yield { RelativePath = "Program.csproj"; Content = project }
+          use tasksStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeTasks.cs") |> nonNull
+          use tasksReader=new StreamReader(tasksStream)
+          yield {RelativePath="RuntimeTasks.cs";Content=tasksReader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)}
           use pureStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimePure.cs") |> nonNull
           use pureReader=new StreamReader(pureStream)
           yield {RelativePath="RuntimePure.cs";Content=pureReader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)}
@@ -1283,7 +1313,10 @@ module CSharpBackend =
             |> Result.map LirCommonSubexpressions.optimize
             |> Result.map (if assemblyMode then ClrBindings.pruneUnusedTypes else id)
             |> Result.bind LirValidation.validate
-            |> Result.map (emit assemblyMode printResult options)
+            |> Result.map (emit (program.Declarations |> List.choose (fun declaration ->
+                match declaration.Value.Node,declaration.ExternalArity with
+                | (Lir.HostExternal _ | Lir.TargetImport _ as node),Some arity -> Some(node,arity)
+                | _ -> None) |> Map.ofList) assemblyMode printResult options)
             |> Result.map (List.map (fun file ->
                 if not (file.RelativePath.EndsWith(".cs",StringComparison.Ordinal)) then file else
                     let tree=CSharpSyntaxTree.ParseText(file.Content,CSharpParseOptions(LanguageVersion.Latest))

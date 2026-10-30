@@ -96,3 +96,6 @@ Version-1 `.fsir` artifacts require compiler and language versions, source metad
 ## Closure specialization
 
 When specialization replaces a captured local callback with its implementation, the specialized closure must capture every free symbol introduced by that replacement. Nested inlining must rename those symbols with their enclosing lexical bindings so separate invocations retain separate environments.
+
+
+Pure constant-local substitution retains bindings captured by nested functions, even when the containing expression has no direct load of that binding. Captured-reference metadata and lifted function bodies must stay consistent during simplification; task continuation callbacks follow the same closure rules.

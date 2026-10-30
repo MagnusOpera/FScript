@@ -63,6 +63,12 @@ module ProviderFixture =
             let fn=context.DefaultFunctions |> List.find (fun fn -> fn.Name="Guid.new")
             {Types=[]; Unions=[]; Functions=[{fn with Name="Sdk.guid"}]}
 
+    type TaskContextProvider =
+        static member Provide(context: HostContext) : ExtensionRegistration =
+            {Types=[]; Unions=[]
+             Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name.StartsWith("Task.",StringComparison.Ordinal)) |> List.map (fun fn -> {fn with Name="SdkTask."+fn.Name.Substring(5)})}
+
+
 module private Harness =
     let legacy source =
         let registration=HostInterop.ofExterns (FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]})
@@ -142,6 +148,47 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    [<TestCase("SdkTask.await (SdkTask.fromResult (fun value -> value+2)) 40", "42")>]
+    [<TestCase("SdkTask.await (SdkTask.continueWith (fun value -> value+1) (SdkTask.fromResult 41))", "42")>]
+    [<TestCase("SdkTask.await (SdkTask.whenAll (List.fold (fun total value -> total+value) 0) [SdkTask.fromResult 20;SdkTask.fromResult 22])", "42")>]
+    [<TestCase("let tasks=[SdkTask.fromResult 41;SdkTask.fromResult 1]\nlet result=SdkTask.await (SdkTask.whenAny (fun value -> value+1) tasks)\nSdkTask.awaitAll tasks |> ignore\nresult", "42")>]
+    [<TestCase("SdkTask.await (SdkTask.delay 0)", "()")>]
+    member _.``SDK default task functions retain native task lifetimes`` (source: string,expected: string) =
+        let defaultFunctions=FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
+        let context=FScript.Extensibility.HostContext(Directory.GetCurrentDirectory(),[],defaultFunctions)
+        let registration=ProviderFixture.TaskContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let compiled=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let provider=typeof<ProviderFixture.TaskContextProvider>.GetMethod("Provide") |> nonNull
+        let program=ClrBindings.bindProvider (registration.Functions |> List.map _.Name) provider compiled.Lir
+        let references=[typeof<ProviderFixture.TaskContextProvider>.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+        Assert.That(Harness.executeWith {Harness.options with References=references} program,Is.EqualTo(expected))
+
+    static member TaskCases = FScript.Tests.TaskLibraryCases.successes |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Native task: "+name))
+    static member TaskFailures = FScript.Tests.TaskLibraryCases.failures |> List.map (fun (name,source,message) -> TestCaseData(source,message).SetName("Native task error: "+name))
+
+    [<TestCaseSource(nameof BackendTests.TaskCases)>]
+    member _.``Task composition runs as native CLR code`` (source: string,expected: string) =
+        Assert.That(Harness.compile source |> Harness.execute,Is.EqualTo(expected))
+
+    [<TestCaseSource(nameof BackendTests.TaskFailures)>]
+    member _.``Native task failures preserve task boundaries`` (source: string,message: string) =
+        let error=Assert.Throws<TargetInvocationException>(fun () -> Harness.compile source |> Harness.execute |> ignore) |> nonNull
+        Assert.That(error.ToString(),Does.Contain(message))
+
+    [<Test>]
+    member _.``Task composition compiles to standalone CSharp`` () =
+        let cases=FScript.Tests.TaskLibraryCases.successes
+        // Type declarations must remain at top level; the tagged case is tested natively above.
+        let cases=cases |> List.filter (fun (_,source,_) -> not (source.StartsWith("type ")))
+        let sources=cases |> List.map (fun (_,source,_) -> "(fun () ->\n" + (source.Split('\n') |> Array.map (fun line -> "    "+line) |> String.concat "\n") + "\n) ()")
+        let source=sources |> List.mapi (fun index source -> $"let result{index} = {source}") |> String.concat "\n"
+        let tuple=cases |> List.mapi (fun index _ -> $"result{index}") |> String.concat ","
+        let expected="(" + (cases |> List.map (fun (_,_,expected) -> expected) |> String.concat ", ") + ")"
+        let assembly=Harness.csharpAssembly [] (Harness.compile (source+"\n("+tuple+")"))
+        let typ=assembly.GetType("Generated.Program") |> nonNull
+        let value=(typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+        Assert.That((typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|]),Is.EqualTo(expected))
+
     static member SupportCases =
         FScript.Tests.SupportLibraryCases.core @ FScript.Tests.SupportLibraryCases.runtime
         |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Support native: " + name))

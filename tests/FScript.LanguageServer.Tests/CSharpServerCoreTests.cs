@@ -489,6 +489,11 @@ public sealed class CSharpServerCoreTests
     [TestCase("Console.writeLine \"hello\"\n", 0, 10, "fscript-stdlib:///Console.fss")]
     [TestCase("let pending = Task.spawn (fun () -> 42)\nTask.await pending\n", 1, 6, "fscript-stdlib:///Task.fss")]
     [TestCase("Map.empty |> Map.count\n", 0, 4, "fscript-stdlib:///Map.fss")]
+    [TestCase("Task.delay 0\n", 0, 7, "fscript-stdlib:///Task.fss")]
+    [TestCase("Task.fromResult 42\n", 0, 8, "fscript-stdlib:///Task.fss")]
+    [TestCase("Task.continueWith (fun x -> x) (Task.fromResult 1)\n", 0, 10, "fscript-stdlib:///Task.fss")]
+    [TestCase("Task.whenAny (fun x -> x) [Task.fromResult 1]\n", 0, 8, "fscript-stdlib:///Task.fss")]
+    [TestCase("Task.awaitAll [Task.fromResult 1]\n", 0, 8, "fscript-stdlib:///Task.fss")]
     public void CSharp_server_definition_for_injected_namespaced_functions_resolves_to_virtual_stdlib_source(
         string source,
         int line,
@@ -539,7 +544,7 @@ public sealed class CSharpServerCoreTests
     [TestCase("fscript-stdlib:///Encoding.fss", "module Encoding", "let utf8Encode", "let uriDecode")]
     [TestCase("fscript-stdlib:///Float.fss", "module Float", "let sqrt", "let pi")]
     [TestCase("fscript-stdlib:///Console.fss", "module Console", "let writeLine", "let readLine")]
-    [TestCase("fscript-stdlib:///Task.fss", "module Task", "let spawn", "let await")]
+    [TestCase("fscript-stdlib:///Task.fss", "module Task", "let continueWith", "let whenAny")]
     [TestCase("fscript-stdlib:///Map.fss", "module Map", "let iter", "let remove")]
     [TestCase("fscript-stdlib:/String.fss", "module String", "let replace", "let endsWith")]
     public void CSharp_server_stdlibSource_returns_virtual_module_documents(

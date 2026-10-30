@@ -75,6 +75,14 @@ module LirSimplification =
             | Lir.FieldGet({ Node = Lir.Load _ }, _) -> true
             | _ -> false
 
+        let rec capturedByClosure symbol (expression: Lir.Expression) =
+            match expression.Node with
+            | Lir.MakeClosure(_,captures) -> List.contains symbol captures
+            | _ ->
+                let mutable found=false
+                mapExpression (fun child -> found <- found || capturedByClosure symbol child; child) expression |> ignore
+                found
+
         let rec simplify (expression: Lir.Expression) =
             let recurse = simplify
             let value = mapExpression recurse expression
@@ -83,7 +91,7 @@ module LirSimplification =
             | Lir.Branch({ Node = Lir.Constant(Lir.Bool false) }, _, whenFalse) -> whenFalse
             | Lir.Let(id, _, false, binding, body) when body.Node = Lir.Load id -> binding
             | Lir.Let(id, _, false, binding, body) when not (Set.contains id (LirOptimization.loadedSymbols body)) && effect binding = Pure -> body
-            | Lir.Let(id, _, false, binding, body) when replicable binding && effect binding = Pure -> substitute id binding body |> recurse
+            | Lir.Let(id, _, false, binding, body) when replicable binding && effect binding = Pure && not (capturedByClosure id body) -> substitute id binding body |> recurse
             | Lir.CallClosure({ Node = Lir.MakeClosure(functionId, _) }, argument)
                 when functions |> Map.tryFind functionId |> Option.exists (fun fn -> expressionSize fn.Body <= 18) ->
                 let fn = functions.[functionId]

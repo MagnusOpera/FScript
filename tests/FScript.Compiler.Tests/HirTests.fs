@@ -59,7 +59,7 @@ type HirTests() =
               "Fs.parentDirectory"; "Fs.readText"; "Fs.writeText"
               "Guid.new"; "Hash.md5"; "Json.deserialize"; "Json.serialize"
               "Regex.matchGroups"; "Task.await"; "Task.spawn"; "Xml.queryValues" ]
-        let expected = expected @ (SupportLibrary.runtimeSignatures |> List.map (fun (name,_,_) -> name)) |> List.sort
+        let expected = expected @ ((SupportLibrary.runtimeSignatures @ (TaskFunctions.signatures |> List.filter (fun (name,_,_) -> name<>"Task.spawn" && name<>"Task.await"))) |> List.map (fun (name,_,_) -> name)) |> List.sort
         Assert.That((CompilerExternCatalog.defaults |> List.map _.Name |> List.sort) = expected, Is.True)
 
         match Compiler.compile { Program = Parser.parseProgram "Fs.exists \"missing\""; Externs = [] } with
@@ -345,3 +345,12 @@ type HirTests() =
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
         | Ok compiled -> Assert.That(compiled.Lir.Types |> List.map _.Name, Does.Contain("Tree"))
         | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
+
+    [<Test>]
+    member _.``Constant locals captured by nested functions survive simplification`` () =
+        let source="let make () =\n    let bias=40\n    fun value -> value+bias\nmake () 2"
+        let program=match Compiler.compile {Program=Parser.parseProgram source;Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+        let specialized=match LirMonomorphization.specialize program with Ok p -> p | Error errors -> failwith (string errors)
+        match specialized |> LirSimplification.optimize |> LirValidation.validate with
+        | Ok _ -> ()
+        | Error errors -> Assert.Fail(string errors)

@@ -9,7 +9,7 @@ module TaskSharingContracts =
     /// Add known runtime guarantees only for the actual built-in implementations.
     /// A provider rebinding the same name does not inherit these contracts.
     let withRuntime (registration: ExtensionRegistration) (options: TaskSharingAnalysis.Options) =
-        let knownFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line] @ PureExterns.functions
+        let knownFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line] @ PureExterns.functions @ TaskFunctions.all
         let known =
             registration.Functions
             |> List.choose (fun fn ->

@@ -21,10 +21,11 @@ internal static class SdkInterop
     public static SV Callable(Func<SV,SV> fn) => SV.NewVCallable(new Callback(fn));
     public static SV TaskValue(Task<SV> task) => SV.NewVTask(new Pending(task));
     public static SV Apply(SV fn, SV argument) => fn is SV.VCallable callable && callable.Item is Callback callback ? callback.Apply(argument) : throw new ExtensionException("Foreign callable does not belong to this compiled program.");
-    public static SV Await(SV value) => value is SV.VTask pending && pending.Item is Pending task ? task.Value.GetAwaiter().GetResult() : throw new ExtensionException("Foreign task does not belong to this compiled program.");
+    public static Task<SV> PendingTask(SV value) => value is SV.VTask pending && pending.Item is Pending task ? task.Value : throw new ExtensionException("Foreign task does not belong to this compiled program.");
+    public static SV Await(SV value) => FsTasks.Await(PendingTask(value));
     private static readonly ExternalCallContext Context = new(
         FuncConvert.FromFunc<SV,FSharpFunc<SV,SV>>(fn => FuncConvert.FromFunc<SV,SV>(argument => Apply(fn,argument))),
-        FuncConvert.FromFunc<SV,SV>(fn => TaskValue(Task.Run(() => Apply(fn,SV.VUnit)))),
+        FuncConvert.FromFunc<SV,SV>(fn => TaskValue(FsTasks.Spawn(_ => Apply(fn,SV.VUnit)))),
         FuncConvert.FromFunc<SV,SV>(value => Await(value)),
         FuncConvert.FromAction(() => { }));
     public static SV Invoke(ExternalFunction fn, SV[] arguments) => fn.Impl.Invoke(Context).Invoke(ListModule.OfArray(arguments));
@@ -75,6 +76,12 @@ internal static class SdkInterop
             case "Xml.queryValues": var values=FsRuntime.QueryXml(Text(args[0]),Text(args[1])); return SV.NewVOption(values.HasValue ? Some(Strings(values.Value)) : null);
             case "Task.spawn": return context.SpawnTask.Invoke(args[0]);
             case "Task.await": return context.AwaitTask.Invoke(args[0]);
+            case "Task.delay": return TaskValue(FsTasks.Convert(FsTasks.Delay(((SV.VInt)args[0]).Item), _ => SV.VUnit));
+            case "Task.fromResult": return TaskValue(FsTasks.FromResult(args[0]));
+            case "Task.continueWith": return TaskValue(FsTasks.Continue(PendingTask(args[1]), value => Apply(args[0],value)));
+            case "Task.whenAll": return TaskValue(FsTasks.WhenAll(((SV.VList)args[1]).Item.Select(PendingTask), values => Apply(args[0],SV.NewVList(ListModule.OfArray(values)))));
+            case "Task.whenAny": return TaskValue(FsTasks.WhenAny(((SV.VList)args[1]).Item.Select(PendingTask), value => Apply(args[0],value)));
+            case "Task.awaitAll": return SV.NewVList(ListModule.OfArray(FsTasks.AwaitAll(((SV.VList)args[0]).Item.Select(PendingTask))));
             default: throw new ExtensionException("Unknown compiled default function: " + name);
         }
     }

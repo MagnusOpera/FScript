@@ -1,0 +1,19 @@
+type Completion =
+    | Ready of string
+    | Timer
+
+let ready = Task.fromResult "content" |> Task.continueWith Ready
+let timer = Task.delay 10 |> Task.continueWith (fun () -> Timer)
+let candidates = [ready; timer]
+let handled =
+    candidates
+    |> Task.whenAny (fun result ->
+        match result with
+        | Ready text -> $"ready:{text}"
+        | Timer -> "timer completed")
+let first = Task.await handled
+Task.awaitAll candidates |> ignore
+
+let delayed = Task.delay 1 |> Task.continueWith (fun () -> 20)
+let total = [delayed; Task.fromResult 22] |> Task.whenAll (List.fold (fun sum value -> sum + value) 0)
+(first, Task.await total)

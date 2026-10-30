@@ -455,10 +455,20 @@ module Eval =
         }
 
     and private spawnTaskValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (thunk: Value) : Value =
-        raiseIfBackgroundFailed runtime
 #if FABLE_COMPILER
         raise (EvalException { Message = "Task.spawn is not supported in Fable builds"; Span = unknownSpan })
 #else
+        startTaskValue runtime (fun child -> applyFunctionValue child typeDefs unknownSpan thunk VUnit)
+#endif
+
+#if !FABLE_COMPILER
+    and private trackTaskValue runtime debugTaskId worker =
+        let handle = { Worker=worker; DebugTaskId=debugTaskId; Awaited=false }
+        withRuntimeLock runtime (fun () -> runtime.PendingTasks.Add handle)
+        VTask handle
+
+    and private startTaskValue (runtime: RuntimeState) body : Value =
+        raiseIfBackgroundFailed runtime
         let child =
             match runtime.Debug with
             | Some observer -> { runtime with TaskId = observer.TaskStarted(Some runtime.TaskId) }
@@ -469,7 +479,7 @@ module Eval =
                 let mutable failure = None
                 try
                     try
-                        let! result = applyFunctionValue child typeDefs unknownSpan thunk VUnit
+                        let! result = body child
                         return TaskSucceeded result
                     with error ->
                         failure <- Some error
@@ -483,10 +493,103 @@ module Eval =
                 finally
                     match child.Debug with Some observer -> observer.TaskExited(child.TaskId, failure) | None -> ()
             })
+        trackTaskValue runtime (if runtime.Debug.IsSome then Some child.TaskId else None) worker
 
-        let handle = { Worker = worker; DebugTaskId = (if runtime.Debug.IsSome then Some child.TaskId else None); Awaited = false }
-        withRuntimeLock runtime (fun () -> runtime.PendingTasks.Add(handle))
-        VTask handle
+    and private taskHandle span = function
+        | VTask handle -> handle
+        | _ -> raise (EvalException {Message="Expected a task.";Span=span})
+
+    and private taskHandles span = function
+        | VList values -> values |> List.map (taskHandle span)
+        | _ -> raise (EvalException {Message="Expected a task list.";Span=span})
+
+    and private awaitHandle runtime handle : Execution<Value> = execution {
+        withRuntimeLock runtime (fun () -> handle.Awaited <- true)
+        match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,true) | None -> ()
+        let! outcome = execution {
+            try return! Execution.awaitTask handle.Worker
+            finally
+                match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,false) | None -> ()
+        }
+        match outcome with
+        | TaskSucceeded value -> return value
+        | TaskFailed error -> return raise (EvalException error)
+    }
+
+    and private awaitHandles runtime handles : Execution<Value> = execution {
+        // Wait for every worker before inspecting outcomes, including on failure.
+        let workers = handles |> List.map (fun handle -> handle.Worker) |> List.toArray
+        match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,None,true) | None -> ()
+        let! outcomes = execution {
+            try return! Execution.awaitTask(Task.WhenAll workers)
+            finally
+                match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,None,false) | None -> ()
+        }
+        let values = outcomes |> Array.map (function TaskSucceeded value -> value | TaskFailed error -> raise (EvalException error))
+        return VList(Array.toList values)
+    }
+
+    and private invokeTaskOperation runtime typeDefs span name args : Execution<Value> = execution {
+        let own handles = withRuntimeLock runtime (fun () -> for handle in handles do handle.Awaited <- true)
+        match name,args with
+        | "Task.spawn",[thunk] -> return spawnTaskValue runtime typeDefs thunk
+        | "Task.await",[value] ->
+            let! result = awaitHandle runtime (taskHandle span value)
+            raiseIfBackgroundFailed runtime
+            return result
+        | "Task.fromResult",[value] -> return trackTaskValue runtime None (Task.FromResult(TaskSucceeded value))
+        | "Task.delay",[VInt milliseconds] when milliseconds >= 0L && milliseconds <= int64 System.Int32.MaxValue ->
+            if milliseconds=0L then return trackTaskValue runtime None (Task.FromResult(TaskSucceeded VUnit))
+            else
+                let cancellation = match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None
+                let timer=Task.Delay(int milliseconds,cancellation)
+                return startTaskValue runtime (fun _ -> execution {
+                    do! Execution.awaitUnit timer
+                    return VUnit
+                })
+        | "Task.delay",_ -> return raise (EvalException {Message="Task.delay expects milliseconds in 0..2147483647.";Span=span})
+        | "Task.continueWith",[callback;value] ->
+            let handle=taskHandle span value
+            let result=startTaskValue runtime (fun child -> execution {
+                let! value=awaitHandle child handle
+                return! applyFunctionValue child typeDefs span callback value
+            })
+            own [handle]
+            return result
+        | "Task.whenAll",[callback;values] ->
+            let handles=taskHandles span values
+            let result=startTaskValue runtime (fun child -> execution {
+                let! values=awaitHandles child handles
+                return! applyFunctionValue child typeDefs span callback values
+            })
+            own handles
+            return result
+        | "Task.whenAny",[callback;values] ->
+            let handles=taskHandles span values
+            if handles.IsEmpty then return raise (EvalException {Message="Task.whenAny expects a non-empty task list.";Span=span})
+            else
+                let workers=handles |> List.map (fun handle -> handle.Worker) |> List.toArray
+                let any=Task.WhenAny workers
+                return startTaskValue runtime (fun child -> execution {
+                    // WhenAny selects completion, including a failed task, not first success.
+                    match child.Debug with Some observer -> observer.Awaiting(child.TaskId,None,true) | None -> ()
+                    let! winner=execution {
+                        try return! Execution.awaitTask any
+                        finally
+                            match child.Debug with Some observer -> observer.Awaiting(child.TaskId,None,false) | None -> ()
+                    }
+                    let handle=handles |> List.find (fun handle -> obj.ReferenceEquals(handle.Worker,winner))
+                    let! value=awaitHandle child handle
+                    return! applyFunctionValue child typeDefs span callback value
+                })
+        | "Task.awaitAll",[values] ->
+            let handles=taskHandles span values
+            own handles
+            let! values=awaitHandles runtime handles
+            raiseIfBackgroundFailed runtime
+            return values
+        | _ -> return raise (EvalException {Message= $"Invalid arguments to {name}.";Span=span})
+    }
 #endif
 
     and private awaitTaskValue (runtime: RuntimeState) (taskValue: Value) : Value =
@@ -553,27 +656,11 @@ module Eval =
     }
 
     and private invokeExternalUnchecked runtime typeDefs span ext args : Execution<Value> = execution {
-        if obj.ReferenceEquals(ext, TaskFunctions.spawn) then
-            return spawnTaskValue runtime typeDefs args.Head
-        elif obj.ReferenceEquals(ext, TaskFunctions.awaitTask) then
+        if TaskFunctions.isCanonical ext then
 #if FABLE_COMPILER
-            return awaitTaskValue runtime args.Head
+            return raise (EvalException {Message= $"{ext.Name} is not supported in Fable builds";Span=span})
 #else
-            match args.Head with
-            | VTask handle ->
-                handle.Awaited <- true
-                match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,true) | None -> ()
-                let! outcome = execution {
-                    try return! Execution.awaitTask handle.Worker
-                    finally
-                        match runtime.Debug with Some observer -> observer.Awaiting(runtime.TaskId,handle.DebugTaskId,false) | None -> ()
-                }
-                match outcome with
-                | TaskSucceeded value ->
-                    raiseIfBackgroundFailed runtime
-                    return value
-                | TaskFailed error -> return raise (EvalException error)
-            | _ -> return raise (EvalException { Message = "Task.await expects a task"; Span = span })
+            return! invokeTaskOperation runtime typeDefs span ext.Name args
 #endif
         else
           match BuiltinFunctions.tryExecution ext with
@@ -970,9 +1057,8 @@ module Eval =
         raiseIfBackgroundFailed runtime
 
         let unawaitedCount =
-            runtime.PendingTasks
-            |> Seq.filter (fun handle -> not handle.Awaited)
-            |> Seq.length
+            withRuntimeLock runtime (fun () ->
+                runtime.PendingTasks |> Seq.filter (fun handle -> not handle.Awaited) |> Seq.length)
 
         if unawaitedCount > 0 then
             let noun = if unawaitedCount = 1 then "task" else "tasks"

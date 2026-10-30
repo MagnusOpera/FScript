@@ -123,3 +123,6 @@ Language analyzer callers can explicitly apply the Runtime helper. Names alone
 never grant this exemption: a provider's replacement console implementation needs
 its own contract. Console calls remain effectful, and task I/O ordering remains
 unspecified. No purity contracts or optimizer behavior are changed.
+
+
+Task continuation ordering uses the declared runtime Task signatures. `continueWith` joins its prerequisite before evaluating callback captures. `whenAll` joins every candidate and passes an abstract result list; `awaitAll` joins every input before subsequent caller accesses. `whenAny` analyzes each possible winner as an alternative and preserves only ordering guaranteed across alternatives, so losing candidates can still race with its callback. `fromResult` retains resources/tasks carried by its value, while delay carries no host resources. Canonical runtime task operations are thread-safe for analysis; callback/FFI resources still need their own guarantees.

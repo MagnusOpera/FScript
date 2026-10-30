@@ -4,6 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Put task continuation callbacks first so continueWith, whenAll, and whenAny compose naturally in pipelines.
+
+- Add Task.delay, Task.fromResult, Task.continueWith, Task.whenAll, Task.whenAny, and Task.awaitAll with debugger, compiler, and editor support.
+- Reject heterogeneous list elements consistently, including tasks with different result types.
+- Keep constant locals captured by nested functions valid during compiler simplification.
+- Preserve function-valued results when compiling task awaits and other generic external calls.
+- Preserve nested task results and enforce task observation at compiled program Run boundaries.
+
 ## [0.88.0]
 
 

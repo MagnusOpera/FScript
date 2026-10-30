@@ -234,6 +234,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
         gate |> Option.iter (fun gate -> gate.TrySetResult(()) |> ignore)
     let observer =
         { new IDebugObserver with
+            member _.CancellationToken = cancelled.Token
             member _.Scheduler = taskScheduler
             member _.TaskStarted parent = lock sync (fun () ->
                 let taskId = id ()

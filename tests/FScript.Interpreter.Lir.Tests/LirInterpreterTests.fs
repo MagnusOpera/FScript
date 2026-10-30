@@ -499,3 +499,13 @@ type LirInterpreterTests() =
             let result = LirInterpreter.executeWithHostExternals { ScriptName = None; Arguments = [] } [host] compiled.Lir
             Assert.That(Result.isError result, Is.True)
             Assert.That((List.ofSeq calls = [1L; 2L; 3L]), Is.True)
+
+    [<TestCase("Task.delay 0")>]
+    [<TestCase("Task.fromResult 42")>]
+    [<TestCase("Task.whenAll List.length (List.init 0 Task.fromResult)")>]
+    member _.``Unadapted task composition fails explicitly after artifact roundtrip`` (source: string) =
+        let program=match Compiler.compile {Program=Parser.parseProgram source;Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (string errors)
+        let program=match IrArtifact.deserialize (IrArtifact.serialize program) with Ok p -> p | Error errors -> failwith (string errors)
+        match LirInterpreter.execute {ScriptName=None;Arguments=[]} program with
+        | Error error -> Assert.That(error.Code,Is.EqualTo("FSI3021"))
+        | Ok _ -> Assert.Fail("Task execution requires a runtime adapter.")

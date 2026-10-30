@@ -13,7 +13,7 @@ type DebugSessionTests() =
     let createWith extensions scheduler source stop =
         let path = System.IO.Path.GetFullPath("debug-test.fss")
         let program = FScript.parseWithSourceName (Some path) source
-        let registration = HostInterop.ofExterns ([TaskExterns.spawn; TaskExterns.awaitTask] @ extensions)
+        let registration = HostInterop.ofExterns (TaskExterns.all @ extensions)
         let session = new DebugSession(registration,program,stop,taskScheduler = scheduler)
         let events = new BlockingCollection<DebugEvent>()
         session.Events.Add events.Add
@@ -249,3 +249,43 @@ type DebugSessionTests() =
             session.Resume(stopped.TaskId,"continue",true)
         Assert.That(completion.Wait(5000),Is.True)
         Assert.That(session.ResultSummary,Is.EqualTo("[2;4]"))
+
+    [<Test>]
+    member _.``Task continuations and delay release the sole debugger scheduler worker`` () =
+        let scheduler=new ConcurrentExclusiveSchedulerPair(TaskScheduler.Default,1)
+        let source="let first=Task.continueWith (fun () -> 20) (Task.delay 5)\nlet second=Task.fromResult 22\nTask.whenAll (List.fold (fun total value -> total+value) 0) [first;second] |> Task.await"
+        let session,_,completion,thread,_=createWith [] scheduler.ConcurrentScheduler source false
+        use session=session
+        thread.Start()
+        Assert.That(completion.Wait(5000),Is.True,"A task wait must not occupy the only scheduler worker.")
+
+    [<Test>]
+    member _.``Continuation callbacks support breakpoints and lexical frames`` () =
+        let source="let work value =\n    let local=value+1\n    local*2\nTask.continueWith work (Task.fromResult 20) |> Task.await"
+        let session,events,completion,thread,path=create source false
+        use session=session
+        session.SetBreakpoints(path,[(3,5)]) |> ignore
+        thread.Start()
+        let stopped=nextStop events
+        let frames=session.StackTrace stopped.TaskId
+        Assert.That(frames.Length,Is.GreaterThanOrEqualTo(1))
+        Assert.That(session.Evaluate(frames[0].Id,"local").Value,Is.EqualTo("21"))
+        session.Resume(stopped.TaskId,"continue",true)
+        Assert.That(completion.Wait(5000),Is.True)
+
+    [<Test>]
+    member _.``Cancelling the debugger interrupts a long task delay`` () =
+        let session,events,completion,thread,_=create "Task.delay 60000 |> Task.await" false
+        use session=session
+        thread.Start()
+        let mutable timerStarted=false
+        let deadline=DateTime.UtcNow.AddSeconds(5.)
+        while not timerStarted && DateTime.UtcNow<deadline do
+            let mutable item=Unchecked.defaultof<DebugEvent>
+            if events.TryTake(&item,100) then timerStarted <- item.Kind="threadStarted" && item.TaskId<>1
+        Assert.That(timerStarted,Is.True)
+        session.Cancel()
+        Assert.That(SpinWait.SpinUntil((fun () -> completion.IsCompleted),5000),Is.True)
+        Assert.That(completion.IsFaulted,Is.True)
+        completion.Exception |> ignore
+        Assert.That(thread.Join(1000),Is.True)

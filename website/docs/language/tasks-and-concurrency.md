@@ -6,7 +6,7 @@ slug: /language/tasks-and-concurrency
 
 FScript supports concurrent thunk execution through the default `Task` module surface.
 
-`Task.spawn` and `Task.await` are provided by the default runtime extern registry, so an embedding host may choose not to expose them.
+The `Task` functions are provided by the default runtime extern registry, so an embedding host may choose not to expose them.
 
 ## Task type
 
@@ -23,7 +23,7 @@ int task
 string list task
 ```
 
-Tasks are opaque handles. You create them with `Task.spawn` and observe them with `Task.await`.
+Tasks are opaque handles. Create concurrent work with `Task.spawn`, completed values with `Task.fromResult`, and timers with `Task.delay`. Compose tasks with `continueWith`, `whenAll`, and `whenAny`; observe results with `await` or `awaitAll`.
 
 ## Spawning work
 
@@ -95,3 +95,17 @@ Immutable bindings can refer to mutable host resources. Use `fscript analyze pro
 to check potential cross-task instance and function sharing before execution. See
 [Checking FFI Task Sharing](../learn/task-sharing-analysis.md) for the warning codes,
 ordering examples, and the limits of this optional static check.
+
+## Task composition
+
+Callbacks receive values and return the result of the newly created task:
+
+```fsharp
+let delayed = Task.delay 10 |> Task.continueWith (fun () -> 20)
+let ready = Task.fromResult 22
+let total = [delayed; ready] |> Task.whenAll (List.fold (fun sum value -> sum + value) 0)
+Task.await total
+// 42
+```
+
+`whenAll` and `awaitAll` retain input order and allow empty lists. `whenAny` requires a nonempty list, selects the first completion, and passes that result to its callback. Use a user-defined discriminated union to combine different source result types. Other candidates keep running and must still be awaited. Nested task results require separate awaits. See the [Task reference](../stdlib/task) for every signature, unit-task examples, failure rules, and lifetime behavior.

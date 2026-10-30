@@ -1119,8 +1119,9 @@ module TypeInfer =
             let mutable sAcc = emptySubst
             for item in items do
                 let s1, t1, _ = inferExpr telemetry typeDefs constructors (applyEnv sAcc env) item
-                let s2 = unify typeDefs (applyType s1 tv) t1 span
-                sAcc <- compose s2 (compose s1 sAcc)
+                let itemSubst = compose s1 sAcc
+                let s2 = unify typeDefs (applyType itemSubst tv) (applyType itemSubst t1) span
+                sAcc <- compose s2 itemSubst
             let tRes = TList (applyType sAcc tv)
             sAcc, tRes, asTyped telemetry expr tRes
         | ERange (startExpr, endExpr, span) ->

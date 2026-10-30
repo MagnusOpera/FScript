@@ -9,6 +9,7 @@ do ()
 
 /// Low-level evaluator observer. Public inspection is provided by Runtime.DebugSession.
 type internal IDebugObserver =
+    abstract CancellationToken: System.Threading.CancellationToken
     abstract Scheduler: TaskScheduler
     abstract TaskStarted: parent: int option -> int
     abstract TaskExited: taskId: int * error: exn option -> unit

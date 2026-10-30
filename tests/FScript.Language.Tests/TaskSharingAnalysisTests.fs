@@ -12,7 +12,7 @@ type TaskSharingAnalysisTests() =
     let registration =
         { HostInterop.empty with
             Types = [{ Name = "Handle"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }]
-            Functions = [TaskFunctions.spawn; TaskFunctions.awaitTask
+            Functions = TaskFunctions.all @ [
                          external "Host.make" TInt handle
                          external "Host.read" handle TInt
                          external "Host.alias" handle handle
@@ -167,3 +167,24 @@ type TaskSharingAnalysisTests() =
         let isolated =
             "let unused = Host.make 0\nlet first = Task.spawn (fun () -> Host.read (Host.make 1))\nlet second = Task.spawn (fun () -> 42)\nTask.await first + Task.await second"
         Assert.That(valueWarnings isolated, Is.Empty)
+
+    [<Test>]
+    member _.``Task continuation waits for its prerequisite before accessing captures`` () =
+        Assert.That(valueWarnings "let value=Host.make 0\nlet first=Task.spawn (fun () -> Host.read value)\nTask.continueWith (fun _ -> Host.read value) first |> Task.await",Is.Empty)
+
+    [<Test>]
+    member _.``Independent continuations may race on the same capture`` () =
+        Assert.That(valueWarnings "let value=Host.make 0\nlet ready=Task.fromResult 1\nlet first=Task.continueWith (fun _ -> Host.read value) ready\nlet second=Task.continueWith (fun _ -> Host.read value) ready\nTask.awaitAll [first;second]",Is.Not.Empty)
+
+    [<Test>]
+    member _.``WhenAll and awaitAll establish ordering for every input`` () =
+        Assert.That(valueWarnings "let value=Host.make 0\nlet first=Task.spawn (fun () -> Host.read value)\nlet second=Task.fromResult 1\nTask.whenAll (fun _ -> Host.read value) [first;second] |> Task.await |> ignore\nHost.read value",Is.Empty)
+        Assert.That(valueWarnings "let value=Host.make 0\nlet first=Task.spawn (fun () -> Host.read value)\nTask.awaitAll [first] |> ignore\nHost.read value",Is.Empty)
+
+    [<Test>]
+    member _.``WhenAny cannot establish ordering with every candidate`` () =
+        Assert.That(valueWarnings "let value=Host.make 0\nlet first=Task.spawn (fun () -> Host.read value)\nlet second=Task.fromResult 1\nTask.whenAny (fun _ -> Host.read value) [first;second] |> Task.await |> ignore\nTask.awaitAll [first;second]",Is.Not.Empty)
+
+    [<Test>]
+    member _.``Completed tasks preserve resources carried by their result`` () =
+        Assert.That(valueWarnings "let value=Host.make 0\nlet ready=Task.fromResult value\nlet first=Task.continueWith Host.read ready\nlet second=Task.continueWith Host.read ready\nTask.awaitAll [first;second]",Is.Not.Empty)
