@@ -90,3 +90,58 @@ type TaskLibraryTests() =
     [<TestCase("Task.whenAny [Task.fromResult 1] (fun value -> value)")>]
     member _.``Task combinators require callback first and data last`` (source: string) =
         Assert.Throws<TypeException>(Action(fun () -> Helpers.inferWithExterns TaskFunctions.all source |> ignore)) |> ignore
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Scope joins running workers on normal and exceptional exits`` (foregroundFails: bool) =
+        use entered = new ManualResetEventSlim()
+        use release = new ManualResetEventSlim()
+        use foreground = new ManualResetEventSlim()
+        let mutable ticks = 0
+        let functions =
+            [ external "Host.block" TUnit (fun () -> entered.Set(); release.Wait(); VUnit)
+              external "Host.finish" TUnit (fun () ->
+                  if not (entered.Wait(5000)) then failwith "Worker did not start"
+                  foreground.Set()
+                  VUnit)
+              external "Host.tick" TUnit (fun () -> Interlocked.Increment(&ticks) |> ignore; VUnit) ]
+        let ending = if foregroundFails then "raise \"foreground failure\"" else "()"
+        let source = "let pending = Task.spawn (fun () ->\n  Host.block ()\n  Task.spawn (fun () ->\n    Task.await (Task.delay 5)\n    Host.tick ()) |> ignore)\nHost.finish ()\n" + ending
+        let execution = Task.Run(fun () ->
+            try evalWith functions source |> Pretty.valueToString
+            with EvalException error -> error.Message)
+        try
+            Assert.That(foreground.Wait(5000), Is.True)
+            Assert.That(execution.Wait(100), Is.False, "Host must wait for the running extern")
+        finally release.Set()
+        Assert.That(execution.Wait(5000), Is.True)
+        Assert.That(execution.Result, Does.Contain(if foregroundFails then "foreground failure" else "()"))
+        Assert.That(ticks, Is.EqualTo(1), "All background effects finish before returning to the host")
+
+    [<Test>]
+    member _.``Scope joins unobserved delays before returning`` () =
+        let mutable worker = None
+        let capture : ExternalFunction =
+            { Name = "Host.capture"; Scheme = Forall([], TFun(TTask TUnit, TUnit)); Arity = 1
+              Impl = fun _ args ->
+                  match args with
+                  | [VTask handle] -> worker <- Some handle.Worker; VUnit
+                  | _ -> failwith "Expected task" }
+        evalWith [capture] "Host.capture (Task.delay 5)" |> ignore
+        Assert.That(worker.IsSome, Is.True)
+        Assert.That(worker.Value.IsCompleted, Is.True)
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Scope collects all failures including foreground and duplicate messages`` (foregroundFails: bool) =
+        let source = "let first = Task.spawn (fun () -> raise \"same failure\")\nlet second = Task.spawn (fun () ->\n  Task.await (Task.delay 5)\n  raise \"same failure\")\n" + (if foregroundFails then "raise \"foreground failure\"" else "42")
+        let error = Assert.Throws<EvalException>(Action(fun () -> eval source |> ignore)) |> nonNull
+        Assert.That(error.Message, Does.Contain(if foregroundFails then "3 errors" else "2 errors"))
+        Assert.That(error.Message.Split([|"same failure"|], StringSplitOptions.None).Length, Is.EqualTo(3))
+
+    [<Test>]
+    member _.``Propagated prerequisite failure is collected once`` () =
+        let error = Assert.Throws<EvalException>(Action(fun () -> eval "Task.spawn (fun () -> raise \"one failure\") |> Task.continueWith (fun (_: int) -> 42) |> Task.await" |> ignore)) |> nonNull
+        match (error :> exn) with
+        | EvalException detail -> Assert.That(detail.Message, Is.EqualTo("one failure"))
+        | _ -> Assert.Fail("Expected evaluator failure")

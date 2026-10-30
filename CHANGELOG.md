@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Join unobserved tasks before script and host invocation returns, and collect all foreground and background failures.
+
 - Put task continuation callbacks first so continueWith, whenAll, and whenAny compose naturally in pipelines.
 
 - Add Task.delay, Task.fromResult, Task.continueWith, Task.whenAll, Task.whenAny, and Task.awaitAll with debugger, compiler, and editor support.

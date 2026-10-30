@@ -87,7 +87,7 @@ List.init 0 Task.fromResult
 
 Takes the callback first and a nonempty list of already-created tasks last. The first observed completion selects a winner; the callback receives the winning **value**, rather than a task handle. It runs once after successful completion of that winner. A failed winner propagates failure without calling the callback. This selects the first completion, not the first success. Empty input raises an error because there is no value to supply.
 
-If multiple inputs are already complete when the race is registered, the first completed input in list order is selected. Otherwise selection depends on scheduling. Other candidates keep running, are not cancelled, and must still be awaited. Their failures remain fatal under the normal background-failure policy.
+If multiple inputs are already complete when the race is registered, the first completed input in list order is selected. Otherwise selection depends on scheduling. Other candidates keep running and are not cancelled. Await them explicitly to use their results; otherwise the runtime joins them before execution returns. Their failures still fail the whole execution.
 
 ```fsharp
 let timers = [Task.delay 10; Task.delay 20]
@@ -161,10 +161,11 @@ The same rule applies to `spawn`, `fromResult`, `whenAll`, and `whenAny`.
 
 ## Failure, lifetime, and sandbox behavior
 
-- Errors remain fatal; these operations add no error recovery or cancellation mechanism. The evaluator's global background-failure checks can abort execution as soon as a spawned task fails, including a losing `whenAny` candidate. `whenAll` and `awaitAll` wait for all inputs when reached, but cannot override an earlier fatal background failure.
-- Finishing a script with unawaited tasks is an error, even if those tasks have already completed. This applies to the evaluator and generated program `Run` boundaries. Native exported functions invoked separately by a .NET host retain host-owned CLR task lifetimes.
-- `continueWith` consumes its prerequisite; `whenAll` consumes every prerequisite. Awaiting the returned task therefore covers those inputs. An unawaited returned task still causes an error.
-- `whenAny` consumes only its selected winner. Keep references to other candidates and await them separately, for example with `awaitAll`.
-- Tasks returned inside callbacks are separate results and still require their own awaits. Completing an outer task does not implicitly await its nested result.
+- The runtime joins every task it starts before returning to the host, including unobserved tasks, losing `whenAny` candidates, and tasks started by other tasks. Explicit awaits are needed to use results, not to prevent detached background work.
+- Background failures do not stop independent sibling tasks. After all tasks finish, the runtime reports all failures together, including a foreground failure if present. A failed prerequisite prevents its dependent callback from running. Propagating the same failure through several tasks does not duplicate it in the report.
+- The evaluator reports collected failures as an `EvalException`; generated .NET code uses `AggregateException` for multiple failures. A single failure retains its ordinary exception form.
+- This applies to top-level evaluator execution, evaluator calls to exported functions, and generated program `Run` boundaries. Native exported functions invoked separately by a .NET host retain host-owned CLR task lifetimes.
+- Nested task results stay nested. Await each layer to retrieve its value; the runtime also joins any nested task left unobserved.
+- Returning or throwing in foreground code does not detach outstanding tasks. A task or host extern that never completes prevents execution from returning; hosts still need resource and timeout limits.
 - Callbacks run concurrently and may interleave effects. Their captured FFI state must be safe to share; use the task-sharing analysis to check potential races.
 - These are runtime scheduling capabilities, not pure core functions. Delay observes time and `whenAny` observes completion order. They expose no filesystem or network IO, and hosts may omit the entire module for deterministic sandboxed execution.

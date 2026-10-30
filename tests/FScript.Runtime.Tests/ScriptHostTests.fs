@@ -246,3 +246,28 @@ type ScriptHostTests () =
         let replacement = { hash with Impl = fun _ _ -> VOption None }
         let options = TaskSharingContracts.withRuntime { registration with Functions = [replacement] } TaskSharingAnalysis.defaults
         Assert.That(options.ThreadSafeFunctions.Contains hash.Name, Is.False)
+
+    [<Test>]
+    member _.``exported invocation joins unobserved tasks`` () =
+        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () =\n  let pending = Task.delay 5\n  42"
+        Assert.That(ScriptHost.invoke loaded "run" [VUnit] |> Pretty.valueToString, Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``exported invocation permits awaited tasks`` () =
+        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () = Task.await (Task.spawn (fun () -> 42))"
+        Assert.That(ScriptHost.invoke loaded "run" [VUnit] |> Pretty.valueToString, Is.EqualTo("42"))
+
+    [<Test>]
+    member _.``exported invocation fails for unobserved background failures`` () =
+        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () =\n  let pending = Task.spawn (fun () -> raise \"background failed\")\n  42"
+        let error = Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.invoke loaded "run" [VUnit] |> ignore)) |> nonNull
+        Assert.That(error.Message, Does.Contain("background failed"))
+
+    [<Test>]
+    member _.``exported invocation includes exit code set during implicit join`` () =
+        let setExit : ExternalFunction =
+            { Name = "Host.setExit"; Scheme = Forall([], TFun(TUnit,TUnit)); Arity = 1
+              Impl = fun context _ -> context.SetExitCode 7; VUnit }
+        let loaded = ScriptHost.loadSource (setExit :: TaskFunctions.all) "export let run () =\n  let pending = Task.spawn (fun () ->\n    Task.await (Task.delay 5)\n    Host.setExit ())\n  42"
+        let result = ScriptHost.invokeWithExitCode loaded "run" [VUnit]
+        Assert.That(result.ExitCode, Is.EqualTo(7))

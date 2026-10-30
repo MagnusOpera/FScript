@@ -163,6 +163,36 @@ type BackendTests() =
         let references=[typeof<ProviderFixture.TaskContextProvider>.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
         Assert.That(Harness.executeWith {Harness.options with References=references} program,Is.EqualTo(expected))
 
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Native scope joins pending timers on every exit`` (foregroundFails: bool) =
+        let assembly = Harness.csharpAssembly [] (Harness.compile "Task.await (Task.delay 0)")
+        let tasks = assembly.GetType("Generated.FsTasks") |> nonNull
+        let delay = tasks.GetMethod("Delay") |> nonNull
+        let run = (tasks.GetMethod("Run") |> nonNull).MakeGenericMethod(typeof<int>)
+        let mutable timer : System.Threading.Tasks.Task option = None
+        let body = Func<int>(fun () ->
+            timer <- Some ((delay.Invoke(null, [|box 5L|]) |> nonNull) :?> System.Threading.Tasks.Task)
+            if foregroundFails then failwith "foreground failure"
+            42)
+        if foregroundFails then
+            let error = Assert.Throws<TargetInvocationException>(fun () -> run.Invoke(null, [|body|]) |> ignore) |> nonNull
+            Assert.That(error.ToString(), Does.Contain("foreground failure"))
+        else
+            Assert.That(run.Invoke(null, [|body|]), Is.EqualTo(42))
+        Assert.That(timer.IsSome, Is.True)
+        Assert.That(timer.Value.IsCompleted, Is.True)
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Native scope collects every background failure`` (foregroundFails: bool) =
+        let source = "let first = Task.spawn (fun () -> if true then raise \"failure-one\" else 0)\nlet second = Task.spawn (fun () ->\n  Task.await (Task.delay 5)\n  if true then raise \"failure-two\" else 0)\n" + (if foregroundFails then "if true then raise \"foreground failure\" else 42" else "42")
+        let error = Assert.Throws<TargetInvocationException>(fun () -> Harness.compile source |> Harness.execute |> ignore) |> nonNull
+        let aggregate = (error.InnerException |> nonNull) :?> AggregateException
+        Assert.That(aggregate.InnerExceptions.Count, Is.EqualTo(if foregroundFails then 3 else 2))
+        Assert.That(aggregate.ToString(), Does.Contain("failure-one"))
+        Assert.That(aggregate.ToString(), Does.Contain("failure-two"))
+
     static member TaskCases = FScript.Tests.TaskLibraryCases.successes |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Native task: "+name))
     static member TaskFailures = FScript.Tests.TaskLibraryCases.failures |> List.map (fun (name,source,message) -> TestCaseData(source,message).SetName("Native task error: "+name))
 

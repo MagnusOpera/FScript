@@ -41,7 +41,9 @@ Filesystem extern behavior:
 - Data/IO externs frequently model operational failures as `None` values.
 - Script type misuse raises `TypeException`/`EvalException`.
 - Task failures are fatal runtime errors, consistent with foreground evaluation.
-- Programs that finish with unawaited tasks fail at runtime instead of silently detaching background work.
+- Runtime execution boundaries join all tracked tasks, including unobserved tasks and tasks started by workers, before returning on success or failure.
+- Independent tasks finish even when a sibling fails. Foreground and background failures are collected after joining; no tracked worker survives the host call.
+- Joining does not impose a timeout or forcibly interrupt host externs. Nonterminating tasks require host-level resource governance.
 
 ## Resource-governance model
 - Evaluator execution currently relies on host/runtime process limits.

@@ -15,19 +15,40 @@ internal static class FsTasks
         public readonly Dictionary<Task,bool> Pending=new(ReferenceEqualityComparer.Instance);
         public readonly Dictionary<Task,Task> Aliases=new(ReferenceEqualityComparer.Instance);
         public bool Active=true;
-        public void CheckFailures()
+        public void CheckActive()
         {
-            Task[] tasks;
-            lock(Gate) tasks=Pending.Keys.Concat(Aliases.Keys).ToArray();
-            foreach(var task in tasks) if(task.IsFaulted) task.GetAwaiter().GetResult();
+            lock(Gate) if(!Active) throw new InvalidOperationException("Script task scope has ended");
         }
-        public void Complete()
+        public Exception[] Errors(Exception? foreground)
         {
-            CheckFailures();
-            int count;
-            lock(Gate) count=Pending.Count(pair=>!pair.Value);
-            if(count!=0) throw new InvalidOperationException($"Program completed with {count} unawaited task(s)");
+            var errors=new List<Exception>();
+            void Add(Exception error)
+            {
+                if(error is AggregateException aggregate)
+                    foreach(var inner in aggregate.Flatten().InnerExceptions) Add(inner);
+                else if(!errors.Any(existing=>ReferenceEquals(existing,error))) errors.Add(error);
+            }
+            if(foreground is not null) Add(foreground);
+            lock(Gate)
+                foreach(var task in Pending.Keys.Concat(Aliases.Keys))
+                {
+                    if(task.IsFaulted) Add(task.Exception!);
+                    else if(task.IsCanceled) Add(new TaskCanceledException(task));
+                }
+            return errors.ToArray();
         }
+        public void Join()
+        {
+            while(true)
+            {
+                Task[] tasks;
+                lock(Gate) tasks=Pending.Keys.Concat(Aliases.Keys).ToArray();
+                try { Task.WhenAll(tasks).GetAwaiter().GetResult(); } catch { }
+                lock(Gate)
+                    if(tasks.Length==Pending.Count+Aliases.Count && Pending.Keys.Concat(Aliases.Keys).All(task=>task.IsCompleted)) break;
+            }
+        }
+        public void Close() { lock(Gate) Active=false; }
     }
     private static readonly AsyncLocal<Scope?> Current=new();
     private static T Track<T>(T task) where T:Task
@@ -45,15 +66,26 @@ internal static class FsTasks
             if(scope.Pending.ContainsKey(task)) scope.Pending[task]=true;
         }
     }
-    private static void Check() => Current.Value?.CheckFailures();
+    private static void Check() => Current.Value?.CheckActive();
     public static T Run<T>(Func<T> body)
     {
         var previous=Current.Value;
         if(previous is {Active:true}) return body();
         var scope=new Scope(); Current.Value=scope;
-        try { var result=body(); scope.Complete(); return result; }
-        finally { scope.Active=false; Current.Value=previous; }
+        try
+        {
+            T result=default!;
+            Exception? foreground=null;
+            try { result=body(); } catch(Exception error) { foreground=error; }
+            scope.Join();
+            var errors=scope.Errors(foreground);
+            if(errors.Length==1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(errors[0]).Throw();
+            if(errors.Length>1) throw new AggregateException("Script execution failed",errors);
+            return result;
+        }
+        finally { scope.Close(); Current.Value=previous; }
     }
+
     public static Task<T> Spawn<T>(Func<Unit,T> callback)
     {
         Check();
@@ -65,11 +97,10 @@ internal static class FsTasks
         Check(); var completion=new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         completion.SetResult(value); return Track(completion.Task);
     }
-    private static Task<Unit> DelayCore(int milliseconds)
+    private static async Task<Unit> DelayCore(int milliseconds)
     {
-        var completion=new TaskCompletionSource<Unit>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task.Delay(milliseconds).ContinueWith(_=>completion.SetResult(default),CancellationToken.None,TaskContinuationOptions.ExecuteSynchronously,TaskScheduler.Default);
-        return completion.Task;
+        await Task.Delay(milliseconds).ConfigureAwait(false);
+        return default;
     }
     public static Task<Unit> Delay(long milliseconds)
     {

@@ -71,7 +71,7 @@ FScript errors are fatal. Tasks follow the same rule.
 
 - If a spawned thunk fails, the task has failed.
 - `Task.await` on that task fails the script with the same fatal runtime error.
-- Finishing a program with unawaited tasks is also a runtime error.
+- Before returning, the runtime joins unobserved tasks and collects all fatal failures.
 
 There is no catch/recovery mechanism in FScript today.
 
@@ -108,4 +108,4 @@ Task.await total
 // 42
 ```
 
-`whenAll` and `awaitAll` retain input order and allow empty lists. `whenAny` requires a nonempty list, selects the first completion, and passes that result to its callback. Use a user-defined discriminated union to combine different source result types. Other candidates keep running and must still be awaited. Nested task results require separate awaits. See the [Task reference](../stdlib/task) for every signature, unit-task examples, failure rules, and lifetime behavior.
+`whenAll` and `awaitAll` retain input order and allow empty lists. `whenAny` requires a nonempty list, selects the first completion, and passes that result to its callback. Use a user-defined discriminated union to combine different source result types. Other candidates keep running and are joined by the runtime before execution returns. Await them explicitly when their results are needed. Nested task results require separate awaits to retrieve their values. See the [Task reference](../stdlib/task) for every signature, unit-task examples, failure rules, and lifetime behavior.

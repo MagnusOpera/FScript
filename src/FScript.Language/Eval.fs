@@ -21,7 +21,6 @@ module Eval =
           ExitCode: int ref
           Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
-          BackgroundFailure: EvalError option ref
 #if !FABLE_COMPILER
           Debug: IDebugObserver option
           TaskId: int
@@ -29,10 +28,6 @@ module Eval =
         }
 
     let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
-
-    let private wrapTaskFailure (error: EvalError) =
-        { Message = $"Task failed: {error.Message}"
-          Span = error.Span }
 
     let private wrapUnexpectedTaskFailure (ex: exn) =
         { Message = $"Task failed: {ex.Message}"
@@ -45,14 +40,56 @@ module Eval =
         lock runtime.SyncRoot f
 #endif
 
-    let private raiseIfBackgroundFailed (runtime: RuntimeState) =
+    let private checkRuntime (runtime: RuntimeState) =
 #if !FABLE_COMPILER
         match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
 #endif
         withRuntimeLock runtime (fun () ->
-            match runtime.BackgroundFailure.Value with
-            | Some error -> raise (EvalException error)
-            | None -> ())
+            if not runtime.Active.Value then
+                raise (EvalException { Message = "Script task scope has ended"; Span = unknownSpan })
+            ())
+
+    // Joining repeatedly includes tasks spawned by workers while an earlier batch
+    // is being awaited. The scope stays active until every worker has finished.
+    let private joinRuntime runtime =
+#if !FABLE_COMPILER
+        let mutable finished = false
+        while not finished do
+            let workers = withRuntimeLock runtime (fun () -> runtime.PendingTasks |> Seq.map (fun task -> task.Worker :> Task) |> Seq.toArray)
+            try Task.WhenAll(workers).GetAwaiter().GetResult() with _ -> ()
+            finished <- withRuntimeLock runtime (fun () -> runtime.PendingTasks.Count = workers.Length && runtime.PendingTasks |> Seq.forall (fun task -> task.Worker.IsCompleted))
+#else
+        ignore runtime
+#endif
+
+    let private runRuntime runtime action =
+        let outcome = try Choice1Of2(action ()) with error -> Choice2Of2 error
+        try
+            joinRuntime runtime
+            let failures = ResizeArray<EvalError>()
+            let add error =
+                if not (failures |> Seq.exists (fun existing -> obj.ReferenceEquals(existing,error))) then failures.Add error
+            match outcome with
+            | Choice2Of2(EvalException error) -> add error
+            | Choice2Of2 error -> add { Message = error.Message; Span = unknownSpan }
+            | _ -> ()
+#if !FABLE_COMPILER
+            for handle in runtime.PendingTasks do
+                if handle.Worker.IsCompletedSuccessfully then
+                    match handle.Worker.Result with TaskFailed error -> add error | _ -> ()
+                elif handle.Worker.IsFaulted then add (wrapUnexpectedTaskFailure (handle.Worker.Exception.GetBaseException()))
+#endif
+            if failures.Count = 1 then
+                // Preserve ordinary foreground exception types when no task added a failure.
+                match outcome with
+                | Choice2Of2 error -> raise error
+                | _ -> ()
+                raise (EvalException failures[0])
+            elif failures.Count > 1 then
+                let details = failures |> Seq.map (fun error -> "- " + error.Message) |> String.concat "\n"
+                raise (EvalException { Message = $"Script execution failed with {failures.Count} errors:\n{details}"; Span = failures[0].Span })
+            match outcome with Choice1Of2 value -> value | Choice2Of2 error -> raise error
+        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
 
     let private literalToValue lit =
         match lit with
@@ -448,7 +485,7 @@ module Eval =
           SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
 #endif
           CheckRuntime = fun () ->
-              raiseIfBackgroundFailed runtime
+              checkRuntime runtime
 #if !FABLE_COMPILER
               match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
 #endif
@@ -468,7 +505,7 @@ module Eval =
         VTask handle
 
     and private startTaskValue (runtime: RuntimeState) body : Value =
-        raiseIfBackgroundFailed runtime
+        checkRuntime runtime
         let child =
             match runtime.Debug with
             | Some observer -> { runtime with TaskId = observer.TaskStarted(Some runtime.TaskId) }
@@ -486,9 +523,7 @@ module Eval =
                         match child.Debug with
                         | Some observer -> do! Execution.awaitUnit(observer.Fault(child.TaskId,error))
                         | None -> ()
-                        let taskError = match error with EvalException e -> wrapTaskFailure e | _ -> wrapUnexpectedTaskFailure error
-                        withRuntimeLock runtime (fun () ->
-                            if runtime.BackgroundFailure.Value.IsNone then runtime.BackgroundFailure.Value <- Some taskError)
+                        let taskError = match error with EvalException e -> e | _ -> wrapUnexpectedTaskFailure error
                         return TaskFailed taskError
                 finally
                     match child.Debug with Some observer -> observer.TaskExited(child.TaskId, failure) | None -> ()
@@ -535,7 +570,7 @@ module Eval =
         | "Task.spawn",[thunk] -> return spawnTaskValue runtime typeDefs thunk
         | "Task.await",[value] ->
             let! result = awaitHandle runtime (taskHandle span value)
-            raiseIfBackgroundFailed runtime
+            checkRuntime runtime
             return result
         | "Task.fromResult",[value] -> return trackTaskValue runtime None (Task.FromResult(TaskSucceeded value))
         | "Task.delay",[VInt milliseconds] when milliseconds >= 0L && milliseconds <= int64 System.Int32.MaxValue ->
@@ -586,14 +621,14 @@ module Eval =
             let handles=taskHandles span values
             own handles
             let! values=awaitHandles runtime handles
-            raiseIfBackgroundFailed runtime
+            checkRuntime runtime
             return values
         | _ -> return raise (EvalException {Message= $"Invalid arguments to {name}.";Span=span})
     }
 #endif
 
     and private awaitTaskValue (runtime: RuntimeState) (taskValue: Value) : Value =
-        raiseIfBackgroundFailed runtime
+        checkRuntime runtime
 #if FABLE_COMPILER
         raise (EvalException { Message = "Task.await is not supported in Fable builds"; Span = unknownSpan })
 #else
@@ -602,19 +637,16 @@ module Eval =
             handle.Awaited <- true
             match handle.Worker.GetAwaiter().GetResult() with
             | TaskSucceeded value ->
-                raiseIfBackgroundFailed runtime
+                checkRuntime runtime
                 value
             | TaskFailed error ->
-                withRuntimeLock runtime (fun () ->
-                    if runtime.BackgroundFailure.Value.IsNone then
-                        runtime.BackgroundFailure.Value <- Some error)
                 raise (EvalException error)
         | _ ->
             raise (EvalException { Message = "Task.await expects a task"; Span = unknownSpan })
 #endif
 
     and private applyFunctionValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) (fnValue: Value) (argValue: Value) : Execution<Value> = execution {
-        raiseIfBackgroundFailed runtime
+        checkRuntime runtime
         match fnValue with
         | VClosure(argName, ELambda(parameter,body,_), closureEnv) ->
             return VClosure(parameter.Name,body,ref (closureEnv.Value.Add(argName,argValue)))
@@ -704,7 +736,7 @@ module Eval =
     }
 
     and private evalExpr (runtime: RuntimeState) (typeDefs: Map<string,Type>) (env: Env) (expr: Expr) : Execution<Value> =
-        raiseIfBackgroundFailed runtime
+        checkRuntime runtime
         let immediate value =
 #if !FABLE_COMPILER
             if runtime.Debug.IsSome then execution {
@@ -934,7 +966,6 @@ module Eval =
               ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = ref None
 #if !FABLE_COMPILER
               Debug = None
               TaskId = 1
@@ -972,10 +1003,11 @@ module Eval =
                 let next = applyFunctionValue runtime typeDefs unknownSpan value nextArg |> Execution.run
                 applyMany next tailArgs
 
-        try
+        let result = runRuntime runtime (fun () ->
             let value=applyMany fnValue args
             {Value=value;ExitCode=withRuntimeLock runtime (fun () -> runtime.ExitCode.Value)}
-        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+        )
+        { result with ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let invokeValue typeDefs fnValue args = (invokeValueWithExitCode typeDefs fnValue args).Value
 
@@ -1004,7 +1036,7 @@ module Eval =
         let mutable env = initialEnv
         let mutable lastValue = VUnit
         for stmt in program do
-            raiseIfBackgroundFailed runtime
+            checkRuntime runtime
             match stmt with
             | TypeInfer.TSType _ ->
                 ()
@@ -1054,16 +1086,6 @@ module Eval =
             | TypeInfer.TSExpr texpr ->
                 lastValue <- evalExpr runtime typeDefs env texpr.Expr |> Execution.run
 
-        raiseIfBackgroundFailed runtime
-
-        let unawaitedCount =
-            withRuntimeLock runtime (fun () ->
-                runtime.PendingTasks |> Seq.filter (fun handle -> not handle.Awaited) |> Seq.length)
-
-        if unawaitedCount > 0 then
-            let noun = if unawaitedCount = 1 then "task" else "tasks"
-            raise (EvalException { Message = $"Program completed with {unawaitedCount} unawaited {noun}"; Span = unknownSpan })
-
         { TypeDefs = typeDefs
           Env = env
           LastValue = lastValue
@@ -1075,15 +1097,14 @@ module Eval =
               ExitCode = ref state.ExitCode
               Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = ref None
 #if !FABLE_COMPILER
               Debug = None
               TaskId = 1
 #endif
             }
 
-        try evaluateStatements runtime state.TypeDefs state.Env program
-        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+        let result = runRuntime runtime (fun () -> evaluateStatements runtime state.TypeDefs state.Env program)
+        { result with ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let private evaluateRegistered
 #if !FABLE_COMPILER
@@ -1097,7 +1118,6 @@ module Eval =
               ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
-              BackgroundFailure = ref None
 #if !FABLE_COMPILER
               Debug = debugger
               TaskId = (match debugger with Some observer -> observer.TaskStarted None | None -> 1)
@@ -1206,7 +1226,7 @@ module Eval =
 
         let externContext = createExternContext runtime typeDefs unknownSpan
 
-        try
+        let result = runRuntime runtime (fun () ->
             let mutable env : Env =
                 (BuiltinFunctions.builtinExterns @ externs)
                 |> List.fold (fun acc ext ->
@@ -1236,7 +1256,8 @@ module Eval =
                 | None -> ()
 #endif
                 reraise ()
-        finally withRuntimeLock runtime (fun () -> runtime.Active.Value <- false)
+        )
+        { result with ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let evalProgramWithRegistrationState registration program =
         evaluateRegistered

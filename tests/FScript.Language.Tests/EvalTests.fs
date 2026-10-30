@@ -645,11 +645,12 @@ type EvalTests () =
         act |> should throw typeof<EvalException>
 
     [<Test>]
-    member _.``Reports runtime error for unawaited task`` () =
+    member _.``Runtime joins unawaited task`` () =
         let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
-        let act () = Helpers.evalWithExterns externs "Task.spawn (fun _ -> 1)" |> ignore
-        act |> should throw typeof<EvalException>
+        match Helpers.evalWithExterns externs "Task.spawn (fun _ -> 1)" with
+        | VTask handle -> Assert.That(handle.Worker.IsCompleted, Is.True)
+        | _ -> Assert.Fail("Expected completed task")
 
     [<TestCase("{ [\"a\"] = 1 } = { [\"a\"] = 1 }", true)>]
     [<TestCase("{ [\"a\"] = 1 } = { [\"b\"] = 1 }", false)>]
