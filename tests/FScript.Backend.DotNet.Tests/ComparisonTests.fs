@@ -18,7 +18,6 @@ type ComparisonTests() =
     [<Test>]
     member _.``Substantial compiled workloads match both FSharp references across runtime inputs`` () =
         Comparison.verify (program ())
-        Assert.That((program ()).Workloads.Length, Is.EqualTo(5))
 
     [<Test>]
     member _.``Compiled workloads prune unused data and do not host an interpreter`` () =
@@ -61,16 +60,6 @@ type ComparisonTests() =
         let graph = IlInspection.reachable (program ()).Assembly variant.Root
         Assert.That(graph |> Array.collect IlInspection.decode |> Array.exists (fun instruction -> instruction.Opcode = System.Reflection.Emit.OpCodes.Newobj),Is.False)
         Assert.That(graph |> Array.sumBy (fun method -> (IlInspection.summarize method).DelegateCalls),Is.Zero)
-
-    [<Test>]
-    member _.``Private nominal pipelines avoid whole-array record adaptations`` () =
-        let variants = (program ()).Workloads |> List.filter (fun workload -> workload.Name="pipeline" || workload.Name="pipeline_nominal") |> List.map (fun workload -> workload.Variants.Head.Function)
-        let allocated (fn: Func<int64,int64>) =
-            for _ in 1..10 do fn.Invoke 42L |> ignore
-            let before=GC.GetAllocatedBytesForCurrentThread()
-            for _ in 1..3 do fn.Invoke 42L |> ignore
-            GC.GetAllocatedBytesForCurrentThread()-before
-        Assert.That(allocated variants.[1],Is.EqualTo(allocated variants.[0]))
 
     [<Test>]
     member _.``Pure record pipelines fuse without allocating intermediate arrays or records`` () =

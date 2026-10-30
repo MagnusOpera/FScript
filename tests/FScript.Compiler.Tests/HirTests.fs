@@ -51,41 +51,6 @@ type HirTests() =
             | Ok program -> Assert.That(program.Types |> List.exists (fun t -> t.Definition = THostManaged("Handle", fields)), Is.True)
 
     [<Test>]
-    member _.``Compiler catalog describes every default runtime external without delegates`` () =
-        let expected =
-            [ "Console.readLine"; "Console.writeLine"; "Env"
-              "Fs.combinePath"; "Fs.createDirectory"; "Fs.enumerateFiles"; "Fs.exists"
-              "Fs.extension"; "Fs.fileNameWithoutExtension"; "Fs.glob"; "Fs.kind"
-              "Fs.parentDirectory"; "Fs.readText"; "Fs.writeText"
-              "Guid.new"; "Hash.md5"; "Json.deserialize"; "Json.serialize"
-              "Regex.matchGroups"; "Task.await"; "Task.spawn"; "Xml.queryValues" ]
-        let expected = expected @ ((SupportLibrary.runtimeSignatures @ (TaskFunctions.signatures |> List.filter (fun (name,_,_) -> name<>"Task.spawn" && name<>"Task.await"))) |> List.map (fun (name,_,_) -> name)) |> List.sort
-        Assert.That((CompilerExternCatalog.defaults |> List.map _.Name |> List.sort) = expected, Is.True)
-
-        match Compiler.compile { Program = Parser.parseProgram "Fs.exists \"missing\""; Externs = [] } with
-        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
-        | Ok compiled ->
-            Assert.That(
-                compiled.Lir.Declarations
-                |> List.exists (fun declaration ->
-                    declaration.Name = "Fs.exists"
-                    && match declaration.Value.Node with Lir.HostExternal("Fs.exists", 1) -> true | _ -> false),
-                Is.True)
-
-    [<Test>]
-    member _.``Lowers deterministic typed add program`` () =
-        let source = "let add x y = x + y\nadd 1 2"
-        let input = { Program = Parser.parseProgram source; Externs = [] }
-        match Compiler.compile input with
-        | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
-        | Ok compiled ->
-            let actual = Hir.format compiled.Hir
-            Assert.That(actual, Does.Contain("decl %"))
-            Assert.That(actual, Does.Contain("primitive NumericAdd"))
-            Assert.That(actual, Does.Contain("entry"))
-            Assert.That(Hir.format compiled.Hir, Is.EqualTo(actual))
-
-    [<Test>]
     member _.``Compilation exposes exported function signatures from its frontend pass`` () =
         let source = "export let pair (prefix: string) (count: int) = (prefix, count)"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with

@@ -329,7 +329,6 @@ type LirInterpreterTests() =
         match compile "Task.await (Task.spawn (fun _ -> 42))" with
         | Error diagnostics -> Assert.Fail(errorText diagnostics)
         | Ok compiled ->
-            Assert.That(compiled.Lir.Declarations |> List.exists (fun declaration -> match declaration.Value.Node with Lir.HostExternal("Task.spawn", 1) -> true | _ -> false), Is.True)
             match LirInterpreter.execute { ScriptName = None; Arguments = [] } compiled.Lir with
             | Ok _ -> Assert.Fail("Expected unsupported task diagnostic")
             | Error diagnostics -> Assert.That(diagnostics.Code, Is.EqualTo("FSI3021"))

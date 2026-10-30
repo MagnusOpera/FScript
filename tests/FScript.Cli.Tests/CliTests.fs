@@ -539,21 +539,25 @@ type CliTests() =
         Assert.That(stderr, Does.Not.Contain("Usage: fscript"))
 
     [<Test>]
-    member _.``Compiled BASIC usage identifies its standalone assembly`` () =
+    member _.``Compiled usage identifies its standalone assembly`` () =
         let repoRoot=findRepoRoot ()
-        let output=Path.Combine(Path.GetTempPath(),"fscript-basic-native-"+Guid.NewGuid().ToString("N"))
+        let output=Path.Combine(Path.GetTempPath(),"fscript-usage-native-"+Guid.NewGuid().ToString("N"))
+        let script=Path.Combine(output,"usage.fss")
+        let compiled=Path.Combine(output,"compiled")
         try
-            let code,_,error=runCli repoRoot repoRoot ["compile";basicSampleScriptPath repoRoot;"--target";"dotnet";"--output";output] None
+            Directory.CreateDirectory(output) |> ignore
+            File.WriteAllText(script, "let programName = Option.defaultValue \"usage\" Env.ScriptName\nif true then raise $\"Usage: {programName} <input>\" else 0")
+            let code,_,error=runCli repoRoot repoRoot ["compile";script;"--target";"dotnet";"--output";compiled] None
             Assert.That(code,Is.Zero,error)
             let start=ProcessStartInfo("dotnet",WorkingDirectory=repoRoot,RedirectStandardOutput=true,RedirectStandardError=true)
-            start.ArgumentList.Add(Path.Combine(output,"basic.dll"))
+            start.ArgumentList.Add(Path.Combine(compiled,"usage.dll"))
             use proc=new Process(StartInfo=start)
             proc.Start() |> ignore
             let stdout=proc.StandardOutput.ReadToEnd()
             let stderr=proc.StandardError.ReadToEnd()
             proc.WaitForExit()
             Assert.That(proc.ExitCode,Is.Not.Zero,stdout+stderr)
-            Assert.That(stderr,Does.Contain("Usage: basic.dll <program.bas>"))
+            Assert.That(stderr,Does.Contain("Usage: usage.dll <input>"))
             Assert.That(stderr,Does.Not.Contain("Usage: fscript"))
         finally
             if Directory.Exists(output) then Directory.Delete(output,true)
@@ -728,6 +732,8 @@ type CliTests() =
             for argument in arguments do start.ArgumentList.Add(argument)
             // Keep extraction isolated so cleanup also verifies the compiler releases its files.
             start.Environment.["DOTNET_BUNDLE_EXTRACT_BASE_DIR"] <- Path.Combine(directory, "extracted")
+            // Reused MSBuild workers inherit redirected pipes and can prevent EOF after publish exits.
+            start.Environment.["MSBUILDDISABLENODEREUSE"] <- "1"
             use proc = Process.Start(start) |> nonNull
             let stdout = proc.StandardOutput.ReadToEndAsync()
             let stderr = proc.StandardError.ReadToEndAsync()

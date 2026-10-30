@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Remove redundant compiler tests and speed up compiled usage-message coverage.
+- Prevent publishing tests from waiting on output pipes held open by idle build workers.
+
 - Join unobserved tasks before script and host invocation returns, and collect all foreground and background failures.
 
 - Put task continuation callbacks first so continueWith, whenAll, and whenAny compose naturally in pipelines.
