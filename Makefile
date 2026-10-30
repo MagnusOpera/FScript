@@ -1,11 +1,14 @@
-.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck verify-sdk-provider
+
+TERRABUILD ?= terrabuild
+TERRABUILD_ARGS ?=
+TERRABUILD_RUN = $(TERRABUILD) run toolchain $(1) $(if $(strip $(parallel)),--parallel $(parallel)) $(TERRABUILD_ARGS)
 
 build:
-	dotnet build FScript.sln -c Release
+	$(call TERRABUILD_RUN,build materialize)
 
 test:
-	dotnet test FScript.sln -c Release
-	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
+	$(call TERRABUILD_RUN,test)
 
 benchmark-interpreters:
 	dotnet run --project benchmarks/FScript.Interpreter.Benchmarks -c Release -- $(or $(iterations),5) $(or $(size),2000)
@@ -25,33 +28,13 @@ benchmark-dotnet-comparison:
 	DOTNET_TieredCompilation=0 DOTNET_ReadyToRun=0 dotnet benchmarks/FScript.DotNet.Comparison/bin/Release/net10.0/FScript.DotNet.Comparison.dll $(or $(iterations),500) $(or $(rounds),9) "$(or $(output),out/benchmarks/dotnet-vs-fsharp)" $(if $(filter true,$(verify)),--verify-only)
 
 fable-build:
-	dotnet tool restore
-	cd src/FScript.JavaScript && npm run build
+	$(call TERRABUILD_RUN,javascript_build) --project src/FScript.JavaScript
 
-fable-test: fable-build
-	cd src/FScript.JavaScript && npm test
+fable-test:
+	$(call TERRABUILD_RUN,check) --project src/FScript.JavaScript
 
 smoke-tests:
-	@set -e; \
-	for script in samples/*.fss; do \
-		echo "Running $$script"; \
-		dotnet run --project src/FScript -- "$$script" > /dev/null; \
-	done; \
-	echo "Running samples/basic/basic.fss -- helloworld.bas"; \
-	dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas > /dev/null; \
-	echo "Running samples/debugging/main.fss"; \
-	dotnet run --project src/FScript -- samples/debugging/main.fss > /dev/null; \
-	echo "Running samples/ffi (headless)"; \
-	dotnet build samples/ffi/FfiSample.fsproj -c Release > /dev/null; \
-	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
-	echo "Analyzing samples/task-sharing"; \
-	dotnet build samples/task-sharing/TaskSharingSample.fsproj -c Release > /dev/null; \
-	for script in samples/task-sharing/*.fss; do \
-		dotnet run --project src/FScript -- analyze "$$script"; \
-	done; \
-	dotnet run --project src/FScript -- samples/task-sharing/ordered.fss > /dev/null; \
-	dotnet run --project src/FScript -- --no-result samples/task-sharing/thread-safe.fss > /dev/null; \
-	echo "All smoke tests passed."
+	$(call TERRABUILD_RUN,smoke)
 
 
 verify-changelog:
@@ -89,10 +72,10 @@ pack-nuget:
 publish-all: build test publish publish-darwin publish-linux publish-windows pack-nuget
 
 website-install:
-	cd website && npm ci
+	$(call TERRABUILD_RUN,install) --project website
 
 website-build:
-	cd website && npm run build
+	$(call TERRABUILD_RUN,check) --project website
 
 website:
 	cd website && npm run start
@@ -101,10 +84,10 @@ website-version:
 	cd website && npm run version-docs -- $(version)
 
 website-typecheck:
-	cd website && npm run typecheck
+	$(call TERRABUILD_RUN,typecheck) --project website
 
 verify-sdk-provider:
-	.github/scripts/verify-sdk-provider.sh
+	$(call TERRABUILD_RUN,sdk)
 
 vscode-debug-smoke: build
 	npm run compile --prefix vscode-fscript

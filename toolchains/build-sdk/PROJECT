@@ -1,0 +1,15 @@
+project build_sdk {
+    includes = [ "Dockerfile" "bootstrap.fss" "../../WORKSPACE" ]
+    labels = [ "toolchain" ]
+}
+
+target toolchain {
+    phase = phase.toolchains
+    build = ~always
+    artifacts = ~external
+    @bootstrap build {
+        dotnet_sdk = local.versions.dotnet_sdk
+        node = local.versions.node
+        pnpm = local.versions.pnpm
+    }
+}

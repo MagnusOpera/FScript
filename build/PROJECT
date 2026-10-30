@@ -1,0 +1,37 @@
+# Build the solution once before running independent test assemblies.
+project solution {
+    outputs = [ "artifacts/solution.tar" ]
+    includes = [ "../samples/**" "../entitlements.plist" "../src/**" "../tests/**" "../benchmarks/**" "../Directory.Build.props" "../FScript.sln" "../Makefile" "../.config/**" "../.github/scripts/**" ]
+    ignores = [ "../**/bin/**" "../**/obj/**" "../**/node_modules/**" "../**/dist/**" "../**/TestResults/**" "../**/.fscript/**" ]
+}
+
+target build {
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh build" }
+}
+
+target test {
+    outputs = []
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh debug-adapter" }
+}
+
+# Run independently versioned host checks with isolated temporary artifacts.
+target sdk {
+    build = ~always
+    artifacts = ~none
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh sdk" }
+}
+
+target smoke {
+    outputs = []
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh smoke" }
+}
+
+# Restore shared solution outputs from a project-local, cacheable archive.
+target materialize {
+    depends_on = [ target.build ]
+    outputs = []
+    build = ~lazy
+    artifacts = ~none
+    lock = "fscript-solution-build"
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh materialize" }
+}

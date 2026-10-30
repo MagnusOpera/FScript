@@ -26,20 +26,11 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
         with:
-          dotnet-version: 10.0.401
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-
-      - name: Install website dependencies
-        run: make website-install
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
 
       - name: Generate documentation and build website
         run: make website-build

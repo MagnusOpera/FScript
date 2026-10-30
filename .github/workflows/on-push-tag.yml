@@ -20,15 +20,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
         with:
-          dotnet-version: 10.0.401
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+          host-dotnet: 'true'
+          host-node: 'true'
+          install-vsce: 'true'
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
 
       - name: Install extension dependencies
         working-directory: vscode-fscript
@@ -56,9 +55,6 @@ jobs:
           FSCRIPT_RELEASE_SERVER_DIR: ${{ github.workspace }}/vscode-fscript/server
           FSCRIPT_RELEASE_VERSION: ${{ env.BUILD_VERSION }}
         run: dotnet test tests/FScript.LanguageServer.Tests/FScript.LanguageServer.Tests.csproj -c Release --filter "FullyQualifiedName~ReleasePackagingTests|FullyQualifiedName~EnvironmentTests"
-
-      - name: Install extension packaging tool
-        run: npm install -g @vscode/vsce@4.0.0
 
       - name: Package extension
         working-directory: vscode-fscript
@@ -121,10 +117,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      # This job executes the macOS CLI and SDK natively, outside Linux containers.
+      - name: Setup native verification tools
+        uses: ./.github/actions/setup-tools
         with:
-          dotnet-version: 10.0.401
+          install-terrabuild: 'false'
+          host-dotnet: 'true'
 
       - name: Download cross-built macOS CLI
         env:

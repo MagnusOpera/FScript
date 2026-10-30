@@ -43,3 +43,9 @@ vscode-fscript/dist/
 vscode-fscript/*.vsix
 
 src/FScript.JavaScript/dist/
+
+# Terrabuild workspace cache
+.terrabuild/
+
+# Terrabuild solution artifact bundle
+build/artifacts/

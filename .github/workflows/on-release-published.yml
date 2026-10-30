@@ -19,10 +19,14 @@ jobs:
   release-nuget:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Setup NuGet publishing tools
+        uses: ./.github/actions/setup-tools
         with:
-          dotnet-version: 10.0.401
+          install-terrabuild: 'false'
+          host-dotnet: 'true'
 
       - name: Download GitHub release artifacts
         uses: robinraju/release-downloader@v1.11
@@ -46,11 +50,15 @@ jobs:
       RELEASE_VERSION: ${{ github.event.release.tag_name }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Setup publishing tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          install-terrabuild: 'false'
+          host-node: 'true'
+          node-registry-url: 'https://registry.npmjs.org'
 
       - name: Download npm package artifact
         uses: robinraju/release-downloader@v1.11
@@ -88,19 +96,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup publishing tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '22'
+          install-terrabuild: 'false'
+          host-node: 'true'
+          install-vsce: 'true'
 
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
         with:
           tag: ${{ env.RELEASE_TAG }}
           fileName: '*.vsix'
-
-      - name: Install VS Code publishing tool
-        run: npm install -g @vscode/vsce@4.0.0
 
       - name: Publish to VS Code Marketplace
         shell: bash
@@ -115,19 +122,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup publishing tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '22'
+          install-terrabuild: 'false'
+          host-node: 'true'
+          install-ovsx: 'true'
 
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
         with:
           tag: ${{ env.RELEASE_TAG }}
           fileName: '*.vsix'
-
-      - name: Install Open VSX publishing tool
-        run: npm install -g ovsx@0.9
 
       - name: Publish to Open VSX
         shell: bash
@@ -138,10 +144,14 @@ jobs:
   sign-and-notarize:
     runs-on: macos-latest
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Setup publishing tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '22'
+          install-terrabuild: 'false'
+          host-node: 'true'
 
       - name: Download unsigned macOS artifacts
         uses: robinraju/release-downloader@v1.11

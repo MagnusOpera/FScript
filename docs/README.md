@@ -15,6 +15,7 @@ This folder is organized into three layers:
 
 ## Compilation
 
+- [Build FScript from source](./guides/building.md)
 - [Choose a compilation target](./guides/compilation.md)
 - [Compile to .NET](./guides/compile-to-dotnet.md): assemblies, single-file executables, Native AOT, and typed FFI
 - [Compile to C#](./guides/compile-to-csharp.md): generated projects, source layout, and managed references

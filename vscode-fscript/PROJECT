@@ -1,0 +1,8 @@
+project {
+    ignores = [ "node_modules/**" "dist/**" "build/**" ".docusaurus/**" "bin/**" "obj/**" ]
+}
+
+target check {
+    artifacts = ~none
+    @shell bash { args = "../.github/scripts/terrabuild-check.sh extension" }
+}

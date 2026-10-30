@@ -1,0 +1,8 @@
+project {
+    depends_on = [ project.solution ]
+}
+
+target test {
+    outputs = [ "TestResults/**" ]
+    @shell dotnet { args = "test FScript.LanguageServer.Tests.csproj -c Release --no-build --no-restore --logger trx --results-directory TestResults" }
+}

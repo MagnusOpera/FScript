@@ -1,0 +1,85 @@
+name: Setup repository tools
+description: Read WORKSPACE versions, install native Terrabuild, and optionally set up host release tools.
+inputs:
+  install-terrabuild:
+    description: Install the native Terrabuild CLI (no host .NET SDK required).
+    default: 'true'
+  host-dotnet:
+    description: Opt in only for release jobs that execute dotnet directly on the host.
+    default: 'false'
+  host-node:
+    description: Opt in for direct host packaging or signing scripts that use Node.js.
+    default: 'false'
+  node-registry-url:
+    description: Optional npm registry for host package publishing.
+    default: ''
+  install-vsce:
+    description: Install the pinned VS Code packaging tool on the host.
+    default: 'false'
+  install-ovsx:
+    description: Install the pinned Open VSX publishing tool on the host.
+    default: 'false'
+  TERRABUILD_TOKEN:
+    description: Optional Insights authentication token.
+    default: ''
+  TERRABUILD_MASTER_KEY:
+    description: Optional Insights artifact encryption key.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Read shared tool versions
+      id: versions
+      shell: bash
+      run: python3 .github/scripts/tool-versions.py --github-output "$GITHUB_OUTPUT"
+
+    - name: Install native Terrabuild
+      if: inputs.install-terrabuild == 'true'
+      # Same installer as matis-next, pinned to its feature/prerelease revision.
+      uses: magnusopera/action-install-gh-release@afbdcd5fffb00714fd1d31fb768e6b0d128ee5e7
+      with:
+        repo: magnusopera/terrabuild
+        tag: ${{ steps.versions.outputs.terrabuild }}
+
+    - name: Connect Insights when credentials are available
+      if: inputs.install-terrabuild == 'true'
+      shell: bash
+      env:
+        TERRABUILD_WORKSPACE: ${{ steps.versions.outputs.workspace_id }}
+        TERRABUILD_TOKEN: ${{ inputs.TERRABUILD_TOKEN }}
+        TERRABUILD_MASTER_KEY: ${{ inputs.TERRABUILD_MASTER_KEY }}
+      run: |
+        terrabuild version
+        if [[ -n "$TERRABUILD_TOKEN" && -n "$TERRABUILD_MASTER_KEY" ]]; then
+          terrabuild login --workspace "$TERRABUILD_WORKSPACE" \
+            --token "$TERRABUILD_TOKEN" --masterkey "$TERRABUILD_MASTER_KEY"
+        else
+          echo "Insights credentials unavailable; using local caching."
+        fi
+
+    - name: Set up host .NET for direct release commands
+      if: inputs.host-dotnet == 'true'
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ steps.versions.outputs.dotnet_sdk }}
+
+    - name: Set up host Node.js for direct release commands
+      if: inputs.host-node == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ steps.versions.outputs.node }}
+        registry-url: ${{ inputs.node-registry-url }}
+
+    - name: Install VS Code packaging tool
+      if: inputs.install-vsce == 'true'
+      shell: bash
+      env:
+        VSCE_VERSION: ${{ steps.versions.outputs.vsce }}
+      run: npm install --global "@vscode/vsce@$VSCE_VERSION"
+
+    - name: Install Open VSX publishing tool
+      if: inputs.install-ovsx == 'true'
+      shell: bash
+      env:
+        OVSX_VERSION: ${{ steps.versions.outputs.ovsx }}
+      run: npm install --global "ovsx@$OVSX_VERSION"

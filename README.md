@@ -86,6 +86,8 @@ Source lives in [`vscode-fscript/`](vscode-fscript/).
 
 ## Repository Development
 
+See [Building FScript from source](docs/guides/building.md) for Terrabuild, parallel checks, prerequisites, and Insights caching.
+
 ### Build
 ```bash
 make build

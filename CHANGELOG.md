@@ -4,6 +4,16 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Centralize tool versions and GitHub setup, using native Terrabuild without host .NET for CI and website builds.
+
+- Use available-core concurrency by default in Make and GitHub CI while retaining explicit Make parallel limits.
+
+- Restore cached solution assemblies reliably before running containerized tests and smoke checks.
+
+- Run Make build, test, smoke, Fable, SDK, and website validation targets through containerized Terrabuild tasks.
+
+- Enable containerized Terrabuild parallel CI checks and Insights caching, with local build setup instructions.
+
 - Remove redundant compiler tests and speed up compiled usage-message coverage.
 - Prevent publishing tests from waiting on output pipes held open by idle build workers.
 

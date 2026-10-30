@@ -1,0 +1,10 @@
+// Build a local image on every runner; Docker reuses its cached layers.
+// Do not push images: fork PRs must work without registry credentials.
+export let build (context: Protocol.ActionContext) (dotnet_sdk: string) (node: string) (pnpm: string) =
+    { PreserveProvenance = Broken
+      Batchable = false
+      Operations = [ { Command = "docker"
+                       Arguments = $"build --build-arg dotnet_image=mcr.microsoft.com/dotnet/sdk:{dotnet_sdk} --build-arg node_image=node:{node}-bookworm --build-arg pnpm={pnpm} --tag fscript-build:{context.Hash} ."
+                       ErrorLevel = 0 } ] }
+
+{ [nameof build] = [Cache External] }

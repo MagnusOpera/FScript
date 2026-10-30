@@ -1,5 +1,8 @@
 # Compilation
 
+To build FScript itself from a checkout, see [Building FScript from source](building.md), including Terrabuild and GitHub caching.
+
+
 FScript can run inside a host application or compile into a program that runs on its own. Compilation checks the same language types, resolves imported scripts, and produces ordinary .NET code. Generated programs do not load FScript source or start an interpreter.
 
 ## Choose an output
