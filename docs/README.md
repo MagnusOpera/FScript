@@ -13,6 +13,10 @@ This folder is organized into three layers:
 - FScript vs F# / OCaml: [`guides/fsharp-ocaml-differences.md`](./guides/fsharp-ocaml-differences.md)
 - Language rationale: [`guides/language-choices.md`](./guides/language-choices.md)
 
+## Build and test
+
+- [Container-backed Terrabuild workflow](./guides/terrabuild.md)
+
 ## Compilation
 
 - [Choose a compilation target](./guides/compilation.md)

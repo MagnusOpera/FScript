@@ -1,0 +1,13 @@
+project toolchain {
+    labels = [ "toolchain" ]
+    includes = [ "**/*" "Dockerfile" ]
+}
+
+# Always check/build the local image. Docker reuses its layers. Phase barriers do
+# not force cached application targets to execute, and no image is pushed.
+target image {
+    phase = phase.toolchains
+    build = ~always
+    artifacts = ~none
+    @shell docker { args = "build --tag fscript-build:${terrabuild.version} ." }
+}

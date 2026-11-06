@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.
+
 ## [0.90.1]
 
 - Publish NuGet packages through trusted publishing without a stored API key.

@@ -1,0 +1,9 @@
+project fscript_evaluation_benchmarks {
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" ]
+    ignores = [ "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
+    @dotnet { }
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}

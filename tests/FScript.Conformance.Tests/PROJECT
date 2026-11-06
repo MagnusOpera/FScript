@@ -1,0 +1,14 @@
+project fscript_conformance_tests {
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" "../../samples/**/*.fss" "../../samples/**/*.toml" "../../samples/**/*.bas" "../../tests/FScript.Runtime.Tests/SdkTestHost.fs" ]
+    ignores = [ "../../samples/**/bin/**" "../../samples/**/obj/**" "../../samples/**/TestResults/**" "../../samples/**/.fscript/**" "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
+    @dotnet { }
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}
+
+target test {
+    outputs = [ "TestResults/" ]
+    @dotnet test { build = false restore = false args = "--results-directory TestResults" }
+}

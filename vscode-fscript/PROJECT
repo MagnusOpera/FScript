@@ -1,0 +1,20 @@
+project vscode {
+    includes = [ "**/*" ]
+    ignores = [ "node_modules/**" "dist/**" "server/**" "*.vsix" ]
+    @npm { }
+}
+
+target install {
+    outputs = [ "node_modules/" ]
+    @npm install { }
+}
+
+target build {
+    outputs = [ "dist/" ]
+    @npm run { target = "compile" }
+}
+
+target test {
+    outputs = []
+    @npm test { }
+}

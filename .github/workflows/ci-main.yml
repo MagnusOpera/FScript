@@ -27,57 +27,32 @@ jobs:
       - name: Verify changelog release formatting
         run: make test-release-changelog
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup Tools
+        id: setup-tools
+        uses: ./.github/actions/setup-tools
         with:
-          dotnet-version: 10.0.401
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
 
-      - name: Install Native AOT toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Verify Terrabuild Makefile integration
+        run: make test-terrabuild
 
-      - name: Restore
-        run: dotnet restore FScript.sln
+      - name: Build, test, smoke-test, and verify SDK compatibility
+        run: make tb-check
 
-      - name: Build
-        run: dotnet build FScript.sln --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test FScript.sln --configuration Release --no-build --logger "trx" --results-directory TestResults
-
-      - name: Verify independently versioned SDK provider
-        run: make verify-sdk-provider
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-
-      - name: Test CLI debugger adapter
-        run: node --test tests/FScript.DebugAdapter.Tests/*Tests.js
-
-      - name: Test VS Code extension
-        working-directory: vscode-fscript
-        run: |
-          npm ci
-          npm test
-
-      - name: Run Fable JS tests
-        run: make fable-test
-
-      - name: Build website
-        run: |
-          cd website
-          npm ci
-          npm run build
+      - name: Logout from Terrabuild
+        if: always() && steps.setup-tools.outputs.connected == 'true'
+        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-main
-          path: TestResults/**/*.trx
+          path: |
+            **/TestResults/**/*.trx
+            **/TestResults/**/*.xml
           if-no-files-found: warn
 
       - name: Publish test report
@@ -86,5 +61,5 @@ jobs:
         uses: dorny/test-reporter@v2
         with:
           name: Test Results (Main)
-          path: TestResults/**/*.trx
+          path: '**/TestResults/**/*.trx'
           reporter: dotnet-trx

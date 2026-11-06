@@ -25,7 +25,7 @@ Execution starts in `main.fss`, which loads the scene and starts rendering throu
 Check out the [FScript repository](https://github.com/MagnusOpera/FScript) and build the provider library with the .NET 10 SDK before the first run:
 
 ```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
 ```
 
 This compiles the FFI library used by `fscript`. Rebuild it when changing provider code; script edits only require running the `fscript` command again. Version 0.81.3 includes the macOS signing entitlement required to load GLFW.
@@ -77,7 +77,7 @@ All sample code lives under [`samples/ffi`](https://github.com/MagnusOpera/FScri
 | --- | --- |
 | `scene.fss` | Chooses scene data, uploads the generated mesh, and animates it. |
 | `teapot.fss` | Holds the Bézier patch data and generates vertices, normals, and triangle indices. |
-| `Graphics.fs` | Declares the script-visible types and typed FFI functions. |
+| `Provider/Graphics.fs` | Declares the script-visible types and typed FFI functions. |
 | `main.fss` | Starts the window loop and returns a render closure that retains the mesh. |
 | `Renderer/` | Implements the native window, GPU buffers, shaders, and rendering. |
 | `fscript.toml` | Makes the provider available to CLI and editor analysis. |
@@ -176,7 +176,7 @@ The sample supplies `Math.toFloat`, `Math.sqrt`, and `Math.sin` as typed extern 
 
 ## 3. Expose data and resources as host types
 
-`Graphics.fs` uses attributes on real F# types. Here are two representative definitions:
+`Provider/Graphics.fs` uses attributes on real F# types. Here are two representative definitions:
 
 ```fsharp
 [<FScriptHostType("Vec3", ScriptConstructible = true)>]
@@ -212,7 +212,7 @@ A `Window` descriptor instead has `HostManaged = true` and only a visible `Title
 
 ## 4. Turn typed handlers into function descriptors
 
-The upload handler has the concrete F# type `Window -> Geometry -> Mesh`. It validates geometry, uploads it through `window.Backend`, and returns a mesh retaining that backend and its resource handle. The complete implementation is in `Graphics.fs`.
+The upload handler has the concrete F# type `Window -> Geometry -> Mesh`. It validates geometry, uploads it through `window.Backend`, and returns a mesh retaining that backend and its resource handle. The complete implementation is in `Provider/Graphics.fs`.
 
 Register it with a registration that already contains the referenced type descriptors:
 
@@ -249,7 +249,7 @@ Build the sample in Release, then run **FScript: Select Configuration** in VS Co
 
 ```toml
 [runtime]
-extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+extern-assemblies = ["Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll"]
 ```
 
 The path is relative to the manifest. In a trusted workspace, the editor loads the provider's descriptors and schemes for completion, hover, and diagnostics. Provider discovery creates no window or GPU resources. If several manifests exist in the workspace, select this one explicitly.

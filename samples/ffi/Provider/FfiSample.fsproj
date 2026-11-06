@@ -2,10 +2,10 @@
   <PropertyGroup><AssemblyName>FScript.Ffi.Sample</AssemblyName><EnableDynamicLoading>true</EnableDynamicLoading></PropertyGroup>
   <ItemGroup>
     <Compile Include="Graphics.fs" />
-    <Content Include="*.fss" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../*.fss" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="Renderer/Renderer.csproj" />
+    <ProjectReference Include="../Renderer/Renderer.csproj" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
     <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />

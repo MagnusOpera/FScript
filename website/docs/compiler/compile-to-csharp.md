@@ -59,7 +59,7 @@ Manifest assembly paths resolve from the manifest directory. `--config <path>` c
 For the teapot sample, build the provider first and use its existing manifest:
 
 ```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
 fscript analyze samples/ffi/main.fss
 fscript compile samples/ffi/main.fss --target csharp --output out/ffi-csharp
 ```

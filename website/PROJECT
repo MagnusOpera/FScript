@@ -1,0 +1,21 @@
+project website {
+    depends_on = [ project.javascript ]
+    includes = [ "**/*" "../.config/dotnet-tools.json" "../CHANGELOG.md" ]
+    ignores = [ "node_modules/**" "build/**" ".docusaurus/**" "src/generated/**" ]
+    @npm { }
+}
+
+target install {
+    outputs = [ "node_modules/" ]
+    @npm install { }
+}
+
+target build {
+    outputs = [ "build/" "src/generated/" ]
+    @npm build { }
+}
+
+target test {
+    outputs = []
+    @npm run { target = "typecheck" }
+}

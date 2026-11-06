@@ -35,7 +35,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ffi", "ffi", "{9690432B-97EE-2C44-DC05-BE42F5F4E82F}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FfiSample", "samples\ffi\FfiSample.fsproj", "{337DC273-3133-42EA-B2B8-71E8E56BF17F}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FfiSample", "samples\ffi\Provider\FfiSample.fsproj", "{337DC273-3133-42EA-B2B8-71E8E56BF17F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Renderer", "samples\ffi\Renderer\Renderer.csproj", "{F489A79F-CB10-4177-9228-B4B1CD5B7574}"
 EndProject

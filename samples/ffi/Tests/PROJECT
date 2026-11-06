@@ -1,0 +1,14 @@
+project ffisample_tests {
+    includes = [ "**/*" "../../../Directory.Build.props" "../../../tests/FScript.Runtime.Tests/SdkTestHost.fs" "../*.fss" ]
+    ignores = [ "**/bin/**" "**/obj/**" "**/TestResults/**" ]
+    @dotnet { }
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}
+
+target test {
+    outputs = [ "TestResults/" ]
+    @dotnet test { build = false restore = false args = "--results-directory TestResults" }
+}
