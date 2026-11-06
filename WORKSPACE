@@ -33,6 +33,12 @@ target build {
     depends_on = [ target.install target.^build ]
 }
 
+target dist {
+    phase = phase.application
+    artifacts = ~external
+    depends_on = [ target.build target.^dist ]
+}
+
 target test {
     batch = ~never
     phase = phase.application
@@ -92,20 +98,27 @@ target test_ci {
 }
 
 extension @dotnet {
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}-sdk${local.versions.dotnet_sdk}-node${local.versions.node}-${terrabuild.arch}"
+    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     defaults { configuration = var.config }
 }
 
 extension @npm {
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}-sdk${local.versions.dotnet_sdk}-node${local.versions.node}-${terrabuild.arch}"
+    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { CI = "true" }
 }
 
 extension workflow {
     script = ".build/workflow.fss"
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}-sdk${local.versions.dotnet_sdk}-node${local.versions.node}-${terrabuild.arch}"
+    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { FSCRIPT_BUILD_CONFIG = var.config }
+}
+
+extension @docker {
+    defaults {
+        image = "ghcr.io/magnusopera/fscript-${terrabuild.project}"
+        platforms = [ "linux/${terrabuild.arch}" ]
+    }
 }

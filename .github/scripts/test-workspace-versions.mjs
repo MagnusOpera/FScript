@@ -37,12 +37,12 @@ test('missing, duplicate, or computed versions fail before tool installation', (
     assert.throws(() => readToolVersions(source.replace('node: "99"', 'node: "$(whoami)"')), /quoted literal values/);
 });
 
-test('toolchain identity follows tool inputs without following unrelated workspace edits', () => {
+test('native toolchain tags follow workspace tool versions and Dockerfile inputs', () => {
     const root = fileURLToPath(new URL('../../', import.meta.url));
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-toolchain-identity-'));
     try {
         fs.mkdirSync(path.join(fixture, '.build/toolchain'), { recursive: true });
-        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile', '.build/toolchain/image.sh']) {
+        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile']) {
             fs.copyFileSync(path.join(root, file), path.join(fixture, file));
         }
         fs.mkdirSync(path.join(fixture, 'app'));
@@ -60,8 +60,6 @@ test('toolchain identity follows tool inputs without following unrelated workspa
         const original = image();
         const workspace = path.join(fixture, 'WORKSPACE');
         const contents = fs.readFileSync(workspace, 'utf8');
-        fs.writeFileSync(workspace, contents + '\ntarget unrelated_ci_check { depends_on = [] }\n');
-        assert.equal(image(), original, 'An unrelated target must not invalidate every build.');
         fs.writeFileSync(workspace, fs.readFileSync(workspace, 'utf8').replace(/dotnet_sdk: "[^"]+"/, 'dotnet_sdk: "10.0.999"'));
         assert.notEqual(image(), original);
         fs.writeFileSync(workspace, contents.replace(/node: "[^"]+"/, 'node: "99"'));

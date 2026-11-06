@@ -1,14 +1,15 @@
 project toolchain {
     labels = [ "toolchain" ]
-    includes = [ "Dockerfile" "PROJECT" "image.sh" ]
+    includes = [ "**/*" "../../WORKSPACE" ]
+    @docker { }
 }
 
-# CI builds publish missing images; shards only pull. Local runs build locally.
-target image {
+target dist {
     phase = phase.toolchains
-    build = ~always
-    artifacts = ~none
-    @shell bash {
-        args = "image.sh ghcr.io/magnusopera/fscript-toolchain:${terrabuild.version}-sdk${local.versions.dotnet_sdk}-node${local.versions.node}-${terrabuild.arch} ${local.versions.dotnet_sdk} ${local.versions.node} linux/${terrabuild.arch}"
+    @docker build {
+        build_args = {
+            DOTNET_SDK_VERSION: local.versions.dotnet_sdk
+            NODE_VERSION: local.versions.node
+        }
     }
 }

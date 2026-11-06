@@ -29,8 +29,6 @@ jobs:
       contents: read
       checks: write
       packages: write
-    env:
-      FSCRIPT_TOOLCHAIN_MODE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'local' || 'publish' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -77,8 +75,6 @@ jobs:
     name: Tests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      FSCRIPT_TOOLCHAIN_MODE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'local' || 'pull' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
