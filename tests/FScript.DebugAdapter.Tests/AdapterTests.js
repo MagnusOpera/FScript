@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { waitForMessage } = require('./EventWait');
 
 const root = path.resolve(__dirname, '../..');
 const cli = process.env.FSCRIPT_DEBUG_CLI || path.join(root, 'src/FScript/bin/Release/net10.0/fscript.dll');
@@ -54,13 +55,8 @@ class Client {
       this.pending.set(seq, { resolve, timer });
     });
   }
-  wait(predicate) {
-    const i = this.messages.findIndex(predicate);
-    if (i >= 0) return Promise.resolve(this.messages.splice(i,1)[0]);
-    return new Promise((resolve,reject) => {
-      const timer = setTimeout(() => reject(new Error(`Timed out waiting for event: ${this.errors}`)),10000);
-      this.waits.push({ predicate, resolve, timer });
-    });
+  wait(predicate, options) {
+    return waitForMessage(this, predicate, options);
   }
   async launch(program, extras = {}) {
     const initialized = await this.request('initialize', { adapterID: 'fscript', supportsRunInTerminalRequest: true, linesStartAt1: true, columnsStartAt1: true });
@@ -148,7 +144,11 @@ test('native teapot callbacks can pause and resume on the CLI main thread', asyn
   const points = await client.request('setBreakpoints',{source:{path:scene},breakpoints:[{line:23}]});
   assert.equal(points.body.breakpoints[0].verified,true);
   await client.request('configurationDone');
-  const stop = await client.wait(message => message.event === 'stopped');
+  // The real sample generates the full mesh before entering its render callback.
+  // Concurrent builds on a CI runner can make that startup exceed ten seconds.
+  const stop = await client.wait(message => message.event === 'stopped', {
+    timeoutMs: 60000, label: 'first teapot render breakpoint after mesh generation'
+  });
   const stack = await client.request('stackTrace',{threadId:stop.body.threadId});
   assert.equal(stack.body.stackFrames[0].name,'render');
   const scopes = await client.request('scopes',{frameId:stack.body.stackFrames[0].id});
@@ -159,7 +159,7 @@ test('native teapot callbacks can pause and resume on the CLI main thread', asyn
   assert.ok(values.body.variables.some(value => value.name === 'seconds'));
   await client.request('setBreakpoints',{source:{path:scene},breakpoints:[]});
   await client.request('continue',{threadId:stop.body.threadId,singleThread:true});
-  await client.wait(message => message.event === 'terminated');
+  await client.wait(message => message.event === 'terminated', { label: 'teapot termination after continue' });
 });
 
 test('DAP zero-based source positions are normalized without changing runtime locations', async t => {

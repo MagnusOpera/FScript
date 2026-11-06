@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Allow the native teapot debugger test to finish mesh generation on busy CI runners and report clearer event timeouts.
 - Define shared build-tool versions in WORKSPACE for container builds and GitHub workflows.
 - Update the .NET build toolchain to SDK 10.0.403 so Native AOT publishing uses the patched compiler.
 - Publish .NET, JavaScript, and debugger test summaries and downloadable Terrabuild logs in CI.
