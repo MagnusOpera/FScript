@@ -623,7 +623,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates task await result`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         match Helpers.evalWithExterns externs "Task.await (Task.spawn (fun _ -> 41 + 1))" with
         | VInt 42L -> ()
@@ -631,7 +631,7 @@ type EvalTests () =
 
     [<Test>]
     member _.``Evaluates multiple tasks with captured values`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         match Helpers.evalWithExterns externs "let base = 10\nlet a = Task.spawn (fun _ -> base + 1)\nlet b = Task.spawn (fun _ -> base + 2)\n(Task.await a, Task.await b)" with
         | VTuple [ VInt 11L; VInt 12L ] -> ()
@@ -639,14 +639,14 @@ type EvalTests () =
 
     [<Test>]
     member _.``Reports runtime error for failed task`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         let act () = Helpers.evalWithExterns externs "Task.await (Task.spawn (fun _ -> raise \"boom\"))" |> ignore
         act |> should throw typeof<EvalException>
 
     [<Test>]
     member _.``Runtime joins unawaited task`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         match Helpers.evalWithExterns externs "Task.spawn (fun _ -> 1)" with
         | VTask handle -> Assert.That(handle.Worker.IsCompleted, Is.True)
@@ -664,7 +664,7 @@ type EvalTests () =
     member _.``Choose preserves callback order selection and failures`` () =
         let calls = ResizeArray<int64>()
         let mark : ExternalFunction =
-            { Name = "Host.mark"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.mark"; Scheme = Forall([], TFun(TInt, TInt)); Arity = 1
               Impl = fun _ args ->
                 match args with
                 | [VInt value] -> calls.Add value; VInt value

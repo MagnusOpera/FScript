@@ -13,7 +13,7 @@ type TaskLibraryTests() =
     let eval source = evalWith [] source |> Pretty.valueToString
     let foreignTask (worker: Task<TaskOutcome>) = { Worker=worker;DebugTaskId=None;Awaited=false }
     let external name result implementation : ExternalFunction =
-        {Name=name;Scheme=Forall([],TFun(TUnit,result));Arity=1;Impl=fun _ _ -> implementation()}
+        { RequiredPermissions = FScript.Language.HostPermissions.None;Name=name;Scheme=Forall([],TFun(TUnit,result));Arity=1;Impl=fun _ _ -> implementation()}
     static member Cases = TaskLibraryCases.successes |> List.map (fun (name,source,expected) -> TestCaseData(source,expected).SetName("Task: "+name))
     static member Failures = TaskLibraryCases.failures |> List.map (fun (name,source,message) -> TestCaseData(source,message).SetName("Task error: "+name))
 
@@ -122,7 +122,7 @@ type TaskLibraryTests() =
     member _.``Scope joins unobserved delays before returning`` () =
         let mutable worker = None
         let capture : ExternalFunction =
-            { Name = "Host.capture"; Scheme = Forall([], TFun(TTask TUnit, TUnit)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.capture"; Scheme = Forall([], TFun(TTask TUnit, TUnit)); Arity = 1
               Impl = fun _ args ->
                   match args with
                   | [VTask handle] -> worker <- Some handle.Worker; VUnit

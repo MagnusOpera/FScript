@@ -66,6 +66,7 @@ const sidebars: SidebarsConfig = {
       label: 'Embedding',
       items: [
         'embedding/embedding-overview',
+        'embedding/host-permissions',
         'embedding/real-world-embedding',
         'embedding/fable-javascript',
         'embedding/register-externs',

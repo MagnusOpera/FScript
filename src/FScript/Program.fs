@@ -83,7 +83,7 @@ let runCompileCommand (argv: string array) =
                         0
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
                     settings.ConfigurationPath |> Option.iter (fun path -> report $"Loading configuration {path}...")
-                    let loaded = EnvironmentLoader.loadWithInfo settings |> function Ok environment -> environment | Error message -> failwith message
+                    let loaded = EnvironmentLoader.loadWithInfoAndPermissions HostPermissions.All settings |> function Ok environment -> environment | Error message -> failwith message
                     let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
                     let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
                     let purity = FScript.Compiler.ClrBindings.providerPurity (loaded.ProviderMethods |> List.map snd)
@@ -219,7 +219,7 @@ let runAnalyzeCommand (argv: string array) =
             let settings =
                 EnvironmentConfiguration.resolveForCli (args.TryGetResult <@ AnalyzeArgs.Config @>) (args.Contains <@ AnalyzeArgs.No_Config @>) (Directory.GetCurrentDirectory()) root (args.TryGetResult <@ AnalyzeArgs.Root @>) (args.Contains <@ AnalyzeArgs.No_Default_Externs @>) (args.GetResults <@ AnalyzeArgs.Extern_Assembly @>)
                 |> function Ok settings -> settings | Error message -> failwith message
-            let loaded = EnvironmentLoader.loadWithInfo settings |> function Ok loaded -> loaded | Error message -> failwith message
+            let loaded = EnvironmentLoader.loadWithInfoAndPermissions HostPermissions.All settings |> function Ok loaded -> loaded | Error message -> failwith message
             let providers = loaded.ProviderMethods |> List.map snd
             let purity = FScript.Compiler.ClrBindings.providerPurity providers
             let options = TaskSharingContracts.fromProviders providers |> TaskSharingContracts.withRuntime loaded.Registration
@@ -451,7 +451,7 @@ let runOrdinaryCommand argv =
                     (args.Contains <@ No_Default_Externs @>)
                     (args.GetResults <@ Extern_Assembly @>)
             let rootDirectory = settingsResult |> Result.map (fun settings -> settings.RootDirectory) |> Result.defaultValue defaultRoot
-            let externsResult = settingsResult |> Result.bind EnvironmentLoader.load
+            let externsResult = settingsResult |> Result.bind (EnvironmentLoader.loadWithPermissions HostPermissions.All)
 
             try
                 match externsResult with

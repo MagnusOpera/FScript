@@ -898,7 +898,7 @@ let queryValues : string -> string -> string list option
         let collected = Dictionary<(string * int * int * int * int * string), TypeInfer.LocalVariableTypeInfo>()
 
         let bindingExtern name bindingType =
-            { Name = name
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = name
               Scheme = Forall(Types.ftvType bindingType |> Set.toList, bindingType)
               Arity = 0
               Impl = fun _ _ -> VUnit }

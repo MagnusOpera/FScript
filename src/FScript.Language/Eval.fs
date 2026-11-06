@@ -9,7 +9,8 @@ module Eval =
 #endif
 
     type ProgramState =
-        { TypeDefs: Map<string, Type>
+        { Permissions: HostPermissions
+          TypeDefs: Map<string, Type>
           Env: Env
           LastValue: Value
           ExitCode: int }
@@ -17,7 +18,8 @@ module Eval =
     type InvocationResult = { Value: Value; ExitCode: int }
 
     type private RuntimeState =
-        { SyncRoot: obj
+        { Permissions: HostPermissions
+          SyncRoot: obj
           ExitCode: int ref
           Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
@@ -48,6 +50,11 @@ module Eval =
             if not runtime.Active.Value then
                 raise (EvalException { Message = "Script task scope has ended"; Span = unknownSpan })
             ())
+
+    let private checkPermissions runtime required =
+        checkRuntime runtime
+        if not (HostInterop.allows runtime.Permissions required) then
+            raise (EvalException { Message = $"Host permissions denied: {HostInterop.permissionNames required}"; Span = unknownSpan })
 
     // Joining repeatedly includes tasks spawned by workers while an earlier batch
     // is being awaited. The scope stays active until every worker has finished.
@@ -477,13 +484,14 @@ module Eval =
         { Session = runtime.SyncRoot
           IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active.Value)
           Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
-          SpawnTask = spawnTaskValue runtime typeDefs
-          AwaitTask = awaitTaskValue runtime
+          SpawnTask = fun thunk -> checkPermissions runtime HostPermissions.Threading; spawnTaskValue runtime typeDefs thunk
+          AwaitTask = fun task -> checkPermissions runtime HostPermissions.Threading; awaitTaskValue runtime task
 #if FABLE_COMPILER
           SetExitCode = ignore
 #else
           SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
 #endif
+          CheckPermissions = checkPermissions runtime
           CheckRuntime = fun () ->
               checkRuntime runtime
 #if !FABLE_COMPILER
@@ -688,6 +696,7 @@ module Eval =
     }
 
     and private invokeExternalUnchecked runtime typeDefs span ext args : Execution<Value> = execution {
+        checkPermissions runtime ext.RequiredPermissions
         if TaskFunctions.isCanonical ext then
 #if FABLE_COMPILER
             return raise (EvalException {Message= $"{ext.Name} is not supported in Fable builds";Span=span})
@@ -960,9 +969,10 @@ module Eval =
             return invalidOp "Immediate expressions are handled before compound evaluation."
     }
 
-    let invokeValueWithExitCode (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : InvocationResult =
+    let invokeValueWithPermissionsAndExitCode permissions (typeDefs: Map<string, Type>) (fnValue: Value) (args: Value list) : InvocationResult =
         let runtime =
-            { SyncRoot = obj ()
+            { Permissions = permissions
+              SyncRoot = obj ()
               ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()
@@ -1009,6 +1019,8 @@ module Eval =
         )
         { result with ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
+    let invokeValueWithExitCode typeDefs fnValue args = invokeValueWithPermissionsAndExitCode HostPermissions.None typeDefs fnValue args
+
     let invokeValue typeDefs fnValue args = (invokeValueWithExitCode typeDefs fnValue args).Value
 
     let private validateTopLevelBindings (program: TypeInfer.TypedProgram) =
@@ -1043,7 +1055,7 @@ module Eval =
             | TypeInfer.TSBackendImport(name, importedType, import, span) ->
                 let rec arity = function TFun(_, result) -> 1 + arity result | _ -> 0
                 let external =
-                    { Name = name
+                    { RequiredPermissions = FScript.Language.HostPermissions.None; Name = name
                       Scheme = Forall([], importedType)
                       Arity = arity importedType
                       Impl = fun _ _ -> raise (EvalException { Message = $"Backend import '{import.ModulePath}.{import.MemberName}' is not executable in the legacy evaluator"; Span = span }) }
@@ -1086,14 +1098,16 @@ module Eval =
             | TypeInfer.TSExpr texpr ->
                 lastValue <- evalExpr runtime typeDefs env texpr.Expr |> Execution.run
 
-        { TypeDefs = typeDefs
+        { Permissions = runtime.Permissions
+          TypeDefs = typeDefs
           Env = env
           LastValue = lastValue
           ExitCode = withRuntimeLock runtime (fun () -> runtime.ExitCode.Value) }
 
     let evalProgramFromState (state: ProgramState) (program: TypeInfer.TypedProgram) : ProgramState =
         let runtime =
-            { SyncRoot = obj ()
+            { Permissions = state.Permissions
+              SyncRoot = obj ()
               ExitCode = ref state.ExitCode
               Active = ref true
               PendingTasks = ResizeArray()
@@ -1111,10 +1125,12 @@ module Eval =
         (debugger: IDebugObserver option)
 #endif
         (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
+        let registration = HostInterop.permitted registration
         let externs = registration.Functions
         let reserved = BuiltinSignatures.builtinReservedNames
         let runtime =
-            { SyncRoot = obj ()
+            { Permissions = registration.Permissions
+              SyncRoot = obj ()
               ExitCode = ref 0
               Active = ref true
               PendingTasks = ResizeArray()

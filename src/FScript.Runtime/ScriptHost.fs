@@ -11,7 +11,8 @@ module ScriptHost =
           ReturnType: Type }
 
     type LoadedScript =
-        { TypeDefs: Map<string, Type>
+        { Permissions: HostPermissions
+          TypeDefs: Map<string, Type>
           Env: Env
           ExportedFunctionNames: string list
           ExportedFunctionSet: Set<string>
@@ -102,7 +103,8 @@ module ScriptHost =
                 | None -> None)
             |> Map.ofList
 
-        { TypeDefs = state.TypeDefs
+        { Permissions = registration.Permissions
+          TypeDefs = state.TypeDefs
           Env = state.Env
           ExportedFunctionNames = functionNames
           ExportedFunctionSet = functionSet
@@ -115,11 +117,13 @@ module ScriptHost =
           ExitCode = state.ExitCode }
 
     let private loadProgram registration program =
+        let registration = HostInterop.permitted registration
         loadTypedProgram registration (TypeInfer.inferProgramWithRegistration registration program)
 
     /// Runs analysis once before evaluation and reports warnings to the host.
     /// Existing load APIs never enter this path or construct analysis state.
     let loadProgramWithTaskSharingAnalysis registration purity options report program =
+        let registration = HostInterop.permitted registration
         let resolved = TypeInfer.inferResolvedProgramWithRegistrationAndPurity registration purity program
         let options = TaskSharingContracts.withRuntime registration options
         TaskSharingAnalysis.analyze registration options resolved |> List.iter report
@@ -196,11 +200,11 @@ module ScriptHost =
                     let fullType = List.foldBack (fun argument result -> TFun(argument, result)) signature.ParameterTypes signature.ReturnType
                     let mutable exitCode=0
                     let value=HostInterop.validateCall loaded.TypeDefs fullType args (fun () ->
-                        let result=Eval.invokeValueWithExitCode loaded.TypeDefs fnValue args
+                        let result=Eval.invokeValueWithPermissionsAndExitCode loaded.Permissions loaded.TypeDefs fnValue args
                         exitCode<-result.ExitCode
                         result.Value)
                     {Value=value;ExitCode=exitCode}
-                | None -> Eval.invokeValueWithExitCode loaded.TypeDefs fnValue args
+                | None -> Eval.invokeValueWithPermissionsAndExitCode loaded.Permissions loaded.TypeDefs fnValue args
             | Some _ ->
                 raise (HostCommon.evalError $"'{functionName}' is not callable")
             | None ->
@@ -212,3 +216,9 @@ module ScriptHost =
     let loadFile externs path = loadFileWithRegistration (HostInterop.ofExterns externs) path
     let loadSourceWithIncludes externs root entry source resolver =
         loadSourceWithIncludesAndRegistration (HostInterop.ofExterns externs) root entry source resolver
+
+    let loadSourceWithPermissions permissions externs source =
+        loadSourceWithRegistration (HostInterop.ofExternsWithPermissions permissions externs) source
+
+    let loadFileWithPermissions permissions externs path =
+        loadFileWithRegistration (HostInterop.ofExternsWithPermissions permissions externs) path

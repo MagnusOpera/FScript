@@ -64,18 +64,19 @@ let normalizeNameExtern =
         (fun (name: string) -> name.Trim().ToUpperInvariant())
 
 let hostContext =
-    { HostContext.RootDirectory = root
+    { HostContext.Permissions = FScript.Language.HostPermissions.IO ||| FScript.Language.HostPermissions.Native
+      RootDirectory = root
       DeniedPathGlobs = [] }
 
 let custom =
-    ExtensionBridge.toLanguageRegistration
+    ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.Native
         { FScript.Extensibility.HostInterop.empty with Functions = [normalizeNameExtern] }
 let externs = custom.Functions @ Registry.all hostContext
 
 // 4) Load script once (imports + extern typing + evaluation environment).
 let loaded =
-    ScriptHost.loadSourceWithIncludes
-        externs
+    ScriptHost.loadSourceWithIncludesAndRegistration
+        (FScript.Language.HostInterop.ofExternsWithPermissions hostContext.Permissions externs)
         root
         entryFile
         entrySource

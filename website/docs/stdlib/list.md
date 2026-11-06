@@ -4,6 +4,8 @@ title: List Module
 slug: /stdlib/list
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 ## Native list access
 
 | Form | Signature | Description |
@@ -16,6 +18,8 @@ let maybeSecond = [10; 20; 30][1]
 
 ## `List.empty : 'a list`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns an empty list.
 
 ```fsharp
@@ -23,6 +27,8 @@ let xs = List.empty
 ```
 
 ## `List.map : ('a -> 'b) -> 'a list -> 'b list`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Transforms each item.
 
@@ -32,6 +38,8 @@ let doubled = [1; 2; 3] |> List.map (fun n -> n * 2)
 
 ## `List.iter : ('a -> unit) -> 'a list -> unit`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Applies a side-effecting function to each item.
 
 ```fsharp
@@ -39,6 +47,8 @@ Applies a side-effecting function to each item.
 ```
 
 ## `List.choose : ('a -> 'b option) -> 'a list -> 'b list`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Maps and keeps only `Some` results.
 
@@ -48,6 +58,8 @@ let parsed = ["1"; "x"; "2"] |> List.choose Int.tryParse
 
 ## `List.collect : ('a -> 'b list) -> 'a list -> 'b list`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Maps each item to a list, then concatenates.
 
 ```fsharp
@@ -55,6 +67,8 @@ let pairs = [1; 2] |> List.collect (fun n -> [n; n])
 ```
 
 ## `List.exists : ('a -> bool) -> 'a list -> bool`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Returns `true` if any item matches.
 
@@ -64,6 +78,8 @@ let hasEven = [1; 3; 4] |> List.exists (fun n -> n % 2 = 0)
 
 ## `List.contains : 'a -> 'a list -> bool`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Checks scalar membership (`unit`, `int`, `float`, `bool`, or `string`). The current implementation does not compare composite values here; use `List.exists (fun item -> item = needle)` for records, options, tuples, lists, maps, or union values.
 
 ```fsharp
@@ -71,6 +87,8 @@ let hasTwo = [1; 2; 3] |> List.contains 2
 ```
 
 ## `List.rev : 'a list -> 'a list`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Reverses a list.
 
@@ -80,6 +98,8 @@ let reversed = [1; 2; 3] |> List.rev
 
 ## `List.distinct : 'a list -> 'a list`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Removes duplicates while preserving the first occurrence order. Equality is recursive for data values; host-managed values compare their visible fields, excluding opaque payloads.
 
 ```fsharp
@@ -87,6 +107,8 @@ let unique = [1; 2; 2; 3] |> List.distinct
 ```
 
 ## `List.fold : ('state -> 'a -> 'state) -> 'state -> 'a list -> 'state`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Folds left over a list.
 
@@ -96,6 +118,8 @@ let sum = [1; 2; 3] |> List.fold (fun acc n -> acc + n) 0
 
 ## `List.filter : ('a -> bool) -> 'a list -> 'a list`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Keeps only matching items.
 
 ```fsharp
@@ -103,6 +127,8 @@ let odds = [1; 2; 3; 4] |> List.filter (fun n -> n % 2 = 1)
 ```
 
 ## `List.length : 'a list -> int`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Returns item count.
 
@@ -112,6 +138,8 @@ let n = ["a"; "b"] |> List.length
 
 ## `List.tryFind : ('a -> bool) -> 'a list -> 'a option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns first matching element.
 
 ```fsharp
@@ -120,6 +148,8 @@ let maybeBig = [2; 4; 9] |> List.tryFind (fun n -> n > 5)
 
 ## `List.tryGet : ('a -> bool) -> 'a list -> int option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns index of first matching element.
 
 ```fsharp
@@ -127,6 +157,8 @@ let maybeIndex = ["a"; "bb"; "ccc"] |> List.tryGet (fun s -> String.indexOf "c" 
 ```
 
 ## `List.tryItem : int -> 'a list -> 'a option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Returns the item at a zero-based index.
 Returns `None` for negative or out-of-range indices.
@@ -137,6 +169,8 @@ let maybeSecond = List.tryItem 1 [10; 20; 30]
 
 ## `List.tryHead : 'a list -> 'a option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns first item if present.
 
 ```fsharp
@@ -145,6 +179,8 @@ let maybeFirst = [10; 20] |> List.tryHead
 
 ## `List.tail : 'a list -> 'a list`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns all elements except the head. An empty input is an evaluation error; use a `head :: tail` / `[]` match when emptiness is expected.
 
 ```fsharp
@@ -152,6 +188,8 @@ let rest = [1; 2; 3] |> List.tail
 ```
 
 ## `List.append : 'a list -> 'a list -> 'a list`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Concatenates two lists.
 
@@ -164,6 +202,8 @@ let all = List.append [1; 2] [3; 4]
 Count/size arguments must fit `0..2147483647`; chunk sizes must also be positive. Invalid arguments raise script errors. Collection callbacks run in the documented order and may themselves have effects; these helpers are pure when their callbacks are pure.
 
 ### `List.isEmpty`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.isEmpty : 'a list -> bool
@@ -178,6 +218,8 @@ List.isEmpty (List.init 0 (fun i -> i))
 
 ### `List.forall`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.forall : ('a -> bool) -> 'a list -> bool
 ```
@@ -190,6 +232,8 @@ List.forall (fun x -> x > 0) [1;2]
 ```
 
 ### `List.mapi`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.mapi : (int -> 'a -> 'b) -> 'a list -> 'b list
@@ -204,6 +248,8 @@ List.mapi (fun i x -> i + x) [10;20]
 
 ### `List.indexed`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.indexed : 'a list -> ((int * 'a)) list
 ```
@@ -216,6 +262,8 @@ List.indexed [4;5]
 ```
 
 ### `List.init`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.init : int -> (int -> 'a) -> 'a list
@@ -230,6 +278,8 @@ List.init 3 (fun i -> i * 2)
 
 ### `List.take`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.take : int -> 'a list -> 'a list
 ```
@@ -242,6 +292,8 @@ List.take 2 [1;2;3]
 ```
 
 ### `List.skip`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.skip : int -> 'a list -> 'a list
@@ -256,6 +308,8 @@ List.skip 2 [1;2;3]
 
 ### `List.takeWhile`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.takeWhile : ('a -> bool) -> 'a list -> 'a list
 ```
@@ -268,6 +322,8 @@ List.takeWhile (fun x -> x < 3) [1;2;3;1]
 ```
 
 ### `List.skipWhile`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.skipWhile : ('a -> bool) -> 'a list -> 'a list
@@ -282,6 +338,8 @@ List.skipWhile (fun x -> x < 3) [1;2;3;1]
 
 ### `List.partition`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.partition : ('a -> bool) -> 'a list -> ('a list * 'a list)
 ```
@@ -294,6 +352,8 @@ List.partition (fun x -> x % 2 = 0) [1;2;3;4]
 ```
 
 ### `List.zip`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.zip : 'a list -> 'b list -> (('a * 'b)) list
@@ -308,6 +368,8 @@ List.zip [1;2] ["a";"b"]
 
 ### `List.unzip`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.unzip : (('a * 'b)) list -> ('a list * 'b list)
 ```
@@ -320,6 +382,8 @@ List.unzip [(1,"a");(2,"b")]
 ```
 
 ### `List.chunkBySize`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.chunkBySize : int -> 'a list -> 'a list list
@@ -334,6 +398,8 @@ List.chunkBySize 2 [1;2;3]
 
 ### `List.scan`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.scan : ('d -> 'a -> 'd) -> 'd -> 'a list -> 'd list
 ```
@@ -346,6 +412,8 @@ List.scan (fun s x -> s+x) 0 [1;2;3]
 ```
 
 ### `List.sortWith`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.sortWith : ('a -> 'a -> int) -> 'a list -> 'a list
@@ -360,6 +428,8 @@ List.sortWith (fun a b -> a-b) [3;1;2;1]
 
 ### `List.sortBy`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.sortBy : ('a -> 'c) -> 'a list -> 'a list
 ```
@@ -372,6 +442,8 @@ List.sortBy String.length ["bb";"a";"cc"]
 ```
 
 ### `List.distinctBy`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.distinctBy : ('a -> 'c) -> 'a list -> 'a list
@@ -386,6 +458,8 @@ List.distinctBy String.length ["a";"b";"cc"]
 
 ### `List.groupBy`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 List.groupBy : ('a -> 'c) -> 'a list -> (('c * 'a list)) list
 ```
@@ -398,6 +472,8 @@ List.groupBy String.length ["a";"bb";"c"]
 ```
 
 ### `List.countBy`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 List.countBy : ('a -> 'c) -> 'a list -> (('c * int)) list

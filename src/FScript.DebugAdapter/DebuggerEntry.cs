@@ -172,7 +172,7 @@ public static class DebuggerEntry
         DebugSession session;
         try
         {
-            session = DebugLaunch.create(Text(args,"program"),Option(Text(args,"configurationPath")),true,Option(Text(args,"rootDirectory")),
+            session = DebugLaunch.createWithPermissions(FScript.Language.HostPermissions.All,Text(args,"program"),Option(Text(args,"configurationPath")),true,Option(Text(args,"rootDirectory")),
                 args?["args"]?.AsArray().Select(value => value!.GetValue<string>()).ToArray() ?? [],Boolean(args,"stopOnEntry"));
         }
         catch (Exception error)

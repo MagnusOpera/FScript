@@ -12,15 +12,15 @@ module HostManagedFixture =
     let registration =
         { types with
             Functions =
-                [ { Name = "Host.make"; Scheme = Forall([], TFun(TInt, TNamed "Node")); Arity = 1
+                [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.make"; Scheme = Forall([], TFun(TInt, TNamed "Node")); Arity = 1
                     Impl = fun _ args -> match args with [VInt n] -> node n | _ -> failwith "invalid" }
-                  { Name = "Host.accept"; Scheme = Forall([], TFun(TNamed "Node", TNamed "Node")); Arity = 1
+                  { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.accept"; Scheme = Forall([], TFun(TNamed "Node", TNamed "Node")); Arity = 1
                     Impl = fun _ args ->
                         let host = HostInterop.unwrap "Node" args.Head
                         Assert.That(host.Payload, Is.EqualTo(payload))
                         Assert.That(host.Descriptor.HostManaged, Is.True)
                         args.Head }
-                  { Name = "Host.clone"; Scheme = Forall([], TFun(TNamed "Node", TNamed "Node")); Arity = 1
+                  { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.clone"; Scheme = Forall([], TFun(TNamed "Node", TNamed "Node")); Arity = 1
                     Impl = fun _ args ->
                         let host = HostInterop.unwrap "Node" args.Head
                         HostInterop.create types "Node" (host.Fields |> Map.toList |> Map.ofList) host.Payload } ] }
@@ -84,8 +84,8 @@ type HostManagedTests() =
             { HostManagedFixture.registration with
                 Functions =
                     HostManagedFixture.registration.Functions @
-                    [ { Name = "a"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> a }
-                      { Name = "b"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> b } ] }
+                    [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "a"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> a }
+                      { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "b"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> b } ] }
         for source in ["a = b"; "[Some a] = [Some b]"; "List.length (List.distinct [a; b]) = 1"; "(Host.make 1 = Host.make 2) = false"] do
             let result = FScript.parse source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration
             Assert.That(Pretty.valueToString result, Is.EqualTo("true"), source)

@@ -45,7 +45,7 @@ type GraphicsTests() =
     member _.``assembly environment loads the real provider without native initialization``() =
         let root = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, ".."))
         let settings = EnvironmentConfiguration.merge root root None None true [typeof<GraphicsProvider>.Assembly.Location]
-        match EnvironmentLoader.load settings with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All settings with
         | Error error -> Assert.Fail error
         | Ok registration ->
             Assert.That(registration.Types.Length, Is.EqualTo 9)

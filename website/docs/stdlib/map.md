@@ -4,6 +4,8 @@ title: Map Module
 slug: /stdlib/map
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 FScript maps support string, int, bool, and unions whose cases all have no payload.
 
 Use `valueType map[keyType]` for key annotations, such as `string map[int]`. The legacy `valueType map` suffix means string keys. Keys and values can be inferred without annotations.
@@ -59,6 +61,8 @@ let maybeA = { ["a"] = 1 }["a"]
 
 ## `Map.empty : 'v map['key]`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Empty map.
 
 ```fsharp
@@ -66,6 +70,8 @@ let m = Map.empty
 ```
 
 ## `Map.tryGet : 'key -> 'v map['key] -> 'v option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Looks up a key.
 
@@ -76,6 +82,8 @@ let maybeA = m |> Map.tryGet "a"
 
 ## `Map.containsKey : 'key -> 'v map['key] -> bool`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Checks key existence.
 
 ```fsharp
@@ -83,6 +91,8 @@ let hasA = { ["a"] = 1 } |> Map.containsKey "a"
 ```
 
 ## `Map.add : 'key -> 'v -> 'v map['key] -> 'v map['key]`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Adds or replaces a key value.
 
@@ -92,6 +102,8 @@ let updated = Map.add "port" 8080 Map.empty
 
 ## `Map.ofList : ('key * 'v) list -> 'v map['key]`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Builds a map from key-value tuples. If a key appears more than once, the last value wins.
 
 ```fsharp
@@ -99,6 +111,8 @@ let m = [("a", 1); ("b", 2)] |> Map.ofList
 ```
 
 ## `Map.fold : ('state -> 'key -> 'v -> 'state) -> 'state -> 'v map['key] -> 'state`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Folds over key-value entries in key order, rather than insertion order. The other map traversals use the same ordering.
 
@@ -110,6 +124,8 @@ let total =
 
 ## `Map.count : 'v map['key] -> int`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns entry count.
 
 ```fsharp
@@ -117,6 +133,8 @@ let n = { ["a"] = 1; ["b"] = 2 } |> Map.count
 ```
 
 ## `Map.filter : ('key -> 'v -> bool) -> 'v map['key] -> 'v map['key]`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Keeps entries that satisfy predicate.
 
@@ -128,6 +146,8 @@ let small =
 
 ## `Map.choose : ('key -> 'v -> 'u option) -> 'v map['key] -> 'u map['key]`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Transforms entries and drops `None` results.
 
 ```fsharp
@@ -138,6 +158,8 @@ let parsed =
 
 ## `Map.map : ('v -> 'u) -> 'v map['key] -> 'u map['key]`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Transforms values.
 
 ```fsharp
@@ -146,6 +168,8 @@ let doubled = { ["x"] = 2 } |> Map.map (fun v -> v * 2)
 
 ## `Map.iter : ('key -> 'v -> unit) -> 'v map['key] -> unit`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Iterates entries for side effects.
 
 ```fsharp
@@ -153,6 +177,8 @@ Iterates entries for side effects.
 ```
 
 ## `Map.remove : 'key -> 'v map['key] -> 'v map['key]`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Removes a key.
 
@@ -182,6 +208,8 @@ type Result = | Empty | Value of int
 
 ### `Map.keys`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Map.keys : 'a map['c] -> 'c list
 ```
@@ -194,6 +222,8 @@ Map.keys { ["b"]=2; ["a"]=1 }
 ```
 
 ### `Map.values`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Map.values : 'a map['c] -> 'a list
@@ -208,6 +238,8 @@ Map.values { ["b"]=2; ["a"]=1 }
 
 ### `Map.toList`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Map.toList : 'a map['c] -> (('c * 'a)) list
 ```
@@ -220,6 +252,8 @@ Map.toList { ["a"]=1 }
 ```
 
 ### `Map.exists`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Map.exists : ('c -> 'a -> bool) -> 'a map['c] -> bool
@@ -234,6 +268,8 @@ Map.exists (fun k v -> k="a" && v=1) { ["a"]=1 }
 
 ### `Map.forall`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Map.forall : ('c -> 'a -> bool) -> 'a map['c] -> bool
 ```
@@ -247,6 +283,8 @@ Map.forall (fun k v -> v>0) { ["a"]=1 }
 
 ### `Map.update`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Map.update : 'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]
 ```
@@ -259,6 +297,8 @@ Map.update "a" (fun v -> Some (Option.defaultValue 0 v + 1)) { ["a"]=1 } |> Map.
 ```
 
 ### `Map.mergeWith`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Map.mergeWith : ('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]

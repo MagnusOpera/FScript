@@ -9,7 +9,7 @@ FScript is designed for host applications that embed a scripting language safely
 ## Embedding workflow
 
 1. Reference Language/Runtime for embedding and the independent Extensibility SDK for provider authoring.
-2. Build a host context.
+2. Build a host context and explicitly grant the [permissions](./host-permissions) your scripts need; the default grants none.
 3. Register [typed extern handlers](./register-externs.md) and, when needed, [host-provided types](./host-managed-types.md) your scripts can use.
 4. Load scripts (with include resolution if needed).
 5. Resolve exported function signatures.

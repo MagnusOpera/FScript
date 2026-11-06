@@ -4,9 +4,13 @@ title: Int, Float, Bool Modules
 slug: /stdlib/scalars
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 ## Int
 
 ### `Int.tryParse : string -> int option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Parses an invariant integer string.
 
@@ -15,6 +19,8 @@ let maybeN = Int.tryParse "42"
 ```
 
 ### `Int.toString : int -> string`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Formats an integer using invariant formatting.
 
@@ -26,6 +32,8 @@ let text = Int.toString 42
 
 ### `Float.tryParse : string -> float option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Parses an invariant floating-point string.
 
 ```fsharp
@@ -33,6 +41,8 @@ let maybePi = Float.tryParse "3.14"
 ```
 
 ### `Float.toString : float -> string`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Formats a float using a round-trippable representation.
 
@@ -44,6 +54,8 @@ let text = Float.toString 3.14
 
 ### `Bool.tryParse : string -> bool option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Parses `true` or `false`.
 
 ```fsharp
@@ -51,6 +63,8 @@ let maybeFlag = Bool.tryParse "true"
 ```
 
 ### `Bool.toString : bool -> string`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Formats a boolean as lowercase text.
 
@@ -74,6 +88,8 @@ Scalar math uses signed 64-bit integers and IEEE-754 doubles. Transcendental fun
 
 ### `Int.abs`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Int.abs : int -> int
 ```
@@ -86,6 +102,8 @@ Int.abs (0 - 3)
 ```
 
 ### `Int.sign`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Int.sign : int -> int
@@ -100,6 +118,8 @@ Int.sign (0 - 3)
 
 ### `Int.min`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Int.min : int -> int -> int
 ```
@@ -112,6 +132,8 @@ Int.min 2 3
 ```
 
 ### `Int.max`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Int.max : int -> int -> int
@@ -126,6 +148,8 @@ Int.max 2 3
 
 ### `Int.clamp`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Int.clamp : int -> int -> int -> int
 ```
@@ -138,6 +162,8 @@ Int.clamp 0 10 20
 ```
 
 ### `Float.abs`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.abs : float -> float
@@ -152,6 +178,8 @@ Float.abs (0.0 - 3.0)
 
 ### `Float.sign`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.sign : float -> int
 ```
@@ -164,6 +192,8 @@ Float.sign (0.0 - 3.0)
 ```
 
 ### `Float.min`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.min : float -> float -> float
@@ -178,6 +208,8 @@ Float.min 2.0 3.0
 
 ### `Float.max`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.max : float -> float -> float
 ```
@@ -190,6 +222,8 @@ Float.max 2.0 3.0
 ```
 
 ### `Float.clamp`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.clamp : float -> float -> float -> float
@@ -204,6 +238,8 @@ Float.clamp 0.0 10.0 20.0
 
 ### `Float.floor`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.floor : float -> float
 ```
@@ -216,6 +252,8 @@ Float.floor 1.8
 ```
 
 ### `Float.ceil`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.ceil : float -> float
@@ -230,6 +268,8 @@ Float.ceil 1.2
 
 ### `Float.round`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.round : float -> float
 ```
@@ -242,6 +282,8 @@ Float.round 2.5
 ```
 
 ### `Float.truncate`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.truncate : float -> float
@@ -256,6 +298,8 @@ Float.truncate (0.0 - 1.8)
 
 ### `Float.sqrt`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.sqrt : float -> float
 ```
@@ -268,6 +312,8 @@ Float.sqrt 9.0
 ```
 
 ### `Float.log`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.log : float -> float
@@ -282,6 +328,8 @@ Float.log 1.0
 
 ### `Float.log10`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.log10 : float -> float
 ```
@@ -294,6 +342,8 @@ Float.log10 100.0
 ```
 
 ### `Float.exp`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.exp : float -> float
@@ -308,6 +358,8 @@ Float.exp 0.0
 
 ### `Float.sin`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.sin : float -> float
 ```
@@ -320,6 +372,8 @@ Float.sin 0.0
 ```
 
 ### `Float.cos`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.cos : float -> float
@@ -334,6 +388,8 @@ Float.cos 0.0
 
 ### `Float.tan`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.tan : float -> float
 ```
@@ -346,6 +402,8 @@ Float.tan 0.0
 ```
 
 ### `Float.asin`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.asin : float -> float
@@ -360,6 +418,8 @@ Float.asin 0.0
 
 ### `Float.acos`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.acos : float -> float
 ```
@@ -372,6 +432,8 @@ Float.acos 1.0
 ```
 
 ### `Float.atan`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.atan : float -> float
@@ -386,6 +448,8 @@ Float.atan 0.0
 
 ### `Float.pow`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.pow : float -> float -> float
 ```
@@ -398,6 +462,8 @@ Float.pow 2.0 3.0
 ```
 
 ### `Float.atan2`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.atan2 : float -> float -> float
@@ -412,6 +478,8 @@ Float.atan2 0.0 1.0
 
 ### `Float.isNaN`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.isNaN : float -> bool
 ```
@@ -424,6 +492,8 @@ Float.isNaN (Float.sqrt (0.0 - 1.0))
 ```
 
 ### `Float.isInfinity`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.isInfinity : float -> bool
@@ -438,6 +508,8 @@ Float.isInfinity (Float.exp 1000.0)
 
 ### `Float.isFinite`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Float.isFinite : float -> bool
 ```
@@ -450,6 +522,8 @@ Float.isFinite 1.0
 ```
 
 ### `Float.pi`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.pi : float
@@ -464,6 +538,8 @@ Float.pi > 3.0 && Float.pi < 4.0
 
 ### `Int.toFloat`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Int.toFloat : int -> float
 ```
@@ -476,6 +552,8 @@ Int.toFloat 3
 ```
 
 ### `Float.tryToInt`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Float.tryToInt : float -> int option

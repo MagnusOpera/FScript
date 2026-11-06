@@ -10,6 +10,18 @@ This document defines the security model for running FScript programs with host 
 - `Task.spawn` runs FScript thunks concurrently on the host runtime thread pool.
 - Concurrent task side effects may interleave with the main script and with other tasks.
 
+## Hosted interpreter permissions
+
+Language `HostPermissions` is a flags enum: `None=0`, `Interactive=1`, `Threading=2`, `IO=4`, `Native=8`, and `All=15`. Host contexts and native registrations carry explicit grants; `HostInterop.empty`, extern-list APIs, SDK adaptation, and default `EnvironmentLoader` loading grant none. CLI execution, compilation, generated programs, and static analysis retain their existing unrestricted behavior. Source reads and resolver callbacks are trusted host plumbing, not script IO grants.
+
+Native `ExternalFunction.RequiredPermissions` declares required bits. `ScriptHost` removes unavailable functions before inference; evaluator dispatch and `HostInterop.invoke` check requirements again, including arity-zero values, returned callable values, canonical tasks, and callback execution. The active execution context, retained REPL state, and `LoadedScript` retain host grants for exported invocations. SDK task contexts cannot spawn or await without `Threading`. Host callbacks can inspect their own trusted context but cannot grant capabilities through script values.
+
+`IO` gates `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Console.writeLine`, and `Guid.new` (host entropy). `Console.readLine` needs both `IO` and `Interactive`. Every `Task.*` function needs `Threading`. All core helpers, lexical `Fs` helpers, text/regex/JSON/XML/encoding/hash transformations require none; higher-order helpers preserve callback requirements. The [complete website signature index](../../website/docs/reference/stdlib-reference.md) records requirements per function.
+
+`Native` gates configured provider execution and provider-owned SDK functions. The stable Extensibility SDK record ABI is unchanged: the Runtime bridge preserves requirements on forwarded defaults by implementation identity and guards their invocation; other SDK functions require `Native`. A wrapping provider is native code even if it forwards a default. Neither provider registrations nor configuration files choose grants. Explicitly registered native Language handlers declare their own requirements; the embedding host must truthfully classify them.
+
+Granting `Native` trusts arbitrary provider .NET/native code, which can bypass script IO boundaries itself. These permissions are interpreter entry-point controls, not OS containment of native providers. Native providers may also start their own threads/tasks outside the runtime join; those lifetimes remain provider/host responsibilities. Permission declarations do not imply compiler purity or thread safety. Built-in BCL implementations do not require `Native` merely because the BCL uses native code internally. Filesystem grants retain all root, symlink, and denied-path restrictions. Background tasks inherit grants and are joined before return; failures are collected.
+
 ## Host context and filesystem boundary
 - Host context includes:
   - `RootDirectory : string`

@@ -36,7 +36,7 @@ module Interactive =
 
     let private inferenceBinding name bindingType =
         let scheme = Forall(Types.ftvType bindingType |> Set.toList, bindingType)
-        { Name = name
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = name
           Scheme = scheme
           Arity = 0
           Impl = fun _ _ -> VUnit }

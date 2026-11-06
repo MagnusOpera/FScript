@@ -5,7 +5,7 @@ open FScript.Language
 
 module JsonExterns =
     let deserialize : ExternalFunction =
-        { Name = "Json.deserialize"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Json.deserialize"
           Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption (TVar 0))))
           Arity = 2
           Impl = fun _ -> function
@@ -19,7 +19,7 @@ module JsonExterns =
               | _ -> raise (HostCommon.evalError "Json.deserialize expects (type, string)") }
 
     let serialize : ExternalFunction =
-        { Name = "Json.serialize"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Json.serialize"
           Scheme = Forall([ 0 ], TFun(TVar 0, TOption TString))
           Arity = 1
           Impl = fun _ -> function

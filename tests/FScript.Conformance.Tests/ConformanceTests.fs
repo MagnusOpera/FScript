@@ -39,7 +39,7 @@ module private Harness =
     let legacy source =
         let output = ResizeArray<string>()
         let console : ExternalFunction =
-            { Name = "Console.writeLine"; Scheme = Forall([], TFun(TString, TUnit)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Console.writeLine"; Scheme = Forall([], TFun(TString, TUnit)); Arity = 1
               Impl = fun _ values -> match values with [ VString value ] -> output.Add(value); VUnit | _ -> VUnit }
         let program = Parser.parseProgram source
         let value = program |> TypeInfer.inferProgramWithExterns [ console ] |> Eval.evalProgramWithExterns [ console ] |> Pretty.valueToString

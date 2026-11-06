@@ -4,11 +4,15 @@ title: Encoding Module
 slug: /stdlib/encoding
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 These functions are pure .NET runtime externs. Hosts may register `PureExterns.functions` without exposing IO; the CLI registers them by default. `--no-default-externs` removes them. JavaScript hosts must supply corresponding externs themselves.
 
 Bytes are represented as `int list`; every element must be in `0..255`. Functions return `Some result` on success and `None` for invalid content. Inputs are never read from files, and no system encoding or current culture is consulted.
 
 ### `Encoding.utf8Encode`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Encoding.utf8Encode : string -> int list option
@@ -23,6 +27,8 @@ Encoding.utf8Encode "é"
 
 ### `Encoding.utf8Decode`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Encoding.utf8Decode : int list -> string option
 ```
@@ -35,6 +41,8 @@ Encoding.utf8Decode [195;169]
 ```
 
 ### `Encoding.base64Encode`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Encoding.base64Encode : int list -> string option
@@ -49,6 +57,8 @@ Encoding.base64Encode [97;98;99]
 
 ### `Encoding.base64Decode`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Encoding.base64Decode : string -> int list option
 ```
@@ -61,6 +71,8 @@ Encoding.base64Decode "YWJj"
 ```
 
 ### `Encoding.hexEncode`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Encoding.hexEncode : int list -> string option
@@ -75,6 +87,8 @@ Encoding.hexEncode [0;171;255]
 
 ### `Encoding.hexDecode`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Encoding.hexDecode : string -> int list option
 ```
@@ -88,6 +102,8 @@ Encoding.hexDecode "00AbFF"
 
 ### `Encoding.uriEncode`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Encoding.uriEncode : string -> string option
 ```
@@ -100,6 +116,8 @@ Encoding.uriEncode "a +/é"
 ```
 
 ### `Encoding.uriDecode`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Encoding.uriDecode : string -> string option

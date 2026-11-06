@@ -4,14 +4,16 @@ title: Built-ins and Execution Metadata
 slug: /stdlib/builtins
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 `ignore` belongs to the core language library. `Env` is execution metadata supplied by the CLI/REPL; embedding hosts decide whether to inject it. The `Environment` and `FsKind` type declarations are built into the language. For host console I/O, see the [Console module](./console).
 
 ## Values and functions
 
-| Name | Signature | Description |
-| --- | --- | --- |
-| `Env` | `Environment` | Host-injected execution metadata for CLI file runs, stdin runs, and the REPL. |
-| `ignore` | `'a -> unit` | Discards a value when only the side effect of an expression matters. |
+| Name | Signature | Description | Host permissions |
+| --- | --- | --- | --- |
+| `Env` | `Environment` | Host-injected execution metadata for CLI file runs, stdin runs, and the REPL. | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| `ignore` | `'a -> unit` | Discards a value when only the side effect of an expression matters. | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ## `type Environment`
 
@@ -52,6 +54,8 @@ match Fs.kind "samples" with
 ```
 
 ## `ignore : 'a -> unit`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Use `ignore` when an expression returns a value you intentionally do not need. It evaluates its argument and returns `()`. It is a normal, always-available core function, not special syntax or a provider-supplied capability.
 

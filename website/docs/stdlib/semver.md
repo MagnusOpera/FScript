@@ -4,9 +4,13 @@ title: SemVer Module
 slug: /stdlib/semver
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 These core builtins implement SemVer 2.0.0 parsing and precedence. Core numbers and numeric prerelease identifiers cannot have leading zeros. Identifiers use ASCII letters, digits, and hyphens. A leading `v`, surrounding whitespace, missing components, empty identifiers, and empty `-`/`+` suffixes are rejected. Numeric components remain strings so their size is not limited by the script integer range. Comparisons use numeric precedence for numeric identifiers and ordinal ASCII ordering otherwise; a release sorts after its prereleases. Build metadata is retained when formatting but ignored for precedence.
 
 ### `SemVer.tryParse`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 SemVer.tryParse : string -> ({ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string }) option
@@ -21,6 +25,8 @@ SemVer.tryParse "1.2.3-rc.1+build" |> Option.map (fun v -> v.Major)
 
 ### `SemVer.format`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 SemVer.format : { Build: string; Major: string; Minor: string; Patch: string; PreRelease: string } -> string
 ```
@@ -33,6 +39,8 @@ SemVer.tryParse "1.2.3-rc.1+build" |> Option.map SemVer.format
 ```
 
 ### `SemVer.compare`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 SemVer.compare : string -> string -> int option

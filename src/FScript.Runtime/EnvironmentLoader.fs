@@ -14,11 +14,11 @@ type LoadedEnvironment =
       Packages: ResolvedExtensionPackage list }
 
 module EnvironmentLoader =
-    let private loadCore
+    let private loadCore permissions
         (settings: EnvironmentSettings)
         : Result<LoadedEnvironment, string> =
         let collectedProviderMethods = ResizeArray<string list * MethodInfo>()
-        let context : HostContext = { RootDirectory = settings.RootDirectory; DeniedPathGlobs = [] }
+        let context : HostContext = { Permissions = permissions; RootDirectory = settings.RootDirectory; DeniedPathGlobs = [] }
         let defaultSources =
             if not settings.DefaultExterns then
                 []
@@ -191,7 +191,7 @@ module EnvironmentLoader =
                 if conflicts.IsEmpty then
                     let registrations = allSources |> List.map snd
                     let registration =
-                        { Types = registrations |> List.collect (fun r -> r.Types)
+                        { Permissions = permissions; Types = registrations |> List.collect (fun r -> r.Types)
                           Unions = registrations |> List.collect (fun r -> r.Unions)
                           Functions = registrations |> List.collect (fun r -> r.Functions) }
                     try
@@ -207,12 +207,18 @@ module EnvironmentLoader =
 
 
     /// Initialize providers atomically; callers never receive a partial registration.
-    let loadWithInfo (settings: EnvironmentSettings) =
+    let loadWithInfoAndPermissions permissions (settings: EnvironmentSettings) =
         try
-            if not settings.Packages.IsEmpty && not RuntimeFeature.IsDynamicCodeSupported then
+            if (not settings.Packages.IsEmpty || not settings.ExternAssemblies.IsEmpty) && not (HostInterop.allows permissions HostPermissions.Native) then
+                Error "Host permissions denied: Native is required to execute external providers."
+            elif not settings.Packages.IsEmpty && not RuntimeFeature.IsDynamicCodeSupported then
                 Error "NuGet extensions are not supported by this runtime (likely AOT/native)."
-            else loadCore settings
+            else loadCore permissions settings
         with ex -> Error $"Failed to initialize external-function environment: {ex.GetBaseException().Message}"
 
     /// Load a registration from local DLLs and configured NuGet packages.
+    let loadWithInfo settings = loadWithInfoAndPermissions HostPermissions.None settings
+
+    let loadWithPermissions permissions settings = loadWithInfoAndPermissions permissions settings |> Result.map (fun loaded -> loaded.Registration)
+
     let load settings = loadWithInfo settings |> Result.map (fun loaded -> loaded.Registration)

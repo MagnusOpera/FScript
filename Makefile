@@ -3,7 +3,7 @@
 build:
 	dotnet build FScript.sln -c Release
 
-test:
+test: check-changelog-format test-release-changelog
 	dotnet test FScript.sln -c Release
 	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
 
@@ -54,7 +54,7 @@ smoke-tests:
 	echo "All smoke tests passed."
 
 
-verify-changelog:
+verify-changelog: check-changelog-format
 	REQUIRE_CHANGELOG_ALWAYS=true .github/scripts/check-unreleased-changelog.sh
 
 release-prepare:
@@ -109,3 +109,14 @@ verify-sdk-provider:
 vscode-debug-smoke: build
 	npm run compile --prefix vscode-fscript
 	.github/scripts/test-vscode-debugger.sh
+
+.PHONY: format-changelog check-changelog-format test-release-changelog
+
+format-changelog:
+	./.github/scripts/format-changelog.sh
+
+check-changelog-format:
+	./.github/scripts/format-changelog.sh --check
+
+test-release-changelog:
+	./.github/scripts/test-release-changelog.sh

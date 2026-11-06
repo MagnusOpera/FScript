@@ -15,10 +15,10 @@ module TaskFunctions =
           "Task.awaitAll", Forall([0],fn [TList(TTask a)] (TList a)), ["tasks"] ]
     let private scheme name = signatures |> List.find (fun (key,_,_) -> key=name) |> fun (_,scheme,_) -> scheme
     let spawn : ExternalFunction =
-        { Name = "Task.spawn"; Scheme = scheme "Task.spawn"; Arity = 1
+        { RequiredPermissions = HostPermissions.Threading; Name = "Task.spawn"; Scheme = scheme "Task.spawn"; Arity = 1
           Impl = fun context args -> match args with [thunk] -> context.SpawnTask thunk | _ -> invalidArg "args" "Task.spawn expects a thunk." }
     let awaitTask : ExternalFunction =
-        { Name = "Task.await"; Scheme = scheme "Task.await"; Arity = 1
+        { RequiredPermissions = HostPermissions.Threading; Name = "Task.await"; Scheme = scheme "Task.await"; Arity = 1
           Impl = fun context args -> match args with [value] -> context.AwaitTask value | _ -> invalidArg "args" "Task.await expects a task." }
 
     // SDK providers can forward a default descriptor via Impl. Re-enter the owning
@@ -27,7 +27,7 @@ module TaskFunctions =
         let target = ref Unchecked.defaultof<ExternalFunction>
         let _,signature,parameters = signatures |> List.find (fun (key,_,_) -> key=name)
         let descriptor =
-            { Name=name; Scheme=signature; Arity=parameters.Length
+            { RequiredPermissions = HostPermissions.Threading; Name=name; Scheme=signature; Arity=parameters.Length
               Impl=fun context args -> List.fold context.Apply (VExternal(target.Value,[])) args }
         target.Value <- descriptor
         descriptor

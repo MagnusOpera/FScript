@@ -4,9 +4,13 @@ title: Path Module
 slug: /stdlib/path
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 All functions in this module are core builtins. They manipulate path strings without filesystem access. Rules are fixed on every platform: `/` is the only separator, comparison is case-sensitive and ordinal, and backslashes/drive letters are ordinary characters. The base for relative paths must be supplied explicitly. These functions do not inspect symlinks, check existence, or prove filesystem containment. Normalize inputs explicitly before glob matching if desired.
 
 ### `Path.normalize`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Path.normalize : string -> string
@@ -21,6 +25,8 @@ Path.normalize "a/./b/../c"
 
 ### `Path.isAbsolute`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Path.isAbsolute : string -> bool
 ```
@@ -33,6 +39,8 @@ Path.isAbsolute "/a"
 ```
 
 ### `Path.combine`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Path.combine : string -> string -> string
@@ -47,6 +55,8 @@ Path.combine "a/b" "../c"
 
 ### `Path.fileName`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Path.fileName : string -> string
 ```
@@ -59,6 +69,8 @@ Path.fileName "a/b.txt"
 ```
 
 ### `Path.extension`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Path.extension : string -> string option
@@ -73,6 +85,8 @@ Path.extension "a/b.txt"
 
 ### `Path.fileNameWithoutExtension`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Path.fileNameWithoutExtension : string -> string
 ```
@@ -86,6 +100,8 @@ Path.fileNameWithoutExtension "a/b.txt"
 
 ### `Path.parent`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Path.parent : string -> string option
 ```
@@ -98,6 +114,8 @@ Path.parent "a/b.txt"
 ```
 
 ### `Path.relative`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Path.relative : string -> string -> string option

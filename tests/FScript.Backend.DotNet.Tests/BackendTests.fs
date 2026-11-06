@@ -71,7 +71,7 @@ module ProviderFixture =
 
 module private Harness =
     let legacy source =
-        let registration=HostInterop.ofExterns (FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]})
+        let registration=HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All (FScript.Runtime.Registry.all { Permissions = FScript.Language.HostPermissions.All;RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]})
         Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration |> Pretty.valueToString
     let compile source =
         match Compiler.compile {Program=Parser.parseProgram source; Externs=[]} with
@@ -154,9 +154,9 @@ type BackendTests() =
     [<TestCase("let tasks=[SdkTask.fromResult 41;SdkTask.fromResult 1]\nlet result=SdkTask.await (SdkTask.whenAny (fun value -> value+1) tasks)\nSdkTask.awaitAll tasks |> ignore\nresult", "42")>]
     [<TestCase("SdkTask.await (SdkTask.delay 0)", "()")>]
     member _.``SDK default task functions retain native task lifetimes`` (source: string,expected: string) =
-        let defaultFunctions=FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
+        let defaultFunctions=FScript.Runtime.Registry.all { Permissions = FScript.Language.HostPermissions.All;RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
         let context=FScript.Extensibility.HostContext(Directory.GetCurrentDirectory(),[],defaultFunctions)
-        let registration=ProviderFixture.TaskContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let registration=ProviderFixture.TaskContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
         let compiled=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let provider=typeof<ProviderFixture.TaskContextProvider>.GetMethod("Provide") |> nonNull
         let program=ClrBindings.bindProvider (registration.Functions |> List.map _.Name) provider compiled.Lir
@@ -316,7 +316,7 @@ type BackendTests() =
     [<TestCase("Sdk.identity (ForeignState.Count 42)", "Count 42")>]
     [<TestCase("let secret=Sdk.create \"hello\"\nmatch secret with | { Name = name } -> name", "\"hello\"")>]
     member _.``Existing SDK providers marshal compiled values callbacks and tasks`` (source: string, expected: string) =
-        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
         let compiled=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let provider=typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull
         let program=ClrBindings.bindProvider (registration.Functions |> List.map _.Name) provider compiled.Lir
@@ -326,9 +326,9 @@ type BackendTests() =
 
     [<Test>]
     member _.``SDK providers receive compiled default functions through HostContext`` () =
-        let defaultFunctions=FScript.Runtime.Registry.all {RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
+        let defaultFunctions=FScript.Runtime.Registry.all { Permissions = FScript.Language.HostPermissions.All;RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
         let context=FScript.Extensibility.HostContext(Directory.GetCurrentDirectory(),[],defaultFunctions)
-        let registration=ProviderFixture.ContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let registration=ProviderFixture.ContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
         let compiled=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.guid () |> Option.isSome"; Externs=[]} with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let provider=typeof<ProviderFixture.ContextProvider>.GetMethod("Provide") |> nonNull
         let program=ClrBindings.bindProvider ["Sdk.guid"] provider compiled.Lir
@@ -543,7 +543,7 @@ type BackendTests() =
     [<Test>]
     member _.``Host managed CLR values support constructors properties and instance methods`` () =
         let registration: ExtensionRegistration =
-            { Types=[{Name="Buffer"; Fields=Map.ofList ["Length",TInt]; HostManaged=true}]; Unions=[]; Functions=[] }
+            { Permissions = FScript.Language.HostPermissions.All; Types=[{Name="Buffer"; Fields=Map.ofList ["Length",TInt]; HostManaged=true}]; Unions=[]; Functions=[] }
         let externs: CompilerExtern list =
             [ {Name="Native.create"; Scheme=Forall([],TFun(TString,TNamed "Buffer")); Arity=1; Kind=UnsupportedHostExtern}
               {Name="Native.text"; Scheme=Forall([],TFun(TNamed "Buffer",TString)); Arity=1; Kind=UnsupportedHostExtern} ]
@@ -594,7 +594,7 @@ type BackendTests() =
 
     [<Test>]
     member _.``Unused provider references and unresolved external types are omitted`` () =
-        let registration: ExtensionRegistration={Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true}];Unions=[];Functions=[]}
+        let registration: ExtensionRegistration={ Permissions = FScript.Language.HostPermissions.All;Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true}];Unions=[];Functions=[]}
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "42";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let imported: Lir.ImportedRecord={Name="Unused";ModulePath="clr:Missing.Type, Missing.Assembly";MemberName="Missing.Type";Fields=["Value",TInt];IsUnion=false;Span=program.Types.Head.Span}
         let program={program with ImportedRecords=[imported];Types=program.Types |> List.map (fun t -> if t.Name="Unused" then {t with Import=Some imported} else t)}
@@ -605,7 +605,7 @@ type BackendTests() =
 
     [<Test>]
     member _.``AOT rejects reachable legacy SDK dispatch with a static binding diagnostic`` () =
-        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.apply (fun n -> n+1) 41";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let program=ClrBindings.bindProvider ["Sdk.apply"] (typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull) program
         let options={Harness.options with OutputKind=ConsoleApplication;References=[typeof<ProviderFixture.Provider>.Assembly.Location;typeof<FScript.Extensibility.ScriptValue>.Assembly.Location;typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]}
@@ -615,7 +615,7 @@ type BackendTests() =
 
     [<Test>]
     member _.``Dependency pruning uses assembly identity rather than a renamed filename`` () =
-        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistration
+        let registration=ProviderFixture.Provider.Provide() |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "Sdk.apply (fun n -> n+1) 41";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let program=ClrBindings.bindProvider ["Sdk.apply"] (typeof<ProviderFixture.Provider>.GetMethod("Provide") |> nonNull) program
         let references=[typeof<ProviderFixture.Provider>.Assembly.Location;typeof<FScript.Extensibility.ScriptValue>.Assembly.Location;typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]

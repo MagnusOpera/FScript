@@ -4,9 +4,13 @@ title: Xml Module
 slug: /stdlib/xml
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 `Xml` is provided by the default .NET runtime extern registry. It supports a small path-query language for extracting strings, rather than a full XPath engine or XML object serializer.
 
 ## `Xml.queryValues : string -> string -> string list option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Argument order is `query -> xml`. Returns `Some values` for a valid query/document, including `Some []` when nothing is selected. Invalid queries or malformed XML return `None`.
 

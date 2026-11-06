@@ -11,6 +11,16 @@ module ExtensionBridge =
     type private SK = FScript.Extensibility.MapKey
     type private SE = FScript.Extensibility.ExtensionException
 
+    // Preserve requirements across the stable SDK's implementation-independent
+    // descriptors without changing its frozen public record layout.
+    type private Requirements(value: HostPermissions) =
+        member _.Value = value
+    let private requirements = ConditionalWeakTable<obj, Requirements>()
+    let private requiredPermissions (fn: FScript.Extensibility.ExternalFunction) =
+        match requirements.TryGetValue(box fn.Impl) with
+        | true, value -> value.Value
+        | _ -> HostPermissions.Native
+
     let rec typeToLanguage (value: ST) : Type =
         match value with
         | ST.TUnit -> TUnit
@@ -83,19 +93,24 @@ module ExtensionBridge =
     let toExtensionFunctions (functions: ExternalFunction list) : FScript.Extensibility.ExternalFunction list =
         functions |> List.map (fun fn ->
             let (Forall(vars, signature)) = fn.Scheme
-            { Name = fn.Name; Arity = fn.Arity
-              Scheme = FScript.Extensibility.Forall(vars, typeFromLanguage signature)
-              Impl = fun context args ->
-                  match frames.TryGetValue context with
-                  | true, frame -> fn.Impl frame.Native (List.map frame.Decode args) |> frame.Encode
-                  | _ -> raise (SE "Host-supplied functions require an active interpreter invocation.") })
+            let adapted : FScript.Extensibility.ExternalFunction =
+                { Name = fn.Name; Arity = fn.Arity
+                  Scheme = FScript.Extensibility.Forall(vars, typeFromLanguage signature)
+                  Impl = fun context args ->
+                      match frames.TryGetValue context with
+                      | true, frame ->
+                          frame.Native.CheckPermissions fn.RequiredPermissions
+                          fn.Impl frame.Native (List.map frame.Decode args) |> frame.Encode
+                      | _ -> raise (SE "Host-supplied functions require an active interpreter invocation.") }
+            requirements.Add(box adapted.Impl, Requirements(fn.RequiredPermissions))
+            adapted)
 
     /// Adapt one SDK environment. Values cross only at external-call boundaries.
     let toLanguageRegistration (registration: FScript.Extensibility.ExtensionRegistration) : ExtensionRegistration =
         FScript.Extensibility.HostInterop.typeDefinitions registration [] |> ignore
         let functions = registration.Functions |> List.map (fun fn ->
             let (FScript.Extensibility.Forall(vars, signature)) = fn.Scheme
-            { Name = fn.Name; Arity = fn.Arity; Scheme = Forall(vars, typeToLanguage signature)
+            { RequiredPermissions = requiredPermissions fn; Name = fn.Name; Arity = fn.Arity; Scheme = Forall(vars, typeToLanguage signature)
               Impl = fun native arguments ->
                   let invocationGate = obj()
                   let mutable active = true
@@ -160,6 +175,10 @@ module ExtensionBridge =
                   finally
                       lock invocationGate (fun () -> active <- false)
                       frames.Remove context |> ignore })
-        { Types = registration.Types |> List.map (fun d -> { Name = d.Name; HostManaged = d.HostManaged; Fields = Map.map (fun _ -> typeToLanguage) d.Fields })
+        { Permissions = FScript.Language.HostPermissions.None; Types = registration.Types |> List.map (fun d -> { Name = d.Name; HostManaged = d.HostManaged; Fields = Map.map (fun _ -> typeToLanguage) d.Fields })
           Unions = registration.Unions |> List.map (fun d -> { Name = d.Name; Cases = Map.map (fun _ -> Option.map typeToLanguage) d.Cases })
           Functions = functions }
+
+    /// Adapt SDK functions without letting providers choose the host's grants.
+    let toLanguageRegistrationWithPermissions permissions registration =
+        toLanguageRegistration registration |> HostInterop.withPermissions permissions

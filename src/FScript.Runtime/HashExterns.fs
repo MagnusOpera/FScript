@@ -7,7 +7,7 @@ open FScript.Language
 
 module HashExterns =
     let md5 : ExternalFunction =
-        { Name = "Hash.md5"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Hash.md5"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = fun _ -> function

@@ -4,6 +4,8 @@ title: Stdlib Overview
 slug: /stdlib/overview
 ---
 
+Hosted interpreters grant no permissions by default. Each module page and the [complete signature index](../reference/stdlib) identify the capabilities required by every function. Pure built-ins require none; runtime effects need explicit host grants. See [Host permissions](../embedding/host-permissions).
+
 Start with lists, options, and maps for data transformations. Add runtime modules when a script needs files, console I/O, serialization, concurrency, or content encoding and hashing.
 
 ## Availability
@@ -47,4 +49,4 @@ Functions are curried: `Map.add key value map` takes three arguments. Pipelines 
 
 An `option` result distinguishes success (`Some value`) from absence or a supported recoverable failure (`None`). It does not promise that all failures are caught: for example, `List.tail []` fails, and denied filesystem reads raise an error. Each module describes its boundary behavior.
 
-Use the [complete signature index](../reference/stdlib-reference.md) for lookup, [Native Types](../reference/native-types-reference.md) for literals and indexers, and [Stdlib Recipes](./recipes) for small compositions.
+Use the [complete signature index](../reference/stdlib) for lookup, [Native Types](../reference/native-types-reference.md) for literals and indexers, and [Stdlib Recipes](./recipes) for small compositions.

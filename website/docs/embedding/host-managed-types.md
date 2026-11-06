@@ -42,7 +42,7 @@ let inspect =
 let environment = { registration with Functions = [makeNode; inspect] }
 let loaded =
     FScript.Runtime.ScriptHost.loadSourceWithRegistration
-        (FScript.Runtime.ExtensionBridge.toLanguageRegistration environment)
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.Native environment)
         "let node = Host.makeNode 42\nHost.inspect node"
 ```
 
@@ -119,7 +119,7 @@ Host.inspect { point with Value = 42 }
 """
 let loaded =
     FScript.Runtime.ScriptHost.loadSourceWithRegistration
-        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration) source
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.Native registration) source
 ```
 
 Scripts use normal record construction and updates, and extern functions can receive those records through their declared `Point` parameter. `HostTypes.unwrap<Point>` constructs the CLR record from the script fields; `HostTypes.wrap` converts it back to an ordinary `VRecord`. This mode carries no opaque payload or retained host state.

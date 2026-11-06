@@ -53,3 +53,7 @@ The [`samples/ffi`](../../samples/ffi/README.md) sample applies these adapters t
 ## JavaScript typed declarations
 
 The Fable facade provides `HostFunctions.create({name, parameters, result, invoke})` with explicit closed `T` descriptors; JavaScript has no CLR function reflection. It derives arity and the curried scheme and uses tagged arguments/results. Both this helper and `extern` supply an invocation context for script callbacks. See [JavaScript hosting contracts](./embedding-fscript-language.md#javascript-host-registrations).
+
+## Interpreter permissions
+
+The SDK record shape remains unchanged. Runtime adapts provider-owned SDK functions with `RequiredPermissions = HostPermissions.Native`; host grants default to none. Hosts use `ExtensionBridge.toLanguageRegistrationWithPermissions` to authorize them. Known forwarded standard implementations retain their own declared capabilities instead of gaining `Native`. Runtime validates forwarded invocation and task context use as well as the outer descriptor. Native Language descriptors have an explicit `RequiredPermissions` field; trusted embedding authors may declare pure code as requiring none. Capability declarations cannot constrain arbitrary code after `Native` is granted. Compiler and CLI behavior is unchanged. See [sandbox permissions](./sandbox-and-security.md#hosted-interpreter-permissions).

@@ -14,8 +14,8 @@ type TaskSharingMetadataProvider =
 type ScriptHostTests () =
     [<Test>]
     member _.``script_host lists and invokes exported function`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "export let add x y = x + y\nlet value = 42"
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "export let add x y = x + y\nlet value = 42"
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
 
         match ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ] with
@@ -24,16 +24,16 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``script_host invokes exported closure function`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "let makeAdder x = fun y -> x + y\nexport let add2 = makeAdder 2"
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "let makeAdder x = fun y -> x + y\nexport let add2 = makeAdder 2"
         match ScriptHost.invoke loaded "add2" [ VInt 5L ] with
         | VInt 7L -> ()
         | _ -> Assert.Fail("Expected closure invocation result 7")
 
     [<Test>]
     member _.``script_host exposes exported values separately from functions`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\"\nexport let add x y = x + y"
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "export let version = \"1.0\"\nexport let add x y = x + y"
 
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("add"))
         Assert.That(ScriptHost.listValues loaded, Does.Contain("version"))
@@ -44,15 +44,15 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``script_host rejects invocation of exported value`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "export let version = \"1.0\""
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "export let version = \"1.0\""
         let act () = ScriptHost.invoke loaded "version" [ VUnit ] |> ignore
         Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
     member _.``script_host hides non-exported functions`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let loaded = ScriptHost.loadSource externs "let private_fn x = x + 1\nlet value = 1"
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "let private_fn x = x + 1\nlet value = 1"
 
         Assert.That(ScriptHost.listFunctions loaded, Is.Empty)
         let hidden () = ScriptHost.invoke loaded "private_fn" [ VInt 1L ] |> ignore
@@ -60,9 +60,9 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``script_host exports recursive groups when marked exported`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let source = "export let rec even n = if n = 0 then true else odd (n - 1)\nand odd n = if n = 0 then false else even (n - 1)"
-        let loaded = ScriptHost.loadSource externs source
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs source
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("even"))
         Assert.That(ScriptHost.listFunctions loaded, Does.Contain("odd"))
         match ScriptHost.invoke loaded "even" [ VInt 4L ] with
@@ -78,8 +78,8 @@ type ScriptHostTests () =
             let mainPath = Path.Combine(tempDir, "main.fss")
             File.WriteAllText(sharedPath, "let increment x = x + 1")
             File.WriteAllText(mainPath, "import \"shared.fss\" as Shared\nexport let add2 x = Shared.increment (Shared.increment x)")
-            let externs = Registry.all { RootDirectory = tempDir; DeniedPathGlobs = [] }
-            let loaded = ScriptHost.loadFile externs mainPath
+            let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = tempDir; DeniedPathGlobs = [] }
+            let loaded = ScriptHost.loadFileWithPermissions FScript.Language.HostPermissions.All externs mainPath
             match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
             | VInt 12L -> ()
             | _ -> Assert.Fail("Expected imported function to be available")
@@ -89,8 +89,8 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``script_host loadSource rejects import directives`` () =
-        let externs = Registry.all { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
-        let act () = ScriptHost.loadSource externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let act () = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All externs "import \"shared.fss\" as Shared\nlet x = 1" |> ignore
         Assert.Throws<EvalException>(System.Action act) |> ignore
 
     [<Test>]
@@ -104,7 +104,7 @@ type ScriptHostTests () =
             ]
         let resolve path = sources |> Map.tryFind path
         let source = "import \"shared.fss\" as Shared\nexport let add2 x = Shared.increment (Shared.increment x)"
-        let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
         let loaded = ScriptHost.loadSourceWithIncludes externs root entryFile source resolve
 
         match ScriptHost.invoke loaded "add2" [ VInt 10L ] with
@@ -117,7 +117,7 @@ type ScriptHostTests () =
         let entryFile = Path.Combine(root, "main.fss")
         let sharedFile = Path.GetFullPath(Path.Combine(root, "shared/validation.fss"))
         let source = "import \"shared/validation.fss\" as Validation\nexport let run x = Validation.increment x"
-        let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
 
         let mutable resolvedPath : string option = None
         let resolve path =
@@ -142,21 +142,21 @@ type ScriptHostTests () =
         let root = Path.Combine(Path.GetTempPath(), $"fscript-runtime-resolver-missing-{System.Guid.NewGuid():N}")
         let entryFile = Path.Combine(root, "main.fss")
         let source = "import \"shared.fss\" as Shared\nexport let run x = Shared.increment x"
-        let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+        let externs = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
         let act () = ScriptHost.loadSourceWithIncludes externs root entryFile source (fun _ -> None) |> ignore
         Assert.Throws<ParseException>(System.Action act) |> ignore
 
 
     [<Test>]
     member _.``script_host contextual export remains usable as an identifier`` () =
-        let loaded = ScriptHost.loadSource [] "let export = 40\nexport let answer = export + 2\nexport let identity export = export"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] "let export = 40\nexport let answer = export + 2\nexport let identity export = export"
         match ScriptHost.getValue loaded "answer", ScriptHost.invoke loaded "identity" [VInt 7L] with
         | VInt 42L, VInt 7L -> ()
         | _ -> Assert.Fail("Expected contextual export and ordinary identifier uses")
 
     [<Test>]
     member _.``script_host can invoke an exported function named export`` () =
-        let loaded = ScriptHost.loadSource [] "export let export export = export"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] "export let export export = export"
         match ScriptHost.invoke loaded "export" [VString "value"] with
         | VString "value" -> ()
         | _ -> Assert.Fail("Expected exported function named export")
@@ -164,15 +164,15 @@ type ScriptHostTests () =
     [<Test>]
     member _.``Exit codes are scoped to evaluation and do not terminate the host`` () =
         let original=System.Environment.ExitCode
-        let loaded=ScriptHost.loadSource [] "Env.setExitCode 7\nEnv.setExitCode 9\n42"
+        let loaded=ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] "Env.setExitCode 7\nEnv.setExitCode 9\n42"
         Assert.That(loaded.ExitCode,Is.EqualTo(9))
         Assert.That(Pretty.valueToString loaded.LastValue,Is.EqualTo("42"))
-        Assert.That((ScriptHost.loadSource [] "42").ExitCode,Is.Zero)
+        Assert.That((ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] "42").ExitCode,Is.Zero)
         Assert.That(System.Environment.ExitCode,Is.EqualTo(original))
 
     [<Test>]
     member _.``Export invocations return their own exit code`` () =
-        let loaded=ScriptHost.loadSource [] "export let configure code = Env.setExitCode code\n42"
+        let loaded=ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] "export let configure code = Env.setExitCode code\n42"
         let result=ScriptHost.invokeWithExitCode loaded "configure" [VInt 7L]
         Assert.That(result.ExitCode,Is.EqualTo(7))
         Assert.That(Pretty.valueToString result.Value,Is.EqualTo("()"))
@@ -181,7 +181,7 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``Awaited tasks share status without stopping subsequent evaluation`` () =
-        let registration=HostInterop.ofExterns [TaskFunctions.spawn;TaskFunctions.awaitTask]
+        let registration=HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All [TaskFunctions.spawn;TaskFunctions.awaitTask]
         let loaded=ScriptHost.loadSourceWithRegistration registration "let worker=Task.spawn (fun () -> Env.setExitCode 3)\nTask.await worker\nEnv.setExitCode 7\n42"
         Assert.That(loaded.ExitCode,Is.EqualTo(7))
         Assert.That(Pretty.valueToString loaded.LastValue,Is.EqualTo("42"))
@@ -189,16 +189,16 @@ type ScriptHostTests () =
     [<TestCase("Env.setExitCode 256")>]
     [<TestCase("Env.setExitCode (0-1)")>]
     member _.``Exit codes use the portable shell range`` source =
-        let error=Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.loadSource [] source |> ignore)) |> nonNull
+        let error=Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All [] source |> ignore)) |> nonNull
         Assert.That(string error,Does.Contain("between 0 and 255"))
 
     [<Test>]
     member _.``Explicit task sharing analysis reports before interpreting without changing values`` () =
         let mutable calls = 0
         let tick: ExternalFunction =
-            { Name = "Host.tick"; Scheme = Forall([], TFun(TUnit, TInt)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.tick"; Scheme = Forall([], TFun(TUnit, TInt)); Arity = 1
               Impl = fun _ _ -> System.Threading.Interlocked.Increment(&calls) |> int64 |> VInt }
-        let registration = { HostInterop.empty with Functions = [tick; TaskFunctions.spawn; TaskFunctions.awaitTask] }
+        let registration = { HostInterop.empty with Permissions = HostPermissions.All; Functions = [tick; TaskFunctions.spawn; TaskFunctions.awaitTask] }
         let source = "let first = Task.spawn (fun () -> Host.tick ())\nlet second = Task.spawn (fun () -> Host.tick ())\nTask.await first + Task.await second"
         let warnings = ResizeArray<TaskSharingAnalysis.Diagnostic>()
         let report warning =
@@ -222,7 +222,7 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``Runtime console contracts classify actual implementations without granting purity`` () =
-        let registration = { HostInterop.empty with Functions = [ConsoleExterns.write_line; ConsoleExterns.read_line; TaskFunctions.spawn; TaskFunctions.awaitTask] }
+        let registration = { HostInterop.empty with Permissions = HostPermissions.All; Functions = [ConsoleExterns.write_line; ConsoleExterns.read_line; TaskFunctions.spawn; TaskFunctions.awaitTask] }
         let source = "let first = Task.spawn (fun () -> Console.writeLine \"one\")\nlet second = Task.spawn (fun () -> Console.writeLine \"two\")\nTask.await first\nTask.await second"
         let resolved = Parser.parseProgram source |> TypeInfer.inferResolvedProgramWithRegistration registration
         let options = TaskSharingContracts.withRuntime registration TaskSharingAnalysis.defaults
@@ -238,7 +238,7 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``Pure content contracts recognize implementations rather than names`` () =
-        let registration = { HostInterop.empty with Functions = PureExterns.functions }
+        let registration = { HostInterop.empty with Permissions = HostPermissions.All; Functions = PureExterns.functions }
         let options = TaskSharingContracts.withRuntime registration TaskSharingAnalysis.defaults
         for fn in PureExterns.functions do
             Assert.That(options.ThreadSafeFunctions.Contains fn.Name, Is.True, fn.Name)
@@ -249,25 +249,25 @@ type ScriptHostTests () =
 
     [<Test>]
     member _.``exported invocation joins unobserved tasks`` () =
-        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () =\n  let pending = Task.delay 5\n  42"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All TaskFunctions.all "export let run () =\n  let pending = Task.delay 5\n  42"
         Assert.That(ScriptHost.invoke loaded "run" [VUnit] |> Pretty.valueToString, Is.EqualTo("42"))
 
     [<Test>]
     member _.``exported invocation permits awaited tasks`` () =
-        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () = Task.await (Task.spawn (fun () -> 42))"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All TaskFunctions.all "export let run () = Task.await (Task.spawn (fun () -> 42))"
         Assert.That(ScriptHost.invoke loaded "run" [VUnit] |> Pretty.valueToString, Is.EqualTo("42"))
 
     [<Test>]
     member _.``exported invocation fails for unobserved background failures`` () =
-        let loaded = ScriptHost.loadSource TaskFunctions.all "export let run () =\n  let pending = Task.spawn (fun () -> raise \"background failed\")\n  42"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All TaskFunctions.all "export let run () =\n  let pending = Task.spawn (fun () -> raise \"background failed\")\n  42"
         let error = Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.invoke loaded "run" [VUnit] |> ignore)) |> nonNull
         Assert.That(error.Message, Does.Contain("background failed"))
 
     [<Test>]
     member _.``exported invocation includes exit code set during implicit join`` () =
         let setExit : ExternalFunction =
-            { Name = "Host.setExit"; Scheme = Forall([], TFun(TUnit,TUnit)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.setExit"; Scheme = Forall([], TFun(TUnit,TUnit)); Arity = 1
               Impl = fun context _ -> context.SetExitCode 7; VUnit }
-        let loaded = ScriptHost.loadSource (setExit :: TaskFunctions.all) "export let run () =\n  let pending = Task.spawn (fun () ->\n    Task.await (Task.delay 5)\n    Host.setExit ())\n  42"
+        let loaded = ScriptHost.loadSourceWithPermissions FScript.Language.HostPermissions.All (setExit :: TaskFunctions.all) "export let run () =\n  let pending = Task.spawn (fun () ->\n    Task.await (Task.delay 5)\n    Host.setExit ())\n  42"
         let result = ScriptHost.invokeWithExitCode loaded "run" [VUnit]
         Assert.That(result.ExitCode, Is.EqualTo(7))

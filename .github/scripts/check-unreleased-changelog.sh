@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT_DIR"
 
+./.github/scripts/format-changelog.sh --check
+
 BASE_REF="${GITHUB_BASE_REF:-}"
 HEAD_REF="${GITHUB_HEAD_REF:-}"
 REQUIRE_CHANGELOG_ALWAYS="${REQUIRE_CHANGELOG_ALWAYS:-false}"

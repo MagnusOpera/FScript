@@ -5,7 +5,7 @@ open FScript.Language
 
 module GuidExterns =
     let new_guid : ExternalFunction =
-        { Name = "Guid.new"
+        { RequiredPermissions = HostPermissions.IO; Name = "Guid.new"
           Scheme = Forall([ 0 ], TFun(TVar 0, TOption TString))
           Arity = 1
           Impl = fun _ -> function

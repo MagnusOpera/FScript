@@ -50,7 +50,7 @@ module LspRuntimeExterns =
                         let loaded =
                             try
                                 Console.SetOut(Console.Error)
-                                EnvironmentLoader.loadWithInfo effective
+                                EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All effective
                             finally Console.SetOut(output)
                         match loaded with
                         | Ok loaded ->

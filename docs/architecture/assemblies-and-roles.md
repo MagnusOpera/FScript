@@ -260,3 +260,7 @@ release scheduler workers on pause/await; synchronous native calls use task-owne
 threads, allowing callback suspension without scheduler starvation. Fable uses
 the synchronous continuation driver and contains no debugger API. See the
 [debugger specification](../specs/debugger.md).
+
+## Interpreter host policy
+
+Language owns the permission enum, native descriptor requirements, registration grants, evaluator checks, and propagation through task/callback contexts and retained states. Runtime classifies standard externs, filters host registries, retains policy on loaded scripts, and gates provider loading. The Extensibility SDK retains its stable record layout: Runtime associates forwarded default implementations with their original requirements using weak implementation identity metadata; unknown SDK implementations require Native. Forwarding delegates also check the original requirement at execution, so wrapping or renaming cannot remove the check. Provider code cannot choose grants. CLI/analysis entry points explicitly authorize all capabilities; compiler inference and generated programs do not enforce the interpreter policy. Terrabuild supplies IO and Threading without Interactive or Native.

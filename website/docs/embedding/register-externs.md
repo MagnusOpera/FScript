@@ -19,7 +19,7 @@ let registration =
     { HostInterop.empty with Functions = [add] }
 let loaded =
     FScript.Runtime.ScriptHost.loadSourceWithRegistration
-        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration) "Host.add 20 22"
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.Native registration) "Host.add 20 22"
 // loaded.LastValue = VInt 42L
 ```
 
@@ -139,7 +139,7 @@ let registration =
 
 let loaded =
     FScript.Runtime.ScriptHost.loadSourceWithRegistration
-        (FScript.Runtime.ExtensionBridge.toLanguageRegistration registration)
+        (FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.Native registration)
         "Host.slugify \"Hello World\""
 ```
 
@@ -183,7 +183,7 @@ Provider registration executes host code and may have side effects. The CLI trus
 
 Extension projects reference only `MagnusOpera.FScript.Extensibility` 1.x and open `FScript.Extensibility`. The SDK targets `netstandard2.1` and has no dependency on the interpreter. Its unsigned assembly identity remains `1.0.0.0` throughout compatible 1.x releases; package and file versions follow releases. Existing extensions must rebuild against this SDK.
 
-Embedders additionally reference Runtime. Convert an SDK registration using `ExtensionBridge.toLanguageRegistration` before passing it to native `ScriptHost` APIs. Those APIs still use `FScript.Language.Value`; SDK values and interpreter values are distinct representations. Perform CLR conversion in SDK handlers, or inspect interpreter values explicitly at the embedding boundary.
+Embedders additionally reference Runtime. Convert an SDK registration using `ExtensionBridge.toLanguageRegistrationWithPermissions HostPermissions.Native` before passing it to native `ScriptHost` APIs. The shorter adapter grants none, so its provider functions remain unavailable until the host grants Native. Those APIs still use `FScript.Language.Value`; SDK values and interpreter values are distinct representations. Perform CLR conversion in SDK handlers, or inspect interpreter values explicitly at the embedding boundary.
 
 `HostContext` is a sealed read-only class exposing `RootDirectory`, `DeniedPathGlobs`, and `DefaultFunctions`. Providers can filter host-supplied defaults without referencing Runtime. Return only provider-owned functions when the loader also enables defaults, to avoid duplicate registrations.
 

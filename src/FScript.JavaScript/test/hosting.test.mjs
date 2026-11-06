@@ -145,7 +145,7 @@ test('type tokens round trip and unsupported task and async operations fail clea
   assert.throws(() => fromJs({...token}), /forged/);
   const task = HostFunctions.create({name: 'Host.task', parameters: [T.func(T.unit, T.int)], result: T.task(T.int),
     invoke: ([fn], ctx) => ctx.spawnTask(fn)});
-  assert.throws(() => run('Host.task (fun () -> 1)', {externs: [task]}), /not supported in Fable/);
+  assert.throws(() => run('Host.task (fun () -> 1)', {externs: [task], permissions: ['Threading']}), /not supported in Fable/);
   const asyncFn = HostFunctions.create({name: 'Host.async', parameters: [T.unit], result: T.int,
     invoke: async () => 1n});
   assert.throws(() => run('Host.async ()', {externs: [asyncFn]}), /synchronously/);
@@ -252,4 +252,19 @@ test('host wrapping validates map key types recursively', () => {
   assert.equal(HostTypes.wrap(env, 'Indexed', {Items: item}, {}).fields.Items.entries[0].key.value, 1n);
   const invalid = {kind: 'map', entries: [{key: {kind: 'string', value: 'wrong'}, value: node}]};
   assert.throws(() => HostTypes.wrap(env, 'Indexed', {Items: invalid}, {}), /Host value/);
+});
+
+
+test('host permissions default to none and guard declared effects', () => {
+  let calls = 0;
+  const effect = HostFunctions.create({name: 'Host.effect', parameters: [T.unit], result: T.int,
+    requiredPermissions: ['IO'], invoke: () => { calls++; return 42n; }});
+  assert.throws(() => run('Host.effect ()', {externs: [effect]}), /Unbound/);
+  assert.equal(calls, 0);
+  assert.equal(run('Host.effect ()', {externs: [effect], permissions: ['IO']}).value, 42n);
+  assert.equal(calls, 1);
+  const loaded = load('export let perform () = Host.effect ()', {externs: [effect], permissions: ['IO']});
+  assert.equal(invoke(loaded, 'perform', [{kind: 'unit'}]).value, 42n);
+  assert.equal(calls, 2);
+  assert.throws(() => run('42', {permissions: ['Unknown']}), /Unknown host permission/);
 });

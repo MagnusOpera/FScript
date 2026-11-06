@@ -9,4 +9,4 @@ module Helpers =
     let evalToString src = src |> eval |> Pretty.valueToString
 
     let inferWithExterns externs src = src |> parse |> TypeInfer.inferProgramWithExterns externs
-    let evalWithExterns externs src = src |> inferWithExterns externs |> Eval.evalProgramWithExterns externs
+    let evalWithExterns externs src = src |> inferWithExterns externs |> Eval.evalProgramWithRegistration (HostInterop.ofExternsWithPermissions HostPermissions.All externs)

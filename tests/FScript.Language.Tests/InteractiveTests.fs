@@ -49,7 +49,7 @@ type InteractiveTests () =
     member _.``Later submissions do not replay retained evaluations`` () =
         let mutable calls = 0L
         let counter =
-            { Name = "Counter.next"
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Counter.next"
               Scheme = Forall([], TFun(TUnit, TInt))
               Arity = 1
               Impl = fun _ _ ->

@@ -5,7 +5,7 @@ open FScript.Language
 
 module RegexExterns =
     let match_groups : ExternalFunction =
-        { Name = "Regex.matchGroups"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Regex.matchGroups"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
           Impl = fun _ -> function

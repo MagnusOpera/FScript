@@ -29,7 +29,7 @@ type PrettyTests () =
 
     [<Test>]
     member _.``Formats extern values with name and application progress`` () =
-        let host = { RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         Helpers.evalWithExterns externs "Console.writeLine" |> FScript.Language.Pretty.valueToString |> should equal "<extern Console.writeLine>"
 

@@ -99,7 +99,7 @@ module XmlExterns =
                 if String.IsNullOrEmpty(value) then None else Some value)
 
     let query_values : ExternalFunction =
-        { Name = "Xml.queryValues"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Xml.queryValues"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
           Impl = fun _ -> function

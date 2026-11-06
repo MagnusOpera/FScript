@@ -7,13 +7,13 @@ open FScript.Language
 [<TestFixture>]
 type ExternalTests () =
     let externs : ExternalFunction list =
-        [ { Name = "toUpper"
+        [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "toUpper"
             Scheme = Forall([], TFun(TString, TString))
             Arity = 1
             Impl = fun _ -> function
                 | [ VString s ] -> VString (s.ToUpperInvariant())
                 | _ -> failwith "bad args" }
-          { Name = "add"
+          { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "add"
             Scheme = Forall([], TFun(TInt, TFun(TInt, TInt)))
             Arity = 2
             Impl = fun _ -> function

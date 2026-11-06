@@ -61,7 +61,7 @@ module PureExterns =
 
     let functions : ExternalFunction list =
         SupportLibrary.runtimeSignatures |> List.map (fun (name,scheme,parameters) ->
-            { Name=name; Scheme=scheme; Arity=parameters.Length
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name=name; Scheme=scheme; Arity=parameters.Length
               Impl=fun _ arguments ->
                   try VOption(Some(invoke name arguments))
                   with

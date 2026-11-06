@@ -5,8 +5,20 @@ module HostInterop =
     let private span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
     let private fail message = raise (EvalException { Message = message; Span = span })
 
-    let empty : ExtensionRegistration = { Types = []; Unions = []; Functions = [] }
+    let empty : ExtensionRegistration = { Permissions = HostPermissions.None; Types = []; Unions = []; Functions = [] }
     let ofExterns functions = { empty with Functions = functions }
+
+    let allows granted required = (granted &&& required) = required
+    let permissionNames permissions =
+        [ HostPermissions.Interactive, "Interactive"; HostPermissions.Threading, "Threading"
+          HostPermissions.IO, "IO"; HostPermissions.Native, "Native" ]
+        |> List.choose (fun (permission,name) -> if allows permissions permission then Some name else None)
+        |> String.concat ", "
+
+    let withPermissions permissions registration = { registration with Permissions = permissions }
+    let ofExternsWithPermissions permissions functions = ofExterns functions |> withPermissions permissions
+    let permitted (registration: ExtensionRegistration) =
+        { registration with Functions = registration.Functions |> List.filter (fun fn -> allows registration.Permissions fn.RequiredPermissions) }
 
     let typeDefinitions (registration: ExtensionRegistration) (scriptNames: string list) =
         let reserved = [ "unit"; "int"; "float"; "bool"; "string"; "numeric"; "type" ] @ (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name)) @ scriptNames
@@ -171,7 +183,9 @@ module HostInterop =
 
     let invoke definitions (externalFunction: ExternalFunction) context arguments =
         let (Forall (_, signature)) = externalFunction.Scheme
-        validateCall definitions signature arguments (fun () -> externalFunction.Impl context arguments)
+        validateCall definitions signature arguments (fun () ->
+            context.CheckPermissions externalFunction.RequiredPermissions
+            externalFunction.Impl context arguments)
 
     let (|RecordFields|_|) value =
         match value with

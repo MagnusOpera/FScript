@@ -53,7 +53,7 @@ module FsExterns =
                     None)
 
     let read_text (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.readText"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = fun _ -> function
@@ -65,7 +65,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.readText expects (string)") }
 
     let exists (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.exists"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.exists"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
           Impl = fun _ -> function
@@ -77,7 +77,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.exists expects (string)") }
 
     let entry_kind (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.kind"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.kind"
           Scheme = Forall([], TFun(TString, TNamed "FsKind"))
           Arity = 1
           Impl = fun _ -> function
@@ -98,7 +98,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.kind expects (string)") }
 
     let create_directory (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.createDirectory"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.createDirectory"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
           Impl = fun _ -> function
@@ -114,7 +114,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.createDirectory expects (string)") }
 
     let write_text (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.writeText"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.writeText"
           Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
           Arity = 2
           Impl = fun _ -> function
@@ -134,7 +134,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.writeText expects (string, string)") }
 
     let combine_path : ExternalFunction =
-        { Name = "Fs.combinePath"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Fs.combinePath"
           Scheme = Forall([], TFun(TString, TFun(TString, TString)))
           Arity = 2
           Impl = fun _ -> function
@@ -145,7 +145,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.combinePath expects (string, string)") }
 
     let parent_directory : ExternalFunction =
-        { Name = "Fs.parentDirectory"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Fs.parentDirectory"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = fun _ -> function
@@ -157,7 +157,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.parentDirectory expects (string)") }
 
     let extension : ExternalFunction =
-        { Name = "Fs.extension"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Fs.extension"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = fun _ -> function
@@ -169,7 +169,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.extension expects (string)") }
 
     let file_name_without_extension : ExternalFunction =
-        { Name = "Fs.fileNameWithoutExtension"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Fs.fileNameWithoutExtension"
           Scheme = Forall([], TFun(TString, TString))
           Arity = 1
           Impl = fun _ -> function
@@ -180,7 +180,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.fileNameWithoutExtension expects (string)") }
 
     let glob (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.glob"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.glob"
           Scheme = Forall([], TFun(TString, TOption (TList TString)))
           Arity = 1
           Impl = fun _ -> function
@@ -202,7 +202,7 @@ module FsExterns =
               | _ -> raise (HostCommon.evalError "Fs.glob expects (string)") }
 
     let enumerate_files (ctx: HostContext) : ExternalFunction =
-        { Name = "Fs.enumerateFiles"
+        { RequiredPermissions = HostPermissions.IO; Name = "Fs.enumerateFiles"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
           Impl = fun _ -> function

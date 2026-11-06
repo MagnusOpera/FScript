@@ -73,7 +73,8 @@ Use `inferWithExterns` and `evalWithExterns` when the script needs host function
 open FScript.Language
 
 let toUpperExtern =
-    { Name = "toUpper"
+    { RequiredPermissions = HostPermissions.None
+      Name = "toUpper"
       Scheme = Forall([], TFun(TString, TString))
       Arity = 1
       Impl =
@@ -191,8 +192,8 @@ Only top-level exported bindings are exposed through this API.
 open FScript.Language
 open FScript.Runtime
 
-let externs = Registry.all { RootDirectory = "."; DeniedPathGlobs = [] }
-let loaded = ScriptHost.loadSource externs "export let add x y = x + y"
+let externs = Registry.all { Permissions = HostPermissions.IO; RootDirectory = "."; DeniedPathGlobs = [] }
+let loaded = ScriptHost.loadSourceWithPermissions HostPermissions.IO externs "export let add x y = x + y"
 let result = ScriptHost.invoke loaded "add" [ VInt 1L; VInt 2L ]
 ```
 
@@ -338,11 +339,11 @@ Use `ScriptHost` when you want to invoke exported functions repeatedly.
 open FScript.Language
 open FScript.Runtime
 
-let hostContext = { RootDirectory = "."; DeniedPathGlobs = [] }
+let hostContext = { Permissions = HostPermissions.IO; RootDirectory = "."; DeniedPathGlobs = [] }
 let externs = Registry.all hostContext
 
 let loaded =
-    ScriptHost.loadFile externs "./script.fss"
+    ScriptHost.loadFileWithPermissions hostContext.Permissions externs "./script.fss"
 
 let r1 = ScriptHost.invoke loaded "run" [ VString "build" ]
 let r2 = ScriptHost.invoke loaded "run" [ VString "test" ]
@@ -371,9 +372,9 @@ let embeddedSources =
 let resolver path =
     embeddedSources |> Map.tryFind (Path.GetFullPath(path))
 
-let externs = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+let externs = Registry.all { Permissions = HostPermissions.IO; RootDirectory = root; DeniedPathGlobs = [] }
 let loaded =
-    ScriptHost.loadSourceWithIncludes externs root entryFile entrySource resolver
+    ScriptHost.loadSourceWithIncludesAndRegistration (HostInterop.ofExternsWithPermissions HostPermissions.IO externs) root entryFile entrySource resolver
 
 let result = ScriptHost.invoke loaded "run" [ VInt 41L ]
 ```
@@ -385,7 +386,8 @@ Define a typed external function and pass it to inference/evaluation.
 open FScript.Language
 
 let envExtern =
-    { Name = "Env.get"
+    { RequiredPermissions = HostPermissions.None
+      Name = "Env.get"
       Scheme = Forall([], TFun(TString, TOption TString))
       Arity = 1
       Impl =
@@ -479,3 +481,11 @@ contract is unchanged, and Fable has no debugger support.
 `Eval.ProgramState.ExitCode` and `ScriptHost.LoadedScript.ExitCode` report the status selected during evaluation. `ScriptHost.invokeWithExitCode` and `Eval.invokeValueWithExitCode` return `{ Value; ExitCode }` for an individual invocation. Each fresh evaluation/invocation starts at zero; interactive submissions preserve their session status. Existing value-returning APIs remain available. No API invokes process exit or mutates `System.Environment.ExitCode` on behalf of the script.
 
 The language-level `ExternalCallContext.SetExitCode` callback updates the evaluator's execution-local status. The separate extension SDK context and provider registration contract are unchanged. `Env.setExitCode` is a reserved, effectful core operation with portable range `0..255`; task writes share the owning execution and are synchronized, with scheduling-dependent last-write-wins ordering.
+
+## Default-deny host permissions
+
+See [sandbox permissions](./sandbox-and-security.md#hosted-interpreter-permissions) for the normative policy and per-operation mapping. Runtime `HostContext.create root` grants none. Configure `Permissions` and use `Registry.registration context` to carry those grants into interpretation. `Registry.all context` filters defaults but does not itself authorize a separate registration. Native `ExternalFunction` records now require `RequiredPermissions`; native registrations and retained interpreter states carry `Permissions`. `ExternalCallContext.CheckPermissions` is mandatory for manually supplied native contexts.
+
+`ScriptHost.loadSourceWithPermissions` and `loadFileWithPermissions` explicitly authorize extern-list hosts. Registration-based loading, includes, and task-sharing analysis use the registration's grants. `ScriptHost.LoadedScript.Permissions` survives exported invocation. Direct Language callers use `Eval.invokeValueWithPermissionsAndExitCode`; the shorter API grants none. REPL submissions retain the initial policy. `DebugLaunch.create` defaults to none; `createWithPermissions` accepts explicit grants, and the CLI/editor debugger grants all capabilities. CLI and compilation do not restrict capabilities.
+
+SDK declarations remain ABI-compatible. Provider-owned functions require `Native` after `ExtensionBridge.toLanguageRegistration`, which grants none by default; `toLanguageRegistrationWithPermissions` supplies the host policy. Copied default implementations retain their declared requirements through the bridge. `EnvironmentLoader.loadWithPermissions` and `loadWithInfoAndPermissions` require `Native` before executing configured providers.

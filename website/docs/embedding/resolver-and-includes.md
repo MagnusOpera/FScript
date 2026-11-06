@@ -8,11 +8,11 @@ When scripts use `import`, you can choose how included source is resolved.
 
 ## Resolver-backed loading API
 
-Use `ScriptHost.loadSourceWithIncludes` when the entry script is not read directly from disk and imports must be resolved by the host:
+Use `ScriptHost.loadSourceWithIncludesAndRegistration` when the entry script is not read directly from disk and imports must be resolved by the host:
 
 ```fsharp
-ScriptHost.loadSourceWithIncludes
-    externs
+ScriptHost.loadSourceWithIncludesAndRegistration
+    registration
     rootDirectory
     entryFile
     entrySource

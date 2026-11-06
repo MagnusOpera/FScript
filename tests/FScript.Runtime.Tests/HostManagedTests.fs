@@ -8,13 +8,13 @@ open FScript.Runtime
 type HostManagedTests() =
     let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }
     let payload = ("private-native-handle" :> obj)
-    let types = { HostInterop.empty with Types = [descriptor] }
+    let types = { HostInterop.empty with Permissions = HostPermissions.All; Types = [descriptor] }
     let node = HostInterop.create types "Node" (Map.ofList ["Value", VInt 42L]) payload
     let registration =
         { types with
             Functions =
-                Registry.all { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] } @
-                [ { Name = "Host.node"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> node } ] }
+                Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] } @
+                [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.node"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> node } ] }
     let load source = ScriptHost.loadSourceWithRegistration registration source
 
     [<Test>]
@@ -49,14 +49,14 @@ type HostManagedTests() =
     [<Test>]
     member _.``Extern returns cannot forge host types even without inference`` () =
         for returned in [VRecord(Map.ofList ["Value", VInt 1L]); VHostManaged { Descriptor = { descriptor with Name = "Other" }; Fields = Map.ofList ["Value", VInt 1L]; Payload = payload }] do
-            let bad = { Name = "Host.bad"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> returned }
+            let bad = { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.bad"; Scheme = Forall([], TNamed "Node"); Arity = 0; Impl = fun _ _ -> returned }
             let registration = { types with Functions = [bad] }
             Assert.Throws<EvalException>(System.Action(fun () -> Eval.evalProgramWithRegistration registration [] |> ignore)) |> ignore
 
     [<Test>]
     member _.``Runtime updates reject host values through structural annotations`` () =
         for expression in ["{ n with Value = 0 }"; "{| n with Value = 0 |}"] do
-            let ordinaryRegistration = HostInterop.ofExterns []
+            let ordinaryRegistration = HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All []
             let program = FScript.parse ($"export let update (n: {{| Value: int |}}) = {expression}")
             let typed = TypeInfer.inferProgramWithRegistration ordinaryRegistration program
             let state = Eval.evalProgramWithRegistrationState ordinaryRegistration typed
@@ -77,7 +77,7 @@ type HostManagedTests() =
             { registered with
                 Functions =
                     registered.Functions @
-                    [ { Name = "Host.parent"; Scheme = Forall([], TNamed "Parent"); Arity = 0; Impl = fun _ _ -> value } ] }
+                    [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.parent"; Scheme = Forall([], TNamed "Parent"); Arity = 0; Impl = fun _ _ -> value } ] }
         let loaded = ScriptHost.loadSourceWithRegistration registered "match Host.parent with | { Child = child } -> child"
         Assert.That((HostInterop.unwrap "Node" loaded.LastValue).Payload, Is.EqualTo(payload))
         let nestedPattern = ScriptHost.loadSourceWithRegistration registered "match Host.parent with | { Child = { Value = n } } -> n"
@@ -89,7 +89,7 @@ type HostManagedTests() =
         let definitions = HostInterop.typeDefinitions registration []
         let mutable called = false
         let consume =
-            { Name = "Host.consume"; Scheme = Forall([], TFun(TOption(TNamed "Node"), TUnit)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.consume"; Scheme = Forall([], TFun(TOption(TNamed "Node"), TUnit)); Arity = 1
               Impl = fun _ _ -> called <- true; VUnit }
         let fn = VExternal(consume, [])
         let other = VHostManaged { Descriptor = { descriptor with Name = "Other" }; Fields = Map.ofList ["Value", VInt 42L]; Payload = payload }
@@ -109,7 +109,7 @@ type HostManagedTests() =
     [<Test>]
     member _.``Polymorphic externs cannot erase host metadata in a round trip`` () =
         let bad =
-            { Name = "Host.erase"; Scheme = Forall([0], TFun(TVar 0, TVar 0)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.erase"; Scheme = Forall([0], TFun(TVar 0, TVar 0)); Arity = 1
               Impl = fun _ _ -> VRecord(Map.ofList ["Value", VInt 42L]) }
         let registered = { registration with Functions = registration.Functions @ [bad] }
         Assert.Throws<EvalException>(System.Action(fun () -> ScriptHost.loadSourceWithRegistration registered "Host.erase Host.node" |> ignore)) |> ignore

@@ -30,7 +30,7 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Infers Console.writeLine as injected extern`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         let typed = Helpers.inferWithExterns externs "Console.writeLine \"hello\""
         match typed |> List.last with
@@ -859,7 +859,7 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Infers task spawn and await`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
 
         match Helpers.inferWithExterns externs "Task.spawn (fun _ -> 1)" |> List.last with
@@ -872,7 +872,7 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Accepts task type annotation`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
         let typed = Helpers.inferWithExterns externs "let await_int (t: int task) = Task.await t"
         match typed.Head with
@@ -882,7 +882,7 @@ type TypeInferenceTests () =
 
     [<Test>]
     member _.``Rejects invalid task builtin arguments`` () =
-        let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let externs = Registry.all host
 
         let spawnAct () = Helpers.inferWithExterns externs "Task.spawn 1" |> ignore

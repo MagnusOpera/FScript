@@ -344,3 +344,18 @@ CLR attributes, assembly providers, and NuGet environments belong to .NET hostin
 ## Exit status
 
 JavaScript treats `Env.setExitCode` as a no-op for source portability. It does not change process status or enforce a shell-code range. Arguments are still evaluated normally, and the program's returned value is unchanged. The website continues displaying that value. Existing `run`, `evaluate`, and `invoke` APIs retain their tagged-value results.
+
+## Hosted interpreter permissions
+
+JavaScript hosting grants no capabilities by default. Pass `permissions: ['IO']` (or `Interactive`, `Threading`, `Native`) in run/load/parse/session options to grant them explicitly. `extern` and `HostFunctions.create` accept `requiredPermissions: ['IO']`; omitted requirements declare a host-authored callback as requiring none. Loaded exports and sessions retain grants; returned callables and invocation-context operations check the active policy. For example:
+
+```javascript
+const write = HostFunctions.create({
+  name: 'Host.write', parameters: [T.string], result: T.unit,
+  requiredPermissions: ['IO'],
+  invoke: ([text]) => { console.log(text.value); return {kind: 'unit'}; }
+});
+run('Host.write "hello"', {externs: [write], permissions: ['IO']});
+```
+
+These declarations rely on truthful host classification; arbitrary JavaScript handlers are trusted code. Granting `Threading` does not add Task implementation support to Fable: task operations remain unsupported. See the [host permissions guide](./host-permissions) for the capability model and .NET host API.

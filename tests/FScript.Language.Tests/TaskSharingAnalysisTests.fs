@@ -6,7 +6,7 @@ open NUnit.Framework
 [<TestFixture>]
 type TaskSharingAnalysisTests() =
     let external name argument result : ExternalFunction =
-        { Name = name; Scheme = Forall([], TFun(argument, result)); Arity = 1
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = name; Scheme = Forall([], TFun(argument, result)); Arity = 1
           Impl = fun _ _ -> failwith "Static analysis must not invoke FFI" }
     let handle = TNamed "Handle"
     let registration =

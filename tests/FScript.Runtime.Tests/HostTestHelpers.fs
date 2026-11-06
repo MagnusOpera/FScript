@@ -16,7 +16,7 @@ module HostTestHelpers =
 
     let invoke (ext: ExternalFunction) (args: Value list) =
         ext.Impl
-            { Session = obj()
+            { CheckPermissions = (fun _ -> ()); Session = obj()
               IsActive = fun () -> true
               Apply = noApply
               SpawnTask = noSpawnTask

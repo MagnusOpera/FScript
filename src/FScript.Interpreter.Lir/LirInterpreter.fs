@@ -138,7 +138,7 @@ module LirInterpreter =
                     key,toLanguage value) |> Map.ofList)
             | value ->
                 let callback : ExternalFunction =
-                    { Name = "<lir callback>"; Arity = 1; Scheme = Forall([],TFun(TUnit,TUnit))
+                    { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "<lir callback>"; Arity = 1; Scheme = Forall([],TFun(TUnit,TUnit))
                       Impl = fun _ -> function
                           | [argument] -> match apply value (fromLanguage argument) with
                                           | Ok result -> toLanguage result
@@ -162,7 +162,7 @@ module LirInterpreter =
             | Value.VExternal(callback,[]) when functions.ContainsKey callback -> functions[callback]
             | _ -> invalidOp "Unsupported library result."
         let rec context () : ExternalCallContext =
-            { Session = obj()
+            { CheckPermissions = (fun _ -> ()); Session = obj()
               IsActive = (fun () -> true)
               CheckRuntime = ignore
               SetExitCode = ignore

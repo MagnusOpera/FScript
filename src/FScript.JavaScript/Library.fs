@@ -420,6 +420,22 @@ let rec private tagSignature definitions expected value tagged =
         values |> Map.toList |> List.iteri (fun i (_, v) -> tagSignature definitions t v (getProperty tags[i] "value"))
     | _ -> ()
 
+let private permissionsFromJs value =
+    if isNullOrUndefined value then HostPermissions.None
+    elif not (isArray value) then failwith "permissions must be an array of capability names"
+    else
+        value |> unbox<obj array> |> Array.fold (fun permissions item ->
+            let name = if jsTypeOf item = "string" then unbox<string> item else failwith "permissions must contain capability names"
+            let permission =
+                match name with
+                | "None" -> HostPermissions.None
+                | "Interactive" -> HostPermissions.Interactive
+                | "Threading" -> HostPermissions.Threading
+                | "IO" -> HostPermissions.IO
+                | "Native" -> HostPermissions.Native
+                | _ -> failwith $"Unknown host permission: {name}"
+            permissions ||| permission) HostPermissions.None
+
 let private buildExternal (definitions: Map<string, Type>) (definition: obj) : ExternalFunction =
     withStructuredErrors (fun () ->
         let name = getRequiredProperty "name" definition |> unbox<string>
@@ -427,7 +443,7 @@ let private buildExternal (definitions: Map<string, Type>) (definition: obj) : E
         let scheme = getRequiredProperty "scheme" definition |> unbox<Scheme>
         let invoke = getRequiredProperty "invoke" definition
         if jsTypeOf invoke <> "function" then failwith "invoke must be a JavaScript function"
-        { Name = name
+        { RequiredPermissions = permissionsFromJs (getProperty definition "requiredPermissions"); Name = name
           Arity = arity
           Scheme = scheme
           Impl =
@@ -545,7 +561,9 @@ let private registrationFromOptions options =
         | Some value -> registrationFromHandle value
         | None -> HostInterop.empty
     let functions = tryGetProperty "externs" options |> Option.map externsFromArray |> Option.defaultValue []
-    validateRegistration { registration with Functions = registration.Functions @ functions }
+    let permissions = tryGetProperty "permissions" options |> Option.map permissionsFromJs |> Option.defaultValue registration.Permissions
+    validateRegistration { registration with Permissions = permissions; Functions = registration.Functions @ functions }
+    |> HostInterop.permitted
 
 let private optionString name fallback options =
     match tryGetProperty name options with
@@ -738,7 +756,7 @@ let invoke (loaded: obj) (name: string) (args: obj) : obj =
             else
                 args |> unbox<obj array> |> Array.toList |> List.map valueFromJs
         HostInterop.validateCall loaded.typeDefs loaded.exportedFunctionTypes[name] values
-            (fun () -> Eval.invokeValue loaded.typeDefs fnValue values) |> valueToTagged)
+            (fun () -> (Eval.invokeValueWithPermissionsAndExitCode loaded.registration.Permissions loaded.typeDefs fnValue values).Value) |> valueToTagged)
 
 let formatValue (value: obj) : string =
     withStructuredErrors (fun () -> valueFromJs value |> Pretty.valueToString)
@@ -783,7 +801,8 @@ let ``extern`` (definition: obj) : ExternalFunction =
         "name" ==> fn.Name
         "arity" ==> fn.Arity
         "scheme" ==> fn.Scheme
-        "invoke" ==> getRequiredProperty "invoke" definition ] |> freeze
+        "invoke" ==> getRequiredProperty "invoke" definition
+        "requiredPermissions" ==> getProperty definition "requiredPermissions" ] |> freeze
     weakSet externDefinitions (box fn) copied
     fn
 
@@ -838,7 +857,7 @@ let registration (definition: obj) : obj =
                   let t = getProperty cases k
                   k, if isNullOrUndefined t then None else Some (unbox<Type> t)) |> Map.ofList })
         let functions = entries "functions" |> List.map unbox<ExternalFunction>
-        let value = validateRegistration { Types = types; Unions = unions; Functions = functions }
+        let value = validateRegistration { Permissions = FScript.Language.HostPermissions.None; Types = types; Unions = unions; Functions = functions }
         let handle = createObj [ "kind" ==> "registration" ] |> freeze
         weakSet registrations handle (box value)
         handle)
@@ -918,4 +937,5 @@ let HostFunctions =
             "name" ==> getRequiredProperty "name" definition
             "arity" ==> parameters.Length
             "scheme" ==> Forall([], signature)
-            "invoke" ==> getRequiredProperty "invoke" definition ])) ] |> freeze
+            "invoke" ==> getRequiredProperty "invoke" definition
+            "requiredPermissions" ==> getProperty definition "requiredPermissions" ])) ] |> freeze

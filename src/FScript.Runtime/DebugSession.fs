@@ -443,13 +443,13 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
 
 /// File launches share configuration loading and inference with ordinary CLI execution.
 module DebugLaunch =
-    let create (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry =
+    let createWithPermissions permissions (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry =
         let path = Path.GetFullPath programPath
         let defaultRoot = if configuration.IsSome then defaultArg root (Path.GetDirectoryName path) else Path.GetDirectoryName path
         let settings =
             EnvironmentConfiguration.resolveForCli configuration (noConfiguration && configuration.IsNone) (Directory.GetCurrentDirectory()) defaultRoot None false []
             |> Result.defaultWith (fun error -> invalidOp error)
-        let registration = EnvironmentLoader.load settings |> Result.defaultWith (fun error -> invalidOp error)
+        let registration = EnvironmentLoader.loadWithPermissions permissions settings |> Result.defaultWith (fun error -> invalidOp error)
         let escape (text: string) = text.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r","\\r").Replace("\n","\\n").Replace("\t","\\t")
         let args = arguments |> Array.map (fun arg -> "\"" + escape arg + "\"") |> String.concat "; "
         let name = escape (Path.GetFileName path)
@@ -469,3 +469,7 @@ module DebugLaunch =
                 | _ -> None) |> Map.ofList
             pair.Key,mappings) |> Map.ofSeq
         new DebugSession(registration,prelude @ program,stopOnEntry,sourceAliases = aliases)
+
+    /// Embedded launches are default-deny; CLI/editor launchers explicitly grant capabilities.
+    let create programPath configuration noConfiguration root arguments stopOnEntry =
+        createWithPermissions HostPermissions.None programPath configuration noConfiguration root arguments stopOnEntry

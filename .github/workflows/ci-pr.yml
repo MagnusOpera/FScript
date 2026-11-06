@@ -30,6 +30,9 @@ jobs:
           REQUIRE_CHANGELOG_ALWAYS: "true"
         run: .github/scripts/check-unreleased-changelog.sh
 
+      - name: Verify changelog release formatting
+        run: make test-release-changelog
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:

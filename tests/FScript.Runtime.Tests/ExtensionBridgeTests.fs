@@ -8,7 +8,7 @@ open FScript.Runtime
 [<TestFixture>]
 type ExtensionBridgeTests() =
     let run functions source =
-        let registration = ExtensionBridge.toLanguageRegistration { FScript.Extensibility.HostInterop.empty with Functions = functions }
+        let registration = ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All { FScript.Extensibility.HostInterop.empty with Functions = functions }
         ScriptHost.loadSourceWithRegistration registration source
     let functionOf name signature impl : FScript.Extensibility.ExternalFunction =
         { Name = name; Arity = 1; Scheme = FScript.Extensibility.Forall([], signature); Impl = impl }
@@ -44,7 +44,7 @@ type ExtensionBridgeTests() =
 
     [<Test>]
     member _.``Default functions can be supplied and filtered through SDK context`` () =
-        let nativeContext: HostContext = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+        let nativeContext: HostContext = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         let context = FScript.Extensibility.HostContext(nativeContext.RootDirectory, [], ExtensionBridge.toExtensionFunctions (Registry.all nativeContext))
         let functions = context.DefaultFunctions |> List.filter (fun fn -> fn.Name = "Guid.new")
         Assert.That(functions, Has.Length.EqualTo(1))
@@ -73,9 +73,9 @@ type ExtensionBridgeTests() =
     member _.``SDK runtime checks delegate to the owning host`` () =
         let check = functionOf "Host.check" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit, FScript.Extensibility.TUnit))
                         (fun context _ -> context.CheckRuntime(); FScript.Extensibility.VUnit)
-        let registration = ExtensionBridge.toLanguageRegistration { FScript.Extensibility.HostInterop.empty with Functions = [check] }
+        let registration = ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All { FScript.Extensibility.HostInterop.empty with Functions = [check] }
         let context: ExternalCallContext =
-            { Session = obj(); IsActive = fun () -> true
+            { CheckPermissions = (fun _ -> ()); Session = obj(); IsActive = fun () -> true
               Apply = fun _ _ -> failwith "unused"
               SpawnTask = fun _ -> failwith "unused"
               AwaitTask = fun _ -> failwith "unused"

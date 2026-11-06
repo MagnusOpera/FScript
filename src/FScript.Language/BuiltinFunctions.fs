@@ -23,7 +23,7 @@ module BuiltinFunctions =
     let private implementations = Collections.Generic.Dictionary<ExternalFunction, ResumableImplementation>(HashIdentity.Reference)
     let private resumable name arity implementation =
         let descriptor =
-            { Name = name; Scheme = scheme name; Arity = arity
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = name; Scheme = scheme name; Arity = arity
               Impl = fun context arguments -> implementation (fun f a -> Execution.result(context.Apply f a)) arguments |> Execution.run }
         implementations.Add(descriptor, { Invoke = implementation })
         descriptor
@@ -145,13 +145,13 @@ module BuiltinFunctions =
         values |> List.fold folder [] |> List.rev
 
     let private builtinIgnore : ExternalFunction =
-        { Name = "ignore"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "ignore"
           Scheme = scheme "ignore"
           Arity = 1
           Impl = (fun _ _ -> VUnit) }
 
     let private builtinIntTryParse : ExternalFunction =
-        { Name = "Int.tryParse"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Int.tryParse"
           Scheme = scheme "Int.tryParse"
           Arity = 1
           Impl =
@@ -162,7 +162,7 @@ module BuiltinFunctions =
                 | None -> VOption None) }
 
     let private builtinFloatTryParse : ExternalFunction =
-        { Name = "Float.tryParse"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Float.tryParse"
           Scheme = scheme "Float.tryParse"
           Arity = 1
           Impl =
@@ -173,7 +173,7 @@ module BuiltinFunctions =
                 | None -> VOption None) }
 
     let private builtinBoolTryParse : ExternalFunction =
-        { Name = "Bool.tryParse"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Bool.tryParse"
           Scheme = scheme "Bool.tryParse"
           Arity = 1
           Impl =
@@ -184,13 +184,13 @@ module BuiltinFunctions =
                 | _ -> VOption None) }
 
     let private builtinIntToString : ExternalFunction =
-        { Name = "Int.toString"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Int.toString"
           Scheme = scheme "Int.toString"
           Arity = 1
           Impl = (fun _ args -> expectInt "Int.toString" args |> fun value -> VString (value.ToString(CultureInfo.InvariantCulture))) }
 
     let private builtinFloatToString : ExternalFunction =
-        { Name = "Float.toString"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Float.toString"
           Scheme = scheme "Float.toString"
           Arity = 1
           Impl =
@@ -200,7 +200,7 @@ module BuiltinFunctions =
                 | _ -> fail "Float.toString expects (float)") }
 
     let private builtinBoolToString : ExternalFunction =
-        { Name = "Bool.toString"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Bool.toString"
           Scheme = scheme "Bool.toString"
           Arity = 1
           Impl =
@@ -209,7 +209,7 @@ module BuiltinFunctions =
                 VString (if value then "true" else "false")) }
 
     let private builtinStringReplace : ExternalFunction =
-        { Name = "String.replace"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.replace"
           Scheme = scheme "String.replace"
           Arity = 3
           Impl =
@@ -220,7 +220,7 @@ module BuiltinFunctions =
                 | _ -> fail "String.replace expects (string, string, string)") }
 
     let private builtinStringIndexOf : ExternalFunction =
-        { Name = "String.indexOf"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.indexOf"
           Scheme = scheme "String.indexOf"
           Arity = 2
           Impl =
@@ -232,19 +232,19 @@ module BuiltinFunctions =
                 | _ -> fail "String.indexOf expects (string, string)") }
 
     let private builtinStringToLower : ExternalFunction =
-        { Name = "String.toLower"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.toLower"
           Scheme = scheme "String.toLower"
           Arity = 1
           Impl = (fun _ args -> expectString "String.toLower" args |> fun source -> VString(source.ToLowerInvariant())) }
 
     let private builtinStringToUpper : ExternalFunction =
-        { Name = "String.toUpper"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.toUpper"
           Scheme = scheme "String.toUpper"
           Arity = 1
           Impl = (fun _ args -> expectString "String.toUpper" args |> fun source -> VString(source.ToUpperInvariant())) }
 
     let private builtinStringSubstring : ExternalFunction =
-        { Name = "String.substring"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.substring"
           Scheme = scheme "String.substring"
           Arity = 3
           Impl =
@@ -260,7 +260,7 @@ module BuiltinFunctions =
                 | _ -> fail "String.substring expects (string, int, int)") }
 
     let private builtinStringConcat : ExternalFunction =
-        { Name = "String.concat"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.concat"
           Scheme = scheme "String.concat"
           Arity = 2
           Impl =
@@ -272,7 +272,7 @@ module BuiltinFunctions =
                 | _ -> fail "String.concat expects (string, string list)") }
 
     let private builtinStringSplit : ExternalFunction =
-        { Name = "String.split"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.split"
           Scheme = scheme "String.split"
           Arity = 2
           Impl =
@@ -286,7 +286,7 @@ module BuiltinFunctions =
                 | _ -> fail "String.split expects (string, string)") }
 
     let private builtinStringEndsWith : ExternalFunction =
-        { Name = "String.endsWith"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "String.endsWith"
           Scheme = scheme "String.endsWith"
           Arity = 2
           Impl =
@@ -296,7 +296,7 @@ module BuiltinFunctions =
                 | _ -> fail "String.endsWith expects (string, string)") }
 
     let private builtinListEmpty : ExternalFunction =
-        { Name = "List.empty"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.empty"
           Scheme = scheme "List.empty"
           Arity = 0
           Impl = (fun _ _ -> VList []) }
@@ -370,7 +370,7 @@ module BuiltinFunctions =
         })
 
     let private builtinListContains : ExternalFunction =
-        { Name = "List.contains"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.contains"
           Scheme = scheme "List.contains"
           Arity = 2
           Impl =
@@ -390,13 +390,13 @@ module BuiltinFunctions =
                 | _ -> fail "List.contains expects (needle, values)") }
 
     let private builtinListRev : ExternalFunction =
-        { Name = "List.rev"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.rev"
           Scheme = scheme "List.rev"
           Arity = 1
           Impl = (fun _ args -> expectList "List.rev" args |> List.rev |> VList) }
 
     let private builtinListDistinct : ExternalFunction =
-        { Name = "List.distinct"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.distinct"
           Scheme = scheme "List.distinct"
           Arity = 1
           Impl = (fun _ args -> expectList "List.distinct" args |> distinctValues |> VList) }
@@ -428,7 +428,7 @@ module BuiltinFunctions =
         })
 
     let private builtinListLength : ExternalFunction =
-        { Name = "List.length"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.length"
           Scheme = scheme "List.length"
           Arity = 1
           Impl = (fun _ args -> expectList "List.length" args |> List.length |> int64 |> VInt) }
@@ -470,7 +470,7 @@ module BuiltinFunctions =
         })
 
     let private builtinListTryItem : ExternalFunction =
-        { Name = "List.tryItem"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.tryItem"
           Scheme = scheme "List.tryItem"
           Arity = 2
           Impl =
@@ -487,13 +487,13 @@ module BuiltinFunctions =
                 | _ -> fail "List.tryItem expects (index, values)") }
 
     let private builtinListTryHead : ExternalFunction =
-        { Name = "List.tryHead"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.tryHead"
           Scheme = scheme "List.tryHead"
           Arity = 1
           Impl = (fun _ args -> expectList "List.tryHead" args |> List.tryHead |> VOption) }
 
     let private builtinListTail : ExternalFunction =
-        { Name = "List.tail"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.tail"
           Scheme = scheme "List.tail"
           Arity = 1
           Impl =
@@ -503,7 +503,7 @@ module BuiltinFunctions =
                 | _ :: rest -> VList rest) }
 
     let private builtinListAppend : ExternalFunction =
-        { Name = "List.append"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "List.append"
           Scheme = scheme "List.append"
           Arity = 2
           Impl =
@@ -513,7 +513,7 @@ module BuiltinFunctions =
                 | _ -> fail "List.append expects (left, right)") }
 
     let private builtinOptionDefaultValue : ExternalFunction =
-        { Name = "Option.defaultValue"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Option.defaultValue"
           Scheme = scheme "Option.defaultValue"
           Arity = 2
           Impl =
@@ -532,7 +532,7 @@ module BuiltinFunctions =
         })
 
     let private builtinOptionIsNone : ExternalFunction =
-        { Name = "Option.isNone"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Option.isNone"
           Scheme = scheme "Option.isNone"
           Arity = 1
           Impl =
@@ -543,7 +543,7 @@ module BuiltinFunctions =
                 | _ -> fail "Option.isNone expects (value)") }
 
     let private builtinOptionIsSome : ExternalFunction =
-        { Name = "Option.isSome"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Option.isSome"
           Scheme = scheme "Option.isSome"
           Arity = 1
           Impl =
@@ -564,13 +564,13 @@ module BuiltinFunctions =
         })
 
     let private builtinMapEmpty : ExternalFunction =
-        { Name = "Map.empty"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.empty"
           Scheme = scheme "Map.empty"
           Arity = 0
           Impl = (fun _ _ -> VMap Map.empty) }
 
     let private builtinMapTryGet : ExternalFunction =
-        { Name = "Map.tryGet"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.tryGet"
           Scheme = scheme "Map.tryGet"
           Arity = 2
           Impl =
@@ -580,7 +580,7 @@ module BuiltinFunctions =
                 | _ -> fail "Map.tryGet expects (key, values)") }
 
     let private builtinMapContainsKey : ExternalFunction =
-        { Name = "Map.containsKey"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.containsKey"
           Scheme = scheme "Map.containsKey"
           Arity = 2
           Impl =
@@ -590,7 +590,7 @@ module BuiltinFunctions =
                 | _ -> fail "Map.containsKey expects (key, values)") }
 
     let private builtinMapAdd : ExternalFunction =
-        { Name = "Map.add"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.add"
           Scheme = scheme "Map.add"
           Arity = 3
           Impl =
@@ -600,7 +600,7 @@ module BuiltinFunctions =
                 | _ -> fail "Map.add expects (key, value, values)") }
 
     let private builtinMapOfList : ExternalFunction =
-        { Name = "Map.ofList"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.ofList"
           Scheme = scheme "Map.ofList"
           Arity = 1
           Impl =
@@ -627,7 +627,7 @@ module BuiltinFunctions =
         })
 
     let private builtinMapCount : ExternalFunction =
-        { Name = "Map.count"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.count"
           Scheme = scheme "Map.count"
           Arity = 1
           Impl =
@@ -697,7 +697,7 @@ module BuiltinFunctions =
         })
 
     let private builtinMapRemove : ExternalFunction =
-        { Name = "Map.remove"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Map.remove"
           Scheme = scheme "Map.remove"
           Arity = 2
           Impl =
@@ -707,7 +707,7 @@ module BuiltinFunctions =
                 | _ -> fail "Map.remove expects (key, values)") }
 
     let private builtinSetExitCode : ExternalFunction =
-        { Name = "Env.setExitCode"
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Env.setExitCode"
           Scheme = scheme "Env.setExitCode"
           Arity = 1
           Impl = fun context -> function

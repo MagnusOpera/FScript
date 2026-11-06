@@ -42,7 +42,7 @@ type NuGetEnvironmentTests() =
         use fixture = new NuGetFixture()
         for version in ["1.0.0"; "2.0.0"; "3.0.0-preview.1"] do fixture.AddProvider version
         fixture.WriteManifest requested
-        let loaded = EnvironmentLoader.loadWithInfo (settings fixture) |> get
+        let loaded = EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         Assert.That(loaded.Packages.Head.Version, Is.EqualTo expected)
         Assert.That(loaded.AssemblyPaths |> List.exists File.Exists, Is.True)
         Assert.That(loaded.AssemblyPaths.Head, Does.StartWith(Path.Combine(fixture.Directory, ".fscript")))
@@ -50,7 +50,7 @@ type NuGetEnvironmentTests() =
         let script = ScriptHost.loadSourceWithRegistration loaded.Registration "Ext.acceptNode (Ext.node 42)"
         Assert.That(Pretty.valueToString script.LastValue, Is.EqualTo "42")
         // A second initialization reuses cached runtime assets without corrupting loaded files.
-        let again = EnvironmentLoader.loadWithInfo (settings fixture) |> get
+        let again = EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         Assert.That(again.Packages.Head.Version, Is.EqualTo expected)
 
     [<Test>]
@@ -58,22 +58,22 @@ type NuGetEnvironmentTests() =
         use fixture = new NuGetFixture()
         fixture.AddProvider "1.0.0"
         fixture.WriteManifest ""
-        Assert.That((EnvironmentLoader.loadWithInfo (settings fixture) |> get).Packages.Head.Version, Is.EqualTo "1.0.0")
+        Assert.That((EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get).Packages.Head.Version, Is.EqualTo "1.0.0")
         fixture.AddProvider "2.0.0"
-        Assert.That((EnvironmentLoader.loadWithInfo (settings fixture) |> get).Packages.Head.Version, Is.EqualTo "2.0.0")
+        Assert.That((EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get).Packages.Head.Version, Is.EqualTo "2.0.0")
 
     [<Test>]
     member _.``Missing and non-provider packages fail atomically`` () =
         use fixture = new NuGetFixture()
         fixture.AddProvider "1.0.0"
         fixture.WriteManifest "9.0.0"
-        match EnvironmentLoader.load (settings fixture) with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "Missing version was accepted"
         | Error message -> Assert.That(message, Does.Contain("NuGet").And.Contain(fixture.Name))
         let plain = fixture.Name + ".Plain"
         fixture.AddPackage(plain, "1.0.0", [| typeof<FScript.Extensibility.HostContext>.Assembly.Location |], "")
         File.WriteAllText(fixture.ConfigPath, $"[[runtime.packages]]\nname = '{plain}'\nversion = '1.0.0'")
-        match EnvironmentLoader.load (settings fixture) with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "Package without a provider was accepted"
         | Error message -> Assert.That(message, Does.Contain("FScriptExternProvider").And.Contain(plain))
 
@@ -84,7 +84,7 @@ type NuGetEnvironmentTests() =
         fixture.AddPackage(dependency, "1.0.0", [| typeof<FScript.Extensibility.HostContext>.Assembly.Location |], "")
         fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
-        let loaded = EnvironmentLoader.loadWithInfo (settings fixture) |> get
+        let loaded = EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         Assert.That(loaded.AssemblyPaths |> List.exists (fun p -> Path.GetFileName(p) = "FScript.Extensibility.dll"), Is.True)
         Assert.That(loaded.Packages.Length, Is.EqualTo 1)
         Assert.That(loaded.Registration.Functions |> List.exists (fun f -> f.Name = "Ext.node"), Is.True)
@@ -98,7 +98,7 @@ type NuGetEnvironmentTests() =
         fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[2.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
         File.AppendAllText(fixture.ConfigPath, $"\n[[runtime.packages]]\nname = '{dependency}'\nversion = '1.0.0'\n")
-        match EnvironmentLoader.load (settings fixture) with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "A dependency downgrade was accepted"
         | Error message -> Assert.That(message, Does.Contain(dependency))
 
@@ -107,7 +107,7 @@ type NuGetEnvironmentTests() =
         use fixture = new NuGetFixture()
         fixture.AddProvider "1.0.0"
         fixture.WriteManifest "1.0.0"
-        let registration = EnvironmentLoader.load (settings fixture) |> get
+        let registration = EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         let first = Interactive.submit (Interactive.createWithRegistration registration) (FScript.parse "let node = Ext.node 42")
         let second = Interactive.submit first.Session (FScript.parse "Ext.acceptNode node")
         Assert.That(Pretty.valueToString second.State.LastValue, Is.EqualTo "42")
@@ -117,9 +117,9 @@ type NuGetEnvironmentTests() =
         use fixture = new NuGetFixture()
         fixture.AddProvider "1.0.0"
         fixture.WriteManifest "1.0.0"
-        EnvironmentLoader.load (settings fixture) |> get |> ignore
+        EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) |> get |> ignore
         Directory.Delete(Path.Combine(fixture.Directory, "feed"), true)
-        let registration = EnvironmentLoader.load (settings fixture) |> get
+        let registration = EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         let script = ScriptHost.loadSourceWithRegistration registration "Ext.answer"
         Assert.That(Pretty.valueToString script.LastValue, Is.EqualTo "42")
 
@@ -130,7 +130,7 @@ type NuGetEnvironmentTests() =
         fixture.WriteManifest "1.0.0"
         let assembly = typeof<ValidExternProvider>.Assembly.Location
         File.AppendAllText(fixture.ConfigPath, $"\n[runtime]\nextern-assemblies = ['{assembly}']\n")
-        match EnvironmentLoader.load (settings fixture) with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "Duplicate package and local registrations were accepted"
         | Error message -> Assert.That(message, Does.Contain("conflicts").And.Contain("Ext.answer"))
 
@@ -145,7 +145,7 @@ type NuGetEnvironmentTests() =
         fixture.WriteManifest "1.0.0"
         if not explicitOwner then File.WriteAllText(fixture.ConfigPath, "")
         File.AppendAllText(fixture.ConfigPath, $"\n[[runtime.packages]]\nname = '{consumer}'\nversion = '1.0.0'\n")
-        let registration = EnvironmentLoader.load (settings fixture) |> get
+        let registration = EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         let consumed = ScriptHost.loadSourceWithRegistration registration "Consumer.readNode (Ext.node 42)"
         Assert.That(Pretty.valueToString consumed.LastValue, Is.EqualTo "42")
         let node = ScriptHost.loadSourceWithRegistration registration "Ext.node 42"
@@ -153,7 +153,7 @@ type NuGetEnvironmentTests() =
         | VHostManaged host ->
             // The test host already references this assembly; NuGet must use its own copy.
             Assert.That(obj.ReferenceEquals(host.Payload.GetType().Assembly, typeof<ProviderNode>.Assembly), Is.False)
-            let another = EnvironmentLoader.load (settings fixture) |> get
+            let another = EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
             let second = ScriptHost.loadSourceWithRegistration another "Ext.node 42"
             match second.LastValue with
             | VHostManaged other -> Assert.That(obj.ReferenceEquals(host.Payload.GetType().Assembly, other.Payload.GetType().Assembly), Is.False)
@@ -174,6 +174,6 @@ type NuGetEnvironmentTests() =
         fixture.AddPackage(dependency, "1.0.0", [| alternate |], "")
         fixture.AddPackage(fixture.Name, "1.0.0", [| original |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
-        match EnvironmentLoader.load (settings fixture) with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "Conflicting CLR identities were accepted"
         | Error message -> Assert.That(message, Does.Contain("conflicting runtime assemblies"))

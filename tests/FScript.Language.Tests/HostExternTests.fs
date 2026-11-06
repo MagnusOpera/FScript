@@ -9,7 +9,7 @@ open FScript.Runtime
 
 [<TestFixture>]
 type HostExternTests () =
-    let host = { RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
+    let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
     let externs = Registry.all host
 
     [<Test>]
@@ -151,7 +151,7 @@ type HostExternTests () =
         let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(root) |> ignore
         try
-            let localExterns = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
             let script =
                 "let created = Fs.createDirectory \"tmp\"\n" +
                 "let written = Fs.writeText \"tmp/file.txt\" \"hello\"\n" +
@@ -181,7 +181,7 @@ type HostExternTests () =
         try
             let file = Path.Combine(root, "item.txt")
             File.WriteAllText(file, "x")
-            let localExterns = Registry.all { RootDirectory = root; DeniedPathGlobs = [] }
+            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
             let script =
                 "match Fs.kind \"item.txt\" with\n" +
                 "| FsKind.File file -> file\n" +
@@ -202,7 +202,7 @@ type HostExternTests () =
             let blocked = Path.Combine(root, ".git")
             Directory.CreateDirectory(blocked) |> ignore
             File.WriteAllText(Path.Combine(blocked, "config"), "x")
-            let localExterns = Registry.all { RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
+            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
 
             match Helpers.evalWithExterns localExterns "Fs.kind \".git\"" with
             | VUnionCase("FsKind", "Missing", None) -> ()

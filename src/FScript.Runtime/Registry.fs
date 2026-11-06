@@ -23,3 +23,8 @@ module Registry =
           JsonExterns.deserialize
           JsonExterns.serialize
           XmlExterns.query_values ] @ PureExterns.functions @ TaskExterns.all
+        |> List.filter (fun fn -> HostInterop.allows ctx.Permissions fn.RequiredPermissions)
+
+    /// Create an interpreter registration with exactly the host's grants.
+    let registration (context: HostContext) =
+        HostInterop.ofExternsWithPermissions context.Permissions (all context)

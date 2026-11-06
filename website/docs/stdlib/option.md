@@ -4,9 +4,13 @@ title: Option Module
 slug: /stdlib/option
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 `option` is a native type with two cases: `Some value` and `None`.
 
 ## `Option.defaultValue : 'a -> 'a option -> 'a`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Returns option value or a fallback.
 
@@ -16,6 +20,8 @@ let port = Some 8080 |> Option.defaultValue 80
 
 ## `Option.defaultWith : (unit -> 'a) -> 'a option -> 'a`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Computes fallback lazily.
 
 ```fsharp
@@ -23,6 +29,8 @@ let value = None |> Option.defaultWith (fun () -> 42)
 ```
 
 ## `Option.isNone : 'a option -> bool`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Returns `true` when option is `None`.
 
@@ -32,6 +40,8 @@ let missing = None |> Option.isNone
 
 ## `Option.isSome : 'a option -> bool`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Returns `true` when option is `Some`.
 
 ```fsharp
@@ -39,6 +49,8 @@ let present = Some "x" |> Option.isSome
 ```
 
 ## `Option.map : ('a -> 'b) -> 'a option -> 'b option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Transforms value inside `Some`.
 
@@ -49,6 +61,8 @@ let upper = Some "fscript" |> Option.map String.toUpper
 ## Pure support additions
 
 ### `Option.bind`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Option.bind : ('a -> 'b option) -> 'a option -> 'b option
@@ -63,6 +77,8 @@ Option.bind Int.tryParse (Some "42")
 
 ### `Option.flatten`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Option.flatten : 'a option option -> 'a option
 ```
@@ -75,6 +91,8 @@ Option.flatten (Some (Some 2))
 ```
 
 ### `Option.filter`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Option.filter : ('a -> bool) -> 'a option -> 'a option
@@ -89,6 +107,8 @@ Option.filter (fun x -> x>1) (Some 1)
 
 ### `Option.orElse`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Option.orElse : 'a option -> 'a option -> 'a option
 ```
@@ -101,6 +121,8 @@ Option.orElse (Some 2) None
 ```
 
 ### `Option.orElseWith`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Option.orElseWith : (unit -> 'a option) -> 'a option -> 'a option
@@ -115,6 +137,8 @@ Option.orElseWith (fun () -> Some 2) None
 
 ### `Option.map2`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 Option.map2 : ('a -> 'b -> 'd) -> 'a option -> 'b option -> 'd option
 ```
@@ -127,6 +151,8 @@ Option.map2 (fun a b -> a+b) (Some 1) (Some 2)
 ```
 
 ### `Option.toList`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Option.toList : 'a option -> 'a list

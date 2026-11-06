@@ -4,11 +4,15 @@ title: Glob Module
 slug: /stdlib/glob
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 These core builtins match supplied strings only. They never enumerate files or directories; `Fs.glob` remains the separate filesystem operation.
 
 Patterns use `/` separators and ordinal, case-sensitive matching. `*` matches zero or more UTF-16 code units within one segment; `?` matches one code unit; `**` matches zero or more whole nonempty segments and must occupy an entire pattern segment. Other characters are literal: there are no character classes, brace expansion, negation, or escape syntax. Leading dots are ordinary characters. Inputs are not normalized, and leading/trailing separators participate in matching.
 
 ### `Glob.isMatch`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Glob.isMatch : string -> string -> bool
@@ -22,6 +26,8 @@ Glob.isMatch "**/*.fs" "Parser.fs"
 ```
 
 ### `Glob.filter`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 Glob.filter : string -> string list -> string list

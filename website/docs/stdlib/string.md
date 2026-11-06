@@ -4,7 +4,11 @@ title: String Module
 slug: /stdlib/string
 ---
 
+**Hosted interpreter permissions:** Every function and value on this page requires no host permissions. Higher-order functions still enforce the requirements of their callbacks. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 ## `String.replace : string -> string -> string -> string`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Argument order is `oldValue -> newValue -> source`.
 
@@ -16,6 +20,8 @@ let text = String.replace "-" "_" "a-b-c"
 
 ## `String.indexOf : string -> string -> int option`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Argument order is `value -> source`. Matching is ordinal and case-sensitive; returns the first zero-based index or `None` when absent.
 
 ```fsharp
@@ -23,6 +29,8 @@ let maybeIndex = String.indexOf "script" "fscript"
 ```
 
 ## `String.toLower : string -> string`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Converts a string to lowercase using invariant casing.
 
@@ -32,6 +40,8 @@ let lower = String.toLower "FSCRIPT"
 
 ## `String.toUpper : string -> string`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Converts a string to uppercase using invariant casing.
 
 ```fsharp
@@ -39,6 +49,8 @@ let upper = String.toUpper "fscript"
 ```
 
 ## `String.substring : int -> int -> string -> string option`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Argument order is `start -> length -> source`.
 Returns `None` for invalid ranges.
@@ -49,6 +61,8 @@ let maybeSub = String.substring 0 4 "fscript"
 
 ## `String.concat : string -> string list -> string`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 Joins a list of strings with a separator.
 
 ```fsharp
@@ -56,6 +70,8 @@ let joined = String.concat "," ["a"; "b"; "c"]
 ```
 
 ## `String.split : string -> string -> string list`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Argument order is `separator -> source`.
 Splits on the exact separator string and preserves empty entries, including trailing ones.
@@ -65,6 +81,8 @@ let parts = String.split "," "a,b,c"
 ```
 
 ## `String.endsWith : string -> string -> bool`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 Argument order is `suffix -> source`.
 Checks whether the source ends with the suffix.
@@ -81,6 +99,8 @@ Count/size arguments must fit `0..2147483647`; chunk sizes must also be positive
 
 ### `String.length`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.length : string -> int
 ```
@@ -93,6 +113,8 @@ String.length "abc"
 ```
 
 ### `String.isEmpty`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.isEmpty : string -> bool
@@ -107,6 +129,8 @@ String.isEmpty ""
 
 ### `String.isWhiteSpace`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.isWhiteSpace : string -> bool
 ```
@@ -119,6 +143,8 @@ String.isWhiteSpace " \t"
 ```
 
 ### `String.trim`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.trim : string -> string
@@ -133,6 +159,8 @@ String.trim " hi "
 
 ### `String.trimStart`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.trimStart : string -> string
 ```
@@ -145,6 +173,8 @@ String.trimStart " hi "
 ```
 
 ### `String.trimEnd`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.trimEnd : string -> string
@@ -159,6 +189,8 @@ String.trimEnd " hi "
 
 ### `String.splitLines`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.splitLines : string -> string list
 ```
@@ -171,6 +203,8 @@ String.splitLines "a\nb\n"
 ```
 
 ### `String.startsWith`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.startsWith : string -> string -> bool
@@ -185,6 +219,8 @@ String.startsWith "ab" "abc"
 
 ### `String.contains`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.contains : string -> string -> bool
 ```
@@ -197,6 +233,8 @@ String.contains "b" "abc"
 ```
 
 ### `String.padLeft`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.padLeft : int -> string -> string
@@ -211,6 +249,8 @@ String.padLeft 3 "a"
 
 ### `String.padRight`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.padRight : int -> string -> string
 ```
@@ -224,6 +264,8 @@ String.padRight 3 "a"
 
 ### `String.repeat`
 
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
+
 ```fsharp
 String.repeat : int -> string -> string
 ```
@@ -236,6 +278,8 @@ String.repeat 3 "ab"
 ```
 
 ### `String.compare`
+
+<a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a>
 
 ```fsharp
 String.compare : string -> string -> int

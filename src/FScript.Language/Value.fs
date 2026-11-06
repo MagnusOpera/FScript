@@ -5,6 +5,16 @@ namespace FScript.Language
 open System.Threading.Tasks
 #endif
 
+/// Host-granted capabilities. An empty policy grants no effects.
+[<System.Flags>]
+type HostPermissions =
+    | None = 0
+    | Interactive = 1
+    | Threading = 2
+    | IO = 4
+    | Native = 8
+    | All = 15
+
 type MapKey =
     | MKString of string
     | MKInt of int64
@@ -55,10 +65,12 @@ and ExternalCallContext =
       SpawnTask: Value -> Value
       AwaitTask: Value -> Value
       CheckRuntime: unit -> unit
-      SetExitCode: int -> unit }
+      SetExitCode: int -> unit
+      CheckPermissions: HostPermissions -> unit }
 
 and ExternalFunction =
-    { Name: string
+    { RequiredPermissions: HostPermissions
+      Name: string
       Scheme: Scheme
       Impl: ExternalCallContext -> Value list -> Value
       Arity: int }
@@ -66,6 +78,7 @@ and ExternalFunction =
 and Env = Map<string, Value>
 
 type ExtensionRegistration =
-    { Types: HostTypeDescriptor list
+    { Permissions: HostPermissions
+      Types: HostTypeDescriptor list
       Unions: HostUnionDescriptor list
       Functions: ExternalFunction list }

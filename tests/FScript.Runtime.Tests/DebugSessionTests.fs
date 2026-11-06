@@ -13,7 +13,7 @@ type DebugSessionTests() =
     let createWith extensions scheduler source stop =
         let path = System.IO.Path.GetFullPath("debug-test.fss")
         let program = FScript.parseWithSourceName (Some path) source
-        let registration = HostInterop.ofExterns (TaskExterns.all @ extensions)
+        let registration = HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All (TaskExterns.all @ extensions)
         let session = new DebugSession(registration,program,stop,taskScheduler = scheduler)
         let events = new BlockingCollection<DebugEvent>()
         session.Events.Add events.Add
@@ -102,7 +102,7 @@ type DebugSessionTests() =
         let descriptor = { Name = "Node"; Fields = Map.ofList ["Value",TInt]; HostManaged = true }
         let registration = { HostInterop.empty with Types = [descriptor] }
         let node = HostInterop.create registration "Node" (Map.ofList ["Value",VInt 42L]) ("TOP SECRET PAYLOAD" :> obj)
-        let registration = { registration with Functions = [{ Name = "Host.node"; Scheme = Forall([],TNamed "Node"); Arity = 0; Impl = fun _ _ -> node }] }
+        let registration = { registration with Functions = [{ RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.node"; Scheme = Forall([],TNamed "Node"); Arity = 0; Impl = fun _ _ -> node }] }
         let path = System.IO.Path.GetFullPath("host-debug-test.fss")
         let program = FScript.parseWithSourceName (Some path) "let node = Host.node\nnode.Value"
         use session = new DebugSession(registration,program,false)
@@ -126,14 +126,14 @@ type DebugSessionTests() =
         let mutable hostThread = 0
         let mutable callbackThread = 0
         let callback =
-            { Name = "Host.callback"; Scheme = Forall([],TFun(TFun(TInt,TInt),TInt)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.callback"; Scheme = Forall([],TFun(TFun(TInt,TInt),TInt)); Arity = 1
               Impl = fun context args ->
                 hostThread <- Thread.CurrentThread.ManagedThreadId
                 let result = context.Apply args.Head (VInt 41L)
                 Assert.That(Thread.CurrentThread.ManagedThreadId,Is.EqualTo(hostThread))
                 result }
         let observe =
-            { Name = "Host.observe"; Scheme = Forall([],TFun(TInt,TInt)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.observe"; Scheme = Forall([],TFun(TInt,TInt)); Arity = 1
               Impl = fun _ args -> callbackThread <- Thread.CurrentThread.ManagedThreadId; args.Head }
         let session,events,completion,thread,path = createWith [callback;observe] TaskScheduler.Default "let f x = Host.observe (x + 1)\nHost.callback f" false
         use session = session
@@ -209,7 +209,7 @@ type DebugSessionTests() =
     [<Test>]
     member _.``Uncaught exception policy does not stop exceptions recovered by a host callback``() =
         let recover =
-            { Name = "Host.recover"; Scheme = Forall([],TFun(TFun(TUnit,TInt),TInt)); Arity = 1
+            { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.recover"; Scheme = Forall([],TFun(TFun(TUnit,TInt),TInt)); Arity = 1
               Impl = fun context arguments ->
                 try context.Apply arguments.Head VUnit
                 with EvalException _ -> VInt 99L }

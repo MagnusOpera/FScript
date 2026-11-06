@@ -12,7 +12,7 @@ type SupportLibraryTests() =
 
     [<TestCaseSource(nameof SupportLibraryTests.Cases)>]
     member _.``Pure library examples`` (source: string,expected: string) =
-        let registration=HostInterop.ofExterns FScript.Runtime.PureExterns.functions
+        let registration=HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All FScript.Runtime.PureExterns.functions
         let actual=Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration |> Pretty.valueToString
         Assert.That(actual,Is.EqualTo(expected))
 

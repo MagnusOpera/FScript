@@ -84,3 +84,40 @@
   height: 18px;
   object-fit: contain;
 }
+
+/* Function permission labels also navigate to the capability definitions. */
+a.permission-tag {
+  display: inline-block;
+  padding: .08rem .5rem;
+  margin: .1rem .15rem .1rem 0;
+  border: 1px solid color-mix(in srgb, var(--ifm-color-primary) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ifm-color-primary) 12%, transparent);
+  color: var(--ifm-font-color-base);
+  font-size: .75rem;
+  font-weight: 650;
+  line-height: 1.6;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.permission-tag--none {
+  border-color: var(--ifm-color-emphasis-300);
+  background: var(--ifm-color-emphasis-100);
+}
+
+a.permission-tag:hover {
+  border-color: var(--ifm-color-primary);
+  background: color-mix(in srgb, var(--ifm-color-primary) 22%, transparent);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+}
+
+a.permission-tag:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+.permission-definition {
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem);
+}

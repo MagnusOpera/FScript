@@ -4,22 +4,26 @@ title: Task Module
 slug: /stdlib/task
 ---
 
+**Hosted interpreter permissions:** Every `Task.*` function requires `Threading`, including `fromResult`, delays, awaits, and continuations. Tasks inherit the invocation’s grants. These checks do not apply to CLI execution or compilation. See [Host permissions](../embedding/host-permissions).
+
 The Task module creates and composes concurrent work. All functions are optional .NET runtime externs: the CLI provides them by default; embedding hosts can register `TaskExterns.all` or a subset. `--no-default-externs` removes them. Canonical task execution is unsupported in Fable/JavaScript and in the standalone LIR interpreter; both compiled .NET backends implement the API.
 
 A task has the native postfix type `'a task`. Lists are homogeneous: every candidate in a task list must return the same type. Callbacks return ordinary values, and their return value becomes the new task's result. No operation automatically flattens a task returned by a callback.
 
-| Function | Signature |
-| --- | --- |
-| `Task.spawn` | `(unit -> 'a) -> 'a task` |
-| `Task.delay` | `int -> unit task` |
-| `Task.fromResult` | `'a -> 'a task` |
-| `Task.continueWith` | `('a -> 'b) -> 'a task -> 'b task` |
-| `Task.whenAll` | `('a list -> 'b) -> 'a task list -> 'b task` |
-| `Task.whenAny` | `('a -> 'b) -> 'a task list -> 'b task` |
-| `Task.await` | `'a task -> 'a` |
-| `Task.awaitAll` | `'a task list -> 'a list` |
+| Function | Signature | Host permissions |
+| --- | --- | --- |
+| `Task.spawn` | `(unit -> 'a) -> 'a task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.delay` | `int -> unit task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.fromResult` | `'a -> 'a task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.continueWith` | `('a -> 'b) -> 'a task -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.whenAll` | `('a list -> 'b) -> 'a task list -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.whenAny` | `('a -> 'b) -> 'a task list -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.await` | `'a task -> 'a` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| `Task.awaitAll` | `'a task list -> 'a list` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
 
 ## `Task.spawn`
+
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
 
 Schedules a `unit -> 'a` function concurrently and returns a task immediately.
 
@@ -31,6 +35,8 @@ Task.await pending
 
 ## `Task.delay`
 
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
+
 Creates a task that completes with `()` after the specified milliseconds. It uses a timer, without occupying a worker thread during the delay. Allowed values are `0..2147483647`; negative or larger values raise an error. Zero produces a completed task. There is no infinite-delay or script cancellation overload. Stopping a debugger session cancels its outstanding timers so a long delay does not hold the session open.
 
 ```fsharp
@@ -41,6 +47,8 @@ Task.await pending
 
 ## `Task.fromResult`
 
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
+
 Creates an already-completed task containing the supplied value. The value is evaluated before the call. The task still needs to be awaited, directly or through a consuming combinator.
 
 ```fsharp
@@ -49,6 +57,8 @@ Task.fromResult "ready" |> Task.await
 ```
 
 ## `Task.continueWith`
+
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
 
 Takes the callback first and the task last, so it composes naturally with pipelines. The callback is scheduled asynchronously after successful completion of the input and receives its result directly. Its value becomes the returned task's result. Prerequisite failure skips the callback and propagates failure.
 
@@ -63,6 +73,8 @@ Task.await next
 Unlike .NET's task-handle-based `ContinueWith`, this callback receives the completed **value** and runs only on success. It has no scheduler, status-filter, or cancellation overloads. A separate `Task.map` would duplicate this operation and is not provided.
 
 ## `Task.whenAll`
+
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
 
 Takes the callback first and a list of already-created tasks last. It waits asynchronously for every input, then schedules the callback once with results in **input order**, independently of completion order. The function does not start the input work again. Input failure skips the callback. An empty input invokes the callback with `[]`.
 
@@ -84,6 +96,8 @@ List.init 0 Task.fromResult
 ```
 
 ## `Task.whenAny`
+
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
 
 Takes the callback first and a nonempty list of already-created tasks last. The first observed completion selects a winner; the callback receives the winning **value**, rather than a task handle. It runs once after successful completion of that winner. A failed winner propagates failure without calling the callback. This selects the first completion, not the first success. Empty input raises an error because there is no value to supply.
 
@@ -126,6 +140,8 @@ No synthetic union or special matcher is needed. The usual type checker verifies
 
 ## `Task.await`
 
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
+
 Waits for one task and returns its result. Waiting synchronizes script execution; inside evaluator workers and the debugger, it suspends the continuation instead of occupying a scheduler worker. An input task can be awaited more than once.
 
 ```fsharp
@@ -135,6 +151,8 @@ Task.await pending
 ```
 
 ## `Task.awaitAll`
+
+<a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a>
 
 Waits for all input tasks and returns their results in input order. It returns a list, matching the homogeneous list input; it does not construct a runtime-sized tuple. Empty input returns `[]`.
 

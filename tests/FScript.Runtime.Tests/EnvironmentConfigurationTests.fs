@@ -66,7 +66,7 @@ type EnvironmentConfigurationTests() =
         let parsed = EnvironmentConfiguration.parse configPath "[runtime]\nextern-assemblies = ['missing.dll']" |> get
         Assert.That(parsed.ExternAssemblies.Value.Head, Does.EndWith("missing.dll"))
         let effective = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
-        match EnvironmentLoader.load effective with
+        match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All effective with
         | Ok _ -> Assert.Fail("Missing assembly must fail at loading, not parsing")
         | Error message -> Assert.That(message, Does.Contain("missing.dll"))
 

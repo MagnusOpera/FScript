@@ -29,7 +29,7 @@ module Compiler =
             let inferenceExterns =
                 externs
                 |> List.map (fun external ->
-                    ({ Name = external.Name; Scheme = external.Scheme; Arity = external.Arity; Impl = fun _ _ -> VUnit }: ExternalFunction))
+                    ({ RequiredPermissions = FScript.Language.HostPermissions.None; Name = external.Name; Scheme = external.Scheme; Arity = external.Arity; Impl = fun _ _ -> VUnit }: ExternalFunction))
             let resolved = TypeInfer.inferResolvedProgramWithRegistrationAndPurity { registration with Functions = inferenceExterns } purity input.Program
             let exportedFunctions = ExportSignatures.fromTypedProgram resolved.TypedProgram
             resolved

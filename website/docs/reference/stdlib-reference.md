@@ -6,171 +6,171 @@ slug: /reference/stdlib
 
 This is the complete catalog of core functions/values and default .NET runtime externs. Each name links to argument order, examples, and failure behavior. Type variables are local to each signature; repeated variables in a row must agree.
 
-**Core** functions are always available. **Runtime** functions require host registration, are enabled by default in the CLI, and are disabled by `--no-default-externs` or `runtime.default-externs = false`. JavaScript hosts provide their own externs. Registered custom providers add functions beyond this standard catalog.
+**Core** functions are always available. **Runtime** functions require host registration, are enabled by default in the CLI, and are disabled by `--no-default-externs` or `runtime.default-externs = false`. JavaScript hosts provide their own externs. Registered custom providers add functions beyond this standard catalog. Click a permission tag to read its definition. **None** means that the function requires no capabilities. The **Host permissions** column applies only to hosted interpretation: hosts grant none by default. The CLI and compilation are unrestricted by this policy. Provider FFI requires `Native`; callbacks retain their own requirements. See [Host permissions](../embedding/host-permissions).
 
 ## Top-level surface
 
-| Name | Type | Availability |
-| --- | --- | --- |
-| [`ignore`](../stdlib/builtins) | `'a -> unit` | Core function; evaluates and discards its argument |
-| [`Env`](../stdlib/builtins) | `Environment` | Value injected by CLI/REPL, optional in embedding hosts |
-| [`Environment`](../stdlib/builtins) | `{ ScriptName: string option; Arguments: string list }` | Built-in record type |
-| [`FsKind`](../stdlib/builtins) | `File of string` / `Directory of string` / `Missing` | Built-in union type |
+| Name | Type | Availability | Host permissions |
+| --- | --- | --- | --- |
+| [`ignore`](../stdlib/builtins) | `'a -> unit` | Core function; evaluates and discards its argument | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Env`](../stdlib/builtins) | `Environment` | Value injected by CLI/REPL, optional in embedding hosts | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Environment`](../stdlib/builtins) | `{ ScriptName: string option; Arguments: string list }` | Built-in record type | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`FsKind`](../stdlib/builtins) | `File of string` / `Directory of string` / `Missing` | Built-in union type | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ## Core library
 
 ### Bool
 
-| Name | Signature |
-| --- | --- |
-| [`Bool.toString`](../stdlib/scalars) | `bool -> string` |
-| [`Bool.tryParse`](../stdlib/scalars) | `string -> bool option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Bool.toString`](../stdlib/scalars) | `bool -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Bool.tryParse`](../stdlib/scalars) | `string -> bool option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Float
 
-| Name | Signature |
-| --- | --- |
-| [`Float.toString`](../stdlib/scalars) | `float -> string` |
-| [`Float.tryParse`](../stdlib/scalars) | `string -> float option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Float.toString`](../stdlib/scalars) | `float -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.tryParse`](../stdlib/scalars) | `string -> float option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Int
 
-| Name | Signature |
-| --- | --- |
-| [`Int.toString`](../stdlib/scalars) | `int -> string` |
-| [`Int.tryParse`](../stdlib/scalars) | `string -> int option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Int.toString`](../stdlib/scalars) | `int -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.tryParse`](../stdlib/scalars) | `string -> int option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### List
 
-| Name | Signature |
-| --- | --- |
-| [`List.append`](../stdlib/list) | `'a list -> 'a list -> 'a list` |
-| [`List.choose`](../stdlib/list) | `('a -> 'b option) -> 'a list -> 'b list` |
-| [`List.collect`](../stdlib/list) | `('a -> 'b list) -> 'a list -> 'b list` |
-| [`List.contains`](../stdlib/list) | `'a -> 'a list -> bool` |
-| [`List.distinct`](../stdlib/list) | `'a list -> 'a list` |
-| [`List.empty`](../stdlib/list) | `'a list` |
-| [`List.exists`](../stdlib/list) | `('a -> bool) -> 'a list -> bool` |
-| [`List.filter`](../stdlib/list) | `('a -> bool) -> 'a list -> 'a list` |
-| [`List.fold`](../stdlib/list) | `('b -> 'a -> 'b) -> 'b -> 'a list -> 'b` |
-| [`List.iter`](../stdlib/list) | `('a -> unit) -> 'a list -> unit` |
-| [`List.length`](../stdlib/list) | `'a list -> int` |
-| [`List.map`](../stdlib/list) | `('a -> 'b) -> 'a list -> 'b list` |
-| [`List.rev`](../stdlib/list) | `'a list -> 'a list` |
-| [`List.tail`](../stdlib/list) | `'a list -> 'a list` |
-| [`List.tryFind`](../stdlib/list) | `('a -> bool) -> 'a list -> 'a option` |
-| [`List.tryGet`](../stdlib/list) | `('a -> bool) -> 'a list -> int option` |
-| [`List.tryHead`](../stdlib/list) | `'a list -> 'a option` |
-| [`List.tryItem`](../stdlib/list) | `int -> 'a list -> 'a option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`List.append`](../stdlib/list) | `'a list -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.choose`](../stdlib/list) | `('a -> 'b option) -> 'a list -> 'b list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.collect`](../stdlib/list) | `('a -> 'b list) -> 'a list -> 'b list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.contains`](../stdlib/list) | `'a -> 'a list -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.distinct`](../stdlib/list) | `'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.empty`](../stdlib/list) | `'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.exists`](../stdlib/list) | `('a -> bool) -> 'a list -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.filter`](../stdlib/list) | `('a -> bool) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.fold`](../stdlib/list) | `('b -> 'a -> 'b) -> 'b -> 'a list -> 'b` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.iter`](../stdlib/list) | `('a -> unit) -> 'a list -> unit` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.length`](../stdlib/list) | `'a list -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.map`](../stdlib/list) | `('a -> 'b) -> 'a list -> 'b list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.rev`](../stdlib/list) | `'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.tail`](../stdlib/list) | `'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.tryFind`](../stdlib/list) | `('a -> bool) -> 'a list -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.tryGet`](../stdlib/list) | `('a -> bool) -> 'a list -> int option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.tryHead`](../stdlib/list) | `'a list -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.tryItem`](../stdlib/list) | `int -> 'a list -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Map
 
-| Name | Signature |
-| --- | --- |
-| [`Map.add`](../stdlib/map) | `'b -> 'a -> 'a map['b] -> 'a map['b]` |
-| [`Map.choose`](../stdlib/map) | `('b -> 'a -> 'c option) -> 'a map['b] -> 'c map['b]` |
-| [`Map.containsKey`](../stdlib/map) | `'b -> 'a map['b] -> bool` |
-| [`Map.count`](../stdlib/map) | `'a map['b] -> int` |
-| [`Map.empty`](../stdlib/map) | `'a map['b]` |
-| [`Map.filter`](../stdlib/map) | `('b -> 'a -> bool) -> 'a map['b] -> 'a map['b]` |
-| [`Map.fold`](../stdlib/map) | `('c -> 'b -> 'a -> 'c) -> 'c -> 'a map['b] -> 'c` |
-| [`Map.iter`](../stdlib/map) | `('b -> 'a -> unit) -> 'a map['b] -> unit` |
-| [`Map.map`](../stdlib/map) | `('a -> 'c) -> 'a map['b] -> 'c map['b]` |
-| [`Map.ofList`](../stdlib/map) | `('b * 'a) list -> 'a map['b]` |
-| [`Map.remove`](../stdlib/map) | `'b -> 'a map['b] -> 'a map['b]` |
-| [`Map.tryGet`](../stdlib/map) | `'b -> 'a map['b] -> 'a option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Map.add`](../stdlib/map) | `'b -> 'a -> 'a map['b] -> 'a map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.choose`](../stdlib/map) | `('b -> 'a -> 'c option) -> 'a map['b] -> 'c map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.containsKey`](../stdlib/map) | `'b -> 'a map['b] -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.count`](../stdlib/map) | `'a map['b] -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.empty`](../stdlib/map) | `'a map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.filter`](../stdlib/map) | `('b -> 'a -> bool) -> 'a map['b] -> 'a map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.fold`](../stdlib/map) | `('c -> 'b -> 'a -> 'c) -> 'c -> 'a map['b] -> 'c` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.iter`](../stdlib/map) | `('b -> 'a -> unit) -> 'a map['b] -> unit` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.map`](../stdlib/map) | `('a -> 'c) -> 'a map['b] -> 'c map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.ofList`](../stdlib/map) | `('b * 'a) list -> 'a map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.remove`](../stdlib/map) | `'b -> 'a map['b] -> 'a map['b]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.tryGet`](../stdlib/map) | `'b -> 'a map['b] -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Option
 
-| Name | Signature |
-| --- | --- |
-| [`Option.defaultValue`](../stdlib/option) | `'a -> 'a option -> 'a` |
-| [`Option.defaultWith`](../stdlib/option) | `(unit -> 'a) -> 'a option -> 'a` |
-| [`Option.isNone`](../stdlib/option) | `'a option -> bool` |
-| [`Option.isSome`](../stdlib/option) | `'a option -> bool` |
-| [`Option.map`](../stdlib/option) | `('a -> 'b) -> 'a option -> 'b option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Option.defaultValue`](../stdlib/option) | `'a -> 'a option -> 'a` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.defaultWith`](../stdlib/option) | `(unit -> 'a) -> 'a option -> 'a` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.isNone`](../stdlib/option) | `'a option -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.isSome`](../stdlib/option) | `'a option -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.map`](../stdlib/option) | `('a -> 'b) -> 'a option -> 'b option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### String
 
-| Name | Signature |
-| --- | --- |
-| [`String.concat`](../stdlib/string) | `string -> string list -> string` |
-| [`String.endsWith`](../stdlib/string) | `string -> string -> bool` |
-| [`String.indexOf`](../stdlib/string) | `string -> string -> int option` |
-| [`String.replace`](../stdlib/string) | `string -> string -> string -> string` |
-| [`String.split`](../stdlib/string) | `string -> string -> string list` |
-| [`String.substring`](../stdlib/string) | `int -> int -> string -> string option` |
-| [`String.toLower`](../stdlib/string) | `string -> string` |
-| [`String.toUpper`](../stdlib/string) | `string -> string` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`String.concat`](../stdlib/string) | `string -> string list -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.endsWith`](../stdlib/string) | `string -> string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.indexOf`](../stdlib/string) | `string -> string -> int option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.replace`](../stdlib/string) | `string -> string -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.split`](../stdlib/string) | `string -> string -> string list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.substring`](../stdlib/string) | `int -> int -> string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.toLower`](../stdlib/string) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.toUpper`](../stdlib/string) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ## Default .NET runtime
 
 ### Console
 
-| Name | Signature |
-| --- | --- |
-| [`Console.readLine`](../stdlib/console) | `unit -> string option` |
-| [`Console.writeLine`](../stdlib/console) | `string -> unit` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Console.readLine`](../stdlib/console) | `unit -> string option` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> <a className="permission-tag permission-tag--interactive" href="../embedding/host-permissions#interactive" title="Interactive permission definition">Interactive</a> |
+| [`Console.writeLine`](../stdlib/console) | `string -> unit` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
 
 ### Fs
 
-| Name | Signature |
-| --- | --- |
-| [`Fs.combinePath`](../stdlib/fs) | `string -> string -> string` |
-| [`Fs.createDirectory`](../stdlib/fs) | `string -> bool` |
-| [`Fs.enumerateFiles`](../stdlib/fs) | `string -> string -> string list option` |
-| [`Fs.exists`](../stdlib/fs) | `string -> bool` |
-| [`Fs.extension`](../stdlib/fs) | `string -> string option` |
-| [`Fs.fileNameWithoutExtension`](../stdlib/fs) | `string -> string` |
-| [`Fs.glob`](../stdlib/fs) | `string -> string list option` |
-| [`Fs.kind`](../stdlib/fs) | `string -> FsKind` |
-| [`Fs.parentDirectory`](../stdlib/fs) | `string -> string option` |
-| [`Fs.readText`](../stdlib/fs) | `string -> string option` |
-| [`Fs.writeText`](../stdlib/fs) | `string -> string -> bool` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Fs.combinePath`](../stdlib/fs) | `string -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Fs.createDirectory`](../stdlib/fs) | `string -> bool` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.enumerateFiles`](../stdlib/fs) | `string -> string -> string list option` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.exists`](../stdlib/fs) | `string -> bool` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.extension`](../stdlib/fs) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Fs.fileNameWithoutExtension`](../stdlib/fs) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Fs.glob`](../stdlib/fs) | `string -> string list option` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.kind`](../stdlib/fs) | `string -> FsKind` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.parentDirectory`](../stdlib/fs) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Fs.readText`](../stdlib/fs) | `string -> string option` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
+| [`Fs.writeText`](../stdlib/fs) | `string -> string -> bool` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
 
 ### Guid
 
-| Name | Signature |
-| --- | --- |
-| [`Guid.new`](../stdlib/guid) | `'a -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Guid.new`](../stdlib/guid) | `'a -> string option` | <a className="permission-tag permission-tag--io" href="../embedding/host-permissions#io" title="IO permission definition">IO</a> |
 
 ### Hash
 
-| Name | Signature |
-| --- | --- |
-| [`Hash.md5`](../stdlib/hash) | `string -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Hash.md5`](../stdlib/hash) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Json
 
-| Name | Signature |
-| --- | --- |
-| [`Json.deserialize`](../stdlib/json) | `type -> string -> 'a option` |
-| [`Json.serialize`](../stdlib/json) | `'a -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Json.deserialize`](../stdlib/json) | `type -> string -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Json.serialize`](../stdlib/json) | `'a -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Regex
 
-| Name | Signature |
-| --- | --- |
-| [`Regex.matchGroups`](../stdlib/regex) | `string -> string -> string list option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Regex.matchGroups`](../stdlib/regex) | `string -> string -> string list option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Task
 
-| Name | Signature |
-| --- | --- |
-| [`Task.spawn`](../stdlib/task#taskspawn) | `(unit -> 'a) -> 'a task` |
-| [`Task.delay`](../stdlib/task#taskdelay) | `int -> unit task` |
-| [`Task.fromResult`](../stdlib/task#taskfromresult) | `'a -> 'a task` |
-| [`Task.continueWith`](../stdlib/task#taskcontinuewith) | `('a -> 'b) -> 'a task -> 'b task` |
-| [`Task.whenAll`](../stdlib/task#taskwhenall) | `('a list -> 'b) -> 'a task list -> 'b task` |
-| [`Task.whenAny`](../stdlib/task#taskwhenany) | `('a -> 'b) -> 'a task list -> 'b task` |
-| [`Task.await`](../stdlib/task#taskawait) | `'a task -> 'a` |
-| [`Task.awaitAll`](../stdlib/task#taskawaitall) | `'a task list -> 'a list` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Task.spawn`](../stdlib/task#taskspawn) | `(unit -> 'a) -> 'a task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.delay`](../stdlib/task#taskdelay) | `int -> unit task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.fromResult`](../stdlib/task#taskfromresult) | `'a -> 'a task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.continueWith`](../stdlib/task#taskcontinuewith) | `('a -> 'b) -> 'a task -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.whenAll`](../stdlib/task#taskwhenall) | `('a list -> 'b) -> 'a task list -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.whenAny`](../stdlib/task#taskwhenany) | `('a -> 'b) -> 'a task list -> 'b task` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.await`](../stdlib/task#taskawait) | `'a task -> 'a` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Task.awaitAll`](../stdlib/task#taskawaitall) | `'a task list -> 'a list` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
 
 ### Xml
 
-| Name | Signature |
-| --- | --- |
-| [`Xml.queryValues`](../stdlib/xml) | `string -> string -> string list option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Xml.queryValues`](../stdlib/xml) | `string -> string -> string list option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ## Syntax and data forms
 
@@ -186,156 +186,156 @@ Path, Glob, SemVer, scalar, and collection additions are core builtins. Encoding
 
 ### Int additions
 
-| Name | Signature |
-| --- | --- |
-| [`Int.abs`](../stdlib/scalars#intabs) | `int -> int` |
-| [`Int.sign`](../stdlib/scalars#intsign) | `int -> int` |
-| [`Int.min`](../stdlib/scalars#intmin) | `int -> int -> int` |
-| [`Int.max`](../stdlib/scalars#intmax) | `int -> int -> int` |
-| [`Int.clamp`](../stdlib/scalars#intclamp) | `int -> int -> int -> int` |
-| [`Int.toFloat`](../stdlib/scalars#inttofloat) | `int -> float` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Int.abs`](../stdlib/scalars#intabs) | `int -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.sign`](../stdlib/scalars#intsign) | `int -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.min`](../stdlib/scalars#intmin) | `int -> int -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.max`](../stdlib/scalars#intmax) | `int -> int -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.clamp`](../stdlib/scalars#intclamp) | `int -> int -> int -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Int.toFloat`](../stdlib/scalars#inttofloat) | `int -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Float additions
 
-| Name | Signature |
-| --- | --- |
-| [`Float.abs`](../stdlib/scalars#floatabs) | `float -> float` |
-| [`Float.sign`](../stdlib/scalars#floatsign) | `float -> int` |
-| [`Float.min`](../stdlib/scalars#floatmin) | `float -> float -> float` |
-| [`Float.max`](../stdlib/scalars#floatmax) | `float -> float -> float` |
-| [`Float.clamp`](../stdlib/scalars#floatclamp) | `float -> float -> float -> float` |
-| [`Float.floor`](../stdlib/scalars#floatfloor) | `float -> float` |
-| [`Float.ceil`](../stdlib/scalars#floatceil) | `float -> float` |
-| [`Float.round`](../stdlib/scalars#floatround) | `float -> float` |
-| [`Float.truncate`](../stdlib/scalars#floattruncate) | `float -> float` |
-| [`Float.sqrt`](../stdlib/scalars#floatsqrt) | `float -> float` |
-| [`Float.log`](../stdlib/scalars#floatlog) | `float -> float` |
-| [`Float.log10`](../stdlib/scalars#floatlog10) | `float -> float` |
-| [`Float.exp`](../stdlib/scalars#floatexp) | `float -> float` |
-| [`Float.sin`](../stdlib/scalars#floatsin) | `float -> float` |
-| [`Float.cos`](../stdlib/scalars#floatcos) | `float -> float` |
-| [`Float.tan`](../stdlib/scalars#floattan) | `float -> float` |
-| [`Float.asin`](../stdlib/scalars#floatasin) | `float -> float` |
-| [`Float.acos`](../stdlib/scalars#floatacos) | `float -> float` |
-| [`Float.atan`](../stdlib/scalars#floatatan) | `float -> float` |
-| [`Float.pow`](../stdlib/scalars#floatpow) | `float -> float -> float` |
-| [`Float.atan2`](../stdlib/scalars#floatatan2) | `float -> float -> float` |
-| [`Float.isNaN`](../stdlib/scalars#floatisnan) | `float -> bool` |
-| [`Float.isInfinity`](../stdlib/scalars#floatisinfinity) | `float -> bool` |
-| [`Float.isFinite`](../stdlib/scalars#floatisfinite) | `float -> bool` |
-| [`Float.pi`](../stdlib/scalars#floatpi) | `float` |
-| [`Float.tryToInt`](../stdlib/scalars#floattrytoint) | `float -> int option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Float.abs`](../stdlib/scalars#floatabs) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.sign`](../stdlib/scalars#floatsign) | `float -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.min`](../stdlib/scalars#floatmin) | `float -> float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.max`](../stdlib/scalars#floatmax) | `float -> float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.clamp`](../stdlib/scalars#floatclamp) | `float -> float -> float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.floor`](../stdlib/scalars#floatfloor) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.ceil`](../stdlib/scalars#floatceil) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.round`](../stdlib/scalars#floatround) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.truncate`](../stdlib/scalars#floattruncate) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.sqrt`](../stdlib/scalars#floatsqrt) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.log`](../stdlib/scalars#floatlog) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.log10`](../stdlib/scalars#floatlog10) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.exp`](../stdlib/scalars#floatexp) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.sin`](../stdlib/scalars#floatsin) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.cos`](../stdlib/scalars#floatcos) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.tan`](../stdlib/scalars#floattan) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.asin`](../stdlib/scalars#floatasin) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.acos`](../stdlib/scalars#floatacos) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.atan`](../stdlib/scalars#floatatan) | `float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.pow`](../stdlib/scalars#floatpow) | `float -> float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.atan2`](../stdlib/scalars#floatatan2) | `float -> float -> float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.isNaN`](../stdlib/scalars#floatisnan) | `float -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.isInfinity`](../stdlib/scalars#floatisinfinity) | `float -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.isFinite`](../stdlib/scalars#floatisfinite) | `float -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.pi`](../stdlib/scalars#floatpi) | `float` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Float.tryToInt`](../stdlib/scalars#floattrytoint) | `float -> int option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### String additions
 
-| Name | Signature |
-| --- | --- |
-| [`String.compare`](../stdlib/string#stringcompare) | `string -> string -> int` |
-| [`String.length`](../stdlib/string#stringlength) | `string -> int` |
-| [`String.isEmpty`](../stdlib/string#stringisempty) | `string -> bool` |
-| [`String.isWhiteSpace`](../stdlib/string#stringiswhitespace) | `string -> bool` |
-| [`String.trim`](../stdlib/string#stringtrim) | `string -> string` |
-| [`String.trimStart`](../stdlib/string#stringtrimstart) | `string -> string` |
-| [`String.trimEnd`](../stdlib/string#stringtrimend) | `string -> string` |
-| [`String.splitLines`](../stdlib/string#stringsplitlines) | `string -> string list` |
-| [`String.startsWith`](../stdlib/string#stringstartswith) | `string -> string -> bool` |
-| [`String.contains`](../stdlib/string#stringcontains) | `string -> string -> bool` |
-| [`String.padLeft`](../stdlib/string#stringpadleft) | `int -> string -> string` |
-| [`String.padRight`](../stdlib/string#stringpadright) | `int -> string -> string` |
-| [`String.repeat`](../stdlib/string#stringrepeat) | `int -> string -> string` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`String.compare`](../stdlib/string#stringcompare) | `string -> string -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.length`](../stdlib/string#stringlength) | `string -> int` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.isEmpty`](../stdlib/string#stringisempty) | `string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.isWhiteSpace`](../stdlib/string#stringiswhitespace) | `string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.trim`](../stdlib/string#stringtrim) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.trimStart`](../stdlib/string#stringtrimstart) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.trimEnd`](../stdlib/string#stringtrimend) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.splitLines`](../stdlib/string#stringsplitlines) | `string -> string list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.startsWith`](../stdlib/string#stringstartswith) | `string -> string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.contains`](../stdlib/string#stringcontains) | `string -> string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.padLeft`](../stdlib/string#stringpadleft) | `int -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.padRight`](../stdlib/string#stringpadright) | `int -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`String.repeat`](../stdlib/string#stringrepeat) | `int -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### List additions
 
-| Name | Signature |
-| --- | --- |
-| [`List.isEmpty`](../stdlib/list#listisempty) | `'a list -> bool` |
-| [`List.forall`](../stdlib/list#listforall) | `('a -> bool) -> 'a list -> bool` |
-| [`List.mapi`](../stdlib/list#listmapi) | `(int -> 'a -> 'b) -> 'a list -> 'b list` |
-| [`List.indexed`](../stdlib/list#listindexed) | `'a list -> ((int * 'a)) list` |
-| [`List.init`](../stdlib/list#listinit) | `int -> (int -> 'a) -> 'a list` |
-| [`List.take`](../stdlib/list#listtake) | `int -> 'a list -> 'a list` |
-| [`List.skip`](../stdlib/list#listskip) | `int -> 'a list -> 'a list` |
-| [`List.takeWhile`](../stdlib/list#listtakewhile) | `('a -> bool) -> 'a list -> 'a list` |
-| [`List.skipWhile`](../stdlib/list#listskipwhile) | `('a -> bool) -> 'a list -> 'a list` |
-| [`List.partition`](../stdlib/list#listpartition) | `('a -> bool) -> 'a list -> ('a list * 'a list)` |
-| [`List.zip`](../stdlib/list#listzip) | `'a list -> 'b list -> (('a * 'b)) list` |
-| [`List.unzip`](../stdlib/list#listunzip) | `(('a * 'b)) list -> ('a list * 'b list)` |
-| [`List.chunkBySize`](../stdlib/list#listchunkbysize) | `int -> 'a list -> 'a list list` |
-| [`List.scan`](../stdlib/list#listscan) | `('d -> 'a -> 'd) -> 'd -> 'a list -> 'd list` |
-| [`List.sortWith`](../stdlib/list#listsortwith) | `('a -> 'a -> int) -> 'a list -> 'a list` |
-| [`List.sortBy`](../stdlib/list#listsortby) | `('a -> 'c) -> 'a list -> 'a list` |
-| [`List.distinctBy`](../stdlib/list#listdistinctby) | `('a -> 'c) -> 'a list -> 'a list` |
-| [`List.groupBy`](../stdlib/list#listgroupby) | `('a -> 'c) -> 'a list -> (('c * 'a list)) list` |
-| [`List.countBy`](../stdlib/list#listcountby) | `('a -> 'c) -> 'a list -> (('c * int)) list` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`List.isEmpty`](../stdlib/list#listisempty) | `'a list -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.forall`](../stdlib/list#listforall) | `('a -> bool) -> 'a list -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.mapi`](../stdlib/list#listmapi) | `(int -> 'a -> 'b) -> 'a list -> 'b list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.indexed`](../stdlib/list#listindexed) | `'a list -> ((int * 'a)) list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.init`](../stdlib/list#listinit) | `int -> (int -> 'a) -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.take`](../stdlib/list#listtake) | `int -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.skip`](../stdlib/list#listskip) | `int -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.takeWhile`](../stdlib/list#listtakewhile) | `('a -> bool) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.skipWhile`](../stdlib/list#listskipwhile) | `('a -> bool) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.partition`](../stdlib/list#listpartition) | `('a -> bool) -> 'a list -> ('a list * 'a list)` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.zip`](../stdlib/list#listzip) | `'a list -> 'b list -> (('a * 'b)) list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.unzip`](../stdlib/list#listunzip) | `(('a * 'b)) list -> ('a list * 'b list)` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.chunkBySize`](../stdlib/list#listchunkbysize) | `int -> 'a list -> 'a list list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.scan`](../stdlib/list#listscan) | `('d -> 'a -> 'd) -> 'd -> 'a list -> 'd list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.sortWith`](../stdlib/list#listsortwith) | `('a -> 'a -> int) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.sortBy`](../stdlib/list#listsortby) | `('a -> 'c) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.distinctBy`](../stdlib/list#listdistinctby) | `('a -> 'c) -> 'a list -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.groupBy`](../stdlib/list#listgroupby) | `('a -> 'c) -> 'a list -> (('c * 'a list)) list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`List.countBy`](../stdlib/list#listcountby) | `('a -> 'c) -> 'a list -> (('c * int)) list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Map additions
 
-| Name | Signature |
-| --- | --- |
-| [`Map.keys`](../stdlib/map#mapkeys) | `'a map['c] -> 'c list` |
-| [`Map.values`](../stdlib/map#mapvalues) | `'a map['c] -> 'a list` |
-| [`Map.toList`](../stdlib/map#maptolist) | `'a map['c] -> (('c * 'a)) list` |
-| [`Map.exists`](../stdlib/map#mapexists) | `('c -> 'a -> bool) -> 'a map['c] -> bool` |
-| [`Map.forall`](../stdlib/map#mapforall) | `('c -> 'a -> bool) -> 'a map['c] -> bool` |
-| [`Map.update`](../stdlib/map#mapupdate) | `'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]` |
-| [`Map.mergeWith`](../stdlib/map#mapmergewith) | `('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Map.keys`](../stdlib/map#mapkeys) | `'a map['c] -> 'c list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.values`](../stdlib/map#mapvalues) | `'a map['c] -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.toList`](../stdlib/map#maptolist) | `'a map['c] -> (('c * 'a)) list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.exists`](../stdlib/map#mapexists) | `('c -> 'a -> bool) -> 'a map['c] -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.forall`](../stdlib/map#mapforall) | `('c -> 'a -> bool) -> 'a map['c] -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.update`](../stdlib/map#mapupdate) | `'c -> ('a option -> 'a option) -> 'a map['c] -> 'a map['c]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Map.mergeWith`](../stdlib/map#mapmergewith) | `('c -> 'a -> 'a -> 'a) -> 'a map['c] -> 'a map['c] -> 'a map['c]` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Option additions
 
-| Name | Signature |
-| --- | --- |
-| [`Option.bind`](../stdlib/option#optionbind) | `('a -> 'b option) -> 'a option -> 'b option` |
-| [`Option.flatten`](../stdlib/option#optionflatten) | `'a option option -> 'a option` |
-| [`Option.filter`](../stdlib/option#optionfilter) | `('a -> bool) -> 'a option -> 'a option` |
-| [`Option.orElse`](../stdlib/option#optionorelse) | `'a option -> 'a option -> 'a option` |
-| [`Option.orElseWith`](../stdlib/option#optionorelsewith) | `(unit -> 'a option) -> 'a option -> 'a option` |
-| [`Option.map2`](../stdlib/option#optionmap2) | `('a -> 'b -> 'd) -> 'a option -> 'b option -> 'd option` |
-| [`Option.toList`](../stdlib/option#optiontolist) | `'a option -> 'a list` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Option.bind`](../stdlib/option#optionbind) | `('a -> 'b option) -> 'a option -> 'b option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.flatten`](../stdlib/option#optionflatten) | `'a option option -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.filter`](../stdlib/option#optionfilter) | `('a -> bool) -> 'a option -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.orElse`](../stdlib/option#optionorelse) | `'a option -> 'a option -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.orElseWith`](../stdlib/option#optionorelsewith) | `(unit -> 'a option) -> 'a option -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.map2`](../stdlib/option#optionmap2) | `('a -> 'b -> 'd) -> 'a option -> 'b option -> 'd option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Option.toList`](../stdlib/option#optiontolist) | `'a option -> 'a list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Path additions
 
-| Name | Signature |
-| --- | --- |
-| [`Path.normalize`](../stdlib/path#pathnormalize) | `string -> string` |
-| [`Path.isAbsolute`](../stdlib/path#pathisabsolute) | `string -> bool` |
-| [`Path.combine`](../stdlib/path#pathcombine) | `string -> string -> string` |
-| [`Path.fileName`](../stdlib/path#pathfilename) | `string -> string` |
-| [`Path.extension`](../stdlib/path#pathextension) | `string -> string option` |
-| [`Path.fileNameWithoutExtension`](../stdlib/path#pathfilenamewithoutextension) | `string -> string` |
-| [`Path.parent`](../stdlib/path#pathparent) | `string -> string option` |
-| [`Path.relative`](../stdlib/path#pathrelative) | `string -> string -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Path.normalize`](../stdlib/path#pathnormalize) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.isAbsolute`](../stdlib/path#pathisabsolute) | `string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.combine`](../stdlib/path#pathcombine) | `string -> string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.fileName`](../stdlib/path#pathfilename) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.extension`](../stdlib/path#pathextension) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.fileNameWithoutExtension`](../stdlib/path#pathfilenamewithoutextension) | `string -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.parent`](../stdlib/path#pathparent) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Path.relative`](../stdlib/path#pathrelative) | `string -> string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Glob additions
 
-| Name | Signature |
-| --- | --- |
-| [`Glob.isMatch`](../stdlib/glob#globismatch) | `string -> string -> bool` |
-| [`Glob.filter`](../stdlib/glob#globfilter) | `string -> string list -> string list` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Glob.isMatch`](../stdlib/glob#globismatch) | `string -> string -> bool` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Glob.filter`](../stdlib/glob#globfilter) | `string -> string list -> string list` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### SemVer additions
 
-| Name | Signature |
-| --- | --- |
-| [`SemVer.tryParse`](../stdlib/semver#semvertryparse) | `string -> ({ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string }) option` |
-| [`SemVer.format`](../stdlib/semver#semverformat) | `{ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string } -> string` |
-| [`SemVer.compare`](../stdlib/semver#semvercompare) | `string -> string -> int option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`SemVer.tryParse`](../stdlib/semver#semvertryparse) | `string -> ({ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string }) option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`SemVer.format`](../stdlib/semver#semverformat) | `{ Build: string; Major: string; Minor: string; Patch: string; PreRelease: string } -> string` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`SemVer.compare`](../stdlib/semver#semvercompare) | `string -> string -> int option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Encoding additions
 
-| Name | Signature |
-| --- | --- |
-| [`Encoding.utf8Encode`](../stdlib/encoding#encodingutf8encode) | `string -> int list option` |
-| [`Encoding.utf8Decode`](../stdlib/encoding#encodingutf8decode) | `int list -> string option` |
-| [`Encoding.base64Encode`](../stdlib/encoding#encodingbase64encode) | `int list -> string option` |
-| [`Encoding.base64Decode`](../stdlib/encoding#encodingbase64decode) | `string -> int list option` |
-| [`Encoding.hexEncode`](../stdlib/encoding#encodinghexencode) | `int list -> string option` |
-| [`Encoding.hexDecode`](../stdlib/encoding#encodinghexdecode) | `string -> int list option` |
-| [`Encoding.uriEncode`](../stdlib/encoding#encodinguriencode) | `string -> string option` |
-| [`Encoding.uriDecode`](../stdlib/encoding#encodinguridecode) | `string -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Encoding.utf8Encode`](../stdlib/encoding#encodingutf8encode) | `string -> int list option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.utf8Decode`](../stdlib/encoding#encodingutf8decode) | `int list -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.base64Encode`](../stdlib/encoding#encodingbase64encode) | `int list -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.base64Decode`](../stdlib/encoding#encodingbase64decode) | `string -> int list option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.hexEncode`](../stdlib/encoding#encodinghexencode) | `int list -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.hexDecode`](../stdlib/encoding#encodinghexdecode) | `string -> int list option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.uriEncode`](../stdlib/encoding#encodinguriencode) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Encoding.uriDecode`](../stdlib/encoding#encodinguridecode) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
 ### Hash additions
 
-| Name | Signature |
-| --- | --- |
-| [`Hash.sha256`](../stdlib/hash#hashsha256) | `string -> string option` |
-| [`Hash.sha256Bytes`](../stdlib/hash#hashsha256bytes) | `int list -> string option` |
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Hash.sha256`](../stdlib/hash#hashsha256) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+| [`Hash.sha256Bytes`](../stdlib/hash#hashsha256bytes) | `int list -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |

@@ -39,9 +39,9 @@ type HirTests() =
     member _.``Host types and foreign union metadata survive compiler artifacts`` () =
         let fields = Map.ofList [ "Name", TString ]
         let registration =
-            { Types = [ { Name = "Handle"; Fields = fields; HostManaged = true } ]
+            { Permissions = FScript.Language.HostPermissions.All; Types = [ { Name = "Handle"; Fields = fields; HostManaged = true } ]
               Unions = [ { Name = "State"; Cases = Map.ofList [ "Ready", None; "Value", Some TInt ] } ]
-              Functions = [ { Name = "Native.open"; Scheme = Forall([], TFun(TUnit, TNamed "Handle")); Arity = 1; Impl = fun _ _ -> VUnit } ] }
+              Functions = [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Native.open"; Scheme = Forall([], TFun(TUnit, TNamed "Handle")); Arity = 1; Impl = fun _ _ -> VUnit } ] }
         match Compiler.compileWithRegistration registration { Program = Parser.parseProgram "let handle = Native.open ()\nhandle.Name"; Externs = [] } with
         | Error diagnostics -> Assert.Fail(System.String.Join("; ", diagnostics |> List.map _.Message))
         | Ok compiled ->
@@ -91,7 +91,7 @@ type HirTests() =
     member _.``HIR reuses deterministic resolved frontend symbol IDs`` () =
         let source = "let first = 1\ntype Choice = | Pick of int\nlet apply x = (let y = x\n    match Some y with\n    | Some z -> z\n)\napply first"
         let program = Parser.parseProgram source
-        let external name scheme arity = ({ Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }: ExternalFunction)
+        let external name scheme arity = ({ RequiredPermissions = FScript.Language.HostPermissions.None; Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }: ExternalFunction)
         let frontendExterns =
             CompilerExternCatalog.defaults
             |> List.map (fun descriptor -> external descriptor.Name descriptor.Scheme descriptor.Arity)
@@ -136,7 +136,7 @@ type HirTests() =
         let inferenceExterns =
             CompilerExternCatalog.defaults
             |> List.map (fun descriptor ->
-                ({ Name = descriptor.Name
+                ({ RequiredPermissions = FScript.Language.HostPermissions.None; Name = descriptor.Name
                    Scheme = descriptor.Scheme
                    Arity = descriptor.Arity
                    Impl = fun _ _ -> VUnit }: ExternalFunction))
