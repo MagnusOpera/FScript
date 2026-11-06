@@ -1,6 +1,6 @@
 project vscode {
     includes = [ "**/*" "../.build/checks.sh" "../tests/FScript.LanguageServer.Tests/**/*.js" ]
-    ignores = [ "node_modules/**" "dist/**" "server/**" "*.vsix" "TestResults/**" ]
+    ignores = [ "node_modules/**" "dist/**" "server/**" "*.vsix" "TestResults/**" "CHANGELOG.md" ]
     @npm { }
 }
 

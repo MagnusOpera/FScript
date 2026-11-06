@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep VS Code builds cached when release notes change by adding the changelog only during extension packaging.
 - Cancel superseded branch and pull-request CI runs for the same source branch while keeping test shards parallel.
 - Label GitHub test shards as test instead of ci in Insights.
 - Keep GitHub workflow reruns in separate Insights build groups while correlating each attempt's build and test shards.
