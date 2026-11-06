@@ -5,7 +5,7 @@ project ffisample_tests {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }
 
 target test {

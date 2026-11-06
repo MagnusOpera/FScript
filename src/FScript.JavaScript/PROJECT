@@ -6,7 +6,7 @@ project javascript {
 
 target build {
     outputs = [ "bin/" "obj/" "dist/" ]
-    @dotnet build { dependencies = false }
+    @dotnet build { }
     @dotnet tool { args = "restore" }
     @npm build { }
 }

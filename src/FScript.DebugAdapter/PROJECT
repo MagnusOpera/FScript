@@ -5,5 +5,5 @@ project fscript_debugadapter {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

@@ -5,5 +5,5 @@ project fscript {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

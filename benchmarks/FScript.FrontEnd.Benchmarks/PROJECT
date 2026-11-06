@@ -5,5 +5,5 @@ project fscript_frontend_benchmarks {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

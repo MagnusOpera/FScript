@@ -5,7 +5,7 @@ project fscript_compiler_tests {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }
 
 target test {

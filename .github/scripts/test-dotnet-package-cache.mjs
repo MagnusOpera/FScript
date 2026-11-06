@@ -23,15 +23,31 @@ assert.ok(framework);
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-dotnet-packages-'));
 try {
   fs.writeFileSync(path.join(fixture, 'Fixture.csproj'), `<Project Sdk="Microsoft.NET.Sdk">
-<PropertyGroup><TargetFramework>${framework}</TargetFramework></PropertyGroup>
+<PropertyGroup><TargetFramework>${framework}</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+<ItemGroup><Compile Include="Tests.cs"/><ProjectReference Include="Middle/Middle.csproj"/></ItemGroup>
 <ItemGroup>${packages.join('\n')}</ItemGroup>
 </Project>`);
   fs.writeFileSync(path.join(fixture, 'Tests.cs'), `public class Tests {
-  [NUnit.Framework.Test] public void Executes() { NUnit.Framework.Assert.That(true); }
+  [NUnit.Framework.Test] public void Executes() { NUnit.Framework.Assert.That(new FixtureReference.Derived().Value, NUnit.Framework.Is.EqualTo(42)); }
 }`);
-  for (const directory of ['home', 'tmp']) fs.mkdirSync(path.join(fixture, directory));
+  for (const directory of ['home', 'tmp', 'Middle', 'Leaf']) fs.mkdirSync(path.join(fixture, directory));
+  fs.writeFileSync(path.join(fixture, 'Leaf/Leaf.csproj'), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${framework}</TargetFramework></PropertyGroup></Project>`);
+  fs.writeFileSync(path.join(fixture, 'Leaf/Leaf.cs'), 'namespace FixtureReference { public class Leaf { public int Value => 42; } }');
+  fs.writeFileSync(path.join(fixture, 'Middle/Middle.csproj'), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${framework}</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../Leaf/Leaf.csproj"/></ItemGroup></Project>`);
+  fs.writeFileSync(path.join(fixture, 'Middle/Middle.cs'), 'namespace FixtureReference { public class Derived : Leaf { } }');
   const script = `set -eu
 dotnet restore Fixture.csproj --packages /fixture/warm
+dotnet build Fixture.csproj --no-restore -c Release
+# Keep the direct dependency, but remove the transitive reference outputs.
+rm -rf Leaf/bin Leaf/obj bin obj/Release
+dotnet restore Fixture.csproj --packages /fixture/warm
+set +e
+dotnet build Fixture.csproj --no-restore --no-dependencies -c Release > no-dependencies.log 2>&1
+reference_status=$?
+set -e
+echo "Without project-reference builds: exit $reference_status"
+test "$reference_status" -ne 0
+# Standard SDK reference handling recreates the missing reference assemblies.
 dotnet build Fixture.csproj --no-restore -c Release
 mv warm unavailable-packages
 # Cached bin/obj refer to a package directory absent on a new runner.
@@ -50,7 +66,7 @@ dotnet test Fixture.csproj --no-build --no-restore -c Release --logger 'trx;LogF
     '-v', `${fixture}:/fixture`, '-w', '/fixture', '--entrypoint', 'bash', operation.container,
     '-c', script], { stdio: 'inherit', timeout: 180000 });
   verifyTestReports([path.join(fixture, 'fixed/results.trx')]);
-  console.log('Fresh-package-cache regression passed: restored binaries execute tests after explicit package restore.');
+  console.log('Partial-build regression passed: SDK reference builds and explicit package restore produce executed tests.');
 } finally {
   fs.rmSync(fixture, { recursive: true, force: true });
 }

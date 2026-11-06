@@ -5,5 +5,5 @@ project fscript_dotnet_comparison {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

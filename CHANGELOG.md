@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Let .NET restore and build project references when compiling against partially cached outputs.
 - Restore the CLI executable before running CLI tests from a cached test build.
 - Publish build toolchain images under the `ghcr.io/magnusopera/fscript/` namespace.
 - Run .NET tests from cached builds on fresh runners and fail CI when expected test reports are missing or empty.

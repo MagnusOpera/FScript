@@ -5,5 +5,5 @@ project fscript_backend_csharp {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

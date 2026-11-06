@@ -6,5 +6,5 @@ project fscript_cli_tests_fixtures_invalid {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }

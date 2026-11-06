@@ -5,5 +5,5 @@ project fscript_language {
 }
 
 target build {
-    @dotnet build { dependencies = false }
+    @dotnet build { }
 }
