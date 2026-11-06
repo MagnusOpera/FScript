@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix NuGet trusted publishing authentication and allow retrying existing release packages without rebuilding.
+
 ## [0.90.1]
 
 - Publish NuGet packages through trusted publishing without a stored API key.
