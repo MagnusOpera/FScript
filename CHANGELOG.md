@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Reuse GHCR toolchain images across CI runners and avoid invalidating builds for unrelated workspace edits.
 - Restore the CLI and website test dependencies when CI shards start with cached builds on fresh runners.
 - Report the GitHub build and all test shards as one Insights build group, including reruns.
 - Split GitHub CI into a cached build, parallel test shards, and combined test reports, including separate Native AOT variants.

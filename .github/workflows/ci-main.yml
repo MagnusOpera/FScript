@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   checks: write
+  packages: write
 
 jobs:
   ci:

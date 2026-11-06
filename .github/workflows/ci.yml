@@ -18,12 +18,19 @@ on:
 permissions:
   contents: read
   checks: write
+  packages: read
 
 env:
   TERRABUILD_GROUP: ${{ github.repository }}:${{ github.run_id }}
 
 jobs:
   build:
+    permissions:
+      contents: read
+      checks: write
+      packages: write
+    env:
+      FSCRIPT_TOOLCHAIN_MODE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'local' || 'publish' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -45,6 +52,7 @@ jobs:
           terrabuild_workspace: "6ae115ba87040d459b6ccf40"
           TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
           TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Verify CI integration and shard coverage
         run: |
           make test-terrabuild
@@ -69,6 +77,8 @@ jobs:
     name: Tests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      FSCRIPT_TOOLCHAIN_MODE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'local' || 'pull' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
@@ -83,6 +93,7 @@ jobs:
           terrabuild_workspace: "6ae115ba87040d459b6ccf40"
           TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
           TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Run selected tests and restore their reports
         env:
           CI_SHARD: ${{ matrix.name }}

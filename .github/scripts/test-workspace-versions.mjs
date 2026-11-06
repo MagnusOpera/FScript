@@ -37,12 +37,12 @@ test('missing, duplicate, or computed versions fail before tool installation', (
     assert.throws(() => readToolVersions(source.replace('node: "99"', 'node: "$(whoami)"')), /quoted literal values/);
 });
 
-test('changing a workspace tool version changes the container cache identity', () => {
+test('toolchain identity follows tool inputs without following unrelated workspace edits', () => {
     const root = fileURLToPath(new URL('../../', import.meta.url));
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-toolchain-identity-'));
     try {
         fs.mkdirSync(path.join(fixture, '.build/toolchain'), { recursive: true });
-        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile']) {
+        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile', '.build/toolchain/image.sh']) {
             fs.copyFileSync(path.join(root, file), path.join(fixture, file));
         }
         fs.mkdirSync(path.join(fixture, 'app'));
@@ -53,13 +53,22 @@ test('changing a workspace tool version changes the container cache identity', (
         execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--quiet', '-m', 'fixture'], { cwd: fixture });
         const image = () => {
             const output = execFileSync('terrabuild', ['explain', 'build', '--local-only'], { cwd: fixture, encoding: 'utf8', timeout: 30000 });
-            const match = output.match(/container: (fscript-build:[A-F0-9]+)/);
+            const match = output.match(/container: (ghcr\.io\/magnusopera\/fscript-toolchain:[^\s]+)/);
             assert.ok(match, 'The build must use the workspace toolchain image.');
             return match[1];
         };
         const original = image();
         const workspace = path.join(fixture, 'WORKSPACE');
+        const contents = fs.readFileSync(workspace, 'utf8');
+        fs.writeFileSync(workspace, contents + '\ntarget unrelated_ci_check { depends_on = [] }\n');
+        assert.equal(image(), original, 'An unrelated target must not invalidate every build.');
         fs.writeFileSync(workspace, fs.readFileSync(workspace, 'utf8').replace(/dotnet_sdk: "[^"]+"/, 'dotnet_sdk: "10.0.999"'));
+        assert.notEqual(image(), original);
+        fs.writeFileSync(workspace, contents.replace(/node: "[^"]+"/, 'node: "99"'));
+        assert.notEqual(image(), original);
+        fs.writeFileSync(workspace, contents);
+        const dockerfile = path.join(fixture, '.build/toolchain/Dockerfile');
+        fs.appendFileSync(dockerfile, '\nENV TOOLCHAIN_IDENTITY_REGRESSION=1\n');
         assert.notEqual(image(), original);
     } finally {
         fs.rmSync(fixture, { recursive: true, force: true });

@@ -1,15 +1,14 @@
 project toolchain {
     labels = [ "toolchain" ]
-    includes = [ "**/*" "Dockerfile" "../../WORKSPACE" ]
+    includes = [ "Dockerfile" "PROJECT" "image.sh" ]
 }
 
-# Always check/build the local image. Docker reuses its layers. Phase barriers do
-# not force cached application targets to execute, and no image is pushed.
+# CI builds publish missing images; shards only pull. Local runs build locally.
 target image {
     phase = phase.toolchains
     build = ~always
     artifacts = ~none
-    @shell docker {
-        args = "build --build-arg DOTNET_SDK_VERSION=${local.versions.dotnet_sdk} --build-arg NODE_VERSION=${local.versions.node} --tag fscript-build:${terrabuild.version} ."
+    @shell bash {
+        args = "image.sh ghcr.io/magnusopera/fscript-toolchain:${terrabuild.version}-sdk${local.versions.dotnet_sdk}-node${local.versions.node}-${terrabuild.arch} ${local.versions.dotnet_sdk} ${local.versions.node} linux/${terrabuild.arch}"
     }
 }
