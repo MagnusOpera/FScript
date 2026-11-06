@@ -10,6 +10,16 @@ phase application { depends_on = [ phase.toolchains ] }
 
 variable config { default = "Release" }
 
+locals {
+    versions = {
+        dotnet_sdk: "10.0.403"
+        node: "22"
+        terrabuild: "latest"
+        vsce: "4.0.0"
+        ovsx: "0.9"
+    }
+}
+
 target install {
     phase = phase.application
     build = ~lazy

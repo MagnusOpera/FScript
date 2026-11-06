@@ -1,5 +1,9 @@
-FROM node:22-bookworm-slim AS node
-FROM mcr.microsoft.com/dotnet/sdk:10.0.403
+# check=skip=InvalidDefaultArgInFrom
+# Versions are required build arguments supplied by WORKSPACE.
+ARG NODE_VERSION
+ARG DOTNET_SDK_VERSION
+FROM node:${NODE_VERSION}-bookworm-slim AS node
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_VERSION}
 
 # AOT integration tests invoke the native compiler. Node is also needed by the
 # debugger tests, Fable package, VS Code extension, and documentation build.

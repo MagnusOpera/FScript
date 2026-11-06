@@ -3,8 +3,8 @@ description: Install Terrabuild and configure workspace caching.
 
 inputs:
   terrabuild_version:
-    description: Terrabuild version to install
-    default: 'latest'
+    description: Optional Terrabuild version override
+    default: ''
   terrabuild_next:
     description: Whether to install a Terrabuild prerelease
     default: 'false'
@@ -26,11 +26,15 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Read workspace tool versions
+      id: tool-versions
+      uses: ./.github/actions/workspace-versions
+
     - name: Install Terrabuild
       uses: magnusopera/action-install-gh-release@feature/prerelease
       with:
         repo: magnusopera/terrabuild
-        tag: ${{ inputs.terrabuild_version }}
+        tag: ${{ inputs.terrabuild_version || steps.tool-versions.outputs.terrabuild }}
         prerelease: ${{ inputs.terrabuild_next }}
 
     - name: Configure Terrabuild caching

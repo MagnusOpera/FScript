@@ -1,6 +1,6 @@
 project toolchain {
     labels = [ "toolchain" ]
-    includes = [ "**/*" "Dockerfile" ]
+    includes = [ "**/*" "Dockerfile" "../../WORKSPACE" ]
 }
 
 # Always check/build the local image. Docker reuses its layers. Phase barriers do
@@ -9,5 +9,7 @@ target image {
     phase = phase.toolchains
     build = ~always
     artifacts = ~none
-    @shell docker { args = "build --tag fscript-build:${terrabuild.version} ." }
+    @shell docker {
+        args = "build --build-arg DOTNET_SDK_VERSION=${local.versions.dotnet_sdk} --build-arg NODE_VERSION=${local.versions.node} --tag fscript-build:${terrabuild.version} ."
+    }
 }

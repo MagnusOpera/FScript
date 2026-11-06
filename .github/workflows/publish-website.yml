@@ -26,15 +26,19 @@ jobs:
           ref: main
           persist-credentials: false
 
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: ${{ steps.tool-versions.outputs.dotnet_sdk }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.tool-versions.outputs.node }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 
