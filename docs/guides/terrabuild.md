@@ -53,7 +53,7 @@ Use `terrabuild explain build test --local-only` to inspect cache decisions. Rep
 
 Cached test success is not a fresh execution. Force a run when investigating a flaky test or an external dependency. Deleting generated output and repeating a fully cached request is not a restoration test: Terrabuild restores prerequisite files when an executing consumer needs them.
 
-`ci-main.yml` runs on pushes to every branch, including names containing `/`, and supports manual dispatch. Tag pushes remain handled by the release workflows. `ci-pr.yml` separately validates pull requests targeting `main`, so a push to an open PR triggers both branch and PR CI.
+`ci-main.yml` runs on pushes to every branch, including names containing `/`, and supports manual dispatch. Tag pushes remain handled by the release workflows. `ci-pr.yml` separately validates pull requests targeting `main`, so a push to an open PR triggers both branch and PR CI. The shared workflow holds one concurrency lock per source repository and branch, with `cancel-in-progress: false`, following the lock policy in `matis-next`. Branch, PR, and manual runs for the same source branch execute sequentially; separate branches can run concurrently. Test shards remain parallel inside the active workflow. GitHub retains one pending run per lock and replaces an older pending run if another arrives.
 
 ## GitHub test matrix
 

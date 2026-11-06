@@ -15,6 +15,10 @@ on:
       TERRABUILD_MASTER_KEY:
         required: false
 
+concurrency:
+  group: fscript-ci-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   checks: write
