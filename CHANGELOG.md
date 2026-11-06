@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Install the latest stable Terrabuild release in CI.
 - Run Terrabuild CI on pushes to every branch.
 - Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.
 

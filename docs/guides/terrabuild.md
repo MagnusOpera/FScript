@@ -1,6 +1,6 @@
 # Container-backed builds with Terrabuild
 
-Install Terrabuild 0.205.1 and a working Docker engine. The graph builds its toolchain image automatically. .NET, Node, and Clang are supplied by that image; they need not be installed on the host for these targets.
+Install the latest stable Terrabuild release and a working Docker engine. The graph builds its toolchain image automatically. .NET, Node, and Clang are supplied by that image; they need not be installed on the host for these targets.
 
 ```sh
 # Build every .NET project, the JavaScript package, extension bundle, and website.
@@ -39,7 +39,7 @@ Builds use the normal `bin`, `obj`, `node_modules`, and generated website direct
 
 The workspace ID is configured in `WORKSPACE`. Local caching works without an Insights account; `--local-only` disables shared caching. Omit `TB_FLAGS=--local-only` after connecting the workspace to allow shared reuse. Do not put tokens or master keys in repository files.
 
-The PR and branch-push GitHub workflows share `.github/actions/setup-tools` to install Terrabuild 0.205.1 and configure authentication. They run `make tb-check`, covering builds, all test targets, sample smoke tests, and independent SDK compatibility. The graph supplies .NET, Node, and the Native AOT toolchain through Docker. Configure repository secrets `TERRABUILD_TOKEN` and `TERRABUILD_MASTER_KEY` to enable shared caching. Without both secrets, including on fork PRs, CI uses local caching. Test reports are collected from each project's `TestResults` directory.
+The PR and branch-push GitHub workflows share `.github/actions/setup-tools` to install the latest stable Terrabuild release and configure authentication. They run `make tb-check`, covering builds, all test targets, sample smoke tests, and independent SDK compatibility. The graph supplies .NET, Node, and the Native AOT toolchain through Docker. Configure repository secrets `TERRABUILD_TOKEN` and `TERRABUILD_MASTER_KEY` to enable shared caching. Without both secrets, including on fork PRs, CI uses local caching. Test reports are collected from each project's `TestResults` directory.
 
 Managed build outputs and successful test results are cacheable separately. npm dependencies are kept in the local workspace cache. When application work must execute, the toolchain bootstrap checks the image using Docker layer caching. Fully cached requests skip execution; the phase barrier does not force application cache hits to rebuild. The configured Linux architecture separates ARM64 and AMD64 artifacts.
 

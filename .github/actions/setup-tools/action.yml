@@ -4,7 +4,7 @@ description: Install Terrabuild and configure workspace caching.
 inputs:
   terrabuild_version:
     description: Terrabuild version to install
-    default: '0.205.1'
+    default: 'latest'
   terrabuild_next:
     description: Whether to install a Terrabuild prerelease
     default: 'false'
