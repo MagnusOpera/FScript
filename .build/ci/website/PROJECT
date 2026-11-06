@@ -3,7 +3,9 @@ project ci_website {
     includes = [ "../../checks.sh" ]
 }
 
-target ci {
+target test {
+    build = ~always
+    artifacts = ~none
     depends_on = [ target.^test_ci ]
     workflow run { script = "../../checks.sh" args = "reports" }
 }

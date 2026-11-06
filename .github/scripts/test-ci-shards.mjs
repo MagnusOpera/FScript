@@ -34,7 +34,7 @@ test('CI runner forwards the exact project selection and propagates failures', (
     const core = run('core');
     assert.equal(core.status, 0, core.stderr);
     assert.deepEqual(core.stdout.trim().split('\n'),
-      ['ci', '--project', 'ci_core', 'ci_ffi_managed', '--debug', '--log', '--local-only']);
+      ['test', '--project', 'ci_core', 'ci_ffi_managed', '--debug', '--log', '--local-only']);
     assert.equal(run('ffi-default', { CI_FIXTURE_EXIT: '7' }).status, 7);
     assert.notEqual(run('missing').status, 0);
     const shared = run('ffi-size', { TB_FLAGS: '' });
@@ -49,15 +49,18 @@ test('static CI shards select exactly their checks, restore reports, and cover e
   assert.deepEqual(matrix.map(shard => shard.name).sort(), Object.keys(expected).sort());
   const covered = [];
   for (const shard of matrix) {
-    execFileSync('terrabuild', ['run', 'ci', '--project', ...shard.projects,
+    execFileSync('terrabuild', ['run', 'test', '--project', ...shard.projects,
       '--dry-run', '--local-only', '--debug'], { stdio: 'pipe', timeout: 30000 });
     const graph = JSON.parse(fs.readFileSync('terrabuild-debug.json', 'utf8'));
     const selected = graph.nodes.filter(node => node.selected);
-    const checks = selected.filter(node => /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target));
+    const consumers = selected.filter(node => node.projectDirectory.startsWith('.build/ci/'));
+    const checks = selected.filter(node => !consumers.includes(node) && /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target));
     const names = checks.map(node => `${node.projectDirectory.toLowerCase()}:${node.target}`).sort();
     assert.deepEqual(names, expected[shard.name].toSorted(), shard.name);
-    assert.ok(selected.some(node => node.target === 'ci' && node.build === 'always'), shard.name);
-    for (const consumer of selected.filter(node => node.target === 'ci')) {
+    assert.ok(consumers.length > 0, shard.name);
+    for (const consumer of consumers) {
+      assert.equal(consumer.target, 'test');
+      assert.equal(consumer.build, 'always');
       assert.ok(consumer.resolvedOperations.length > 0, 'Cached reports need an executing consumer.');
     }
     for (const check of checks) {
@@ -78,6 +81,7 @@ test('static CI shards select exactly their checks, restore reports, and cover e
   }
   const allTests = [];
   function scan(directory) {
+    if (directory === '.build/ci') return;
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (['node_modules', 'bin', 'obj', '.git', '.terrabuild', 'TestResults', '.out'].includes(entry.name)) continue;
       const file = path.join(directory, entry.name);

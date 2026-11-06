@@ -3,7 +3,9 @@ project ci_ffi_size {
     includes = [ "../../checks.sh" ]
 }
 
-target ci {
+target test {
+    build = ~always
+    artifacts = ~none
     depends_on = [ target.^test_ffi_size ]
     workflow run { script = "../../checks.sh" args = "reports" }
 }

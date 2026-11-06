@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Label GitHub test shards as test instead of ci in Insights.
 - Keep GitHub workflow reruns in separate Insights build groups while correlating each attempt's build and test shards.
 - Publish the CI toolchain as a single image manifest so test runners can pull it from GHCR.
 - Use Terrabuild's native Docker publishing and hash-based toolchain tags.
