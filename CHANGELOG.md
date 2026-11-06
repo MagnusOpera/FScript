@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.89.0]
+
+
 - Remove redundant compiler tests and speed up compiled usage-message coverage.
 - Prevent publishing tests from waiting on output pipes held open by idle build workers.
 
@@ -16,6 +19,8 @@ All notable changes to FScript are documented in this file.
 - Keep constant locals captured by nested functions valid during compiler simplification.
 - Preserve function-valued results when compiling task awaits and other generic external calls.
 - Preserve nested task results and enforce task observation at compiled program Run boundaries.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.88.0...0.89.0
 
 ## [0.88.0]
 
