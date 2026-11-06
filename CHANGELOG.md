@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.90.1]
+
 - Publish NuGet packages through trusted publishing without a stored API key.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.90.0...0.90.1
 
 ## [0.90.0]
 
