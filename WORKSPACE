@@ -27,7 +27,7 @@ target install {
 }
 
 target build {
-    batch = ~never
+    batch = ~partition
     phase = phase.application
     artifacts = ~managed
     depends_on = [ target.install target.^build ]

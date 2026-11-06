@@ -179,6 +179,8 @@ test('static CI shards select exactly their checks, restore reports, and cover e
         'Shards must not use dummy report consumers.');
       checks.push(...graph.nodes.filter(node => node.selected && /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target)));
     }
+    assert.ok(checks.filter(node => node.target === 'test').every(node => node.batchMode === 'never'),
+      'Named per-project test reports must not be combined into a shared solution output.');
     const names = checks.map(node => `${node.projectDirectory.toLowerCase()}:${node.target}`).sort();
     assert.deepEqual(names, expected[shard.name].toSorted(), shard.name);
     for (const check of checks) {
@@ -222,4 +224,20 @@ test('static CI shards select exactly their checks, restore reports, and cover e
   assert.deepEqual([...new Set(covered)].sort(), allTests.sort());
   const duplicates = covered.filter((name, index) => covered.indexOf(name) !== index);
   assert.deepEqual(duplicates, ['samples/ffi/tests:test', 'samples/ffi/tests:test']);
+});
+
+test('compatible .NET builds use native partitioned batches', () => {
+  execFileSync('terrabuild', ['run', 'build', '--force', '--dry-run', '--local-only', '--debug'],
+    { stdio: 'pipe', timeout: 30000 });
+  const graph = JSON.parse(fs.readFileSync('terrabuild-debug.json', 'utf8'));
+  const nodes = new Map(graph.nodes.map(node => [node.id, node]));
+  assert.ok(graph.batches.some(batch => batch.members.length > 1),
+    'Builds should use a generated solution instead of one command per project.');
+  for (const batch of graph.batches) {
+    for (const id of batch.members) {
+      const node = nodes.get(id);
+      assert.equal(node.target, 'build');
+      assert.ok(node.resolvedOperations.every(operation => operation.metaCommand === '@dotnet build'));
+    }
+  }
 });
