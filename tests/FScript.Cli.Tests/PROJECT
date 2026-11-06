@@ -9,6 +9,8 @@ target build {
 }
 
 target test {
+    # Tests launch the CLI even when their own build is restored from cache.
+    depends_on = [ target.^build ]
     outputs = [ "TestResults/" ]
     # Cached builds do not populate NuGet packages on a fresh runner.
     @dotnet restore { }

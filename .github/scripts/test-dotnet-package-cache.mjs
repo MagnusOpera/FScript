@@ -42,7 +42,7 @@ set -e
 echo "Without package imports: exit $baseline_status"
 test ! -f baseline/baseline.trx
 # The corrected graph restores packages explicitly before using --no-build.
-dotnet restore Fixture.csproj --packages /fixture/cold
+dotnet restore Fixture.csproj --packages /fixture/warm
 dotnet test Fixture.csproj --no-build --no-restore -c Release --logger 'trx;LogFileName=results.trx' --results-directory fixed
 `;
   execFileSync('docker', ['run', '--rm', '--user', `${process.getuid()}:${process.getgid()}`,

@@ -192,7 +192,7 @@ test('static CI shards select exactly their checks, restore reports, and cover e
           selection.reports.includes(`${check.projectDirectory}/${check.outputs[0]}results.trx`)),
           'Every .NET test target needs a checked report contract.');
       }
-      if (check.projectName === 'ffisample_tests') {
+      if (['ffisample_tests', 'fscript_cli_tests'].includes(check.projectName)) {
         assert.ok(direct.some(node => node?.projectName === 'fscript' && node.target === 'build'),
           `${check.target} must directly restore the CLI even when its own build is cached.`);
       }
