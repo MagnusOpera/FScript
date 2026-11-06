@@ -4,11 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep GitHub workflow reruns in separate Insights build groups while correlating each attempt's build and test shards.
 - Publish the CI toolchain as a single image manifest so test runners can pull it from GHCR.
 - Use Terrabuild's native Docker publishing and hash-based toolchain tags.
 - Reuse GHCR toolchain images across CI runners.
 - Restore the CLI and website test dependencies when CI shards start with cached builds on fresh runners.
-- Report the GitHub build and all test shards as one Insights build group, including reruns.
+- Report the GitHub build and all test shards as one Insights build group per workflow attempt.
 - Split GitHub CI into a cached build, parallel test shards, and combined test reports, including separate Native AOT variants.
 - Allow the native teapot debugger test to finish mesh generation on busy CI runners and report clearer event timeouts.
 - Define shared build-tool versions in WORKSPACE for container builds and GitHub workflows.

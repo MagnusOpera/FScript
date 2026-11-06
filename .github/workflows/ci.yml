@@ -21,7 +21,7 @@ permissions:
   packages: read
 
 env:
-  TERRABUILD_GROUP: ${{ github.repository }}:${{ github.run_id }}
+  TERRABUILD_GROUP: ${{ github.repository }}:${{ github.run_id }}:${{ github.run_attempt }}
 
 jobs:
   build:

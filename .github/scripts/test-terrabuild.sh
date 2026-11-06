@@ -69,7 +69,7 @@ if grep -q -- '--parallel' "$fixture/args"; then
 fi
 test "$(wc -l < "$fixture/args" | tr -d ' ')" = 8
 
-export TERRABUILD_GROUP='MagnusOpera/FScript:12345'
+export TERRABUILD_GROUP='MagnusOpera/FScript:12345:2'
 if ! run_build success ''; then cat "$fixture/log"; exit 1; fi
 cat > "$fixture/expected-group-args" <<'ARGS'
 run
@@ -79,7 +79,7 @@ build
 --variable
 config=Debug
 --group
-MagnusOpera/FScript:12345
+MagnusOpera/FScript:12345:2
 --out
 .terrabuild/result.json
 ARGS
