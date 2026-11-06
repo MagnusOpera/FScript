@@ -9,6 +9,14 @@ import { fileURLToPath } from 'node:url';
 const matrix = JSON.parse(fs.readFileSync('.build/ci-shards.json', 'utf8')).include;
 const shardArgs = name => matrix.find(shard => shard.name === name).runs.flatMap(selection =>
   [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--log', '--local-only']);
+const trx = '<TestRun><Results><UnitTestResult outcome="Passed"/></Results><ResultSummary><Counters executed="1" failed="0" error="0"/></ResultSummary></TestRun>';
+const junit = '<testsuites><testcase name="fixture"/></testsuites>';
+const fakeReportsScript = `node --input-type=module -e 'import fs from "node:fs"; import path from "node:path";
+for (const file of JSON.parse(process.env.CI_FIXTURE_REPORTS)) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, file.endsWith(".trx") ? ${JSON.stringify(trx)} : ${JSON.stringify(junit)});
+}'`;
+const allReports = matrix.flatMap(shard => shard.runs.flatMap(selection => selection.reports));
 const expected = {
   core: ['tests/fscript.language.tests:test', 'tests/fscript.runtime.tests:test', 'tests/fscript.compiler.tests:test',
     'tests/fscript.conformance.tests:test', 'tests/fscript.interpreter.lir.tests:test',
@@ -28,14 +36,14 @@ test('CI runner forwards the exact project selection and propagates failures', (
     fs.mkdirSync(path.join(fixture, '.build'));
     fs.copyFileSync('.build/ci-shards.json', path.join(fixture, '.build/ci-shards.json'));
     fs.writeFileSync(path.join(fixture, '.build/run-terrabuild.sh'),
-      'printf "%s\\n" "$@"\nexit "${CI_FIXTURE_EXIT:-0}"\n');
+      'printf "%s\\n" "$@"\n' + fakeReportsScript + '\nexit "${CI_FIXTURE_EXIT:-0}"\n');
     const script = fileURLToPath(new URL('./run-ci-shard.mjs', import.meta.url));
     const run = (name, extra = {}) => spawnSync(process.execPath, [script, name], {
-      cwd: fixture, encoding: 'utf8', env: { ...process.env, TB_FLAGS: '--local-only', ...extra }
+      cwd: fixture, encoding: 'utf8', env: { ...process.env, TB_FLAGS: '--local-only', CI_FIXTURE_REPORTS: JSON.stringify(allReports), ...extra }
     });
     const core = run('core');
     assert.equal(core.status, 0, core.stderr);
-    assert.deepEqual(core.stdout.trim().split('\n'),
+    assert.deepEqual(core.stdout.trim().split('\n').filter(line => !line.startsWith('Verified test report:')),
       shardArgs('core'));
     assert.equal(run('ffi-default', { CI_FIXTURE_EXIT: '7' }).status, 7);
     assert.notEqual(run('missing').status, 0);
@@ -82,7 +90,7 @@ test('a cached shard restores reports without rerunning tests or restoring build
     fs.mkdirSync(path.join(fixture, 'app'));
     fs.copyFileSync('.build/run-terrabuild.sh', path.join(fixture, '.build/run-terrabuild.sh'));
     fs.writeFileSync(path.join(fixture, '.build/ci-shards.json'), JSON.stringify({ include: [
-      { name: 'fixture', runs: [{ targets: ['test'], projects: ['fixture'] }] }
+      { name: 'fixture', runs: [{ targets: ['test'], projects: ['fixture'], reports: ['app/TestResults/report.xml'] }] }
     ] }));
     fs.writeFileSync(path.join(fixture, '.gitignore'), 'app/bin/\napp/TestResults/\n.terrabuild/\nterrabuild-debug.*\napp/executions\n');
     fs.writeFileSync(path.join(fixture, 'WORKSPACE'), `workspace { engine = ~host }
@@ -104,7 +112,7 @@ target test {
 }
 `);
     fs.writeFileSync(path.join(fixture, 'app/build.sh'), 'mkdir -p bin\nprintf binary > bin/output\n');
-    fs.writeFileSync(path.join(fixture, 'app/test.sh'), 'test -f bin/output\nmkdir -p TestResults\nprintf "<testsuite/>" > TestResults/report.xml\nprintf run >> executions\n');
+    fs.writeFileSync(path.join(fixture, 'app/test.sh'), 'test -f bin/output\nmkdir -p TestResults\nprintf \'<testsuites><testcase name="fixture"/></testsuites>\' > TestResults/report.xml\nprintf run >> executions\n');
     // Keep this fixture independent of entries left by earlier test invocations.
     fs.writeFileSync(path.join(fixture, 'app/nonce'), path.basename(fixture));
     execFileSync('git', ['init', '--quiet'], { cwd: fixture });
@@ -118,11 +126,39 @@ target test {
     fs.rmSync(path.join(fixture, 'app/bin'), { recursive: true });
     fs.rmSync(path.join(fixture, 'app/TestResults'), { recursive: true });
     run();
-    assert.equal(fs.readFileSync(path.join(fixture, 'app/TestResults/report.xml'), 'utf8'), '<testsuite/>');
+    assert.equal(fs.readFileSync(path.join(fixture, 'app/TestResults/report.xml'), 'utf8'), junit);
     assert.equal(fs.readFileSync(path.join(fixture, 'app/executions'), 'utf8'), 'run');
     assert.ok(!fs.existsSync(path.join(fixture, 'app/bin')), 'Cached reports do not need build prerequisites.');
     const graph = JSON.parse(fs.readFileSync(path.join(fixture, '.terrabuild/shards/1/terrabuild-debug.json'), 'utf8'));
     assert.equal(graph.nodes.find(node => node.target === 'test').action, 'restore');
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('a zero-exit test process cannot reuse stale reports or succeed without execution evidence', () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-ci-empty-tests-'));
+  try {
+    fs.mkdirSync(path.join(fixture, '.build'));
+    fs.mkdirSync(path.join(fixture, 'app/TestResults'), { recursive: true });
+    fs.writeFileSync(path.join(fixture, '.build/ci-shards.json'), JSON.stringify({ include: [
+      { name: 'fixture', runs: [{ targets: ['test'], projects: ['fixture'], reports: ['app/TestResults/results.trx'] }] }
+    ] }));
+    const script = fileURLToPath(new URL('./run-ci-shard.mjs', import.meta.url));
+    const stub = path.join(fixture, '.build/run-terrabuild.sh');
+    fs.writeFileSync(path.join(fixture, 'app/TestResults/results.trx'), trx);
+    fs.writeFileSync(stub, 'exit 0\n');
+    const run = () => spawnSync(process.execPath, [script, 'fixture'], { cwd: fixture, encoding: 'utf8' });
+    const missing = run();
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /Missing expected test report/);
+    fs.writeFileSync(stub, `mkdir -p app/TestResults
+printf '%s' '<TestRun><Results/><ResultSummary><Counters executed="0"/></ResultSummary></TestRun>' > app/TestResults/results.trx
+exit 0
+`);
+    const empty = run();
+    assert.notEqual(empty.status, 0);
+    assert.match(empty.stderr, /no executed tests/);
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
@@ -147,6 +183,15 @@ test('static CI shards select exactly their checks, restore reports, and cover e
     assert.deepEqual(names, expected[shard.name].toSorted(), shard.name);
     for (const check of checks) {
       const direct = check.dependencies.map(id => nodes.get(id));
+      const commands = check.resolvedOperations.map(operation => operation.metaCommand);
+      if (commands.includes('@dotnet test')) {
+        assert.equal(check.artifacts, 'managed', 'Explicit package restore must preserve shared test-result caching.');
+        assert.deepEqual(commands, ['@dotnet restore', '@dotnet test'],
+          'A fresh runner must restore package-provided MSBuild imports before testing cached builds.');
+        assert.ok(shard.runs.some(selection => selection.projects.includes(check.projectName) &&
+          selection.reports.includes(`${check.projectDirectory}/${check.outputs[0]}results.trx`)),
+          'Every .NET test target needs a checked report contract.');
+      }
       if (check.projectName === 'ffisample_tests') {
         assert.ok(direct.some(node => node?.projectName === 'fscript' && node.target === 'build'),
           `${check.target} must directly restore the CLI even when its own build is cached.`);

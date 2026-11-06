@@ -64,6 +64,8 @@ jobs:
         run: node -e 'console.log("matrix=" + JSON.stringify(require("./.build/ci-shards.json")))' >> "$GITHUB_OUTPUT"
       - name: Build and populate the Terrabuild cache
         run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
+      - name: Verify tests execute with an empty NuGet package cache
+        run: node .github/scripts/test-dotnet-package-cache.mjs
       - name: Logout from Terrabuild
         if: always() && steps.setup-tools.outputs.connected == 'true'
         run: terrabuild logout --space "6ae115ba87040d459b6ccf40"

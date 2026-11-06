@@ -3,45 +3,81 @@
     {
       "name": "core",
       "runs": [
-        {"targets": ["test"], "projects": ["fscript_language_tests", "fscript_runtime_tests", "fscript_compiler_tests", "fscript_conformance_tests", "fscript_interpreter_lir_tests", "fscript_languageserver_tests"]},
-        {"targets": ["test_ffi_managed"], "projects": ["ffisample_tests"]}
+        {
+          "targets": ["test"],
+          "projects": ["fscript_language_tests", "fscript_runtime_tests", "fscript_compiler_tests", "fscript_conformance_tests", "fscript_interpreter_lir_tests", "fscript_languageserver_tests"],
+          "reports": ["tests/FScript.Language.Tests/TestResults/results.trx", "tests/FScript.Runtime.Tests/TestResults/results.trx", "tests/FScript.Compiler.Tests/TestResults/results.trx", "tests/FScript.Conformance.Tests/TestResults/results.trx", "tests/FScript.Interpreter.Lir.Tests/TestResults/results.trx", "tests/FScript.LanguageServer.Tests/TestResults/results.trx"]
+        },
+        {
+          "targets": ["test_ffi_managed"],
+          "projects": ["ffisample_tests"],
+          "reports": ["samples/ffi/Tests/TestResults/managed/results.trx"]
+        }
       ]
     },
     {
       "name": "backend",
       "runs": [
-        {"targets": ["test"], "projects": ["fscript_backend_dotnet_tests"]}
+        {
+          "targets": ["test"],
+          "projects": ["fscript_backend_dotnet_tests"],
+          "reports": ["tests/FScript.Backend.DotNet.Tests/TestResults/results.trx"]
+        }
       ]
     },
     {
       "name": "cli",
       "runs": [
-        {"targets": ["test"], "projects": ["fscript_cli_tests"]}
+        {
+          "targets": ["test"],
+          "projects": ["fscript_cli_tests"],
+          "reports": ["tests/FScript.Cli.Tests/TestResults/results.trx"]
+        }
       ]
     },
     {
       "name": "ffi-default",
       "runs": [
-        {"targets": ["test_ffi_default"], "projects": ["ffisample_tests"]}
+        {
+          "targets": ["test_ffi_default"],
+          "projects": ["ffisample_tests"],
+          "reports": ["samples/ffi/Tests/TestResults/aot-default/results.trx"]
+        }
       ]
     },
     {
       "name": "ffi-size",
       "runs": [
-        {"targets": ["test_ffi_size"], "projects": ["ffisample_tests"]}
+        {
+          "targets": ["test_ffi_size"],
+          "projects": ["ffisample_tests"],
+          "reports": ["samples/ffi/Tests/TestResults/aot-size/results.trx"]
+        }
       ]
     },
     {
       "name": "web",
       "runs": [
-        {"targets": ["test"], "projects": ["javascript", "vscode"]},
-        {"targets": ["test_ci"], "projects": ["website"]}
+        {
+          "targets": ["test"],
+          "projects": ["javascript", "vscode"],
+          "reports": ["src/FScript.JavaScript/TestResults/javascript.xml", "vscode-fscript/TestResults/vscode.xml"]
+        },
+        {
+          "targets": ["test_ci"],
+          "projects": ["website"],
+          "reports": []
+        }
       ]
     },
     {
       "name": "integration",
       "runs": [
-        {"targets": ["test", "smoke", "sdk"], "projects": ["checks"]}
+        {
+          "targets": ["test", "smoke", "sdk"],
+          "projects": ["checks"],
+          "reports": ["tests/FScript.DebugAdapter.Tests/TestResults/debugger.xml"]
+        }
       ]
     }
   ]

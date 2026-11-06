@@ -11,33 +11,41 @@ target build {
 target test {
     depends_on = [ target.^build ]
     outputs = [ "TestResults/" ]
-    @dotnet test { build = false restore = false args = "--results-directory TestResults" }
+    # Cached builds do not populate NuGet packages on a fresh runner.
+    @dotnet restore { }
+    @dotnet test { build = false restore = false args = "--logger 'trx;LogFileName=results.trx' --results-directory TestResults" }
 }
 
 target test_ffi_managed {
     depends_on = [ target.^build ]
     outputs = [ "TestResults/managed/" ]
+    # Cached builds do not populate NuGet packages on a fresh runner.
+    @dotnet restore { }
     @dotnet test {
         build = false restore = false
         filter = "TestCategory!=NativeAotDefault&TestCategory!=NativeAotSize"
-        args = "--results-directory TestResults/managed"
+        args = "--logger 'trx;LogFileName=results.trx' --results-directory TestResults/managed"
     }
 }
 
 target test_ffi_default {
     depends_on = [ target.^build ]
     outputs = [ "TestResults/aot-default/" ]
+    # Cached builds do not populate NuGet packages on a fresh runner.
+    @dotnet restore { }
     @dotnet test {
         build = false restore = false filter = "TestCategory=NativeAotDefault"
-        args = "--results-directory TestResults/aot-default"
+        args = "--logger 'trx;LogFileName=results.trx' --results-directory TestResults/aot-default"
     }
 }
 
 target test_ffi_size {
     depends_on = [ target.^build ]
     outputs = [ "TestResults/aot-size/" ]
+    # Cached builds do not populate NuGet packages on a fresh runner.
+    @dotnet restore { }
     @dotnet test {
         build = false restore = false filter = "TestCategory=NativeAotSize"
-        args = "--results-directory TestResults/aot-size"
+        args = "--logger 'trx;LogFileName=results.trx' --results-directory TestResults/aot-size"
     }
 }

@@ -53,7 +53,7 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
         execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--quiet', '-m', 'fixture'], { cwd: fixture });
         const image = () => {
             const output = execFileSync('terrabuild', ['explain', 'build', '--local-only'], { cwd: fixture, encoding: 'utf8', timeout: 30000 });
-            const match = output.match(/container: (ghcr\.io\/magnusopera\/fscript-toolchain:[^\s]+)/);
+            const match = output.match(/container: (ghcr\.io\/magnusopera\/fscript\/toolchain:[^\s]+)/);
             assert.ok(match, 'The build must use the workspace toolchain image.');
             return match[1];
         };

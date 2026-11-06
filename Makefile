@@ -129,6 +129,7 @@ test-terrabuild:
 	bash .github/scripts/test-terrabuild.sh
 	bash .github/scripts/test-node-reports.sh
 	node --test .github/scripts/test-collect-results.mjs
+	node --test .github/scripts/test-verify-test-reports.mjs
 	node --test .github/scripts/test-workspace-versions.mjs
 
 tb-build:

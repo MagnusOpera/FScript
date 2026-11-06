@@ -10,5 +10,7 @@ target build {
 
 target test {
     outputs = [ "TestResults/" ]
-    @dotnet test { build = false restore = false args = "--results-directory TestResults" }
+    # Cached builds do not populate NuGet packages on a fresh runner.
+    @dotnet restore { }
+    @dotnet test { build = false restore = false args = "--logger 'trx;LogFileName=results.trx' --results-directory TestResults" }
 }

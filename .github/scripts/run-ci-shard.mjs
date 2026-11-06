@@ -1,12 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { verifyTestReports } from './verify-test-reports.mjs';
 
 const matrix = JSON.parse(fs.readFileSync('.build/ci-shards.json', 'utf8'));
 const shard = matrix.include.find(shard => shard.name === process.argv[2]);
 if (!shard) throw new Error(`Unknown CI shard: ${process.argv[2]}`);
 let status = 0;
 for (const [index, selection] of shard.runs.entries()) {
+  if (!Array.isArray(selection.reports)) throw new Error('Each CI selection must declare its expected reports.');
+  // Only reports produced or restored by this invocation count as evidence.
+  for (const report of selection.reports) fs.rmSync(report, { force: true });
   const args = [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--log'];
   // setup-tools sets this only for a runner without shared-cache credentials.
   if (process.env.TB_FLAGS === '--local-only') args.push('--local-only');
@@ -23,5 +27,12 @@ for (const [index, selection] of shard.runs.entries()) {
   if (result.error) throw result.error;
   // Run every selection so a failed suite does not hide another suite's results.
   if (result.status !== 0) status = result.status ?? 1;
+  try {
+    verifyTestReports(selection.reports);
+  } catch (error) {
+    console.error(error.message);
+    fs.writeFileSync(path.join(destination, 'report-validation.txt'), error.message + '\n');
+    if (status === 0) status = 1;
+  }
 }
 process.exit(status);

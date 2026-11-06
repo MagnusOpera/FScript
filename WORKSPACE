@@ -90,27 +90,27 @@ target test_ci {
 }
 
 extension @dotnet {
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
+    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     defaults { configuration = var.config }
 }
 
 extension @npm {
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
+    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { CI = "true" }
 }
 
 extension workflow {
     script = ".build/workflow.fss"
-    image = "ghcr.io/magnusopera/fscript-toolchain:${project.toolchain.version}"
+    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { FSCRIPT_BUILD_CONFIG = var.config }
 }
 
 extension @docker {
     defaults {
-        image = "ghcr.io/magnusopera/fscript-${terrabuild.project}"
+        image = "ghcr.io/magnusopera/fscript/${terrabuild.project}"
         platforms = [ "linux/${terrabuild.arch}" ]
     }
 }

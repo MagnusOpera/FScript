@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Publish build toolchain images under the `ghcr.io/magnusopera/fscript/` namespace.
+- Run .NET tests from cached builds on fresh runners and fail CI when expected test reports are missing or empty.
 - Restore cached CI test reports directly with Terrabuild and retain diagnostics for each shard selection.
 - Document the Terrabuild and Docker requirements for building FScript from source.
 - Keep VS Code builds cached when release notes change by adding the changelog only during extension packaging.
