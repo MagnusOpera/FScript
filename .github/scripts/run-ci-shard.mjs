@@ -11,7 +11,7 @@ for (const [index, selection] of shard.runs.entries()) {
   if (!Array.isArray(selection.reports)) throw new Error('Each CI selection must declare its expected reports.');
   // Only reports produced or restored by this invocation count as evidence.
   for (const report of selection.reports) fs.rmSync(report, { force: true });
-  const args = [...selection.targets, '--project', ...selection.projects, '--restore', '--debug'];
+  const args = [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--log'];
   // setup-tools sets this only for a runner without shared-cache credentials.
   if (process.env.TB_FLAGS === '--local-only') args.push('--local-only');
   const destination = path.join('.terrabuild/shards', String(index + 1));

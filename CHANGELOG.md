@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restore detailed cached build logs in CI with the Terrabuild 0.207.2 cache fix.
 - Avoid cached-log rendering failures in CI while retaining build traces and test-report checks.
 - Keep build-tooling and shard-configuration regressions on demand instead of delaying every CI build.
 - Batch compatible .NET builds into dependency-connected solutions while keeping per-project test reports separate.

@@ -1,6 +1,6 @@
 # Container-backed builds with Terrabuild
 
-Install the latest stable Terrabuild release, at least 0.207.0 for GitHub report restoration, and a working Docker engine. The graph prepares its toolchain image automatically. Trusted GitHub builds publish missing images to GHCR, and test shards pull them. .NET, Node, and Clang are supplied by that image; they need not be installed on the host for these targets.
+Install the latest stable Terrabuild release, at least 0.207.2 for GitHub report restoration and cached-log rendering, and a working Docker engine. The graph prepares its toolchain image automatically. Trusted GitHub builds publish missing images to GHCR, and test shards pull them. .NET, Node, and Clang are supplied by that image; they need not be installed on the host for these targets.
 
 ```sh
 # Build every .NET project, the JavaScript package, extension bundle, and website.
@@ -113,4 +113,4 @@ The regression uses the toolchain image selected by the build. It builds a small
 
 Changing the .NET test targets to include explicit restore and a named TRX logger invalidates the earlier empty test results through normal Terrabuild cache keys. No shared-cache purge or permanent force-build setting is needed. Local Make commands retain their defaults; container test targets now restore packages whenever they actually execute.
 
-CI uses `--debug` and captures console output without forcing `--log`. Terrabuild 0.207.0 can fail while rendering successful cached tasks whose step logs have not been downloaded. Debug traces and report validation remain enabled.
+CI uses `--debug --log` to retain performance traces and render cached operation logs. Terrabuild 0.207.2 downloads those logs on demand after metadata-only cache hits. Shards continue to restore and validate their required test reports.
