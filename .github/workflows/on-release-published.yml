@@ -18,6 +18,9 @@ env:
 jobs:
   release-nuget:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -30,11 +33,19 @@ jobs:
           tag: ${{ env.RELEASE_TAG }}
           fileName: '*.nupkg'
 
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: MagnusOpera
+
       - name: Push packages to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           shopt -s nullglob
           for pkg in ./*.nupkg; do
-            dotnet nuget push "$pkg" --skip-duplicate --api-key "${{ secrets.NUGET_KEY }}" --source https://api.nuget.org/v3/index.json
+            dotnet nuget push "$pkg" --skip-duplicate --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
           done
 
   release-npm:

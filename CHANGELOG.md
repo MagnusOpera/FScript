@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Publish NuGet packages through trusted publishing without a stored API key.
+
 ## [0.90.0]
 
 - Upgrade the JavaScript compiler to Fable 5.27.0 and Fable.Core 5.6.1.
