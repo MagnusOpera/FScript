@@ -86,6 +86,10 @@ Source lives in [`vscode-fscript/`](vscode-fscript/).
 
 ## Repository Development
 
+Building from source requires Make, the latest stable [Terrabuild](https://github.com/MagnusOpera/Terrabuild/releases/latest) executable on `PATH`, and a running Docker engine. `make build` uses Terrabuild to prepare a container with the .NET SDK, Node.js, and native build tools. Shared tool versions are defined in [`WORKSPACE`](WORKSPACE).
+
+See the [Terrabuild guide](docs/guides/terrabuild.md) for setup, caching, and container-based test commands such as `make tb-test` and `make tb-check`. The `make test` and `dotnet run` commands below use the host .NET SDK; `make test` also requires Node.js and npm on the host.
+
 ### Build
 ```bash
 make build
