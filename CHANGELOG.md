@@ -19,6 +19,7 @@ All notable changes to FScript are documented in this file.
 - Install the latest stable Terrabuild release in CI.
 - Run Terrabuild CI on pushes to every branch.
 - Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.
+- Fix NuGet trusted publishing authentication and allow retrying existing release packages without rebuilding.
 
 ## [0.90.1]
 
