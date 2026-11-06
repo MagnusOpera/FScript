@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restore cached CI test reports directly with Terrabuild and retain diagnostics for each shard selection.
 - Document the Terrabuild and Docker requirements for building FScript from source.
 - Keep VS Code builds cached when release notes change by adding the changelog only during extension packaging.
 - Cancel superseded branch and pull-request CI runs for the same source branch while keeping test shards parallel.

@@ -1,11 +1,48 @@
 {
   "include": [
-    {"name": "core", "projects": ["ci_core", "ci_ffi_managed"]},
-    {"name": "backend", "projects": ["ci_backend"]},
-    {"name": "cli", "projects": ["ci_cli"]},
-    {"name": "ffi-default", "projects": ["ci_ffi_default"]},
-    {"name": "ffi-size", "projects": ["ci_ffi_size"]},
-    {"name": "web", "projects": ["ci_web", "ci_website"]},
-    {"name": "integration", "projects": ["ci_integration"]}
+    {
+      "name": "core",
+      "runs": [
+        {"targets": ["test"], "projects": ["fscript_language_tests", "fscript_runtime_tests", "fscript_compiler_tests", "fscript_conformance_tests", "fscript_interpreter_lir_tests", "fscript_languageserver_tests"]},
+        {"targets": ["test_ffi_managed"], "projects": ["ffisample_tests"]}
+      ]
+    },
+    {
+      "name": "backend",
+      "runs": [
+        {"targets": ["test"], "projects": ["fscript_backend_dotnet_tests"]}
+      ]
+    },
+    {
+      "name": "cli",
+      "runs": [
+        {"targets": ["test"], "projects": ["fscript_cli_tests"]}
+      ]
+    },
+    {
+      "name": "ffi-default",
+      "runs": [
+        {"targets": ["test_ffi_default"], "projects": ["ffisample_tests"]}
+      ]
+    },
+    {
+      "name": "ffi-size",
+      "runs": [
+        {"targets": ["test_ffi_size"], "projects": ["ffisample_tests"]}
+      ]
+    },
+    {
+      "name": "web",
+      "runs": [
+        {"targets": ["test"], "projects": ["javascript", "vscode"]},
+        {"targets": ["test_ci"], "projects": ["website"]}
+      ]
+    },
+    {
+      "name": "integration",
+      "runs": [
+        {"targets": ["test", "smoke", "sdk"], "projects": ["checks"]}
+      ]
+    }
   ]
 }

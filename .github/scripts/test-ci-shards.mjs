@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const matrix = JSON.parse(fs.readFileSync('.build/ci-shards.json', 'utf8')).include;
+const shardArgs = name => matrix.find(shard => shard.name === name).runs.flatMap(selection =>
+  [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--log', '--local-only']);
 const expected = {
   core: ['tests/fscript.language.tests:test', 'tests/fscript.runtime.tests:test', 'tests/fscript.compiler.tests:test',
     'tests/fscript.conformance.tests:test', 'tests/fscript.interpreter.lir.tests:test',
@@ -34,7 +36,7 @@ test('CI runner forwards the exact project selection and propagates failures', (
     const core = run('core');
     assert.equal(core.status, 0, core.stderr);
     assert.deepEqual(core.stdout.trim().split('\n'),
-      ['test', '--project', 'ci_core', 'ci_ffi_managed', '--debug', '--log', '--local-only']);
+      shardArgs('core'));
     assert.equal(run('ffi-default', { CI_FIXTURE_EXIT: '7' }).status, 7);
     assert.notEqual(run('missing').status, 0);
     const shared = run('ffi-size', { TB_FLAGS: '' });
@@ -45,26 +47,106 @@ test('CI runner forwards the exact project selection and propagates failures', (
   }
 });
 
+test('multiple selections retain diagnostics and cannot mask an earlier failure', () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-ci-diagnostics-'));
+  try {
+    fs.mkdirSync(path.join(fixture, '.build'));
+    fs.copyFileSync('.build/ci-shards.json', path.join(fixture, '.build/ci-shards.json'));
+    fs.writeFileSync(path.join(fixture, '.build/run-terrabuild.sh'), `
+mkdir -p .terrabuild
+printf '%s' "$1" > .terrabuild/run.log
+if [ "$1" = test ]; then
+  printf '{"selection":"test"}' > terrabuild-debug.json
+  exit 7
+fi
+printf '{"status":"success"}' > .terrabuild/result.json
+`);
+    const script = fileURLToPath(new URL('./run-ci-shard.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [script, 'core'], { cwd: fixture, encoding: 'utf8' });
+    assert.equal(result.status, 7, result.stderr);
+    const read = file => fs.readFileSync(path.join(fixture, '.terrabuild/shards', file), 'utf8');
+    assert.equal(read('1/terrabuild-debug.json'), '{"selection":"test"}');
+    assert.equal(read('2/result.json'), '{"status":"success"}');
+    assert.equal(read('2/run.log'), 'test_ffi_managed');
+    assert.ok(!fs.existsSync(path.join(fixture, '.terrabuild/shards/2/terrabuild-debug.json')),
+      'A later startup failure must not inherit diagnostics from the previous selection.');
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('a cached shard restores reports without rerunning tests or restoring build outputs', () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-ci-restoration-'));
+  try {
+    fs.mkdirSync(path.join(fixture, '.build'));
+    fs.mkdirSync(path.join(fixture, 'app'));
+    fs.copyFileSync('.build/run-terrabuild.sh', path.join(fixture, '.build/run-terrabuild.sh'));
+    fs.writeFileSync(path.join(fixture, '.build/ci-shards.json'), JSON.stringify({ include: [
+      { name: 'fixture', runs: [{ targets: ['test'], projects: ['fixture'] }] }
+    ] }));
+    fs.writeFileSync(path.join(fixture, '.gitignore'), 'app/bin/\napp/TestResults/\n.terrabuild/\nterrabuild-debug.*\napp/executions\n');
+    fs.writeFileSync(path.join(fixture, 'WORKSPACE'), `workspace { engine = ~host }
+variable config { default = "Release" }
+target build { }
+target test { }
+`);
+    fs.writeFileSync(path.join(fixture, 'app/PROJECT'), `project fixture { }
+target build {
+  artifacts = ~managed
+  outputs = [ "bin/" ]
+  @shell sh { args = "build.sh" }
+}
+target test {
+  artifacts = ~managed
+  depends_on = [ target.build ]
+  outputs = [ "TestResults/" ]
+  @shell sh { args = "test.sh" }
+}
+`);
+    fs.writeFileSync(path.join(fixture, 'app/build.sh'), 'mkdir -p bin\nprintf binary > bin/output\n');
+    fs.writeFileSync(path.join(fixture, 'app/test.sh'), 'test -f bin/output\nmkdir -p TestResults\nprintf "<testsuite/>" > TestResults/report.xml\nprintf run >> executions\n');
+    // Keep this fixture independent of entries left by earlier test invocations.
+    fs.writeFileSync(path.join(fixture, 'app/nonce'), path.basename(fixture));
+    execFileSync('git', ['init', '--quiet'], { cwd: fixture });
+    execFileSync('git', ['add', '.'], { cwd: fixture });
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--quiet', '-m', 'fixture'], { cwd: fixture });
+    const script = fileURLToPath(new URL('./run-ci-shard.mjs', import.meta.url));
+    const run = () => execFileSync(process.execPath, [script, 'fixture'], {
+      cwd: fixture, env: { ...process.env, TB_FLAGS: '--local-only' }, timeout: 30000, stdio: 'pipe'
+    });
+    run();
+    fs.rmSync(path.join(fixture, 'app/bin'), { recursive: true });
+    fs.rmSync(path.join(fixture, 'app/TestResults'), { recursive: true });
+    run();
+    assert.equal(fs.readFileSync(path.join(fixture, 'app/TestResults/report.xml'), 'utf8'), '<testsuite/>');
+    assert.equal(fs.readFileSync(path.join(fixture, 'app/executions'), 'utf8'), 'run');
+    assert.ok(!fs.existsSync(path.join(fixture, 'app/bin')), 'Cached reports do not need build prerequisites.');
+    const graph = JSON.parse(fs.readFileSync(path.join(fixture, '.terrabuild/shards/1/terrabuild-debug.json'), 'utf8'));
+    assert.equal(graph.nodes.find(node => node.target === 'test').action, 'restore');
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
 test('static CI shards select exactly their checks, restore reports, and cover every test project', () => {
   assert.deepEqual(matrix.map(shard => shard.name).sort(), Object.keys(expected).sort());
   const covered = [];
   for (const shard of matrix) {
-    execFileSync('terrabuild', ['run', 'test', '--project', ...shard.projects,
-      '--dry-run', '--local-only', '--debug'], { stdio: 'pipe', timeout: 30000 });
-    const graph = JSON.parse(fs.readFileSync('terrabuild-debug.json', 'utf8'));
-    const selected = graph.nodes.filter(node => node.selected);
-    const consumers = selected.filter(node => node.projectDirectory.startsWith('.build/ci/'));
-    const checks = selected.filter(node => !consumers.includes(node) && /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target));
+    const checks = [];
+    const nodes = new Map();
+    for (const selection of shard.runs) {
+      execFileSync('terrabuild', ['run', ...selection.targets, '--project', ...selection.projects,
+        '--restore', '--dry-run', '--local-only', '--debug'], { stdio: 'pipe', timeout: 30000 });
+      const graph = JSON.parse(fs.readFileSync('terrabuild-debug.json', 'utf8'));
+      for (const node of graph.nodes) nodes.set(node.id, node);
+      assert.ok(!graph.nodes.some(node => node.projectDirectory.startsWith('.build/ci/')),
+        'Shards must not use dummy report consumers.');
+      checks.push(...graph.nodes.filter(node => node.selected && /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target)));
+    }
     const names = checks.map(node => `${node.projectDirectory.toLowerCase()}:${node.target}`).sort();
     assert.deepEqual(names, expected[shard.name].toSorted(), shard.name);
-    assert.ok(consumers.length > 0, shard.name);
-    for (const consumer of consumers) {
-      assert.equal(consumer.target, 'test');
-      assert.equal(consumer.build, 'always');
-      assert.ok(consumer.resolvedOperations.length > 0, 'Cached reports need an executing consumer.');
-    }
     for (const check of checks) {
-      const direct = check.dependencies.map(id => graph.nodes.find(node => node.id === id));
+      const direct = check.dependencies.map(id => nodes.get(id));
       if (check.projectName === 'ffisample_tests') {
         assert.ok(direct.some(node => node?.projectName === 'fscript' && node.target === 'build'),
           `${check.target} must directly restore the CLI even when its own build is cached.`);

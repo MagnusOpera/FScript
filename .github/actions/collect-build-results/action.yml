@@ -37,6 +37,7 @@ runs:
         path: |
           .terrabuild/result.json
           .terrabuild/run.log
+          .terrabuild/shards/
           terrabuild-debug.*
           ~/.terrabuild/cache/**/status
           ~/.terrabuild/cache/**/summary.json
