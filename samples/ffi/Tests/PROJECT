@@ -12,3 +12,28 @@ target test {
     outputs = [ "TestResults/" ]
     @dotnet test { build = false restore = false args = "--results-directory TestResults" }
 }
+
+target test_ffi_managed {
+    outputs = [ "TestResults/managed/" ]
+    @dotnet test {
+        build = false restore = false
+        filter = "TestCategory!=NativeAotDefault&TestCategory!=NativeAotSize"
+        args = "--results-directory TestResults/managed"
+    }
+}
+
+target test_ffi_default {
+    outputs = [ "TestResults/aot-default/" ]
+    @dotnet test {
+        build = false restore = false filter = "TestCategory=NativeAotDefault"
+        args = "--results-directory TestResults/aot-default"
+    }
+}
+
+target test_ffi_size {
+    outputs = [ "TestResults/aot-size/" ]
+    @dotnet test {
+        build = false restore = false filter = "TestCategory=NativeAotSize"
+        args = "--results-directory TestResults/aot-size"
+    }
+}

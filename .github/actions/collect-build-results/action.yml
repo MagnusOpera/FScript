@@ -6,6 +6,10 @@ inputs:
     description: Artifact and report suffix for this workflow
     required: true
 
+  publish:
+    description: Publish reports immediately instead of deferring to the CI join job
+    default: 'true'
+
 runs:
   using: composite
   steps:
@@ -40,26 +44,8 @@ runs:
         include-hidden-files: true
         if-no-files-found: warn
 
-    - name: Publish .NET test report
-      if: always()
-      continue-on-error: true
-      uses: magnusopera/test-reporter@main
+    - name: Publish test summaries
+      if: always() && inputs.publish == 'true'
+      uses: ./.github/actions/publish-test-results
       with:
-        name: .NET Tests (${{ inputs.suffix }})
-        path: '.out/test-results/**/*.trx'
-        reporter: dotnet-trx
-        fail-on-error: false
-        fail-on-empty: false
-        use-actions-summary: true
-
-    - name: Publish JavaScript and debugger test report
-      if: always()
-      continue-on-error: true
-      uses: magnusopera/test-reporter@main
-      with:
-        name: JavaScript and Debugger Tests (${{ inputs.suffix }})
-        path: '.out/test-results/**/*.xml'
-        reporter: java-junit
-        fail-on-error: false
-        fail-on-empty: false
-        use-actions-summary: true
+        suffix: ${{ inputs.suffix }}

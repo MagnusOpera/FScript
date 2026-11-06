@@ -1,0 +1,124 @@
+name: Terrabuild CI
+
+on:
+  workflow_call:
+    inputs:
+      suffix:
+        type: string
+        required: true
+      require-changelog:
+        type: boolean
+        default: false
+    secrets:
+      TERRABUILD_TOKEN:
+        required: false
+      TERRABUILD_MASTER_KEY:
+        required: false
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enforce changelog updates
+        env:
+          REQUIRE_CHANGELOG_ALWAYS: ${{ inputs.require-changelog }}
+        run: .github/scripts/check-unreleased-changelog.sh
+      - name: Verify release formatting
+        run: make test-release-changelog
+      - name: Setup Tools
+        id: setup-tools
+        uses: ./.github/actions/setup-tools
+        with:
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+      - name: Verify CI integration and shard coverage
+        run: |
+          make test-terrabuild
+          node --test .github/scripts/test-ci-shards.mjs
+      - name: Read static test matrix
+        id: shards
+        run: node -e 'console.log("matrix=" + JSON.stringify(require("./.build/ci-shards.json")))' >> "$GITHUB_OUTPUT"
+      - name: Build and populate the Terrabuild cache
+        run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
+      - name: Logout from Terrabuild
+        if: always() && steps.setup-tools.outputs.connected == 'true'
+        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
+      - name: Collect build diagnostics
+        if: always()
+        uses: ./.github/actions/collect-build-results
+        with:
+          suffix: ${{ inputs.suffix }}-build
+          publish: 'false'
+
+  tests:
+    needs: build
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Tools
+        id: setup-tools
+        uses: ./.github/actions/setup-tools
+        with:
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+      - name: Run selected tests and restore their reports
+        env:
+          CI_SHARD: ${{ matrix.name }}
+        run: node .github/scripts/run-ci-shard.mjs "$CI_SHARD"
+      - name: Logout from Terrabuild
+        if: always() && steps.setup-tools.outputs.connected == 'true'
+        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
+      - name: Collect shard results and diagnostics
+        if: always()
+        uses: ./.github/actions/collect-build-results
+        with:
+          suffix: ${{ inputs.suffix }}-${{ matrix.name }}
+          publish: 'false'
+
+  build-and-test:
+    name: Build and test
+    needs: [build, tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gather shard test results
+        if: needs.tests.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-${{ inputs.suffix }}-*
+          path: .out/ci-results
+          merge-multiple: false
+      - name: Publish combined test reports
+        if: always() && needs.tests.result != 'skipped'
+        uses: ./.github/actions/publish-test-results
+        with:
+          suffix: ${{ inputs.suffix }}
+          path: .out/ci-results
+      - name: Require the build and every shard to pass
+        if: always()
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.tests.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$TEST_RESULT" = success

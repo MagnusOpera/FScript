@@ -11,42 +11,9 @@ permissions:
   checks: write
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Enforce changelog updates for functional changes
-        run: .github/scripts/check-unreleased-changelog.sh
-
-      - name: Verify changelog release formatting
-        run: make test-release-changelog
-
-      - name: Setup Tools
-        id: setup-tools
-        uses: ./.github/actions/setup-tools
-        with:
-          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
-          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
-          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
-
-      - name: Verify Terrabuild Makefile integration
-        run: make test-terrabuild
-
-      - name: Build, test, smoke-test, and verify SDK compatibility
-        run: make tb-check TB_FLAGS="${TB_FLAGS:-} --debug --log"
-
-      - name: Logout from Terrabuild
-        if: always() && steps.setup-tools.outputs.connected == 'true'
-        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
-
-      - name: Collect build results
-        if: always()
-        uses: ./.github/actions/collect-build-results
-        with:
-          suffix: branch
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      suffix: branch
+      require-changelog: false
+    secrets: inherit

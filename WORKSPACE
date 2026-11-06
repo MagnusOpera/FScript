@@ -59,6 +59,32 @@ target reports {
     depends_on = [ target.^test ]
 }
 
+# Static CI entry points consume only their selected test outputs.
+target ci {
+    phase = phase.application
+    build = ~always
+    artifacts = ~none
+    depends_on = []
+}
+
+target test_ffi_managed {
+    phase = phase.application
+    artifacts = ~managed
+    depends_on = [ target.build ]
+}
+
+target test_ffi_default {
+    phase = phase.application
+    artifacts = ~managed
+    depends_on = [ target.build ]
+}
+
+target test_ffi_size {
+    phase = phase.application
+    artifacts = ~managed
+    depends_on = [ target.build ]
+}
+
 extension @dotnet {
     image = "fscript-build:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"

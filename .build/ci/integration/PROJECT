@@ -1,0 +1,9 @@
+project ci_integration {
+    depends_on = [ project.checks ]
+    includes = [ "../../checks.sh" ]
+}
+
+target ci {
+    depends_on = [ target.^test target.^smoke target.^sdk ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

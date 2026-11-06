@@ -1,0 +1,9 @@
+project ci_ffi_managed {
+    depends_on = [ project.ffisample_tests ]
+    includes = [ "../../checks.sh" ]
+}
+
+target ci {
+    depends_on = [ target.^test_ffi_managed ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

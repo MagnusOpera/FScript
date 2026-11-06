@@ -1,0 +1,9 @@
+project ci_backend {
+    depends_on = [ project.fscript_backend_dotnet_tests ]
+    includes = [ "../../checks.sh" ]
+}
+
+target ci {
+    depends_on = [ target.^test ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

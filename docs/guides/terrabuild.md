@@ -45,7 +45,7 @@ Builds use the normal `bin`, `obj`, `node_modules`, and generated website direct
 
 The workspace ID is configured in `WORKSPACE`. Local caching works without an Insights account; `--local-only` disables shared caching. Omit `TB_FLAGS=--local-only` after connecting the workspace to allow shared reuse. Do not put tokens or master keys in repository files.
 
-The PR and branch-push GitHub workflows share `.github/actions/setup-tools` to install the latest stable Terrabuild release and configure authentication. They run `make tb-check`, covering builds, all test targets, sample smoke tests, and independent SDK compatibility. The graph supplies .NET, Node, and the Native AOT toolchain through Docker. Configure repository secrets `TERRABUILD_TOKEN` and `TERRABUILD_MASTER_KEY` to enable shared caching. Without both secrets, including on fork PRs, CI uses local caching. The shared `collect-build-results` action collects the latest TRX result from each test output directory and all Node JUnit files into `.out/test-results`, uploads them and publishes both report formats in the GitHub build summary, including after a failed build. Fable, VS Code, and debugger tests retain console output while also writing JUnit XML. A reporting target consumes test outputs so cached reports are restored before collection. Terrabuild diagnostics, its JSON completion report, and captured console output are uploaded as a separate `terrabuild-logs-*` artifact. Its `terrabuild-debug.json` includes performance timings, slowest tasks, the critical chain, and FScript performance data for build optimization.
+The PR and branch-push GitHub workflows share `.github/actions/setup-tools` to install the latest stable Terrabuild release and configure authentication. Both call the shared `ci.yml` workflow, which builds once, scatters tests across seven runners, and joins the results. The build job runs `make build`; each test runner requests only its shard's `ci` target and lets Terrabuild restore prerequisite outputs from the shared cache. The graph supplies .NET, Node, and the Native AOT toolchain through Docker. Configure repository secrets `TERRABUILD_TOKEN` and `TERRABUILD_MASTER_KEY` to enable shared caching. Without both secrets, including on fork PRs, CI uses local caching and rebuilds prerequisites on each test runner; cache sharing across jobs requires both credentials. The shared `collect-build-results` action collects the latest TRX result from each test output directory and all Node JUnit files into `.out/test-results`, uploads them and publishes both report formats in the GitHub build summary, including after a failed build. Fable, VS Code, and debugger tests retain console output while also writing JUnit XML. A reporting target consumes test outputs so cached reports are restored before collection. Terrabuild diagnostics, its JSON completion report, and captured console output are uploaded as a separate `terrabuild-logs-*` artifact. Its `terrabuild-debug.json` includes performance timings, slowest tasks, the critical chain, and FScript performance data for build optimization.
 
 Managed build outputs and successful test results are cacheable separately. npm dependencies are kept in the local workspace cache. When application work must execute, the toolchain bootstrap checks the image using Docker layer caching. Fully cached requests skip execution; the phase barrier does not force application cache hits to rebuild. The configured Linux architecture separates ARM64 and AMD64 artifacts.
 
@@ -54,3 +54,21 @@ Use `terrabuild explain build test --local-only` to inspect cache decisions. Rep
 Cached test success is not a fresh execution. Force a run when investigating a flaky test or an external dependency. Deleting generated output and repeating a fully cached request is not a restoration test: Terrabuild restores prerequisite files when an executing consumer needs them.
 
 `ci-main.yml` runs on pushes to every branch, including names containing `/`, and supports manual dispatch. Tag pushes remain handled by the release workflows. `ci-pr.yml` separately validates pull requests targeting `main`, so a push to an open PR triggers both branch and PR CI.
+
+## GitHub test matrix
+
+The GitHub-only `.build/ci-shards.json` lists a static matrix. `.build/ci/*/PROJECT` defines each shard's dependency selection. The build job validates that the union covers every test project without selecting unrelated tests. Local `make build`, `make test`, and `make tb-check` retain their existing behavior; local full FFI tests still run both Native AOT variants.
+
+| Shard | Checks |
+| --- | --- |
+| core | Language, runtime, compiler, conformance, interpreter, language server, and managed FFI tests |
+| backend | .NET backend tests |
+| cli | CLI tests |
+| ffi-default | Native AOT teapot without size optimization |
+| ffi-size | Native AOT teapot with size optimization |
+| web | Fable, VS Code, and website tests |
+| integration | Debugger adapter, all sample smoke tests, and SDK compatibility |
+
+The FFI categories partition its cases into managed tests and the two Native AOT variants; their results and cache entries are separate. Each shard's executing `ci` target consumes just its test outputs, restoring cached reports before artifact upload. Every runner retains its own diagnostics and test artifact. The join downloads the artifacts into separate directories, publishes combined TRX and JUnit summaries, and requires the build and every shard to succeed. A failed shard does not cancel the others.
+
+The baseline [successful run](https://github.com/MagnusOpera/FScript/actions/runs/42246670574) took 7m34s in Terrabuild. Its trace identified FFI tests at 5m32s, SDK compatibility at 1m59s, and the website build at 1m36s. The matrix separates those workloads and splits the sequential AOT pair. Runner setup, cache transfers, and the build barrier add overhead; compare subsequent GitHub timings and `terrabuild-logs-*` artifacts before claiming a speedup.
