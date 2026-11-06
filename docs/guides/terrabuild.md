@@ -89,8 +89,28 @@ terrabuild compare --before before.json --after after.json --out cache-diff.json
 
 The command works offline and distinguishes cache-key changes from cache availability or execution-policy changes. It lists changed files, dependencies, operations, and evaluated input hashes. Incomplete reports remain unresolved where evidence is missing. Keep the original debug reports alongside the comparison for timing analysis. CI continues uploading diagnostics on every run; it does not guess which earlier run should be the comparison baseline.
 
+## CI tooling regressions
+
+Run the integration and shard-coverage checks when changing the workflow, shard matrix, build graph, or CI scripts:
+
+```sh
+make test-terrabuild
+node --test .github/scripts/test-ci-shards.mjs
+```
+
+These checks run on demand. Routine CI still validates required test reports in every shard and rejects missing, empty, or failed results.
+
 ## Fresh-runner test regression
 
-After building the toolchain, CI runs `.github/scripts/test-dotnet-package-cache.mjs` in that exact image. It builds a small NUnit test project with a transitive project reference, removes the transitive reference outputs while retaining the direct dependency, and verifies that normal SDK builds recreate them. It then removes access to its package cache while retaining `bin` and `obj`, and reproduces the zero-exit/no-report failure. It then explicitly repopulates the same missing package directory and requires a TRX containing executed tests. This fixture uses repository package versions and needs no host .NET SDK.
+The targeted `.github/scripts/test-dotnet-package-cache.mjs` regression is available for build and toolchain changes; routine CI relies on each shard's report checks. Run it on demand after preparing the toolchain and debug report:
+
+```sh
+make build TB_FLAGS="--local-only --debug"
+node .github/scripts/test-dotnet-package-cache.mjs
+```
+
+The regression uses the toolchain image selected by the build. It builds a small NUnit test project with a transitive project reference, removes the transitive reference outputs while retaining the direct dependency, and verifies that normal SDK builds recreate them. It then removes access to its package cache while retaining `bin` and `obj`, and reproduces the zero-exit/no-report failure. It then explicitly repopulates the same missing package directory and requires a TRX containing executed tests. This fixture uses repository package versions and needs no host .NET SDK.
 
 Changing the .NET test targets to include explicit restore and a named TRX logger invalidates the earlier empty test results through normal Terrabuild cache keys. No shared-cache purge or permanent force-build setting is needed. Local Make commands retain their defaults; container test targets now restore packages whenever they actually execute.
+
+CI uses `--debug` and captures console output without forcing `--log`. Terrabuild 0.207.0 can fail while rendering successful cached tasks whose step logs have not been downloaded. Debug traces and report validation remain enabled.

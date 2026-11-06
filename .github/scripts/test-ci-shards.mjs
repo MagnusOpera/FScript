@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const matrix = JSON.parse(fs.readFileSync('.build/ci-shards.json', 'utf8')).include;
 const shardArgs = name => matrix.find(shard => shard.name === name).runs.flatMap(selection =>
-  [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--log', '--local-only']);
+  [...selection.targets, '--project', ...selection.projects, '--restore', '--debug', '--local-only']);
 const trx = '<TestRun><Results><UnitTestResult outcome="Passed"/></Results><ResultSummary><Counters executed="1" failed="0" error="0"/></ResultSummary></TestRun>';
 const junit = '<testsuites><testcase name="fixture"/></testsuites>';
 const fakeReportsScript = `node --input-type=module -e 'import fs from "node:fs"; import path from "node:path";

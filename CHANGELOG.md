@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Avoid cached-log rendering failures in CI while retaining build traces and test-report checks.
+- Keep build-tooling and shard-configuration regressions on demand instead of delaying every CI build.
 - Batch compatible .NET builds into dependency-connected solutions while keeping per-project test reports separate.
 - Let .NET restore and build project references when compiling against partially cached outputs.
 - Restore the CLI executable before running CLI tests from a cached test build.
