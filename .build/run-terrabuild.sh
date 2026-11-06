@@ -8,7 +8,11 @@ parallel_args=()
 if [[ -n "${TB_PARALLEL:-}" ]]; then
     parallel_args=(--parallel "$TB_PARALLEL")
 fi
-terrabuild run "$@" --variable "config=${FSCRIPT_BUILD_CONFIG:-Release}" ${parallel_args[@]+"${parallel_args[@]}"} --out "$report" 2>&1 | tee .terrabuild/run.log
+group_args=()
+if [[ -n "${TERRABUILD_GROUP:-}" ]]; then
+    group_args=(--group "$TERRABUILD_GROUP")
+fi
+terrabuild run "$@" --variable "config=${FSCRIPT_BUILD_CONFIG:-Release}" ${parallel_args[@]+"${parallel_args[@]}"} ${group_args[@]+"${group_args[@]}"} --out "$report" 2>&1 | tee .terrabuild/run.log
 # Terrabuild 0.200.1 can exit zero after reporting a failed graph. Require the
 # machine-readable completion status too, including for a fully cached run.
 if ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"success"' "$report"; then

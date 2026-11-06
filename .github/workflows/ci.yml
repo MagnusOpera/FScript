@@ -19,6 +19,9 @@ permissions:
   contents: read
   checks: write
 
+env:
+  TERRABUILD_GROUP: ${{ github.repository }}:${{ github.run_id }}
+
 jobs:
   build:
     runs-on: ubuntu-latest

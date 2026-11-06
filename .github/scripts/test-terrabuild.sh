@@ -36,6 +36,8 @@ exit 1
 STUB
 chmod +x "$fixture/bin/terrabuild" "$fixture/bin/dotnet"
 export TB_TEST_ARGS="$fixture/args" TB_TEST_DOTNET="$fixture/dotnet-called"
+# The ungrouped cases model normal local builds, even when tested inside CI.
+unset TERRABUILD_GROUP
 
 run_build() {
     PATH="$fixture/bin" TB_TEST_RESULT="$1" "$make_command" --no-print-directory -C "$fixture/repo" \
@@ -66,6 +68,23 @@ if grep -q -- '--parallel' "$fixture/args"; then
     exit 1
 fi
 test "$(wc -l < "$fixture/args" | tr -d ' ')" = 8
+
+export TERRABUILD_GROUP='MagnusOpera/FScript:12345'
+if ! run_build success ''; then cat "$fixture/log"; exit 1; fi
+cat > "$fixture/expected-group-args" <<'ARGS'
+run
+build
+--local-only
+--force
+--variable
+config=Debug
+--group
+MagnusOpera/FScript:12345
+--out
+.terrabuild/result.json
+ARGS
+diff -u "$fixture/expected-group-args" "$fixture/args"
+unset TERRABUILD_GROUP
 
 for result in failed-graph failed-process missing-report; do
     if run_build "$result"; then
