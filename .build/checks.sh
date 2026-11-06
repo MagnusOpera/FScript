@@ -3,10 +3,29 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 configuration="${FSCRIPT_BUILD_CONFIG:-Release}"
 cli=(dotnet "src/FScript/bin/$configuration/net10.0/fscript.dll")
-case "${1:?Expected debugger or smoke}" in
+run_node_tests() {
+    local report=$1
+    shift
+    mkdir -p "$(dirname "$report")"
+    node --test --test-reporter=spec --test-reporter-destination=stdout \
+        --test-reporter=junit --test-reporter-destination="$report" "$@"
+}
+case "${1:?Expected debugger, javascript, vscode, reports, or smoke}" in
     debugger)
-        mkdir -p tests/FScript.DebugAdapter.Tests/TestResults
-        node --test --test-reporter=junit --test-reporter-destination=tests/FScript.DebugAdapter.Tests/TestResults/debugger.xml tests/FScript.DebugAdapter.Tests/*Tests.js
+        run_node_tests tests/FScript.DebugAdapter.Tests/TestResults/debugger.xml tests/FScript.DebugAdapter.Tests/*Tests.js
+        ;;
+    javascript)
+        cd src/FScript.JavaScript
+        run_node_tests TestResults/javascript.xml test/*.test.mjs
+        ;;
+    vscode)
+        cd vscode-fscript
+        run_node_tests TestResults/vscode.xml ../tests/FScript.LanguageServer.Tests/*Tests.js
+        ;;
+    reports)
+        find src tests samples vscode-fscript \
+            -type d \( -name bin -o -name obj -o -name node_modules \) -prune -o \
+            -type f -path '*/TestResults/*' \( -name '*.trx' -o -name '*.xml' \) -print
         ;;
     smoke)
         for script in samples/*.fss; do

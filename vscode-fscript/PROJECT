@@ -1,6 +1,6 @@
 project vscode {
-    includes = [ "**/*" ]
-    ignores = [ "node_modules/**" "dist/**" "server/**" "*.vsix" ]
+    includes = [ "**/*" "../.build/checks.sh" "../tests/FScript.LanguageServer.Tests/**/*.js" ]
+    ignores = [ "node_modules/**" "dist/**" "server/**" "*.vsix" "TestResults/**" ]
     @npm { }
 }
 
@@ -15,6 +15,6 @@ target build {
 }
 
 target test {
-    outputs = []
-    @npm test { }
+    outputs = [ "TestResults/" ]
+    workflow run { script = "../.build/checks.sh" args = "vscode" }
 }

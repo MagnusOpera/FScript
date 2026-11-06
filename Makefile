@@ -127,6 +127,8 @@ TB_PARALLEL ?=
 
 test-terrabuild:
 	bash .github/scripts/test-terrabuild.sh
+	bash .github/scripts/test-node-reports.sh
+	node --test .github/scripts/test-collect-results.mjs
 
 tb-build:
 	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh build $(TB_FLAGS)
@@ -141,4 +143,4 @@ tb-sdk:
 	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh sdk $(TB_FLAGS)
 
 tb-check:
-	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh build test smoke sdk $(TB_FLAGS)
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh build test smoke sdk reports $(TB_FLAGS)

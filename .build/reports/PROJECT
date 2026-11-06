@@ -1,0 +1,13 @@
+project test_reports {
+    depends_on = [ project.fscript_language_tests project.fscript_runtime_tests
+                   project.fscript_compiler_tests project.fscript_conformance_tests
+                   project.fscript_interpreter_lir_tests project.fscript_backend_dotnet_tests
+                   project.fscript_cli_tests project.fscript_languageserver_tests
+                   project.ffisample_tests project.javascript project.vscode project.checks ]
+    includes = [ "../checks.sh" ]
+}
+
+# An executing consumer restores cached test outputs before GitHub collects them.
+target reports {
+    workflow run { script = "../checks.sh" args = "reports" }
+}

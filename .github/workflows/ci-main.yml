@@ -39,27 +39,14 @@ jobs:
         run: make test-terrabuild
 
       - name: Build, test, smoke-test, and verify SDK compatibility
-        run: make tb-check
+        run: make tb-check TB_FLAGS="${TB_FLAGS:-} --debug --log"
 
       - name: Logout from Terrabuild
         if: always() && steps.setup-tools.outputs.connected == 'true'
         run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
 
-      - name: Upload test results
+      - name: Collect build results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/collect-build-results
         with:
-          name: test-results-branch
-          path: |
-            **/TestResults/**/*.trx
-            **/TestResults/**/*.xml
-          if-no-files-found: warn
-
-      - name: Publish test report
-        if: always()
-        continue-on-error: true
-        uses: dorny/test-reporter@v2
-        with:
-          name: Test Results (Branch)
-          path: '**/TestResults/**/*.trx'
-          reporter: dotnet-trx
+          suffix: branch

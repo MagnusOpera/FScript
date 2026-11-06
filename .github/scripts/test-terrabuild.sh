@@ -9,13 +9,14 @@ mkdir -p "$fixture/repo/.build" "$fixture/bin"
 cp "$root/Makefile" "$fixture/repo/Makefile"
 cp "$root/.build/run-terrabuild.sh" "$fixture/repo/.build/"
 # Isolate PATH so an installed Terrabuild cannot hide the missing-tool case.
-for tool in bash dirname mktemp rm grep; do
+for tool in bash dirname mkdir rm grep tee; do
     ln -s "$(command -v "$tool")" "$fixture/bin/$tool"
 done
 cat > "$fixture/bin/terrabuild" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$TB_TEST_ARGS"
+echo 'Terrabuild test output'
 report=
 while [[ $# -gt 0 ]]; do
     if [[ "$1" == --out ]]; then report=$2; shift; fi
@@ -42,6 +43,8 @@ run_build() {
 }
 
 if ! run_build success; then cat "$fixture/log"; exit 1; fi
+grep -qx 'Terrabuild test output' "$fixture/repo/.terrabuild/run.log"
+grep -qx '{"status":"success"}' "$fixture/repo/.terrabuild/result.json"
 cat > "$fixture/expected-args" <<'ARGS'
 run
 build
@@ -69,6 +72,7 @@ for result in failed-graph failed-process missing-report; do
         echo "ERROR: make build accepted $result." >&2
         exit 1
     fi
+    grep -qx 'Terrabuild test output' "$fixture/repo/.terrabuild/run.log"
 done
 rm "$fixture/bin/terrabuild"
 if run_build success; then

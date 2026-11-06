@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Update the .NET build toolchain to SDK 10.0.403 so Native AOT publishing uses the patched compiler.
+- Publish .NET, JavaScript, and debugger test summaries and downloadable Terrabuild logs in CI.
 - Install the latest stable Terrabuild release in CI.
 - Run Terrabuild CI on pushes to every branch.
 - Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.

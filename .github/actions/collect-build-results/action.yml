@@ -1,0 +1,65 @@
+name: Collect build results
+description: Upload test results and Terrabuild logs, and publish GitHub test summaries.
+
+inputs:
+  suffix:
+    description: Artifact and report suffix for this workflow
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Collect current test results
+      if: always()
+      shell: bash
+      run: node .github/scripts/collect-test-results.mjs
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ inputs.suffix }}
+        path: |
+          .out/test-results/**/*.trx
+          .out/test-results/**/*.xml
+        include-hidden-files: true
+        if-no-files-found: warn
+
+    - name: Upload Terrabuild logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: terrabuild-logs-${{ inputs.suffix }}
+        path: |
+          .terrabuild/result.json
+          .terrabuild/run.log
+          terrabuild-debug.*
+          ~/.terrabuild/cache/**/status
+          ~/.terrabuild/cache/**/summary.json
+          ~/.terrabuild/cache/**/*.log
+        include-hidden-files: true
+        if-no-files-found: warn
+
+    - name: Publish .NET test report
+      if: always()
+      continue-on-error: true
+      uses: magnusopera/test-reporter@main
+      with:
+        name: .NET Tests (${{ inputs.suffix }})
+        path: '.out/test-results/**/*.trx'
+        reporter: dotnet-trx
+        fail-on-error: false
+        fail-on-empty: false
+        use-actions-summary: true
+
+    - name: Publish JavaScript and debugger test report
+      if: always()
+      continue-on-error: true
+      uses: magnusopera/test-reporter@main
+      with:
+        name: JavaScript and Debugger Tests (${{ inputs.suffix }})
+        path: '.out/test-results/**/*.xml'
+        reporter: java-junit
+        fail-on-error: false
+        fail-on-empty: false
+        use-actions-summary: true

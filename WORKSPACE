@@ -42,6 +42,13 @@ target sdk {
     depends_on = [ target.build target.^build ]
 }
 
+target reports {
+    phase = phase.application
+    build = ~always
+    artifacts = ~none
+    depends_on = [ target.^test ]
+}
+
 extension @dotnet {
     image = "fscript-build:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
