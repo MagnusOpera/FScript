@@ -19,3 +19,11 @@ target test {
     outputs = []
     @npm run { target = "typecheck" }
 }
+
+# A restored node_modules tree may not retain package launcher symlinks.
+# Recreate it on the fresh CI runner before invoking the compiler.
+target test_ci {
+    outputs = []
+    @npm install { }
+    @npm run { target = "typecheck" }
+}

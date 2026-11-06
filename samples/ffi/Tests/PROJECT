@@ -9,11 +9,13 @@ target build {
 }
 
 target test {
+    depends_on = [ target.^build ]
     outputs = [ "TestResults/" ]
     @dotnet test { build = false restore = false args = "--results-directory TestResults" }
 }
 
 target test_ffi_managed {
+    depends_on = [ target.^build ]
     outputs = [ "TestResults/managed/" ]
     @dotnet test {
         build = false restore = false
@@ -23,6 +25,7 @@ target test_ffi_managed {
 }
 
 target test_ffi_default {
+    depends_on = [ target.^build ]
     outputs = [ "TestResults/aot-default/" ]
     @dotnet test {
         build = false restore = false filter = "TestCategory=NativeAotDefault"
@@ -31,6 +34,7 @@ target test_ffi_default {
 }
 
 target test_ffi_size {
+    depends_on = [ target.^build ]
     outputs = [ "TestResults/aot-size/" ]
     @dotnet test {
         build = false restore = false filter = "TestCategory=NativeAotSize"

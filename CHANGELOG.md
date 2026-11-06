@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restore the CLI and website test dependencies when CI shards start with cached builds on fresh runners.
 - Report the GitHub build and all test shards as one Insights build group, including reruns.
 - Split GitHub CI into a cached build, parallel test shards, and combined test reports, including separate Native AOT variants.
 - Allow the native teapot debugger test to finish mesh generation on busy CI runners and report clearer event timeouts.

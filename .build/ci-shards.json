@@ -1,11 +1,11 @@
 {
   "include": [
-    { "name": "core", "projects": ["ci_core", "ci_ffi_managed"] },
-    { "name": "backend", "projects": ["ci_backend"] },
-    { "name": "cli", "projects": ["ci_cli"] },
-    { "name": "ffi-default", "projects": ["ci_ffi_default"] },
-    { "name": "ffi-size", "projects": ["ci_ffi_size"] },
-    { "name": "web", "projects": ["ci_web"] },
-    { "name": "integration", "projects": ["ci_integration"] }
+    {"name": "core", "projects": ["ci_core", "ci_ffi_managed"]},
+    {"name": "backend", "projects": ["ci_backend"]},
+    {"name": "cli", "projects": ["ci_cli"]},
+    {"name": "ffi-default", "projects": ["ci_ffi_default"]},
+    {"name": "ffi-size", "projects": ["ci_ffi_size"]},
+    {"name": "web", "projects": ["ci_web", "ci_website"]},
+    {"name": "integration", "projects": ["ci_integration"]}
   ]
 }

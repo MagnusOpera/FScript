@@ -85,6 +85,12 @@ target test_ffi_size {
     depends_on = [ target.build ]
 }
 
+target test_ci {
+    phase = phase.application
+    artifacts = ~managed
+    depends_on = [ target.build target.^build ]
+}
+
 extension @dotnet {
     image = "fscript-build:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"

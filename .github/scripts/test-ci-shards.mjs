@@ -15,7 +15,7 @@ const expected = {
   cli: ['tests/fscript.cli.tests:test'],
   'ffi-default': ['samples/ffi/tests:test_ffi_default'],
   'ffi-size': ['samples/ffi/tests:test_ffi_size'],
-  web: ['src/fscript.javascript:test', 'vscode-fscript:test', 'website:test'],
+  web: ['src/fscript.javascript:test', 'vscode-fscript:test', 'website:test_ci'],
   integration: ['tests/fscript.debugadapter.tests:test', 'tests/fscript.debugadapter.tests:smoke',
     'tests/fscript.debugadapter.tests:sdk']
 };
@@ -53,12 +53,25 @@ test('static CI shards select exactly their checks, restore reports, and cover e
       '--dry-run', '--local-only', '--debug'], { stdio: 'pipe', timeout: 30000 });
     const graph = JSON.parse(fs.readFileSync('terrabuild-debug.json', 'utf8'));
     const selected = graph.nodes.filter(node => node.selected);
-    const checks = selected.filter(node => /^(test(?:_ffi_.*)?|smoke|sdk)$/.test(node.target));
+    const checks = selected.filter(node => /^(test(?:_ffi_.*|_ci)?|smoke|sdk)$/.test(node.target));
     const names = checks.map(node => `${node.projectDirectory.toLowerCase()}:${node.target}`).sort();
     assert.deepEqual(names, expected[shard.name].toSorted(), shard.name);
     assert.ok(selected.some(node => node.target === 'ci' && node.build === 'always'), shard.name);
     for (const consumer of selected.filter(node => node.target === 'ci')) {
       assert.ok(consumer.resolvedOperations.length > 0, 'Cached reports need an executing consumer.');
+    }
+    for (const check of checks) {
+      const direct = check.dependencies.map(id => graph.nodes.find(node => node.id === id));
+      if (check.projectName === 'ffisample_tests') {
+        assert.ok(direct.some(node => node?.projectName === 'fscript' && node.target === 'build'),
+          `${check.target} must directly restore the CLI even when its own build is cached.`);
+      }
+      if (check.projectName === 'website') {
+        assert.equal(check.target, 'test_ci');
+        assert.deepEqual(check.resolvedOperations.map(operation => operation.metaCommand), ['@npm install', '@npm run'],
+          'The CI website target must recreate npm launchers before typechecking.');
+        assert.ok(direct.some(node => node?.projectName === 'javascript' && node.target === 'build'));
+      }
     }
     covered.push(...checks.filter(node => node.target.startsWith('test')).map(node =>
       `${node.projectDirectory.toLowerCase()}:test`));

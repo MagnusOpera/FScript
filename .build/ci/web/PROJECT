@@ -1,5 +1,5 @@
 project ci_web {
-    depends_on = [ project.javascript project.vscode project.website ]
+    depends_on = [ project.javascript project.vscode ]
     includes = [ "../../checks.sh" ]
 }
 

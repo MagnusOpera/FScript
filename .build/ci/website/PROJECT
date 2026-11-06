@@ -1,0 +1,9 @@
+project ci_website {
+    depends_on = [ project.website ]
+    includes = [ "../../checks.sh" ]
+}
+
+target ci {
+    depends_on = [ target.^test_ci ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}
