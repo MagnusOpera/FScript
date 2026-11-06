@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Upgrade the JavaScript compiler to Fable 5.27.0 and Fable.Core 5.6.1.
 - Keep changelog spacing consistent during editing and release preparation.
 - Add default-deny IO, Interactive, Threading, and Native permissions to hosted interpreter execution, including provider and callback checks.
 
