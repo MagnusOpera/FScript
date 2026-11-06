@@ -269,7 +269,7 @@ Language owns the permission enum, native descriptor requirements, registration 
 
 `make build` delegates to the Terrabuild executable on `PATH` through `.build/run-terrabuild.sh`, which checks both the process exit code and the JSON completion status. Missing Terrabuild or a failed graph fails the build without falling back to the host .NET SDK.
 
-GitHub PR and main workflows use the shared `setup-tools` composite action for Terrabuild installation and workspace authentication, then run the build, test, smoke, and SDK targets through `make tb-check`. Runs without cache credentials use local caching.
+GitHub PR and branch-push workflows use the shared `setup-tools` composite action for Terrabuild installation and workspace authentication, then run the build, test, smoke, and SDK targets through `make tb-check`. Runs without cache credentials use local caching.
 
 The root `WORKSPACE` and project-local `PROJECT` files define the Terrabuild build/test graph. .NET builds use container-hosted `@dotnet`, JavaScript builds use container-hosted `@npm`, and repository checks use a container-hosted FScript extension. A toolchain phase creates the local image with the pinned .NET SDK, Node, Clang, and zlib headers. The image bootstrap uses Docker on the host and never publishes an image. Explicit Linux platform settings keep ARM64 and AMD64 build/test artifacts in different cache identities.
 
