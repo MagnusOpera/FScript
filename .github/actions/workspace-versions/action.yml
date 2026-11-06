@@ -1,0 +1,27 @@
+name: Read workspace tool versions
+description: Read shared build-tool versions from WORKSPACE before installing tools.
+
+outputs:
+  dotnet_sdk:
+    description: .NET SDK version
+    value: ${{ steps.versions.outputs.dotnet_sdk }}
+  node:
+    description: Node.js version
+    value: ${{ steps.versions.outputs.node }}
+  terrabuild:
+    description: Terrabuild release selector
+    value: ${{ steps.versions.outputs.terrabuild }}
+  vsce:
+    description: VS Code packaging and publishing tool version
+    value: ${{ steps.versions.outputs.vsce }}
+  ovsx:
+    description: Open VSX publishing tool version
+    value: ${{ steps.versions.outputs.ovsx }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read tool versions
+      id: versions
+      shell: bash
+      run: node .build/read-tool-versions.mjs >> "$GITHUB_OUTPUT"

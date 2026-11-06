@@ -1,0 +1,69 @@
+name: Setup Terrabuild Tools
+description: Install Terrabuild and configure workspace caching.
+
+inputs:
+  terrabuild_version:
+    description: Optional Terrabuild version override
+    default: ''
+  terrabuild_next:
+    description: Whether to install a Terrabuild prerelease
+    default: 'false'
+  terrabuild_workspace:
+    description: Terrabuild workspace to use
+    required: true
+  TERRABUILD_TOKEN:
+    description: Terrabuild token for authentication
+    required: false
+  TERRABUILD_MASTER_KEY:
+    description: Terrabuild master key for encryption
+    required: false
+  GITHUB_TOKEN:
+    description: GitHub token for pulling and publishing toolchain images
+    required: false
+
+outputs:
+  connected:
+    description: Whether shared caching was configured
+    value: ${{ steps.cache.outputs.connected }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read workspace tool versions
+      id: tool-versions
+      uses: ./.github/actions/workspace-versions
+
+    - name: Install Terrabuild
+      uses: magnusopera/action-install-gh-release@feature/prerelease
+      with:
+        repo: magnusopera/terrabuild
+        tag: ${{ inputs.terrabuild_version || steps.tool-versions.outputs.terrabuild }}
+        prerelease: ${{ inputs.terrabuild_next }}
+
+    - name: Login to GitHub Container Registry
+      if: inputs.GITHUB_TOKEN != ''
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.GITHUB_TOKEN }}
+
+    - name: Configure Terrabuild caching
+      id: cache
+      shell: bash
+      env:
+        TERRABUILD_WORKSPACE: ${{ inputs.terrabuild_workspace }}
+        TERRABUILD_TOKEN: ${{ inputs.TERRABUILD_TOKEN }}
+        TERRABUILD_MASTER_KEY: ${{ inputs.TERRABUILD_MASTER_KEY }}
+      run: |
+        terrabuild version
+        if [[ -n "$TERRABUILD_TOKEN" && -n "$TERRABUILD_MASTER_KEY" ]]; then
+          terrabuild login \
+            --workspace "$TERRABUILD_WORKSPACE" \
+            --token "$TERRABUILD_TOKEN" \
+            --masterkey "$TERRABUILD_MASTER_KEY"
+          echo "connected=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "TB_FLAGS=--local-only" >> "$GITHUB_ENV"
+          echo "connected=false" >> "$GITHUB_OUTPUT"
+        fi

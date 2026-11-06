@@ -1,0 +1,11 @@
+project ci_core {
+    depends_on = [ project.fscript_language_tests project.fscript_runtime_tests project.fscript_compiler_tests project.fscript_conformance_tests project.fscript_interpreter_lir_tests project.fscript_languageserver_tests ]
+    includes = [ "../../checks.sh" ]
+}
+
+target test {
+    build = ~always
+    artifacts = ~none
+    depends_on = [ target.^test ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

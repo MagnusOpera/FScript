@@ -180,8 +180,8 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
             Assert.That(output.GetAwaiter().GetResult(), Does.Contain "1 mesh uploads; 3 frames")
         else Assert.That(errors.GetAwaiter().GetResult(), Does.Contain "frame limit")
 
-    [<TestCase(false)>]
-    [<TestCase(true)>]
+    [<TestCase(false, Category = "NativeAotDefault")>]
+    [<TestCase(true, Category = "NativeAotSize")>]
     member _.``native executable compiles the real teapot with automatic FFI configuration and runs alone``(minimizeSize: bool) =
         let root = Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "../../.."))
 #if DEBUG

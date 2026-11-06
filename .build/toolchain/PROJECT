@@ -1,0 +1,17 @@
+project toolchain {
+    labels = [ "toolchain" ]
+    includes = [ "**/*" "../../WORKSPACE" ]
+    @docker { }
+}
+
+target dist {
+    phase = phase.toolchains
+    @docker build {
+        # GHCR returned missing child manifests for the attested index.
+        args = "--provenance=false"
+        build_args = {
+            DOTNET_SDK_VERSION: local.versions.dotnet_sdk
+            NODE_VERSION: local.versions.node
+        }
+    }
+}

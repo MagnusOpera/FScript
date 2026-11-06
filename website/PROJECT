@@ -1,0 +1,29 @@
+project website {
+    depends_on = [ project.javascript ]
+    includes = [ "**/*" "../.config/dotnet-tools.json" "../CHANGELOG.md" ]
+    ignores = [ "node_modules/**" "build/**" ".docusaurus/**" "src/generated/**" ]
+    @npm { }
+}
+
+target install {
+    outputs = [ "node_modules/" ]
+    @npm install { }
+}
+
+target build {
+    outputs = [ "build/" "src/generated/" ]
+    @npm build { }
+}
+
+target test {
+    outputs = []
+    @npm run { target = "typecheck" }
+}
+
+# A restored node_modules tree may not retain package launcher symlinks.
+# Recreate it on the fresh CI runner before invoking the compiler.
+target test_ci {
+    outputs = []
+    @npm install { }
+    @npm run { target = "typecheck" }
+}

@@ -1,0 +1,43 @@
+project ffisample_tests {
+    includes = [ "**/*" "../../../Directory.Build.props" "../../../tests/FScript.Runtime.Tests/SdkTestHost.fs" "../*.fss" ]
+    ignores = [ "**/bin/**" "**/obj/**" "**/TestResults/**" ]
+    @dotnet { }
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}
+
+target test {
+    depends_on = [ target.^build ]
+    outputs = [ "TestResults/" ]
+    @dotnet test { build = false restore = false args = "--results-directory TestResults" }
+}
+
+target test_ffi_managed {
+    depends_on = [ target.^build ]
+    outputs = [ "TestResults/managed/" ]
+    @dotnet test {
+        build = false restore = false
+        filter = "TestCategory!=NativeAotDefault&TestCategory!=NativeAotSize"
+        args = "--results-directory TestResults/managed"
+    }
+}
+
+target test_ffi_default {
+    depends_on = [ target.^build ]
+    outputs = [ "TestResults/aot-default/" ]
+    @dotnet test {
+        build = false restore = false filter = "TestCategory=NativeAotDefault"
+        args = "--results-directory TestResults/aot-default"
+    }
+}
+
+target test_ffi_size {
+    depends_on = [ target.^build ]
+    outputs = [ "TestResults/aot-size/" ]
+    @dotnet test {
+        build = false restore = false filter = "TestCategory=NativeAotSize"
+        args = "--results-directory TestResults/aot-size"
+    }
+}

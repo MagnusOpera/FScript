@@ -28,10 +28,19 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: ${{ steps.tool-versions.outputs.dotnet_sdk }}
 
       - name: Download GitHub release artifacts
         uses: robinraju/release-downloader@v1.11
@@ -65,10 +74,19 @@ jobs:
       RELEASE_VERSION: ${{ github.event.release.tag_name }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.tool-versions.outputs.node }}
           registry-url: 'https://registry.npmjs.org'
 
       - name: Download npm package artifact
@@ -108,10 +126,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.tool-versions.outputs.node }}
 
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
@@ -120,7 +142,9 @@ jobs:
           fileName: '*.vsix'
 
       - name: Install VS Code publishing tool
-        run: npm install -g @vscode/vsce@4.0.0
+        env:
+          VSCE_VERSION: ${{ steps.tool-versions.outputs.vsce }}
+        run: npm install -g "@vscode/vsce@$VSCE_VERSION"
 
       - name: Publish to VS Code Marketplace
         shell: bash
@@ -136,10 +160,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.tool-versions.outputs.node }}
 
       - name: Download VSIX artifact
         uses: robinraju/release-downloader@v1.11
@@ -148,7 +176,9 @@ jobs:
           fileName: '*.vsix'
 
       - name: Install Open VSX publishing tool
-        run: npm install -g ovsx@0.9
+        env:
+          OVSX_VERSION: ${{ steps.tool-versions.outputs.ovsx }}
+        run: npm install -g "ovsx@$OVSX_VERSION"
 
       - name: Publish to Open VSX
         shell: bash
@@ -160,10 +190,19 @@ jobs:
     if: github.event_name == 'release'
     runs-on: macos-latest
     steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.tool-versions.outputs.node }}
 
       - name: Download unsigned macOS artifacts
         uses: robinraju/release-downloader@v1.11

@@ -7,7 +7,7 @@ FScript builds a Utah teapot from 32 bicubic Bézier patches, computes surface n
 From the repository root, build the provider library once with the .NET 10 SDK:
 
 ```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
 ```
 
 Then use the installed FScript CLI (0.81.5 or later):
@@ -77,7 +77,7 @@ On macOS ARM64 with SDK 10.0.403, the original 4,378,616-byte executable shrank 
 
 1. Read `scene.fss`: ordinary record literals create the camera, light, material, and rotation. `initialize` generates and uploads a mesh; `render` changes its rotation each frame.
 2. Read `teapot.fss`: the control points and patch connectivity are script data. Cubic Bézier evaluation, derivatives, cross products, normalized normals, and indexed tessellation all run in FScript. Change `Teapot.generate 8` in the scene to change the resolution (clamped to 2–32 segments per patch edge). Re-run the host after editing; this sample does not hot reload.
-3. Read `Graphics.fs`: attributes expose real F# records as script types. `HostTypes.describe` creates descriptors, and `HostFunctions.create` derives function schemes, arity, and conversions from typed handlers.
+3. Read `Provider/Graphics.fs`: attributes expose real F# records as script types. `HostTypes.describe` creates descriptors, and `HostFunctions.create` derives function schemes, arity, and conversions from typed handlers.
 4. Read `main.fss`: the entry script calls `Graphics.run` with a setup callback. That callback uploads the mesh and returns a render closure retaining it. The provider pumps native events and invokes the closure until the window closes. Interpreted execution uses `ExternalCallContext.Apply`; compiled execution calls typed delegates.
 5. Read `Renderer/`: the C# backend contains shaders, view/projection matrix construction, GPU buffers, and window/input handling. It contains no teapot model or scene choices.
 

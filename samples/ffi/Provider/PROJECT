@@ -1,0 +1,10 @@
+project ffi_sample {
+    outputs = [ "bin/" "obj/" ]
+    depends_on = [ project.renderer ]
+    includes = [ "**/*" "../../../Directory.Build.props" "../*.fss" "../fscript.toml" ]
+    ignores = [ "**/bin/**" "**/obj/**" "**/TestResults/**" ]
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}

@@ -1,0 +1,11 @@
+project ci_web {
+    depends_on = [ project.javascript project.vscode ]
+    includes = [ "../../checks.sh" ]
+}
+
+target test {
+    build = ~always
+    artifacts = ~none
+    depends_on = [ target.^test ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

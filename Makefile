@@ -1,9 +1,8 @@
 .PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
 
-build:
-	dotnet build FScript.sln -c Release
+build: tb-build
 
-test: check-changelog-format test-release-changelog
+test: check-changelog-format test-release-changelog test-terrabuild
 	dotnet test FScript.sln -c Release
 	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
 
@@ -42,7 +41,7 @@ smoke-tests:
 	echo "Running samples/debugging/main.fss"; \
 	dotnet run --project src/FScript -- samples/debugging/main.fss > /dev/null; \
 	echo "Running samples/ffi (headless)"; \
-	dotnet build samples/ffi/FfiSample.fsproj -c Release > /dev/null; \
+	dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release > /dev/null; \
 	dotnet run --project src/FScript -- samples/ffi/main.fss -- --headless; \
 	echo "Analyzing samples/task-sharing"; \
 	dotnet build samples/task-sharing/TaskSharingSample.fsproj -c Release > /dev/null; \
@@ -120,3 +119,29 @@ check-changelog-format:
 
 test-release-changelog:
 	./.github/scripts/test-release-changelog.sh
+
+# Container-backed whole-repository checks use Terrabuild from PATH.
+.PHONY: tb-build tb-test tb-smoke tb-sdk tb-check test-terrabuild
+TB_FLAGS ?=
+TB_PARALLEL ?=
+
+test-terrabuild:
+	bash .github/scripts/test-terrabuild.sh
+	bash .github/scripts/test-node-reports.sh
+	node --test .github/scripts/test-collect-results.mjs
+	node --test .github/scripts/test-workspace-versions.mjs
+
+tb-build:
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh build $(TB_FLAGS)
+
+tb-test:
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh test $(TB_FLAGS)
+
+tb-smoke:
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh smoke $(TB_FLAGS)
+
+tb-sdk:
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh sdk $(TB_FLAGS)
+
+tb-check:
+	FSCRIPT_BUILD_CONFIG=$(config) TB_PARALLEL=$(TB_PARALLEL) .build/run-terrabuild.sh build test smoke sdk reports $(TB_FLAGS)

@@ -1,0 +1,17 @@
+project javascript {
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" "../../.build/checks.sh" ]
+    ignores = [ "dist/**" "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
+    @dotnet { }
+}
+
+target build {
+    outputs = [ "bin/" "obj/" "dist/" ]
+    @dotnet build { dependencies = false }
+    @dotnet tool { args = "restore" }
+    @npm build { }
+}
+
+target test {
+    outputs = [ "TestResults/" ]
+    workflow run { script = "../../.build/checks.sh" args = "javascript" }
+}

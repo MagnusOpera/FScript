@@ -1,0 +1,8 @@
+project renderer {
+    includes = [ "**/*" "../../../Directory.Build.props" ]
+    @dotnet { }
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}

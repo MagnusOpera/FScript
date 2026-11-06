@@ -86,13 +86,13 @@ For the teapot example, `samples/ffi/fscript.toml` supplies the provider path:
 
 ```toml
 [runtime]
-extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+extern-assemblies = ["Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll"]
 ```
 
 Build the provider first, then analyze or compile without extra assembly flags:
 
 ```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
 dotnet run --project src/FScript -- analyze samples/ffi/main.fss
 dotnet run --project src/FScript -- compile samples/ffi/main.fss --target dotnet --output out/graphics-dotnet
 dotnet out/graphics-dotnet/main.dll --headless

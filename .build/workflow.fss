@@ -1,0 +1,12 @@
+// Build/test scripts share a pinned container and can cache successful results.
+// @shell is reserved for the host-side Docker image bootstrap.
+export let run (context: Protocol.ActionContext) (script: string) (args: string option) =
+    let arguments = Option.defaultValue "" args
+    { PreserveProvenance = Broken
+      Batchable = false
+      Operations =
+        [ { Command = "bash"
+            Arguments = $"{script} {arguments}"
+            ErrorLevel = 0 } ] }
+
+{ [nameof run] = [Cache Remote] }

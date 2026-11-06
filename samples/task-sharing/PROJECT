@@ -1,0 +1,10 @@
+project task_sharing {
+    # Conditional sibling SDK references resolve through NuGet in this workspace.
+    outputs = [ "bin/" "obj/" ]
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" ]
+    ignores = [ "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}

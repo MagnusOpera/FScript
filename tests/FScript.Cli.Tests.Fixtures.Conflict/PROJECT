@@ -1,0 +1,10 @@
+project fscript_cli_tests_fixtures_conflict {
+    # Conditional sibling SDK references resolve through NuGet in this workspace.
+    outputs = [ "bin/" "obj/" ]
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" "../../samples/**/*.fss" "../../samples/**/*.toml" "../../samples/**/*.bas" "../../tests/FScript.Runtime.Tests/SdkTestHost.fs" ]
+    ignores = [ "../../samples/**/bin/**" "../../samples/**/obj/**" "../../samples/**/TestResults/**" "../../samples/**/.fscript/**" "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
+}
+
+target build {
+    @dotnet build { dependencies = false }
+}

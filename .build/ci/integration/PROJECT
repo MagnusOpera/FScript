@@ -1,0 +1,11 @@
+project ci_integration {
+    depends_on = [ project.checks ]
+    includes = [ "../../checks.sh" ]
+}
+
+target test {
+    build = ~always
+    artifacts = ~none
+    depends_on = [ target.^test target.^smoke target.^sdk ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

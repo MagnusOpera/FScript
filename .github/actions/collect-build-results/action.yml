@@ -1,0 +1,51 @@
+name: Collect build results
+description: Upload test results and Terrabuild logs, and publish GitHub test summaries.
+
+inputs:
+  suffix:
+    description: Artifact and report suffix for this workflow
+    required: true
+
+  publish:
+    description: Publish reports immediately instead of deferring to the CI join job
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Collect current test results
+      if: always()
+      shell: bash
+      run: node .github/scripts/collect-test-results.mjs
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ inputs.suffix }}
+        path: |
+          .out/test-results/**/*.trx
+          .out/test-results/**/*.xml
+        include-hidden-files: true
+        if-no-files-found: warn
+
+    - name: Upload Terrabuild logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: terrabuild-logs-${{ inputs.suffix }}
+        path: |
+          .terrabuild/result.json
+          .terrabuild/run.log
+          terrabuild-debug.*
+          ~/.terrabuild/cache/**/status
+          ~/.terrabuild/cache/**/summary.json
+          ~/.terrabuild/cache/**/*.log
+        include-hidden-files: true
+        if-no-files-found: warn
+
+    - name: Publish test summaries
+      if: always() && inputs.publish == 'true'
+      uses: ./.github/actions/publish-test-results
+      with:
+        suffix: ${{ inputs.suffix }}

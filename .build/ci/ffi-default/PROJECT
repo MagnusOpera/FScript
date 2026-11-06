@@ -1,0 +1,11 @@
+project ci_ffi_default {
+    depends_on = [ project.ffisample_tests ]
+    includes = [ "../../checks.sh" ]
+}
+
+target test {
+    build = ~always
+    artifacts = ~none
+    depends_on = [ target.^test_ffi_default ]
+    workflow run { script = "../../checks.sh" args = "reports" }
+}

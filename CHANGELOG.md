@@ -4,6 +4,23 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep VS Code builds cached when release notes change by adding the changelog only during extension packaging.
+- Cancel superseded branch and pull-request CI runs for the same source branch while keeping test shards parallel.
+- Label GitHub test shards as test instead of ci in Insights.
+- Keep GitHub workflow reruns in separate Insights build groups while correlating each attempt's build and test shards.
+- Publish the CI toolchain as a single image manifest so test runners can pull it from GHCR.
+- Use Terrabuild's native Docker publishing and hash-based toolchain tags.
+- Reuse GHCR toolchain images across CI runners.
+- Restore the CLI and website test dependencies when CI shards start with cached builds on fresh runners.
+- Report the GitHub build and all test shards as one Insights build group per workflow attempt.
+- Split GitHub CI into a cached build, parallel test shards, and combined test reports, including separate Native AOT variants.
+- Allow the native teapot debugger test to finish mesh generation on busy CI runners and report clearer event timeouts.
+- Define shared build-tool versions in WORKSPACE for container builds and GitHub workflows.
+- Update the .NET build toolchain to SDK 10.0.403 so Native AOT publishing uses the patched compiler.
+- Publish .NET, JavaScript, and debugger test summaries and downloadable Terrabuild logs in CI.
+- Install the latest stable Terrabuild release in CI.
+- Run Terrabuild CI on pushes to every branch.
+- Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.
 - Fix NuGet trusted publishing authentication and allow retrying existing release packages without rebuilding.
 
 ## [0.90.1]

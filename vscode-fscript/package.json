@@ -257,7 +257,7 @@
     "test": "node --test ../tests/FScript.LanguageServer.Tests/*Tests.js",
     "lint": "echo \"No lint configured\"",
     "compile": "esbuild extension.js --bundle --platform=node --format=cjs --target=node20 --outfile=dist/extension.js --external:vscode",
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "node -e \"require('node:fs').copyFileSync('../CHANGELOG.md', 'CHANGELOG.md')\" && npm run compile",
     "package": "vsce package",
     "postinstall": "npm run compile"
   },

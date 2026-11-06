@@ -1,0 +1,26 @@
+project checks {
+    depends_on = [ project.fscript project.ffi_sample project.task_sharing project.fscript_cli_tests_fixtures_valid ]
+    includes = [ "**/*" "../../.build/checks.sh" "../../.build/sdk-check.sh"
+                 "../../.github/scripts/verify-sdk-provider.sh"
+                 "../../samples/**/*.fss" "../../samples/**/*.toml" "../../samples/**/*.bas" ]
+    ignores = [ "../../samples/**/bin/**" "../../samples/**/obj/**"
+                "../../samples/**/TestResults/**" "../../samples/**/.fscript/**"
+                "**/bin/**" "**/obj/**" "**/TestResults/**"
+                "**/node_modules/**" "**/.fscript/**" ]
+}
+
+target test {
+    depends_on = [ target.^build ]
+    outputs = [ "TestResults/debugger.xml" ]
+    workflow run { script = "../../.build/checks.sh" args = "debugger" }
+}
+
+target smoke {
+    outputs = []
+    workflow run { script = "../../.build/checks.sh" args = "smoke" }
+}
+
+target sdk {
+    outputs = []
+    workflow run { script = "../../.build/sdk-check.sh" }
+}

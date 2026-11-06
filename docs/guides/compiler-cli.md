@@ -24,7 +24,7 @@ For example, `samples/ffi/fscript.toml` contains:
 
 ```toml
 [runtime]
-extern-assemblies = ["bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+extern-assemblies = ["Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll"]
 ```
 
 Assembly paths in the manifest resolve from the manifest directory. Local provider projects must be built before either command loads their configured DLLs. For C# and .NET output, compilation automatically references the providers and their colocated managed dependencies; `--reference` adds other managed assemblies when needed.
@@ -43,7 +43,7 @@ fscript compile program.fss --target dotnet --output out/program --no-config
 After building the teapot provider, both commands work with its automatically discovered configuration:
 
 ```sh
-dotnet build samples/ffi/FfiSample.fsproj -c Release
+dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
 fscript analyze samples/ffi/main.fss
 fscript compile samples/ffi/main.fss --target dotnet --output out/ffi
 dotnet out/ffi/main.dll --headless
