@@ -9,6 +9,9 @@ on:
       require-changelog:
         type: boolean
         default: false
+      build-runner:
+        type: string
+        default: ubuntu-latest
     secrets:
       TERRABUILD_TOKEN:
         required: false
@@ -33,7 +36,7 @@ jobs:
       contents: read
       checks: write
       packages: write
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.build-runner }}
     timeout-minutes: 25
     outputs:
       matrix: ${{ steps.shards.outputs.matrix }}

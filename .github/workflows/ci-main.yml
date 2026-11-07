@@ -17,4 +17,5 @@ jobs:
     with:
       suffix: branch
       require-changelog: false
+      build-runner: ${{ github.repository == 'MagnusOpera/FScript' && github.ref == 'refs/heads/main' && 'ghoulix' || 'ubuntu-latest' }}
     secrets: inherit
