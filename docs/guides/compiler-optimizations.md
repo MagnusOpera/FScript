@@ -22,6 +22,7 @@ These passes run automatically. There is no FScript CLI optimization-level switc
 | Fuse proven-pure map/filter/fold pipelines and range producers | No | Yes |
 | Eliminate local tuple temporaries and use small value-type tuple carriers | No | Yes |
 | Traverse native list tails through array views | No | Yes |
+| Fill `List.init` results in a single indexed loop | Yes | Yes |
 | Materialize filters with compact masks and exactly sized output arrays | Yes | Yes |
 | Aggressive pruning of generated methods, fields, and support types | No | Yes |
 | FScript-managed single-file or Native AOT publishing | No | Yes, when requested |
@@ -209,6 +210,12 @@ Exports, ordinary delegates, aggregate fields and FFI keep their array represent
 
 The view runtime is embedded only for assembly generation and pruned when unused. Source projects retain arrays. Empty `List.tail` raises the documented evaluation error in both compiled targets; a nonempty singleton tail is an empty list. Source reachability follows implicit conversion operators and converted types so all required view/array adapters survive pruning. There is no public view type in the FScript language or IR artifact.
 
+
+## Compiled list initialization
+
+Since FScript 0.90.2, both compiled targets fill the `List.init` result array in one indexed loop. The .NET assembly target can call a known initializer directly from that loop. Other initializers use a typed delegate.
+
+The loop validates the count before invoking the initializer. It calls the initializer once per index in ascending order, stops at the first exception, and returns an empty list for a count of zero.
 
 ## Exact-size compiled filters
 

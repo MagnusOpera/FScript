@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Document how compiled programs optimize `List.init`.
+
 ## [0.90.3]
 
 - Speed up release preparation by reusing cached CI checks and verifying packages in parallel.
