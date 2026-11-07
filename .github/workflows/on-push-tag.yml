@@ -15,6 +15,9 @@ env:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Checkout
@@ -24,6 +27,7 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Read workspace tool versions
         id: tool-versions
