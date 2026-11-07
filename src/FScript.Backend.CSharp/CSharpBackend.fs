@@ -315,7 +315,7 @@ module CSharpBackend =
             | "List.forall", _ -> build (fun a r -> $"{a.[1]}.All(item => {a.[0]}(item))")
             | "List.mapi", _ -> build (fun a r -> $"{a.[1]}.Select((item, index) => {a.[0]}((long)index)(item)).ToArray()")
             | "List.indexed", _ -> build (fun a r -> match r with TList pair -> $"{a.[0]}.Select((item,index) => new {csType pair}((long)index,item)).ToArray()" | _ -> invalidOp "Expected list.")
-            | "List.init", _ -> build (fun a r -> $"Enumerable.Range(0,FsPure.Count({a.[0]})).Select(index => {a.[1]}((long)index)).ToArray()")
+            | "List.init", _ -> build (fun a _ -> $"FsPure.Init({a.[0]}, {a.[1]})")
             | "List.take", _ -> build (fun a r -> $"FsPure.Take({a.[0]}, {a.[1]})")
             | "List.skip", _ -> build (fun a r -> $"FsPure.Skip({a.[0]}, {a.[1]})")
             | "List.takeWhile", _ -> build (fun a r -> $"{a.[1]}.TakeWhile(item => {a.[0]}(item)).ToArray()")
@@ -605,9 +605,13 @@ module CSharpBackend =
                     | _ -> false
                 if not supported || args.IsEmpty then None else
                     let names=args |> List.map (fun (index,_) -> index,fresh "nativeArgument") |> Map.ofList
+                    let callbackIndex =
+                        match rootNode with
+                        | Lir.Intrinsic "List.init" -> 1
+                        | _ -> 0
                     let collectionCallback=
-                        match rootNode,args with
-                        | Lir.Intrinsic name,(_,callback)::_ when List.contains name ["List.map";"List.iter";"List.filter";"List.choose";"List.collect";"List.exists";"List.tryFind";"List.tryGet";"List.fold"] ->
+                        match rootNode,List.tryItem callbackIndex args with
+                        | Lir.Intrinsic name,Some(_,callback) when List.contains name ["List.init";"List.map";"List.iter";"List.filter";"List.choose";"List.collect";"List.exists";"List.tryFind";"List.tryGet";"List.fold"] ->
                             match knownNode callback with
                             | Lir.MakeClosure(id,captures) when (functionChain Set.empty id).Length=(if name="List.fold" then 2 else 1) -> Some(name,id,captures)
                             | _ -> None
@@ -617,28 +621,37 @@ module CSharpBackend =
                         | Some(_,_,captures) -> captures |> List.filter (fun id -> not (globalIds.Contains id)) |> List.map (fun id -> id,fresh "callbackCapture")
                         | None -> []
                     let setup=order |> List.map (fun (index,argument) ->
-                        if index=0 && collectionCallback.IsSome then
+                        if index=callbackIndex && collectionCallback.IsSome then
                             callbackCaptures |> List.map (fun (id,name) -> $"{nativeType symbolTypes.[id]} {name}={sym id};") |> String.concat space
                         else $"var {names.[index]}={emit argument};") |> String.concat space
                     let arguments=List.map2 (fun (index,(arg: Lir.Expression)) expected -> coerce arg.Type expected names.[index]) args (parameters |> List.take args.Length)
                     let result=
                         match collectionCallback,rootNode with
                         | Some(name,id,_),_ ->
-                            let sourceIndex=if name="List.fold" then 2 else 1
+                            let sourceIndex =
+                                match name with
+                                | "List.init" -> 0
+                                | "List.fold" -> 2
+                                | _ -> 1
+                            let sourceValue=if name="List.init" then $"FsPure.Count({arguments.[sourceIndex]})" else arguments.[sourceIndex]
                             let source=fresh "callbackSource"
                             let item=fresh "nativeItem"
                             let index=fresh "nativeIndex"
                             let state=fresh "nativeState"
                             let result=fresh "nativeList"
                             let chain=functionChain Set.empty id
-                            let itemType=match parameters.[sourceIndex] with TList t -> t | _ -> invalidOp "Expected list argument."
+                            let itemType=
+                                match name,parameters.[sourceIndex] with
+                                | "List.init",TInt -> TInt
+                                | _,TList t -> t
+                                | _ -> invalidOp "Expected collection argument."
                             let values=if name="List.fold" then [state;item] else [item]
                             let inputTypes=if name="List.fold" then [parameters.[1];itemType] else [itemType]
                             let inputs=List.map3 (fun code actual (parameter: Lir.Function) -> coerce actual parameter.ParameterType code) values inputTypes chain
                             let rawCall= $"Native{funName id}({String.concat comma ((List.map snd callbackCaptures) @ inputs)})"
                             let expectedReturn=
                                 match name,value.Type with
-                                | "List.map",TList output -> output
+                                | ("List.init" | "List.map"),TList output -> output
                                 | "List.collect",TList output -> TList output
                                 | "List.choose",TList output -> TOption output
                                 | "List.fold",_ -> value.Type
@@ -646,6 +659,7 @@ module CSharpBackend =
                             let call=coerce (List.last chain).ReturnType expectedReturn rawCall
                             let body=
                                 match name,value.Type with
+                                | "List.init",TList output -> $"if ({source}==0) return System.Array.Empty<{csType output}>(); var {result}=new {csType output}[{source}]; for (int {index}=0; {index}<{result}.Length; {index}++) {{ long {item}={index}; {result}[{index}]={call}; }} return {result};"
                                 | "List.map",TList output -> $"var {result}=new {csType output}[{source}.Length]; for (int {index}=0; {index}<{source}.Length; {index}++) {{ var {item}={source}[{index}]; {result}[{index}]={call}; }} return {result};"
                                 | "List.iter",_ -> $"foreach (var {item} in {source}) {{ _={call}; }} return default;"
                                 | "List.fold",_ -> $"{csType parameters.[1]} {state}={arguments.[1]}; foreach (var {item} in {source}) {{ {state}={call}; }} return {state};"
@@ -659,7 +673,7 @@ module CSharpBackend =
                                 | "List.collect",TList output -> $"var {result}=new System.Collections.Generic.List<{csType output}>(); foreach (var {item} in {source}) {{ {result}.AddRange({call}); }} return {result}.ToArray();"
                                 | "List.choose",TList output -> $"var {result}=new System.Collections.Generic.List<{csType output}>(); foreach (var {item} in {source}) {{ var chosen={call}; if(chosen.HasValue) {result}.Add(chosen.Value); }} return {result}.ToArray();"
                                 | _ -> invalidOp "Invalid specialized collection callback."
-                            wrap (nativeType value.Type) $"var {source}={arguments.[sourceIndex]}; {body}"
+                            wrap (nativeType value.Type) $"var {source}={sourceValue}; {body}"
                         | _,Lir.Intrinsic name | _,Lir.HostExternal(name,_) -> intrinsic name root.Type arguments
                         | _,Lir.TargetImport(path,name) -> targetImport path name root.Type root.Span arguments
                         | _,Lir.MakeClosure(id,captures) ->

@@ -24,6 +24,15 @@ internal static class FsPure
     public static Option<long> ToInt(double value) => double.IsNaN(value) || value < -9223372036854775808.0 || value >= 9223372036854775808.0 ? default : Option<long>.Some((long)value);
     public static string[] SplitLines(string text) => text.Replace("\r\n","\n").Replace("\r","\n").Split('\n');
     public static string Repeat(long count,string value) => string.Concat(Enumerable.Repeat(value,Count(count)));
+    public static T[] Init<T>(long count, Func<long, T> initializer)
+    {
+        int length = Count(count);
+        if (length == 0) return Array.Empty<T>();
+        var result = new T[length];
+        for (int index = 0; index < result.Length; index++)
+            result[index] = initializer(index);
+        return result;
+    }
     public static T[] Take<T>(long count,IEnumerable<T> source)
     {
         var values=source.ToArray(); int n=Count(count);

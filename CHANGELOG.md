@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Speed up `List.init` in compiled .NET programs and generated C#.
 - Install Node.js before reading workspace tool versions in CI.
 - Restore detailed cached build logs in CI with the Terrabuild 0.207.2 cache fix.
 - Avoid cached-log rendering failures in CI while retaining build traces and test-report checks.

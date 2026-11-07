@@ -238,6 +238,48 @@ type BackendTests() =
         let text=(typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|])
         Assert.That(text,Is.EqualTo(expected))
 
+    [<TestCase(false, false)>]
+    [<TestCase(false, true)>]
+    [<TestCase(true, false)>]
+    [<TestCase(true, true)>]
+    member _.``Compiled List init fills an array in callback order`` (assemblyTarget: bool, knownInitializer: bool) =
+        let callback = if knownInitializer then "(fun index -> initializer index + 1)" else "initializer"
+        let source = $"fun (count: int) -> fun (initializer: int -> int) -> List.init count {callback}"
+        let assembly =
+            if assemblyTarget then IL.load source
+            else Harness.csharpAssembly [] (Harness.compile source)
+        let programType = assembly.GetType("Generated.Program") |> nonNull
+        let run = programType.GetMethod("Run") |> nonNull
+        let initialize = (run.Invoke(null, [||]) |> nonNull) :?> Func<int64, Func<Func<int64, int64>, int64[]>>
+        let calls = ResizeArray<int64>()
+        let failure = InvalidOperationException("initializer failed")
+        let initializer = Func<int64, int64>(fun index ->
+            calls.Add(index)
+            if index = 3L then raise failure
+            index + 7L)
+        let invoke count = initialize.Invoke(count).Invoke(initializer)
+        Assert.That(invoke 0L, Is.Empty)
+        for count in [-1L; int64 Int32.MaxValue + 1L] do
+            let error = Assert.Throws<ArgumentException>(fun () -> invoke count |> ignore) |> nonNull
+            Assert.That(error.Message, Is.EqualTo("Count must be between 0 and 2147483647."))
+        Assert.That(calls, Is.Empty)
+        let first = if knownInitializer then 8L else 7L
+        Assert.That(invoke 3L, Is.EqualTo(box [|first; first + 1L; first + 2L|]))
+        Assert.That(calls, Is.EqualTo(box [|0L; 1L; 2L|]))
+        calls.Clear()
+        let error = Assert.Throws<InvalidOperationException>(fun () -> invoke 5L |> ignore)
+        Assert.That(error, Is.SameAs(failure))
+        Assert.That(calls, Is.EqualTo(box [|0L; 1L; 2L; 3L|]))
+        let instructions = IL.instructions assembly
+        let callsMethod owner name =
+            instructions
+            |> List.exists (fun (_, _, target) ->
+                target |> Option.exists (fun method ->
+                    let declaringType = method.DeclaringType |> nonNull
+                    declaringType.FullName = owner && method.Name = name))
+        Assert.That(callsMethod "System.Linq.Enumerable" "Range", Is.False)
+        Assert.That(callsMethod "Generated.FsPure" "Init", Is.EqualTo(not (assemblyTarget && knownInitializer)))
+
     [<TestCase(false,false)>]
     [<TestCase(false,true)>]
     [<TestCase(true,false)>]

@@ -153,6 +153,10 @@ Exports, ordinary delegates, aggregate fields and FFI keep their array represent
 The view runtime is embedded only for assembly generation and pruned when unused. Source projects retain arrays. Empty `List.tail` raises the documented evaluation error in both compiled targets; a nonempty singleton tail is an empty list. Source reachability follows implicit conversion operators and converted types so all required view/array adapters survive pruning. There is no public view type in the FScript language or IR artifact.
 
 
+## Compiled list initialization
+
+Both compiled targets can call the typed `FsPure.Init` helper to fill the result array with an indexed loop. The assembly backend emits the loop at the call site when it can call a known initializer directly. Both paths reuse the checked count conversion.
+
 ## Exact-size compiled filters
 
 Both compiled targets implement materialized filters with compact 32-bit selection masks and exactly sized output arrays. Known native callbacks remain direct calls, and unknown callbacks use typed runtime helpers. Workers evaluate predicates once in source order, form a mask per word, then copy selected elements through a local readonly span. Small inputs keep the mask in a scalar; empty results reuse the empty array. Predicate failures stop execution immediately.
