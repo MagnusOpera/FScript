@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.90.2]
+
 - Configure Terrabuild and registry authentication so tagged builds can produce release artifacts.
 - Speed up `List.init` in compiled .NET programs and generated C#.
 - Install Node.js before reading workspace tool versions in CI.
@@ -35,6 +37,8 @@ All notable changes to FScript are documented in this file.
 - Run Terrabuild CI on pushes to every branch.
 - Add container-backed Terrabuild builds and cached test suites, with separate FFI provider, renderer, and test projects.
 - Fix NuGet trusted publishing authentication and allow retrying existing release packages without rebuilding.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.90.1...0.90.2
 
 ## [0.90.1]
 
