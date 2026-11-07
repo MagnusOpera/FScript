@@ -30,6 +30,15 @@ const expected = {
     'tests/fscript.debugadapter.tests:sdk']
 };
 
+test('release drafts wait for the shared CI and the packaged macOS CLI check', () => {
+  const workflow = fs.readFileSync('.github/workflows/on-push-tag.yml', 'utf8');
+  assert.match(workflow, /^  release-ci:\n    uses: \.\/\.github\/workflows\/ci\.yml$/m);
+  assert.doesNotMatch(workflow, /make publish-all\b/);
+  assert.match(workflow, /^  verify-macos-artifact:\n    needs: package-release$/m);
+  assert.match(workflow, /^  create-draft:\n    needs: \[release-ci, verify-macos-artifact\]$/m);
+  assert.match(workflow, /^          draft: true$/m);
+});
+
 test('CI runner forwards the exact project selection and propagates failures', () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-ci-shard-'));
   try {

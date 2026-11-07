@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Speed up release preparation by reusing cached CI checks and verifying packages in parallel.
+
 ## [0.90.2]
 
 - Configure Terrabuild and registry authentication so tagged builds can produce release artifacts.

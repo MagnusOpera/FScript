@@ -7,27 +7,29 @@ on:
       - '**'
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   BUILD_VERSION: ${{ github.ref_name }}
 
 jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
+  release-ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      suffix: release
+      require-changelog: true
     permissions:
-      contents: write
+      contents: read
+      checks: write
       packages: write
+    secrets: inherit
+
+  package-release:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Terrabuild
-        uses: ./.github/actions/setup-tools
-        with:
-          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
-          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -46,10 +48,6 @@ jobs:
       - name: Install extension dependencies
         working-directory: vscode-fscript
         run: npm ci
-
-      - name: Test VS Code extension
-        working-directory: vscode-fscript
-        run: npm test
 
       - name: Sync extension version to tag
         shell: bash
@@ -79,18 +77,18 @@ jobs:
         working-directory: vscode-fscript
         run: vsce package
 
-      - name: Publish artifacts
-        run: make publish-all config=Release version=${{ env.BUILD_VERSION }}
+      - name: Publish platform binaries and pack NuGet packages
+        run: make publish publish-darwin publish-linux publish-windows pack-nuget config=Release version="$BUILD_VERSION"
 
       - name: Pack release archives
         run: |
-          (cd .out/dotnet; zip ../fscript-${BUILD_VERSION}-dotnet.zip ./*)
-          (cd .out/windows/x64; zip ../../fscript-${BUILD_VERSION}-windows-x64.zip ./*)
-          (cd .out/windows/arm64; zip ../../fscript-${BUILD_VERSION}-windows-arm64.zip ./*)
-          (cd .out/linux/x64; zip ../../fscript-${BUILD_VERSION}-linux-x64.zip ./*)
-          (cd .out/linux/arm64; zip ../../fscript-${BUILD_VERSION}-linux-arm64.zip ./*)
+          (cd .out/dotnet; zip "../fscript-${BUILD_VERSION}-dotnet.zip" ./*)
+          (cd .out/windows/x64; zip "../../fscript-${BUILD_VERSION}-windows-x64.zip" ./*)
+          (cd .out/windows/arm64; zip "../../fscript-${BUILD_VERSION}-windows-arm64.zip" ./*)
+          (cd .out/linux/x64; zip "../../fscript-${BUILD_VERSION}-linux-x64.zip" ./*)
+          (cd .out/linux/arm64; zip "../../fscript-${BUILD_VERSION}-linux-arm64.zip" ./*)
           cp entitlements.plist .out/darwin/entitlements.plist
-          (cd .out/darwin; zip -r ../fscript-${BUILD_VERSION}-darwin-unsigned.zip ./*)
+          (cd .out/darwin; zip -r "../fscript-${BUILD_VERSION}-darwin-unsigned.zip" ./*)
 
       - name: Pack npm package
         shell: bash
@@ -102,34 +100,33 @@ jobs:
           npm test
           npm pack --pack-destination ../../.out
 
-      - name: Extract version suffix
+      - name: Stage release assets
         run: |
-          s=${{ github.ref_name }}
-          pat="([^-]*)-?([^-]*)"
-          [[ $s =~ $pat ]]
-          BUILD_VERSION_SUFFIX=${BASH_REMATCH[2]}
-          echo "BUILD_VERSION_SUFFIX=$BUILD_VERSION_SUFFIX" >> $GITHUB_ENV
+          mkdir -p "${RUNNER_TEMP}/release-assets"
+          cp .out/*.zip .out/*.nupkg .out/*.tgz vscode-fscript/*.vsix "${RUNNER_TEMP}/release-assets/"
 
-      - name: Extract release notes from changelog
-        shell: bash
-        run: |
-          ./.github/scripts/extract-release-notes.sh "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/release-notes.md"
-
-      - name: Create draft GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Upload release packages
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          prerelease: ${{ env.BUILD_VERSION_SUFFIX != '' }}
-          body_path: ${{ runner.temp }}/release-notes.md
-          files: |
-            .out/*.zip
-            .out/*.nupkg
-            .out/*.tgz
-            vscode-fscript/*.vsix
+          name: release-assets-packages
+          path: |
+            ${{ runner.temp }}/release-assets/*
+            !${{ runner.temp }}/release-assets/*-darwin-unsigned.zip
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+      - name: Upload macOS archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-macos
+          path: ${{ runner.temp }}/release-assets/fscript-${{ env.BUILD_VERSION }}-darwin-unsigned.zip
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
 
   verify-macos-artifact:
-    needs: build-and-release
+    needs: package-release
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -146,17 +143,52 @@ jobs:
           dotnet-version: ${{ steps.tool-versions.outputs.dotnet_sdk }}
 
       - name: Download cross-built macOS CLI
-        env:
-          GH_TOKEN: ${{ github.token }}
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-macos
+          path: ${{ runner.temp }}/fscript-release
+
+      - name: Unpack macOS CLI
         shell: bash
         run: |
           test "$(uname -m)" = arm64
-          mkdir -p "${RUNNER_TEMP}/fscript-release"
-          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern "fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" --dir "${RUNNER_TEMP}/fscript-release"
           unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" \
             -d "${RUNNER_TEMP}/fscript-release/unpacked"
 
       - name: Verify released CLI compilation and automatic FFI configuration
         shell: bash
         run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${GITHUB_REF_NAME}"
+
+  create-draft:
+    needs: [release-ci, verify-macos-artifact]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract release notes from changelog
+        shell: bash
+        run: ./.github/scripts/extract-release-notes.sh "$GITHUB_REF_NAME" > "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Download verified release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: ${{ runner.temp }}/release-assets
+          merge-multiple: true
+
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            ${{ runner.temp }}/release-assets/*.zip
+            ${{ runner.temp }}/release-assets/*.nupkg
+            ${{ runner.temp }}/release-assets/*.tgz
+            ${{ runner.temp }}/release-assets/*.vsix
