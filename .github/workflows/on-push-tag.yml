@@ -20,6 +20,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Terrabuild
+        uses: ./.github/actions/setup-tools
+        with:
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+
       - name: Read workspace tool versions
         id: tool-versions
         uses: ./.github/actions/workspace-versions
