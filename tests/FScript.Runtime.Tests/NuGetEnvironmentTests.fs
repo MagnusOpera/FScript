@@ -82,7 +82,7 @@ type NuGetEnvironmentTests() =
         use fixture = new NuGetFixture()
         let dependency = fixture.Name + ".Dependency"
         fixture.AddPackage(dependency, "1.0.0", [| typeof<FScript.Extensibility.HostContext>.Assembly.Location |], "")
-        fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
+        fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net11.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
         let loaded = EnvironmentLoader.loadWithInfoAndPermissions FScript.Language.HostPermissions.All (settings fixture) |> get
         Assert.That(loaded.AssemblyPaths |> List.exists (fun p -> Path.GetFileName(p) = "FScript.Extensibility.dll"), Is.True)
@@ -95,7 +95,7 @@ type NuGetEnvironmentTests() =
         let dependency = fixture.Name + ".Dependency"
         fixture.AddPackage(dependency, "1.0.0", [| typeof<FScript.Extensibility.HostContext>.Assembly.Location |], "")
         fixture.AddPackage(dependency, "2.0.0", [| typeof<FScript.Extensibility.HostContext>.Assembly.Location |], "")
-        fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[2.0.0]'/></group></dependencies>")
+        fixture.AddPackage(fixture.Name, "1.0.0", [| typeof<ValidExternProvider>.Assembly.Location |], $"<dependencies><group targetFramework='net11.0'><dependency id='{dependency}' version='[2.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
         File.AppendAllText(fixture.ConfigPath, $"\n[[runtime.packages]]\nname = '{dependency}'\nversion = '1.0.0'\n")
         match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
@@ -141,7 +141,7 @@ type NuGetEnvironmentTests() =
         fixture.AddProvider "1.0.0"
         let consumer = fixture.Name + ".Consumer"
         let assembly = typeof<FScript.Cli.Tests.Fixtures.Consumer.ConsumerExternProvider>.Assembly.Location
-        fixture.AddPackage(consumer, "1.0.0", [| assembly |], $"<dependencies><group targetFramework='net10.0'><dependency id='{fixture.Name}' version='[1.0.0]'/></group></dependencies>")
+        fixture.AddPackage(consumer, "1.0.0", [| assembly |], $"<dependencies><group targetFramework='net11.0'><dependency id='{fixture.Name}' version='[1.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
         if not explicitOwner then File.WriteAllText(fixture.ConfigPath, "")
         File.AppendAllText(fixture.ConfigPath, $"\n[[runtime.packages]]\nname = '{consumer}'\nversion = '1.0.0'\n")
@@ -172,7 +172,7 @@ type NuGetEnvironmentTests() =
         stream.Close()
         let dependency = fixture.Name + ".Collision"
         fixture.AddPackage(dependency, "1.0.0", [| alternate |], "")
-        fixture.AddPackage(fixture.Name, "1.0.0", [| original |], $"<dependencies><group targetFramework='net10.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
+        fixture.AddPackage(fixture.Name, "1.0.0", [| original |], $"<dependencies><group targetFramework='net11.0'><dependency id='{dependency}' version='[1.0.0]'/></group></dependencies>")
         fixture.WriteManifest "1.0.0"
         match EnvironmentLoader.loadWithPermissions FScript.Language.HostPermissions.All (settings fixture) with
         | Ok _ -> Assert.Fail "Conflicting CLR identities were accepted"

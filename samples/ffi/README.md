@@ -4,7 +4,7 @@ FScript builds a Utah teapot from 32 bicubic Bézier patches, computes surface n
 
 ## Run
 
-From the repository root, build the provider library once with the .NET 10 SDK:
+From the repository root, build the provider library once with the .NET 11 SDK:
 
 ```sh
 dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
@@ -57,7 +57,7 @@ out/ffi/main --headless
 out/ffi/main --frames 3
 ```
 
-The output is one executable, `main.exe` on Windows, and requires no FScript installation or .NET runtime. Native AOT publishing needs the .NET 10 SDK and the platform's native compiler. The selected platform's GLFW binary is embedded in the executable and extracted to a content-addressed temporary cache when a graphical window starts. Headless mode does not initialize GLFW. Graphical execution still requires the platform's display and OpenGL drivers.
+The output is one executable, `main.exe` on Windows, and requires no FScript installation or .NET runtime. Native AOT publishing needs the .NET 11 SDK and the platform's native compiler. The selected platform's GLFW binary is embedded in the executable and extracted to a content-addressed temporary cache when a graphical window starts. Headless mode does not initialize GLFW. Graphical execution still requires the platform's display and OpenGL drivers.
 
 For the smallest supported runtime profile:
 

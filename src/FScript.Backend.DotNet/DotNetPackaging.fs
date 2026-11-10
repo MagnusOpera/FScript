@@ -47,9 +47,9 @@ module internal DotNetPackaging =
                 Directory.CreateDirectory(payload) |> ignore
                 for file in files |> List.filter (fun file -> file.RelativePath.EndsWith(".dll",StringComparison.OrdinalIgnoreCase)) do
                     File.WriteAllBytes(Path.Combine(payload,file.RelativePath),file.Content)
-                let xml (value: string) = SecurityElement.Escape(value) |> nonNull
+                let xml (value: string) = SecurityElement.Escape(value)
                 let references=files |> List.filter (fun file -> file.RelativePath.EndsWith(".dll",StringComparison.OrdinalIgnoreCase) && file.RelativePath<>options.AssemblyName+".dll")
-                               |> List.map (fun file -> $"<Reference Include=\"{xml (Path.GetFileNameWithoutExtension file.RelativePath |> nonNull)}\"><HintPath>payload/{xml file.RelativePath}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
+                               |> List.map (fun file -> $"<Reference Include=\"{xml (Path.GetFileNameWithoutExtension file.RelativePath)}\"><HintPath>payload/{xml file.RelativePath}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
                 let aot=if executable.AheadOfTime then "true" else "false"
                 let trim=if trim then "true" else "false"
                 let bundle=if executable.AheadOfTime then "false" else "true"
@@ -66,7 +66,7 @@ module internal DotNetPackaging =
                     else ""
                 let project= $"""<Project Sdk="Microsoft.NET.Sdk">
       <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>
+        <TargetFramework>net11.0</TargetFramework><OutputType>Exe</OutputType>
         <AssemblyName>{xml options.AssemblyName}</AssemblyName><RuntimeIdentifier>{xml executable.RuntimeIdentifier}</RuntimeIdentifier>
         <SelfContained>true</SelfContained><UseAppHost>true</UseAppHost>
         <PublishSingleFile>{bundle}</PublishSingleFile><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -110,7 +110,7 @@ module internal DotNetPackaging =
                         let log=stdout.GetAwaiter().GetResult()+stderr.GetAwaiter().GetResult()
                         if proc.ExitCode<>0 then
                             let log=if log.Length>16000 then log.Substring(log.Length-16000) else log
-                            Error [diagnostic "FSN7103" $".NET executable publishing failed for {executable.RuntimeIdentifier}. A .NET 10 SDK is required; Native AOT also requires the target's native compiler and AOT-compatible dependencies.\n{log.Trim()}"]
+                            Error [diagnostic "FSN7103" $".NET executable publishing failed for {executable.RuntimeIdentifier}. A .NET 11 SDK is required; Native AOT also requires the target's native compiler and AOT-compatible dependencies.\n{log.Trim()}"]
                         else
                             let name=options.AssemblyName+(if executable.RuntimeIdentifier.StartsWith("win-",StringComparison.Ordinal) then ".exe" else "")
                             let path=Path.Combine(output,name)
@@ -125,7 +125,7 @@ module internal DotNetPackaging =
                                 if extras.Length<>0 then Error [diagnostic "FSN7103" $"Publishing left unbundled dependencies: {extraNames}."]
                                 else Ok [{RelativePath=name;Content=File.ReadAllBytes(path)}]
                 with :? ComponentModel.Win32Exception as ex ->
-                    Error [diagnostic "FSN7102" $"A .NET 10 SDK with dotnet on PATH is required for executable publishing: {ex.Message}"]
+                    Error [diagnostic "FSN7102" $"A .NET 11 SDK with dotnet on PATH is required for executable publishing: {ex.Message}"]
             with ex -> Error [diagnostic "FSN7100" $"Cannot publish .NET executable: {ex.Message}"]
         try run ()
         finally

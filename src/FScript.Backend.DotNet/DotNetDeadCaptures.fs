@@ -151,7 +151,7 @@ module internal DotNetDeadCaptures =
                     if not (live.Contains symbol) then dead.Add symbol |> ignore
             if parameters.Count=0 && dead.Count=0 then compilation else
                 let trees = compilation.SyntaxTrees |> Seq.map (fun tree ->
-                    let root = Rewrite(compilation.GetSemanticModel(tree,false),parameters,dead).Visit(tree.GetRoot()) |> nonNull
+                    let root = Rewrite(compilation.GetSemanticModel(tree,false),parameters,dead).Visit(tree.GetRoot())
                     CSharpSyntaxTree.Create(root :?> CSharpSyntaxNode,tree.Options :?> CSharpParseOptions,tree.FilePath,tree.Encoding)) |> Seq.toArray
                 iterate (compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(trees))
         iterate input

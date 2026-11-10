@@ -41,7 +41,7 @@ internal static class LspClient
         }
         var root = FindRepoRoot();
         var serverProject = Path.Combine(root, "src", "FScript.LanguageServer", "FScript.LanguageServer.csproj");
-        var serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net10.0", "FScript.LanguageServer.dll");
+        var serverDll = Path.Combine(root, "src", "FScript.LanguageServer", "bin", "Release", "net11.0", "FScript.LanguageServer.dll");
 
         var buildPsi = new ProcessStartInfo
         {

@@ -167,7 +167,7 @@ module internal DotNetSourceOptimization =
     let optimize className isLibrary (compilation: CSharpCompilation) =
         let lowered=
             compilation.SyntaxTrees |> Seq.map (fun tree ->
-                let root=Lowering(compilation.GetSemanticModel(tree, false),className).Visit(tree.GetRoot()) |> nonNull
+                let root=Lowering(compilation.GetSemanticModel(tree, false),className).Visit(tree.GetRoot())
                 CSharpSyntaxTree.Create(root :?> CSharpSyntaxNode, tree.Options :?> CSharpParseOptions,tree.FilePath,tree.Encoding) ) |> Seq.toList
         let compilation=compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(lowered) |> DotNetDeadCaptures.optimize className
         let candidates=HashSet<ISymbol>(SymbolEqualityComparer.Default)
@@ -188,7 +188,7 @@ module internal DotNetSourceOptimization =
                 | _ -> ()
         candidates.ExceptWith(reads)
         let stripped=compilation.SyntaxTrees |> Seq.map (fun tree ->
-            let root=UnreadFields(compilation.GetSemanticModel(tree,false),candidates).Visit(tree.GetRoot()) |> nonNull
+            let root=UnreadFields(compilation.GetSemanticModel(tree,false),candidates).Visit(tree.GetRoot())
             CSharpSyntaxTree.Create(root :?> CSharpSyntaxNode,tree.Options :?> CSharpParseOptions,tree.FilePath,tree.Encoding)) |> Seq.toList
         let compilation=compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(stripped)
         let retained=HashSet<SyntaxNode>()
@@ -260,6 +260,6 @@ module internal DotNetSourceOptimization =
                     | _ -> ()
                 | _ -> ()
         let trees=compilation.SyntaxTrees |> Seq.map (fun tree ->
-            let root=Pruning(retained).Visit(tree.GetRoot()) |> nonNull
+            let root=Pruning(retained).Visit(tree.GetRoot())
             CSharpSyntaxTree.Create(root :?> CSharpSyntaxNode,tree.Options :?> CSharpParseOptions,tree.FilePath,tree.Encoding)) |> Seq.toList
         compilation.RemoveAllSyntaxTrees().AddSyntaxTrees(trees)

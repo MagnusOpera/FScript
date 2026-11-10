@@ -1,6 +1,6 @@
 // Build the comparison project in Release before running this script.
-#r "bin/Release/net10.0/FScript.DotNet.Reference.dll"
-#r "bin/Release/net10.0/FScript.DotNet.Comparison.dll"
+#r "bin/Release/net11.0/FScript.DotNet.Reference.dll"
+#r "bin/Release/net11.0/FScript.DotNet.Comparison.dll"
 
 open System
 open System.IO

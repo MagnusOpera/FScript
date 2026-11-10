@@ -10,7 +10,7 @@ FScript can run inside a host application or compile into a program that runs on
 
 | Output | Command options | Use it when |
 | --- | --- | --- |
-| .NET assembly | `--target dotnet` | You want compiled execution with FScript's assembly optimizations. Run the DLL with .NET 10. |
+| .NET assembly | `--target dotnet` | You want compiled execution with FScript's assembly optimizations. Run the DLL with .NET 11. |
 | Self-contained executable | `--target dotnet --single-file [--runtime <rid>]` | You want one distributable executable that includes the .NET runtime. |
 | Native AOT executable | `--target dotnet --aot [--runtime <rid>]` | You want dependencies trimmed and compiled into a native executable. |
 | C# project | `--target csharp` | You want to inspect, edit, or integrate generated source in a .NET build. |

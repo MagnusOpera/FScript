@@ -1273,10 +1273,10 @@ module CSharpBackend =
         use reader = new StreamReader(stream)
         let runtime = reader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)
         let runtime = if assemblyMode then runtime.Replace("internal static class FsRuntime","internal static partial class FsRuntime") else runtime
-        let escapeXml (value: string) = System.Security.SecurityElement.Escape(value) |> nonNull
-        let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path |> nonNull)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
+        let escapeXml (value: string) = System.Security.SecurityElement.Escape(value)
+        let references = options.References |> List.distinct |> List.map (fun path -> $"<Reference Include=\"{escapeXml (Path.GetFileNameWithoutExtension path)}\"><HintPath>{escapeXml (Path.GetFullPath path)}</HintPath><Private>true</Private></Reference>") |> String.concat "\n"
         let compileItems = "<Compile Include=\"Program.cs\"/><Compile Include=\"Runtime.cs\"/><Compile Include=\"RuntimePure.cs\"/><Compile Include=\"RuntimeTasks.cs\"/>" + (if hasSdk then "<Compile Include=\"RuntimeSDK.cs\"/>" else "") + (if assemblyMode then "<Compile Include=\"RuntimeListViews.cs\"/>" else "")
-        let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{compileItems}{references}</ItemGroup></Project>\n"
+        let project = $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net11.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>{compileItems}{references}</ItemGroup></Project>\n"
         [ yield { RelativePath = "Program.cs"; Content = source }; yield { RelativePath = "Runtime.cs"; Content = runtime }; yield { RelativePath = "Program.csproj"; Content = project }
           use tasksStream=typeof<CSharpOptions>.Assembly.GetManifestResourceStream("FScript.Backend.CSharp.RuntimeTasks.cs") |> nonNull
           use tasksReader=new StreamReader(tasksStream)

@@ -102,7 +102,7 @@ let runCompileCommand (argv: string array) =
                         | "ir" ->
                             let baseName =
                                 match Path.GetFileNameWithoutExtension(scriptPath) with
-                                | null | "" -> "program"
+                                | "" -> "program"
                                 | value -> value
                             let name = baseName + ".fsir"
                             report "Writing IR artifact..."
@@ -119,7 +119,7 @@ let runCompileCommand (argv: string array) =
                                 complete (Path.Combine(outputDirectory, "Program.csproj"))
                         | "dotnet" ->
                             let options: FScript.Compiler.DotNetOptions =
-                                { AssemblyName=Path.GetFileNameWithoutExtension scriptPath |> nonNull; Namespace="FScript.Generated"; ClassName="Program"
+                                { AssemblyName=Path.GetFileNameWithoutExtension scriptPath; Namespace="FScript.Generated"; ClassName="Program"
                                   OutputKind=FScript.Compiler.ConsoleApplication; References=references }
                             report "Generating .NET assembly..."
                             let generated=
@@ -223,7 +223,7 @@ let runAnalyzeCommand (argv: string array) =
             let providers = loaded.ProviderMethods |> List.map snd
             let purity = FScript.Compiler.ClrBindings.providerPurity providers
             let options = TaskSharingContracts.fromProviders providers |> TaskSharingContracts.withRuntime loaded.Registration
-            let program = parseEnvironmentPrelude (Some(Path.GetFileName path |> nonNull)) [] @ FScript.parseFileWithIncludes settings.RootDirectory path
+            let program = parseEnvironmentPrelude (Some(Path.GetFileName path)) [] @ FScript.parseFileWithIncludes settings.RootDirectory path
             let resolved = TypeInfer.inferResolvedProgramWithRegistrationAndPurity loaded.Registration purity program
             TaskSharingAnalysis.analyze loaded.Registration options resolved |> List.iter reportTaskSharingWarning
             0
@@ -239,7 +239,6 @@ let runFile printResult (registration: ExtensionRegistration) (rootDirectory: st
     else
         let scriptName =
             match Path.GetFileName(scriptPath) with
-            | null
             | "" -> scriptPath
             | value -> value
         let envProgram = parseEnvironmentPrelude (Some scriptName) arguments

@@ -25,7 +25,7 @@ dotnet build "$repo_root/samples/ffi/Provider/FfiSample.fsproj" -c Release
 
 mkdir -p "$test_root/source"
 printf "[runtime]\nextern-assemblies = ['%s']\n" \
-  "$repo_root/samples/ffi/Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll" > "$test_root/source/fscript.toml"
+  "$repo_root/samples/ffi/Provider/bin/Release/net11.0/FScript.Ffi.Sample.dll" > "$test_root/source/fscript.toml"
 printf 'Math.sqrt 81.0\n' > "$test_root/source/check.fss"
 for target in csharp dotnet; do
   "$cli" compile "$test_root/source/check.fss" --target "$target" --output "$test_root/$target"

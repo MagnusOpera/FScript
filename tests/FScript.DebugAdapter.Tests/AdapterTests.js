@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const { waitForMessage } = require('./EventWait');
 
 const root = path.resolve(__dirname, '../..');
-const cli = process.env.FSCRIPT_DEBUG_CLI || path.join(root, 'src/FScript/bin/Release/net10.0/fscript.dll');
+const cli = process.env.FSCRIPT_DEBUG_CLI || path.join(root, 'src/FScript/bin/Release/net11.0/fscript.dll');
 class Client {
   constructor() {
     this.process = spawn(cli.endsWith('.dll') ? 'dotnet' : cli, cli.endsWith('.dll') ? [cli, '--debug-adapter'] : ['--debug-adapter'], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });

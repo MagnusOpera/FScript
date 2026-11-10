@@ -51,7 +51,7 @@ module DotNetBackend =
                         | Ok bytes ->
                           let binary = { RelativePath=options.AssemblyName+".dll"; Content=bytes }
                           let runtimeConfig =
-                              "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"10.0.0\"},\"rollForward\":\"LatestMinor\"}}\n"
+                              "{\"runtimeOptions\":{\"tfm\":\"net11.0\",\"framework\":{\"name\":\"Microsoft.NETCore.App\",\"version\":\"11.0.0\"},\"rollForward\":\"LatestMinor\"}}\n"
                           let dependencies =
                               ClrBindings.referencedDependencies binary.Content options.References
                               |> List.filter (fun path -> Path.GetFileNameWithoutExtension path <> options.AssemblyName)

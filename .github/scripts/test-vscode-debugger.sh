@@ -23,11 +23,11 @@ let calculate value =
     answer * 2
 calculate 41
 SCRIPT
-python3 - "$fixture/workspace/.vscode/settings.json" "$repo/src/FScript/bin/Release/net10.0/fscript.dll" <<'PYSETTINGS'
+python3 - "$fixture/workspace/.vscode/settings.json" "$repo/src/FScript/bin/Release/net11.0/fscript.dll" <<'PYSETTINGS'
 import json,pathlib,sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps({
     'fscript.lsp.enabled': True,
-    'fscript.server.path': str(pathlib.Path(sys.argv[2]).parents[5] / 'src/FScript.LanguageServer/bin/Release/net10.0/FScript.LanguageServer.dll'),
+    'fscript.server.path': str(pathlib.Path(sys.argv[2]).parents[5] / 'src/FScript.LanguageServer/bin/Release/net11.0/FScript.LanguageServer.dll'),
     'fscript.cli.path': sys.argv[2],
     'terminal.integrated.enablePersistentSessions': False
 }))
