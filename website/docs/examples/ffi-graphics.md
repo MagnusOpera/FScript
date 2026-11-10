@@ -22,7 +22,7 @@ Execution starts in `main.fss`, which loads the scene and starts rendering throu
 
 ### One-time provider setup
 
-Check out the [FScript repository](https://github.com/MagnusOpera/FScript) and build the provider library with the .NET 10 SDK before the first run:
+Check out the [FScript repository](https://github.com/MagnusOpera/FScript) and build the provider library with the .NET 11 SDK before the first run:
 
 ```sh
 dotnet build samples/ffi/Provider/FfiSample.fsproj -c Release
@@ -67,7 +67,7 @@ The sample enables `size-optimized = true` in its manifest to trade culture supp
 
 On macOS ARM64 with .NET SDK 10.0.403, the executable shrank from 4,378,616 bytes to 2,181,464 bytes with ordinary AOT, or 1,882,776 bytes with `--size-optimized`. Both profiles passed headless and real OpenGL checks. Sizes depend on SDK and platform; see [Native AOT executable size](../compiler/compile-to-dotnet.md#native-aot-executable-size) for the investigation and runtime tradeoffs.
 
-The compiler reports its phases and output path. The result is one executable, `main.exe` on Windows. Publishing requires the .NET 10 SDK and the platform's native compiler; running the result requires no .NET installation. The provider supplies static CLR companions and typed setup/render delegates. GLFW binaries are embedded in the renderer and extracted only for graphical startup. Desktop graphics and OpenGL drivers are still required for a window.
+The compiler reports its phases and output path. The result is one executable, `main.exe` on Windows. Publishing requires the .NET 11 SDK and the platform's native compiler; running the result requires no .NET installation. The provider supplies static CLR companions and typed setup/render delegates. GLFW binaries are embedded in the renderer and extracted only for graphical startup. Desktop graphics and OpenGL drivers are still required for a window.
 
 ## Find your way through the files
 
@@ -249,7 +249,7 @@ Build the sample in Release, then run **FScript: Select Configuration** in VS Co
 
 ```toml
 [runtime]
-extern-assemblies = ["Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+extern-assemblies = ["Provider/bin/Release/net11.0/FScript.Ffi.Sample.dll"]
 ```
 
 The path is relative to the manifest. In a trusted workspace, the editor loads the provider's descriptors and schemes for completion, hover, and diagnostics. Provider discovery creates no window or GPU resources. If several manifests exist in the workspace, select this one explicitly.

@@ -128,7 +128,7 @@ async function createServerOptions(context, config, folder) {
     'FScript.LanguageServer',
     'bin',
     'Debug',
-    'net10.0',
+    'net11.0',
     'FScript.LanguageServer.dll'
   );
 

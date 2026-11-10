@@ -704,7 +704,7 @@ type CliTests() =
         let directory = Path.Combine(Path.GetTempPath(), $"fscript-command-config-{Guid.NewGuid():N}")
         Directory.CreateDirectory(directory) |> ignore
         try
-            let providerFile = Path.GetFileName(validProviderAssemblyPath ()) |> nonNull
+            let providerFile = Path.GetFileName(validProviderAssemblyPath ())
             File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
             File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
             let script = Path.Combine(directory, "main.fss")
@@ -745,7 +745,7 @@ type CliTests() =
             Assert.That(code, Is.Zero, output + error)
             let executable = Path.Combine(published, if OperatingSystem.IsWindows() then "fscript.exe" else "fscript")
             let script = Path.Combine(directory, "answer.fss")
-            let providerFile = Path.GetFileName(validProviderAssemblyPath ()) |> nonNull
+            let providerFile = Path.GetFileName(validProviderAssemblyPath ())
             File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
             File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
             File.WriteAllText(script, "Ext.answer")

@@ -24,7 +24,7 @@ type NuGetFixture() =
             use writer = new StreamWriter(entry.Open())
             writer.Write($"<package><metadata><id>{packageName}</id><version>{version}</version><authors>FScript tests</authors><description>Offline extension fixture</description>{dependencies}</metadata></package>")
         for assembly in assemblyPaths do
-            archive.CreateEntryFromFile(assembly, "lib/net10.0/" + Path.GetFileName assembly) |> ignore
+            archive.CreateEntryFromFile(assembly, "lib/net11.0/" + Path.GetFileName assembly) |> ignore
     member this.AddProvider(version: string) =
         this.AddPackage(name, version, [| typeof<ValidExternProvider>.Assembly.Location |], "")
     member _.WriteManifest(version: string) =

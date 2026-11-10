@@ -21,7 +21,7 @@ benchmark-evaluation:
 # Compile once, then compare exported native functions against optimized F#.
 benchmark-dotnet-comparison:
 	dotnet build benchmarks/FScript.DotNet.Comparison/FScript.DotNet.Comparison.fsproj -c Release
-	DOTNET_TieredCompilation=0 DOTNET_ReadyToRun=0 dotnet benchmarks/FScript.DotNet.Comparison/bin/Release/net10.0/FScript.DotNet.Comparison.dll $(or $(iterations),500) $(or $(rounds),9) "$(or $(output),out/benchmarks/dotnet-vs-fsharp)" $(if $(filter true,$(verify)),--verify-only)
+	DOTNET_TieredCompilation=0 DOTNET_ReadyToRun=0 dotnet benchmarks/FScript.DotNet.Comparison/bin/Release/net11.0/FScript.DotNet.Comparison.dll $(or $(iterations),500) $(or $(rounds),9) "$(or $(output),out/benchmarks/dotnet-vs-fsharp)" $(if $(filter true,$(verify)),--verify-only)
 
 fable-build:
 	dotnet tool restore

@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Run the FScript CLI and language server on .NET 11 and target .NET 11 when compiling scripts to .NET or C#.
 - Document how compiled programs optimize `List.init`.
 
 ## [0.90.3]

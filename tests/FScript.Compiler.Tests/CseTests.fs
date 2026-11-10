@@ -14,7 +14,7 @@ type CseTests() =
     let add a b=expr TInt (Lir.Operation(Lir.IntAdd,[a;b]))
     let tuple values=expr (TTuple(List.map (fun (v: Lir.Expression) -> v.Type) values)) (Lir.Tuple values)
     let empty entry : Lir.Program={Types=[];ImportedRecords=[];Functions=[];Declarations=[];Entry=Some entry}
-    let count label program=(Lir.format program).Split('\n') |> Array.filter (fun line -> line.TrimStart().StartsWith(label,StringComparison.Ordinal)) |> Array.length
+    let count (label: string) program=(Lir.format program).Split('\n') |> Array.filter (fun line -> line.TrimStart().StartsWith(label,StringComparison.Ordinal)) |> Array.length
     let optimize p=LirCommonSubexpressions.optimize p
     let compile externs purity source =
         let p=match Compiler.compileWithPurity purity {Program=Parser.parseProgram source;Externs=externs} with Ok p -> p.Lir | Error errors -> failwith (string errors)

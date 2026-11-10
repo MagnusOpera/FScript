@@ -4,7 +4,7 @@ title: Compile to C#
 slug: /compiler/csharp
 ---
 
-The C# backend writes an independently buildable .NET 10 project. Use it when generated source belongs in your build, when you need to inspect a translated program, or when you want to make further changes in C#.
+The C# backend writes an independently buildable .NET 11 project. Use it when generated source belongs in your build, when you need to inspect a translated program, or when you want to make further changes in C#.
 
 For FScript's additional call, closure, tail-recursion, and pruning optimizations, use the [.NET assembly target](./compile-to-dotnet.md). Building generated C# does not enable those assembly-only passes.
 
@@ -16,7 +16,7 @@ dotnet build out/hello-csharp/Program.csproj -c Release
 dotnet run --project out/hello-csharp/Program.csproj -c Release -- Ada
 ```
 
-Building the generated project requires the .NET 10 SDK. From the FScript checkout, generation can instead use:
+Building the generated project requires the .NET 11 SDK. From the FScript checkout, generation can instead use:
 
 ```sh
 dotnet run --project src/FScript -- compile samples/hello.fss --target csharp --output out/hello-csharp

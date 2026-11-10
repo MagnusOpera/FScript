@@ -6,11 +6,11 @@ The .NET backend compiles a typed FScript program into an optimized .NET assembl
 
 | Operation | Requirements |
 | --- | --- |
-| Generate a `.dll` with `--target dotnet` | FScript and a .NET 10 runtime; no SDK required. Roslyn is bundled with FScript and emits the assembly in-process. |
-| Publish with `--single-file` | .NET 10 SDK available through `dotnet` on PATH. |
-| Publish with `--aot` | .NET 10 SDK plus the target platform's native build tools; build on the target OS. |
+| Generate a `.dll` with `--target dotnet` | FScript and a .NET 11 runtime; no SDK required. Roslyn is bundled with FScript and emits the assembly in-process. |
+| Publish with `--single-file` | .NET 11 SDK available through `dotnet` on PATH. |
+| Publish with `--aot` | .NET 11 SDK plus the target platform's native build tools; build on the target OS. |
 
-Running FScript itself from source with `dotnet run` requires the SDK to build FScript. That is separate from the installed compiler's requirements. A generated ordinary DLL needs a .NET 10 runtime to run; published single-file and AOT executables do not require a .NET installation on the destination machine.
+Running FScript itself from source with `dotnet run` requires the SDK to build FScript. That is separate from the installed compiler's requirements. A generated ordinary DLL needs a .NET 11 runtime to run; published single-file and AOT executables do not require a .NET installation on the destination machine.
 
 ## Runnable .NET assembly
 
@@ -21,7 +21,7 @@ dotnet out/fibonacci-dotnet/fibonacci.dll
 
 Compiled entry points print the final value by default. Add `--no-result` when compiling to suppress it and allow proven-pure discarded computations to be pruned. Explicit output, failures, and exit-code writes remain observable. Without this flag, library callers can retrieve the typed value through `Run` and format it explicitly with `FormatResult`; in discard mode, `Run` returns unit.
 
-Output includes a `.dll`, runtime configuration, and required external managed dependencies. The minimum runtime is .NET 10. Arguments after the assembly name become `Env.Arguments`.
+Output includes a `.dll`, runtime configuration, and required external managed dependencies. The minimum runtime is .NET 11. Arguments after the assembly name become `Env.Arguments`.
 
 ```sh
 dotnet run --project src/FScript -- compile samples/basic/basic.fss --target dotnet --output out/basic-dotnet
@@ -66,7 +66,7 @@ Without that separator, `dotnet run` can consume `--runtime` itself and fail whi
 
 Windows output has an `.exe` extension; macOS and Linux output has no extension. Use a fresh output directory when switching from DLL output: existing files are not deleted. External data such as BASIC source files remains program input and is not bundled.
 
-Publishing requires a .NET 10 SDK on the build machine and may restore runtime/compiler packs from NuGet. Native AOT additionally requires the platform's native build tools (Xcode Command Line Tools on macOS; Clang and zlib headers on Linux; Visual Studio C++ build tools on Windows). Native AOT must be built on the target OS; single-file managed publishing can target another OS. The executables still use normal OS libraries. See Microsoft's [single-file](https://learn.microsoft.com/dotnet/core/deploying/single-file/) and [Native AOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/) deployment documentation.
+Publishing requires a .NET 11 SDK on the build machine and may restore runtime/compiler packs from NuGet. Native AOT additionally requires the platform's native build tools (Xcode Command Line Tools on macOS; Clang and zlib headers on Linux; Visual Studio C++ build tools on Windows). Native AOT must be built on the target OS; single-file managed publishing can target another OS. The executables still use normal OS libraries. See Microsoft's [single-file](https://learn.microsoft.com/dotnet/core/deploying/single-file/) and [Native AOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/) deployment documentation.
 
 Single-file publishing trims dependencies when all reachable FFI calls have static CLR bindings. Reachable legacy provider dispatch disables managed trimming to preserve its registration contract. Bundled native runtime libraries may be extracted by the .NET host at startup. Native AOT trims and compiles dependencies, so FFI libraries must be AOT-compatible. Dynamic loading or reflection-heavy providers may produce SDK diagnostics instead of a runnable native binary. Packaging failures are reported as `FSN710x`, including the SDK's diagnostics.
 
@@ -86,7 +86,7 @@ For the teapot example, `samples/ffi/fscript.toml` supplies the provider path:
 
 ```toml
 [runtime]
-extern-assemblies = ["Provider/bin/Release/net10.0/FScript.Ffi.Sample.dll"]
+extern-assemblies = ["Provider/bin/Release/net11.0/FScript.Ffi.Sample.dll"]
 ```
 
 Build the provider first, then analyze or compile without extra assembly flags:

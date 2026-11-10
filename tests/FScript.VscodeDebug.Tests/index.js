@@ -18,7 +18,7 @@ exports.run = async function run() {
   const fs = require('node:fs');
   const path = require('node:path');
   const repo = path.resolve(__dirname, '../..');
-  const provider = path.join(repo, 'tests/FScript.Cli.Tests.Fixtures.Valid/bin/Release/net10.0/FScript.Cli.Tests.Fixtures.Valid.dll');
+  const provider = path.join(repo, 'tests/FScript.Cli.Tests.Fixtures.Valid/bin/Release/net11.0/FScript.Cli.Tests.Fixtures.Valid.dll');
   assert.ok(fs.existsSync(provider), 'Build the real provider fixture before the smoke test');
   const ffiDirectory = path.join(folder.uri.fsPath, 'numerics/examples');
   const plainDirectory = path.join(folder.uri.fsPath, 'other/examples');

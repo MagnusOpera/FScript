@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 configuration="${FSCRIPT_BUILD_CONFIG:-Release}"
-cli=(dotnet "src/FScript/bin/$configuration/net10.0/fscript.dll")
+cli=(dotnet "src/FScript/bin/$configuration/net11.0/fscript.dll")
 run_node_tests() {
     local report=$1
     shift

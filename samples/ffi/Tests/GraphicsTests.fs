@@ -163,7 +163,7 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
 #else
         let configuration = "Release"
 #endif
-        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net10.0/fscript.dll")
+        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net11.0/fscript.dll")
         let start = Diagnostics.ProcessStartInfo("dotnet", RedirectStandardOutput = true, RedirectStandardError = true)
         for argument in [cli; "--no-config"; "--extern-assembly"; typeof<GraphicsProvider>.Assembly.Location;
                          Path.Combine(root, "samples/ffi/main.fss"); "--"; argument] do
@@ -189,7 +189,7 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
 #else
         let configuration = "Release"
 #endif
-        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net10.0/fscript.dll")
+        let cli = Path.Combine(root, "src/FScript/bin", configuration, "net11.0/fscript.dll")
         let directory = Path.Combine(Path.GetTempPath(), "fscript-teapot-native-" + Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(directory) |> ignore
         let run executable arguments timeout =
@@ -206,7 +206,7 @@ Graphics.runHeadless 3 (fun window -> fun seconds -> Graphics.clear window { R =
             let output = Path.Combine(directory, "output")
             Directory.CreateDirectory(source) |> ignore
             for path in Directory.GetFiles(Path.Combine(root, "samples/ffi"), "*.fss") do
-                File.Copy(path, Path.Combine(source, Path.GetFileName path |> nonNull))
+                File.Copy(path, Path.Combine(source, Path.GetFileName path))
             let provider = typeof<GraphicsProvider>.Assembly.Location.Replace('\\', '/')
             File.WriteAllText(Path.Combine(source, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{provider}']")
             let flags = if minimizeSize then ["--size-optimized"] else []

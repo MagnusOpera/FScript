@@ -39,7 +39,7 @@ let resolve (arguments: string array) (scriptPath: string) (defaults: CompileCon
             option "--output" |> Option.map Path.GetFullPath
             |> Option.orElse defaults.OutputDirectory
             |> Option.defaultWith (fun () ->
-                let root = Path.Combine(Path.GetDirectoryName(scriptPath) |> nonNull, "bin", Path.GetFileNameWithoutExtension(scriptPath) |> nonNull, backend)
+                let root = Path.Combine(Path.GetDirectoryName(scriptPath) |> nonNull, "bin", Path.GetFileNameWithoutExtension(scriptPath), backend)
                 if native && (aot || single) then Path.Combine(root, runtime.Value, if aot then "aot" else "single-file") else root)
         Ok { Backend=backend; AheadOfTime=aot; SingleFile=single; MinimizeSize=size; RuntimeIdentifier=runtime; OutputDirectory=output }
     with :? ArgumentException as error -> Error error.Message

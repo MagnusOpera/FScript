@@ -52,7 +52,7 @@ module ClrBindings =
         | null -> ()
         | entry when String.IsNullOrEmpty entry.Location -> ()
         | entry ->
-            let deps = Path.ChangeExtension(entry.Location, ".deps.json") |> nonNull
+            let deps = Path.ChangeExtension(entry.Location, ".deps.json")
             if File.Exists deps then
                 use document = JsonDocument.Parse(File.ReadAllText deps)
                 let mutable targets = Unchecked.defaultof<JsonElement>
@@ -62,7 +62,7 @@ module ClrBindings =
                             if library.Name.StartsWith("runtimepack.Microsoft.NETCore.App.Runtime.", StringComparison.Ordinal) then
                                 let mutable runtime = Unchecked.defaultof<JsonElement>
                                 if library.Value.TryGetProperty("runtime", &runtime) then
-                                    for asset in runtime.EnumerateObject() do names.Add(Path.GetFileName asset.Name |> nonNull) |> ignore
+                                    for asset in runtime.EnumerateObject() do names.Add(Path.GetFileName asset.Name) |> ignore
         names
 
     /// Include managed dependencies colocated with explicit reference assemblies.
