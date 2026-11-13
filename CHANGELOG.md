@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.2]
+
 - Fix Go to Definition for function usages in pipelines followed by a lambda.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.92.1...0.92.2
 
 ## [0.92.1]
 
