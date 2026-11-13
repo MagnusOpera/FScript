@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.3]
+
 - Report non-exhaustive matches as type errors before a script runs.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.92.2...0.92.3
 
 ## [0.92.2]
 
