@@ -152,7 +152,7 @@ type ConformanceTests() =
         | Error code -> Assert.Fail($"LIR failed with {code}: {source}")
 
     [<TestCase("raise \"boom\"")>]
-    [<TestCase("match 1 with | 2 -> 0")>]
+    [<TestCase("match 1 with | 2 -> 0 | _ -> raise \"no match\"")>]
     [<TestCase("1 / 0")>]
     [<TestCase("List.tail []")>]
     member _.``Failure categories conform`` (source: string) =
@@ -178,6 +178,6 @@ type ConformanceTests() =
 
     [<TestCase("let fail n : int = raise \"failure\"\n(fail 1,fail 1)")>]
     [<TestCase("let fail n = 1/n\n(fail 0,fail 0)")>]
-    [<TestCase("let fail n = match n with | 2 -> 0\n(fail 1,fail 1)")>]
+    [<TestCase("let fail n = match n with | 2 -> 0 | _ -> raise \"no match\"\n(fail 1,fail 1)")>]
     member _.``CSE preserves failure categories`` source =
         Assert.That(Harness.cse source,Is.EqualTo(Harness.lir source))

@@ -162,6 +162,35 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_reports_missing_match_cases_in_the_editor()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-exhaustiveness-test.fss";
+            var source = "let firstEven = [2; 4] |> List.tryHead\nmatch firstEven with | Some x -> x";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            var notification = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics" && msg["params"]?["uri"]?.ToString() == uri);
+            var diagnostics = notification["params"]?["diagnostics"]?.AsArray() ?? throw new Exception("Expected diagnostics.");
+            Assert.That(diagnostics, Has.Count.EqualTo(1));
+            var diagnostic = diagnostics[0];
+            Assert.That(diagnostic?["severity"]?.GetValue<int>(), Is.EqualTo(1));
+            Assert.That(diagnostic?["message"]?.GetValue<string>(), Is.EqualTo("Non-exhaustive match. Missing case: None."));
+            Assert.That(diagnostic?["range"]?["start"]?["line"]?.GetValue<int>(), Is.EqualTo(1));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_didOpen_publishes_parse_diagnostics()
     {
         var client = LspClient.StartCSharp();

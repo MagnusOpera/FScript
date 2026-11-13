@@ -156,7 +156,12 @@ let main =
     |> List.iter Console.writeLine
 ```
 
-### Match-case alignment
+### Match exhaustiveness
+
+- Every `match` expression must cover the inferred scrutinee type. Missing coverage is a type error at the match expression before evaluation.
+- Coverage combines unguarded cases, including nested tuple, record, option, list, and union patterns. Both Boolean values must be covered. Open literal types such as integers and strings require a catch-all for the remaining values.
+- For maps, `{}` covers the empty map. A single entry with unconstrained key and value patterns and an optional unconstrained remainder covers nonempty maps. More specific map patterns and record type-test patterns do not contribute to the exhaustiveness proof.
+- Guarded cases and patterns with repeated binding names do not establish coverage. Use an unguarded wildcard or variable for values the other cases cannot prove they cover.
 - Multiline `match` case lines must all start at the same column.
 - First case column must be at or deeper than the `match` column.
 

@@ -89,7 +89,7 @@ type HirTests() =
 
     [<Test>]
     member _.``HIR reuses deterministic resolved frontend symbol IDs`` () =
-        let source = "let first = 1\ntype Choice = | Pick of int\nlet apply x = (let y = x\n    match Some y with\n    | Some z -> z\n)\napply first"
+        let source = "let first = 1\ntype Choice = | Pick of int\nlet apply x = (let y = x\n    match Some y with\n    | Some z -> z\n    | None -> raise \"missing value\"\n)\napply first"
         let program = Parser.parseProgram source
         let external name scheme arity = ({ RequiredPermissions = FScript.Language.HostPermissions.None; Name = name; Scheme = scheme; Arity = arity; Impl = fun _ _ -> VUnit }: ExternalFunction)
         let frontendExterns =

@@ -558,9 +558,9 @@ type EvalTests () =
         act |> should throw typeof<TypeException>
 
     [<Test>]
-    member _.``Reports runtime error for non-exhaustive match`` () =
+    member _.``Reports a type error for a missing list case before evaluation`` () =
         let act () = Helpers.eval "match [1] with\n    | [] -> 0" |> ignore
-        act |> should throw typeof<EvalException>
+        act |> should throw typeof<TypeException>
 
     [<Test>]
     member _.``Reports type error for unknown field in record update`` () =

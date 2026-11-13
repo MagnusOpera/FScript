@@ -87,7 +87,7 @@ You have already used four important ideas:
 - `let quote plan seats` declares a function without type boilerplate.
 - the interpreter infers the types and checks the program before it runs.
 
-Try calling `quote "Scale" 12`: the type checker rejects a string where a `Plan` is expected. Keep all match cases: an unmatched value causes a runtime error, rather than a compile-time exhaustiveness diagnostic.
+Try calling `quote "Scale" 12`: the type checker rejects a string where a `Plan` is expected. Try removing a match case. The type checker reports the missing case before the script runs.
 
 ## 3. Make the rule host-callable
 

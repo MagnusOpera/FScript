@@ -4,7 +4,7 @@ title: Pattern Matching
 slug: /language/pattern-matching
 ---
 
-Use `match` to inspect data and bind the parts a branch needs. Cases run from top to bottom; `_` ignores a value. Cover every expected case: the interpreter reports an error at runtime if none matches.
+Use `match` to inspect data and bind the parts a branch needs. Cases run from top to bottom, and `_` ignores a value. The type checker reports missing cases before the script runs. Guarded cases can refine a match, and the unguarded cases must cover the type.
 
 ## Matching options
 

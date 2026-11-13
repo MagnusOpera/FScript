@@ -73,6 +73,8 @@ match values with
 
 This still matches if `values` has extra keys.
 
+For exhaustiveness, `{}` covers the empty map. A single unconstrained entry such as `{ [k] = v; ..rest }` covers all nonempty maps. Use an unguarded wildcard or variable to cover remaining maps when an entry pattern constrains the key or value.
+
 ## Practical examples
 
 ### Remove one key

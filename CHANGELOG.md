@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Report non-exhaustive matches as type errors before a script runs.
+
 ## [0.92.2]
 
 - Fix Go to Definition for function usages in pipelines followed by a lambda.

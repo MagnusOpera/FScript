@@ -435,6 +435,29 @@ type TypeInferenceTests () =
         | TypeInfer.TSExpr te -> te.Type |> should equal TUnit
         | _ -> Assert.Fail("Expected expression")
 
+    [<TestCase("let firstEven = [2; 4] |> List.tryHead\nmatch firstEven with | Some x -> x", "None")>]
+    [<TestCase("match Some false with | None -> 0 | Some false -> 1", "Some true")>]
+    [<TestCase("match true with | true -> 1", "false")>]
+    [<TestCase("match (true, false) with | (true, _) -> 1 | (_, true) -> 2", "(false, false)")>]
+    [<TestCase("type Choice = | Ready | Busy of bool\nmatch Ready with | Ready -> 1 | Busy false -> 2", "Busy true")>]
+    [<TestCase("match [true] with | [] -> 0 | true :: _ -> 1", "(false :: [])")>]
+    [<TestCase("match { [1] = true } with | { [1] = _ } -> 1", "{}")>]
+    [<TestCase("match Some 1 with | Some x when x > 0 -> x | None -> 0", "Some _")>]
+    [<TestCase("match 1 with | 1 -> 0", "unguarded catch-all")>]
+    member _.``Rejects incomplete matches before evaluation`` (source: string, missing: string) =
+        let error = Assert.Throws<TypeException>(System.Action(fun () -> Helpers.infer source |> ignore))
+        let diagnostic = (nonNull error).Data0
+        Assert.That(diagnostic.Message, Does.StartWith("Non-exhaustive match.").And.Contain(missing))
+        Assert.That(diagnostic.Span.Start.Line, Is.EqualTo(source.Split('\n').Length))
+
+    [<TestCase("match (true, false) with | (true, _) -> 1 | (_, false) -> 2 | (false, true) -> 3")>]
+    [<TestCase("match Some false with | None -> 0 | Some false -> 1 | Some true -> 2")>]
+    [<TestCase("type rec Tree = | Leaf | Branch of (Tree * Tree)\nmatch Leaf with | Leaf -> 0 | Branch (Leaf, _) -> 1 | Branch (Branch _, _) -> 2")>]
+    [<TestCase("match [true] with | [] -> 0 | true :: _ -> 1 | false :: _ -> 2")>]
+    [<TestCase("type Flags = { A: bool; B: bool }\nmatch { A = true; B = false } with | { B = true } -> 1 | { B = false } -> 2")>]
+    member _.``Accepts exhaustive matches assembled from nested patterns`` (source: string) =
+        Helpers.infer source |> ignore
+
     [<Test>]
     member _.``Infers match on option`` () =
         let typed = Helpers.infer "match Some 1 with\n    | Some x -> x\n    | None -> 0"

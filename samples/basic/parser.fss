@@ -195,7 +195,7 @@ let parse_statement_tokens line_number tokens =
 let parse_statement_text line_number statement_text =
     match Regex.matchGroups "^\\s*[Rr][Ee][Mm](.*)$" statement_text with
     | Some [ tail ] -> Rem tail
-    | None -> statement_text |> tokenize line_number |> parse_statement_tokens line_number
+    | _ -> statement_text |> tokenize line_number |> parse_statement_tokens line_number
 
 let insert_sorted_line line sorted =
     let rec loop remaining =

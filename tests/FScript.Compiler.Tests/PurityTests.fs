@@ -106,11 +106,11 @@ type PurityTests() =
         Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="handle"),Is.True,"A pure type does not make its factory pure.")
 
     [<TestCase("let discarded = 1 / 0\n42")>]
-    [<TestCase("let discarded = match 1 with | 2 -> 0\n42")>]
+    [<TestCase("let discarded = match 1 with | 2 -> 0 | _ -> raise \"no match\"\n42")>]
     [<TestCase("let fail () : int = raise \"boom\"\nlet discarded = fail ()\n42")>]
     [<TestCase("let rec loop (value: int) : int = loop value\nlet discarded = loop 1\n42")>]
     [<TestCase("let discarded = Console.writeLine \"visible\"\n42")>]
-    [<TestCase("let fail value = match value with | 2 -> 0\nlet discarded = fail 1\n42")>]
+    [<TestCase("let fail value = match value with | 2 -> 0 | _ -> raise \"no match\"\nlet discarded = fail 1\n42")>]
     member _.``Effects failures and unproven termination remain observable`` source =
         let optimized=(compile HostInterop.empty PurityContracts.empty [] source).Lir |> optimize
         Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name="discarded"),Is.True,source)
@@ -170,9 +170,9 @@ type PurityTests() =
 
     [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n -> n | B -> 0\nchoose (A 1)", true)>]
     [<TestCase("let choose value=match value with | (a,b) -> a+b\nchoose (1,2)", true)>]
-    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n -> n\nchoose (A 1)", false)>]
-    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n when n>0 -> n | B -> 0\nchoose (A 1)", false)>]
-    [<TestCase("let choose value=match value with | (x,x) -> x\nchoose (1,1)", false)>]
+    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n -> n | B -> raise \"no match\"\nchoose (A 1)", false)>]
+    [<TestCase("type Choice=A of int | B\nlet choose value=match value with | A n when n>0 -> n | A _ -> raise \"no match\" | B -> 0\nchoose (A 1)", false)>]
+    [<TestCase("let choose value=match value with | (x,x) -> x | _ -> raise \"no match\"\nchoose (1,1)", false)>]
     member _.``Total match proofs require complete unguarded coverage and unique bindings`` (source: string, expected: bool) =
         let compiled=(compile HostInterop.empty PurityContracts.empty [] source).Lir
         let program=match LirMonomorphization.specialize compiled with Ok value -> value | Error errors -> failwith (string errors)

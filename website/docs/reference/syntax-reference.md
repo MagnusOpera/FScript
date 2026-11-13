@@ -41,7 +41,7 @@ Imports use explicit aliases, not `open` or a `module` declaration. Type declara
 
 A block contains local bindings and expressions and takes its value from the final expression. Local `let` bindings use indentation rather than `let ... in`. A unit parameter is an actual argument: call `ping ()`, not `ping`.
 
-Matches are not checked for exhaustiveness. An unmatched value is a runtime error. There is no script exception handler; use options or domain unions for recoverable outcomes.
+The type checker rejects non-exhaustive matches. Use an unguarded wildcard or variable to cover values left over after the other cases. FScript has no script exception handler. Use options or domain unions for recoverable outcomes.
 
 `typeof` is not CLR reflection. In `Json.deserialize (typeof Settings) text`, the token selects the runtime decoder; use a typed receiving function when the result contract matters. `nameof` checks that a binding exists and does not call it.
 

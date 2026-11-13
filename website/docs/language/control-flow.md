@@ -38,7 +38,7 @@ let describe opt =
   | None -> "none"
 ```
 
-Cases are tested in order. A `when` guard can refine a pattern; an unmatched value fails at runtime. See [Pattern Matching](./pattern-matching) after learning the collection and union types.
+Cases are tested in order. A `when` guard can refine a pattern. The type checker requires the unguarded cases to cover all values of the matched type. See [Pattern Matching](./pattern-matching) after learning the collection and union types.
 
 ## Conditional evaluation
 

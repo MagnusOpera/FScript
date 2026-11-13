@@ -1112,6 +1112,7 @@ module TypeInfer =
                         sAcc <- compose sEq sAcc
                         Some (applyType sEq tPrev)
                 sAcc <- compose sBody (compose sPat sAcc)
+            MatchCoverage.check typeDefs (applyType sAcc tScrut) cases span
             let tRes = resultTypeOpt |> Option.defaultValue (Types.freshVar())
             sAcc, tRes, asTyped telemetry expr tRes
         | EList (items, span) ->

@@ -123,7 +123,7 @@ type IrArtifactTests() =
         for source in
             [ "let f x = (let y = x + 1\n    y\n)\nf 2"
               "raise \"failure\""
-              "match Some 2 with\n    | Some x when x > 0 -> x\n    | None -> 0"
+              "match Some 2 with\n    | Some x when x > 0 -> x\n    | Some _ -> 0\n    | None -> 0"
               "([1..3][0], $\"answer {42}\")"
               "let value = {| Count = 1 |}\n{| value with Count = 2 |}"
               "type Shape = | Point | Circle of int\nmatch Circle 2 with\n    | Point -> 0\n    | Circle radius -> radius"

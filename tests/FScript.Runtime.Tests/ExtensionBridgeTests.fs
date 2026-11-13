@@ -57,7 +57,7 @@ type ExtensionBridgeTests() =
     member _.``Callback failures retain script source locations`` () =
         let call = functionOf "Host.call" (FScript.Extensibility.TFun(FScript.Extensibility.TFun(FScript.Extensibility.TUnit, FScript.Extensibility.TInt), FScript.Extensibility.TInt))
                        (fun context args -> context.Apply (List.head args) FScript.Extensibility.VUnit)
-        let error = Assert.Throws<EvalException>(Action(fun () -> run [call] "Host.call (fun () -> match None with | Some x -> x)" |> ignore)) |> nonNull
+        let error = Assert.Throws<EvalException>(Action(fun () -> run [call] "Host.call (fun () -> raise \"callback failed\")" |> ignore)) |> nonNull
         Assert.That(error.Data0.Span.Start.Line, Is.GreaterThan(0))
 
     [<Test>]

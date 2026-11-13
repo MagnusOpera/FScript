@@ -37,6 +37,7 @@
     <Compile Include="SupportCollections.fs" />
     <Compile Include="BuiltinFunctions.fs" />
     <Compile Include="TaskFunctions.fs" />
+    <Compile Include="MatchCoverage.fs" />
     <Compile Include="TypeInfer.fs" />
     <Compile Include="TaskSharingAnalysis.fs" />
     <Compile Include="ExportSignatures.fs" />
