@@ -122,7 +122,7 @@ test-release-changelog:
 
 # Container-backed whole-repository checks use Terrabuild from PATH.
 .PHONY: tb-build tb-test tb-smoke tb-sdk tb-check test-terrabuild
-TB_FLAGS ?=
+TB_FLAGS ?= --retry
 TB_PARALLEL ?=
 
 test-terrabuild:
