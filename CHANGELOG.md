@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.1]
+
 - Fix VS Code language server startup by requesting the .NET 11 runtime.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.92.0...0.92.1
 
 ## [0.92.0]
 
