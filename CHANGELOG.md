@@ -4,8 +4,12 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.0]
+
 - Restore animated progress in local Terrabuild builds and use Terrabuild’s diagnostic logs in CI.
 - Speed up .NET compilation for scripts that forward unused closure captures through generated helpers.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.91.0...0.92.0
 
 ## [0.91.0]
 
