@@ -689,6 +689,7 @@ module IncludeResolver =
 #endif
 
     let private parseProgramFromSourceWithIncludesCore
+        (parseSource: string option -> string -> Program)
         (rootDirectory: string)
         (entryFile: string)
         (entrySource: string)
@@ -750,7 +751,7 @@ module IncludeResolver =
 #else
                             File.ReadAllText(sandboxedPath)
 #endif
-                let program = Parser.parseProgramWithSourceName (Some sandboxedPath) source
+                let program = parseSource (Some sandboxedPath) source
                 let loadRef = ref loadFile
                 expandProgram rootDirectoryWithSeparator fileSpan getOrCreatePrefix loadRef (sandboxedPath :: stack) isMainFile sandboxedPath prefix program
 
@@ -758,7 +759,7 @@ module IncludeResolver =
         program, (pathPrefixes |> Seq.map (fun pair -> pair.Key,pair.Value) |> Map.ofSeq)
 
     let parseProgramFromSourceWithIncludes (rootDirectory: string) (entryFile: string) (entrySource: string) : Program =
-        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource None |> fst
+        parseProgramFromSourceWithIncludesCore Parser.parseProgramWithSourceName rootDirectory entryFile entrySource None |> fst
 
     let parseProgramFromSourceWithIncludesResolver
         (rootDirectory: string)
@@ -766,8 +767,17 @@ module IncludeResolver =
         (entrySource: string)
         (resolveImportedSource: string -> string option)
         : Program =
-        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource (Some resolveImportedSource) |> fst
+        parseProgramFromSourceWithIncludesCore Parser.parseProgramWithSourceName rootDirectory entryFile entrySource (Some resolveImportedSource) |> fst
 
     /// Includes source-module identities for tools which need to display original aliases.
     let parseProgramFromSourceWithIncludesResolverAndMetadata rootDirectory entryFile entrySource resolveImportedSource =
-        parseProgramFromSourceWithIncludesCore rootDirectory entryFile entrySource (Some resolveImportedSource)
+        parseProgramFromSourceWithIncludesCore Parser.parseProgramWithSourceName rootDirectory entryFile entrySource (Some resolveImportedSource)
+
+    let parseProgramFromSourceWithIncludesAndRecordFieldLabels rootDirectory entryFile entrySource =
+        let labels = ResizeArray<Span * Token list>()
+        let parse sourceName source =
+            let program, fields = Parser.parseProgramWithRecordFieldLabels sourceName source
+            labels.AddRange(Map.toSeq fields)
+            program
+        let program, _ = parseProgramFromSourceWithIncludesCore parse rootDirectory entryFile entrySource None
+        program, Map.ofSeq labels

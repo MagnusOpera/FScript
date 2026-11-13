@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Show record field types on hover and navigate from record literals to field declarations in VS Code.
+
 ## [0.92.3]
 
 - Report non-exhaustive matches as type errors before a script runs.

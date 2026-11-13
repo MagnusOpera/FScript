@@ -633,19 +633,21 @@ module LspHandlers =
             | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
                 let doc = documents[uri]
                 let hostDescription =
-                    tryGetWordAtPosition doc.Text line character
-                    |> Option.bind (fun word ->
-                        (LspRuntimeExterns.descriptors doc.SourcePath |> List.tryFind (fun d -> d.Name = word)
-                         |> Option.map (fun descriptor ->
-                            let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
-                            let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
-                            $"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}"))
-                        |> Option.orElseWith (fun () ->
-                            LspRuntimeExterns.unions doc.SourcePath |> List.tryFind (fun d -> d.Name = word || d.Cases.ContainsKey word || (d.Cases |> Map.exists (fun caseName _ -> d.Name + "." + caseName = word)))
-                            |> Option.map (fun descriptor ->
-                                let cases = descriptor.Cases |> Map.toList |> List.map (fun (name, payload) ->
-                                    match payload with None -> name | Some ty -> name + " of " + Types.typeToString ty) |> String.concat " | "
-                                $"```fscript\ntype {descriptor.Name} = {cases}\n```\nscript-constructible host union")))
+                    if tryGetRecordFieldAtPosition doc line character |> Option.isSome then None
+                    else
+                        tryGetWordAtPosition doc.Text line character
+                        |> Option.bind (fun word ->
+                            (LspRuntimeExterns.descriptors doc.SourcePath |> List.tryFind (fun d -> d.Name = word)
+                             |> Option.map (fun descriptor ->
+                                let fields = descriptor.Fields |> Map.toList |> List.map (fun (name, ty) -> $"{name}: {Types.typeToString ty}") |> String.concat "; "
+                                let kind = if descriptor.HostManaged then "host-managed" else "script-constructible record"
+                                $"```fscript\ntype {descriptor.Name} = {{ {fields} }}\n```\n{kind}"))
+                            |> Option.orElseWith (fun () ->
+                                LspRuntimeExterns.unions doc.SourcePath |> List.tryFind (fun d -> d.Name = word || d.Cases.ContainsKey word || (d.Cases |> Map.exists (fun caseName _ -> d.Name + "." + caseName = word)))
+                                |> Option.map (fun descriptor ->
+                                    let cases = descriptor.Cases |> Map.toList |> List.map (fun (name, payload) ->
+                                        match payload with None -> name | Some ty -> name + " of " + Types.typeToString ty) |> String.concat " | "
+                                    $"```fscript\ntype {descriptor.Name} = {cases}\n```\nscript-constructible host union")))
                 match hostDescription with
                 | Some description ->
                     let contents = JsonObject()
@@ -803,13 +805,21 @@ module LspHandlers =
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
             logDebug $"request uri={uri} line={line} char={character}"
-            match tryResolveIncludeLocation uri doc line character with
-            | Some includeLoc ->
+            let fieldLocation =
+                tryGetRecordFieldAtPosition doc line character
+                |> Option.bind (fun field -> field.Definition)
+                |> Option.map (fun span ->
+                    let loc = JsonObject()
+                    let targetUri = tryUriFromSpanFile uri span |> Option.defaultValue uri
+                    loc["uri"] <- JsonValue.Create(targetUri)
+                    loc["range"] <- toLspRange span
+                    loc)
+            match fieldLocation |> Option.orElseWith (fun () -> tryResolveIncludeLocation uri doc line character) with
+            | Some location ->
                 lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                logDebug "resolved include location"
-                LspProtocol.sendResponse idNode (Some includeLoc)
+                LspProtocol.sendResponse idNode (Some location)
             | None ->
-                logDebug "include resolution miss"
+                logDebug "record field and include resolution miss"
                 let isLikelyLetDeclarationContextAtCursor () =
                     match getLineText doc.Text line with
                     | None -> false

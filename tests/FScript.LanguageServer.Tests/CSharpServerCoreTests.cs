@@ -1753,6 +1753,95 @@ export let restore (context: Protocol.ActionContext) (locked: bool option) (eval
         }
     }
 
+    [TestCase("Command", 5)]
+    [TestCase("Arguments", 6)]
+    [TestCase("ErrorLevel", 7)]
+    public void CSharp_server_resolves_record_literal_field_labels(string field, int declarationLine)
+    {
+        var samplePath = Path.Combine(FindRepoRoot(), "samples", "layout-styles.fss");
+        var source = File.ReadAllText(samplePath);
+        var lines = source.Replace("\r\n", "\n").Split('\n');
+        var uri = new Uri(samplePath).AbsoluteUri;
+        var usage = FindTokenPosition(source, field + " =", false);
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            JsonObject PositionParams() => new()
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = usage.line, ["character"] = usage.character }
+            };
+            JsonNode Reply(int id) => LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue value && value.TryGetValue<int>(out var number) && number == id);
+
+            LspClient.SendRequest(client, 1_001, "textDocument/definition", PositionParams());
+            var target = Reply(1_001)["result"];
+            var start = target?["range"]?["start"];
+            var end = target?["range"]?["end"];
+            var column = lines[declarationLine].IndexOf(field, StringComparison.Ordinal);
+            LspClient.SendRequest(client, 1_002, "textDocument/hover", PositionParams());
+            var hover = Reply(1_002)["result"]?["contents"]?["value"]?.GetValue<string>();
+            Assert.Multiple(() =>
+            {
+                Assert.That(target?["uri"]?.GetValue<string>(), Is.EqualTo(uri));
+                Assert.That(start?["line"]?.GetValue<int>(), Is.EqualTo(declarationLine));
+                Assert.That(start?["character"]?.GetValue<int>(), Is.EqualTo(column));
+                Assert.That(end?["character"]?.GetValue<int>(), Is.EqualTo(column + field.Length));
+                Assert.That(hover ?? "", Does.Contain(field + " : " + (field == "ErrorLevel" ? "int" : "string")));
+            });
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
+    public void CSharp_server_navigates_to_the_inferred_imported_record_field()
+    {
+        var directory = Directory.CreateTempSubdirectory("fscript-lsp-record-field-");
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var declaration = Path.Combine(directory.FullName, "operations.fss");
+            File.WriteAllText(declaration, "type Operation = { Command: string; Status: int }");
+            var uri = new Uri(Path.Combine(directory.FullName, "main.fss")).AbsoluteUri;
+            var source = """
+import "operations.fss" as Operations
+type Other = { Command: bool }
+let op = { Command = "docker"; Status = 0 }
+""";
+            var usage = FindTokenPosition(source, "Command =", false);
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source }
+            });
+            LspClient.SendRequest(client, 1_003, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = usage.line, ["character"] = usage.character }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue value && value.TryGetValue<int>(out var number) && number == 1_003);
+            var target = response["result"];
+            Assert.That(target?["uri"]?.GetValue<string>(), Is.EqualTo(new Uri(declaration).AbsoluteUri));
+            Assert.That(target?["range"]?["start"]?["character"]?.GetValue<int>(), Is.EqualTo(19));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+            directory.Delete(true);
+        }
+    }
+
     [Test]
     public void CSharp_server_definition_resolves_local_symbol_inside_record_field_value()
     {

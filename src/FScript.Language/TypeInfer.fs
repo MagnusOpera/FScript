@@ -2331,11 +2331,14 @@ module TypeInfer =
         let typed, _, _ = inferProgramWithExternsRawAndLocals false registration program
         typed
 
-    let inferProgramWithRegistrationAndLocalVariableTypes (registration: ExtensionRegistration) program =
+    let inferProgramWithRegistrationAndTypes (registration: ExtensionRegistration) program =
         let reserved = BuiltinSignatures.builtinReservedNames
         if registration.Functions |> List.exists (fun ext -> Set.contains ext.Name reserved) then
             raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
         if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
             raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
-        let typed, locals, _ = inferProgramWithExternsRawAndLocals true registration program
+        inferProgramWithExternsRawAndLocals true registration program
+
+    let inferProgramWithRegistrationAndLocalVariableTypes registration program =
+        let typed, locals, _ = inferProgramWithRegistrationAndTypes registration program
         typed, locals

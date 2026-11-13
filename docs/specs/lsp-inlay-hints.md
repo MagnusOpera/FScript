@@ -82,6 +82,10 @@ Behavior:
   - `fscript-stdlib:///List.fss`
   - `fscript-stdlib:///Map.fss`
 
+## Record Field Navigation
+
+Hovering a field label in a nominal record literal shows the declared field type. Go to Definition jumps to the field identifier in the inferred record's type declaration, including in imported scripts.
+
 ## Local Binding Definition Navigation
 
 - Go-to-definition on a local variable usage resolves to the nearest lexical local declaration in scope.

@@ -2258,6 +2258,48 @@ let queryValues : string -> string -> string list option
                 state) []
         |> List.rev
 
+    let private buildRecordFields sourceName (typed: TypeInfer.TypedProgram) expressions (labels: Map<Span, Token list>) =
+        let getLabels span =
+            Map.tryFind span labels
+            |> Option.defaultValue []
+            |> List.choose (fun token ->
+                match token.Kind with
+                | Ident name -> Some (name, token.Span)
+                | _ -> None)
+
+        let records =
+            typed |> List.choose (function
+                | TypeInfer.TSType definition when not definition.Fields.IsEmpty ->
+                    Some (definition.Name, (Map.ofList definition.Fields, getLabels definition.Span |> Map.ofList))
+                | _ -> None)
+            |> Map.ofList
+
+        expressions
+        |> List.collect (fun (expression: TypeInfer.ResolvedExpressionType) ->
+            match expression.Expr, expression.Type with
+            | ERecord _, TNamed name when expression.Span.Start.File = Some sourceName ->
+                match Map.tryFind name records with
+                | Some (fields, definitions) ->
+                    getLabels expression.Span
+                    |> List.choose (fun (field, usage) ->
+                        Map.tryFind field fields
+                        |> Option.map (fun typ ->
+                            usage,
+                            { Name = field
+                              TypeText = typeRefToString typ
+                              Definition = Map.tryFind field definitions }))
+                | None -> []
+            | _ -> [])
+        |> Map.ofList
+
+    let tryGetRecordFieldAtPosition (doc: DocumentState) line character =
+        doc.RecordFields
+        |> Map.toSeq
+        |> Seq.tryPick (fun (span, field) ->
+            if spanContainsPosition1Based span (line + 1) (character + 1)
+               && (line + 1, character + 1) <> (span.End.Line, span.End.Column) then Some field
+            else None)
+
     let analyzeDocument (uri: string) (text: string) =
         let sourceName =
             if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
@@ -2275,6 +2317,7 @@ let queryValues : string -> string -> string list option
         let mutable symbols : TopLevelSymbol list = []
         let mutable occurrences : Map<string, Span list> = Map.empty
         let mutable resolvedLocalDefinitions : (Span * Span) list = []
+        let mutable recordFields = Map.empty
         let mutable recordParamFields : Map<string, (string * string) list> = Map.empty
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
         let mutable functionParameters : Map<string, string list> = Map.empty
@@ -2298,11 +2341,11 @@ let queryValues : string -> string -> string list option
         let mutable parsedProgram : Program option = None
 
         try
-            let program =
+            let program, fieldLabels =
                 if uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) then
-                    InteropServices.parseProgramFromSourceWithIncludes sourceName text
+                    InteropServices.parseProgramWithRecordFieldLabels sourceName text
                 else
-                    FScript.parseWithSourceName (Some sourceName) text
+                    Parser.parseProgramWithRecordFieldLabels (Some sourceName) text
             parsedProgram <- Some program
             occurrences <- collectVariableOccurrences program
             resolvedLocalDefinitions <- buildResolvedLocalDefinitions program
@@ -2314,7 +2357,8 @@ let queryValues : string -> string -> string list option
             callArgumentHints <- buildCallArgumentHints program functionParameters
             localBindings <- buildLocalBindings program
             try
-                let typed, localTypes = InteropServices.inferProgramWithRegistrationAndLocalVariableTypes runtimeExterns program
+                let typed, localTypes, expressionTypes = InteropServices.inferProgramWithRegistrationAndTypes runtimeExterns program
+                recordFields <- buildRecordFields sourceName typed expressionTypes fieldLabels
                 symbols <- buildSymbolsFromProgram program (Some typed)
                 parameterTypeHints <- buildParameterTypeHints program (Some typed)
                 functionReturnTypeHints <- buildFunctionReturnTypeHints program (Some typed)
@@ -2424,6 +2468,7 @@ let queryValues : string -> string -> string list option
             { SourcePath = sourceName
               Text = text
               Symbols = symbols
+              RecordFields = recordFields |> Map.map (fun _ field -> { field with TypeText = displayTypeText field.TypeText })
               RecordParameterFields = recordParamFields
               ParameterTypeTargets = parameterTypeTargets
               FunctionParameters = functionParameters
@@ -2926,7 +2971,7 @@ let queryValues : string -> string -> string list option
                         | Some t -> Some t
                         | None -> tryResolveRecordLiteralFunctionReturnTypeTarget doc line character
 
-    let tryGetRecordFieldHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
+    let private tryGetMemberAccessHoverInfo (doc: DocumentState) (line: int) (character: int) : (string * string) option =
         match tryGetWordAtPosition doc.Text line character with
         | Some word when word.Contains('.') ->
             let idx = word.LastIndexOf('.')
@@ -2941,6 +2986,11 @@ let queryValues : string -> string -> string list option
                     |> List.tryFind (fun (name, _) -> name = fieldName))
         | _ ->
             None
+
+    let tryGetRecordFieldHoverInfo doc line character =
+        tryGetRecordFieldAtPosition doc line character
+        |> Option.map (fun field -> field.Name, field.TypeText)
+        |> Option.orElseWith (fun () -> tryGetMemberAccessHoverInfo doc line character)
 
     let private spanContainsPosition (span: Span) (line: int) (character: int) =
         let line1 = line + 1

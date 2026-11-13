@@ -45,3 +45,10 @@ let Env = asEnvironment { ScriptName = None; Arguments = [] }
 
     let inferProgramWithRegistrationAndLocalVariableTypes registration program =
         TypeInfer.inferProgramWithRegistrationAndLocalVariableTypes registration (withLspEnvironmentPrelude program)
+
+    let parseProgramWithRecordFieldLabels sourcePath sourceText =
+        let rootDirectory = resolveRootDirectory sourcePath
+        IncludeResolver.parseProgramFromSourceWithIncludesAndRecordFieldLabels rootDirectory sourcePath sourceText
+
+    let inferProgramWithRegistrationAndTypes registration program =
+        TypeInfer.inferProgramWithRegistrationAndTypes registration (withLspEnvironmentPrelude program)

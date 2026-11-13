@@ -66,10 +66,16 @@ module LspModel =
           BindingKind: LocalBindingKind
           AnnotationType: string option }
 
+    type RecordFieldInfo =
+        { Name: string
+          TypeText: string
+          Definition: Span option }
+
     type DocumentState =
         { SourcePath: string
           Text: string
           Symbols: TopLevelSymbol list
+          RecordFields: Map<Span, RecordFieldInfo>
           RecordParameterFields: Map<string, (string * string) list>
           ParameterTypeTargets: Map<string, string>
           FunctionParameters: Map<string, string list>

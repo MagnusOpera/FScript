@@ -60,12 +60,20 @@ module Parser =
         | BoolLit v -> LBool v
         | _ -> raise (ParseException { Message = "Expected literal"; Span = t.Span })
 
-    let rec private parseProgramWithSourceNameAndOrigin (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Program =
+    let rec private parseProgramWithSourceNameAndOrigin (captureFieldLabels: (Span -> Token list -> unit) option) (sourceName: string option) (startLine: int) (startColumn: int) (src: string) : Program =
         let tokens = Lexer.tokenizeArrayWithSourceNameAndOrigin sourceName startLine startColumn src
         let stream = TokenStream(tokens)
 
+        let fieldLabels () = captureFieldLabels |> Option.map (fun _ -> ResizeArray<Token>())
+        let addFieldLabel labels token =
+            labels |> Option.iter (fun (items: ResizeArray<Token>) -> items.Add token)
+        let recordFieldLabels span labels =
+            match captureFieldLabels, labels with
+            | Some capture, Some (items: ResizeArray<Token>) -> capture span (List.ofSeq items)
+            | _ -> ()
+
         let parseSingleExpression (originLine: int) (originColumn: int) (exprText: string) =
-            let parsed = parseProgramWithSourceNameAndOrigin sourceName originLine originColumn exprText
+            let parsed = parseProgramWithSourceNameAndOrigin captureFieldLabels sourceName originLine originColumn exprText
             match parsed with
             | [ SExpr expr ] -> expr
             | _ ->
@@ -375,6 +383,7 @@ module Parser =
                 if stream.Match(Indent) then
                     hasOuterIndent <- true
 
+            let labels = fieldLabels ()
             let parseRecordDecl () =
                 let lbIndex = stream.Index
                 let lb = stream.Expect(LBrace, "Expected '{' in record type declaration")
@@ -391,6 +400,7 @@ module Parser =
                     stream.SkipNewlines()
                     stream.Expect(Colon, "Expected ':' after field name") |> ignore
                     let fieldType = parseTypeRef()
+                    addFieldLabel labels fieldTok
                     fields.Add(fieldName, fieldType)
                     fieldTok.Span.Start.Column
                 let firstFieldColumn = parseField()
@@ -478,7 +488,9 @@ module Parser =
                     | [ modulePath; memberName ] when not (System.String.IsNullOrWhiteSpace modulePath) && not (System.String.IsNullOrWhiteSpace memberName) ->
                         { ModulePath = modulePath; MemberName = memberName; Span = attribute.Span }
                     | _ -> raise (ParseException { Message = "Import requires module path and member name: [<Import(\"module/path\", \"Member\")>]"; Span = attribute.Span }))
-            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Import = import; Span = mkSpanFrom typeTok.Span endSpan }
+            let span = mkSpanFrom typeTok.Span endSpan
+            recordFieldLabels span labels
+            SType { Name = name; IsRecursive = isRec; Fields = fields; Cases = cases; Import = import; Span = span }
 
         and parsePattern () : Pattern =
             stream.SkipNewlines()
@@ -967,8 +979,10 @@ module Parser =
                         | Some updateExpr -> updateExpr
                         | None ->
                             let fields = ResizeArray<string * Expr>()
+                            let labels = fieldLabels ()
                             let parseField () =
                                 let nameTok = stream.ExpectIdent("Expected field name in record literal")
+                                addFieldLabel labels nameTok
                                 let name =
                                     match nameTok.Kind with
                                     | Ident n -> n
@@ -994,7 +1008,9 @@ module Parser =
                             let rb = stream.Expect(RBrace, "Expected '}' in record literal")
                             if not (hasNonLayoutTokenBeforeOnSameLine rbIndex rb.Span.Start.Line) then
                                 raise (ParseException { Message = "Closing '}' cannot be on its own line; keep it with the last entry"; Span = rb.Span })
-                            ERecord(fields |> Seq.toList, mkSpanFrom lb.Span rb.Span)
+                            let span = mkSpanFrom lb.Span rb.Span
+                            recordFieldLabels span labels
+                            ERecord(fields |> Seq.toList, span)
             | Let ->
                 parseLetExpr()
             | Fun ->
@@ -1710,7 +1726,14 @@ module Parser =
         program |> Seq.toList
 
     let parseProgramWithSourceName (sourceName: string option) (src: string) : Program =
-        parseProgramWithSourceNameAndOrigin sourceName 1 1 src
+        parseProgramWithSourceNameAndOrigin None sourceName 1 1 src
+
+    /// Records the identifier spans of declared and constructed nominal record fields.
+    let parseProgramWithRecordFieldLabels sourceName src =
+        let labels = System.Collections.Generic.Dictionary<Span, Token list>()
+        let capture span fields = labels[span] <- fields
+        let program = parseProgramWithSourceNameAndOrigin (Some capture) sourceName 1 1 src
+        program, labels |> Seq.map (fun pair -> pair.Key, pair.Value) |> Map.ofSeq
 
     let parseProgram (src: string) : Program =
         parseProgramWithSourceName None src
