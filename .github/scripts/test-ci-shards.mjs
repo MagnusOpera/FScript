@@ -71,7 +71,7 @@ test('multiple selections retain diagnostics and cannot mask an earlier failure'
     fs.copyFileSync('.build/ci-shards.json', path.join(fixture, '.build/ci-shards.json'));
     fs.writeFileSync(path.join(fixture, '.build/run-terrabuild.sh'), `
 mkdir -p .terrabuild
-printf '%s' "$1" > .terrabuild/run.log
+printf '%s' "$1" > terrabuild-debug.log
 if [ "$1" = test ]; then
   printf '{"selection":"test"}' > terrabuild-debug.json
   exit 7
@@ -84,7 +84,7 @@ printf '{"status":"success"}' > .terrabuild/result.json
     const read = file => fs.readFileSync(path.join(fixture, '.terrabuild/shards', file), 'utf8');
     assert.equal(read('1/terrabuild-debug.json'), '{"selection":"test"}');
     assert.equal(read('2/result.json'), '{"status":"success"}');
-    assert.equal(read('2/run.log'), 'test_ffi_managed');
+    assert.equal(read('2/terrabuild-debug.log'), 'test_ffi_managed');
     assert.ok(!fs.existsSync(path.join(fixture, '.terrabuild/shards/2/terrabuild-debug.json')),
       'A later startup failure must not inherit diagnostics from the previous selection.');
   } finally {

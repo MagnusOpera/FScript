@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Restore animated progress in local Terrabuild builds and use Terrabuild’s diagnostic logs in CI.
+
 ## [0.91.0]
 
 - Run the FScript CLI and language server on .NET 11 and target .NET 11 when compiling scripts to .NET or C#.

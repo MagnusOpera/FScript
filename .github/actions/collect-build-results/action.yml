@@ -36,7 +36,6 @@ runs:
         name: terrabuild-logs-${{ inputs.suffix }}
         path: |
           .terrabuild/result.json
-          .terrabuild/run.log
           .terrabuild/shards/
           terrabuild-debug.*
           ~/.terrabuild/cache/**/status

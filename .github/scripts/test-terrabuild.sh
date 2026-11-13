@@ -16,6 +16,10 @@ cat > "$fixture/bin/terrabuild" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$TB_TEST_ARGS"
+if [[ -p /dev/fd/1 ]]; then
+    echo 'Terrabuild stdout was piped' >&2
+    exit 1
+fi
 echo 'Terrabuild test output'
 report=
 while [[ $# -gt 0 ]]; do
@@ -45,7 +49,7 @@ run_build() {
 }
 
 if ! run_build success; then cat "$fixture/log"; exit 1; fi
-grep -qx 'Terrabuild test output' "$fixture/repo/.terrabuild/run.log"
+grep -qx 'Terrabuild test output' "$fixture/log"
 grep -qx '{"status":"success"}' "$fixture/repo/.terrabuild/result.json"
 cat > "$fixture/expected-args" <<'ARGS'
 run
@@ -91,7 +95,7 @@ for result in failed-graph failed-process missing-report; do
         echo "ERROR: make build accepted $result." >&2
         exit 1
     fi
-    grep -qx 'Terrabuild test output' "$fixture/repo/.terrabuild/run.log"
+    grep -qx 'Terrabuild test output' "$fixture/log"
 done
 rm "$fixture/bin/terrabuild"
 if run_build success; then

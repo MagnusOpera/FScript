@@ -17,7 +17,7 @@ for (const [index, selection] of shard.runs.entries()) {
   const destination = path.join('.terrabuild/shards', String(index + 1));
   fs.rmSync(destination, { recursive: true, force: true });
   // Do not attribute diagnostics from an earlier selection to a failed startup.
-  const diagnostics = ['.terrabuild/result.json', '.terrabuild/run.log', 'terrabuild-debug.json', 'terrabuild-debug.log'];
+  const diagnostics = ['.terrabuild/result.json', 'terrabuild-debug.json', 'terrabuild-debug.log'];
   for (const file of diagnostics) fs.rmSync(file, { force: true });
   const result = spawnSync('bash', ['.build/run-terrabuild.sh', ...args], { stdio: 'inherit' });
   fs.mkdirSync(destination, { recursive: true });
