@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix Go to Definition for function usages in pipelines followed by a lambda.
+
 ## [0.92.1]
 
 - Fix VS Code language server startup by requesting the .NET 11 runtime.

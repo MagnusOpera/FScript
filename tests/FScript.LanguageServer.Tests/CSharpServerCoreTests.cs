@@ -1346,6 +1346,48 @@ let unwrap tokens =
         }
     }
 
+    [TestCase("fibonacci", "fib |>")]
+    [TestCase("fibonacci", "fib (n - 1)")]
+    [TestCase("quicksort", "quicksort input")]
+    public void CSharp_server_definition_navigates_recursive_function_usages(string sample, string usage)
+    {
+        var samplePath = Path.Combine(FindRepoRoot(), "samples", sample + ".fss");
+        var source = File.ReadAllText(samplePath);
+        var uri = new Uri(samplePath).AbsoluteUri;
+        var position = FindTokenPosition(source, usage, false);
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri,
+                    ["languageId"] = "fscript",
+                    ["version"] = 1,
+                    ["text"] = source
+                }
+            });
+            LspClient.SendRequest(client, 1_000, "textDocument/definition", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri },
+                ["position"] = new JsonObject { ["line"] = position.line, ["character"] = position.character }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg =>
+                msg["id"] is JsonValue id && id.TryGetValue<int>(out var number) && number == 1_000);
+
+            var result = response["result"] as JsonObject ?? throw new Exception("Expected definition location.");
+            Assert.That(result["uri"]?.GetValue<string>(), Is.EqualTo(uri));
+            Assert.That(result["range"]?["start"]?["line"]?.GetValue<int>(), Is.EqualTo(0));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
     [Test]
     public void CSharp_server_definition_navigates_local_parameter_usage_to_parameter_declaration()
     {

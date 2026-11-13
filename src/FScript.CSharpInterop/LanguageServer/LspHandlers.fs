@@ -909,7 +909,18 @@ module LspHandlers =
                         loc["range"] <- toLspRange sym.Span
                         LspProtocol.sendResponse idNode (Some loc)
                     | None ->
-                        if isLikelyMatchPatternDeclarationContextAtCursor () || isLikelyLetDeclarationContextAtCursor () then
+                        match tryResolveLocalDefinitionAtPosition doc line character with
+                        | Some declSpan ->
+                            lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                            logDebug $"resolved via AST local-definition map decl=({declSpan.Start.Line},{declSpan.Start.Column})"
+                            let loc = JsonObject()
+                            let targetUri =
+                                tryUriFromSpanFile uri declSpan
+                                |> Option.defaultValue uri
+                            loc["uri"] <- JsonValue.Create(targetUri)
+                            loc["range"] <- toLspRange declSpan
+                            LspProtocol.sendResponse idNode (Some loc)
+                        | None when isLikelyMatchPatternDeclarationContextAtCursor () || isLikelyLetDeclarationContextAtCursor () ->
                             let declarationByLetLine =
                                 match getLineText doc.Text line with
                                 | Some lineText ->
@@ -972,24 +983,24 @@ module LspHandlers =
                                     lastDefinitionRequest <- None
                                     logDebug "declaration-like click context; returning no definition"
                                     LspProtocol.sendResponse idNode None
-                        else
-                            match tryResolveLocalDefinitionAtPosition doc line character with
-                            | Some declSpan ->
+                        | None ->
+                            logDebug "AST local-definition map miss"
+                            match tryResolveLocalBindingAtPosition doc line character with
+                            | Some localBinding ->
                                 lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                logDebug $"resolved via AST local-definition map decl=({declSpan.Start.Line},{declSpan.Start.Column})"
+                                logDebug $"resolved via local-binding fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
                                 let loc = JsonObject()
                                 let targetUri =
-                                    tryUriFromSpanFile uri declSpan
+                                    tryUriFromSpanFile uri localBinding.DeclSpan
                                     |> Option.defaultValue uri
                                 loc["uri"] <- JsonValue.Create(targetUri)
-                                loc["range"] <- toLspRange declSpan
+                                loc["range"] <- toLspRange localBinding.DeclSpan
                                 LspProtocol.sendResponse idNode (Some loc)
                             | None ->
-                                logDebug "AST local-definition map miss"
-                                match tryResolveLocalBindingAtPosition doc line character with
+                                match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
                                 | Some localBinding ->
                                     lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                    logDebug $"resolved via local-binding fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
+                                    logDebug $"resolved via record-field fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
                                     let loc = JsonObject()
                                     let targetUri =
                                         tryUriFromSpanFile uri localBinding.DeclSpan
@@ -998,102 +1009,90 @@ module LspHandlers =
                                     loc["range"] <- toLspRange localBinding.DeclSpan
                                     LspProtocol.sendResponse idNode (Some loc)
                                 | None ->
-                                    match tryResolveLocalBindingFromRecordFieldAssignmentAtPosition doc line character with
-                                    | Some localBinding ->
+                                    let localSymbol = tryResolveSymbol doc line character
+                                    let wordAtCursor = tryGetWordAtOrAdjacentPosition doc.Text line character
+
+                                    let symbolAndUri =
+                                        match localSymbol with
+                                        | Some sym ->
+                                            match tryUriFromSpanFile uri sym.Span with
+                                            | Some targetUri -> Some (targetUri, sym)
+                                            | None -> Some (uri, sym)
+                                        | None ->
+                                            match wordAtCursor with
+                                            | Some word ->
+                                                documents
+                                                |> Seq.tryPick (fun kv ->
+                                                    kv.Value.Symbols
+                                                    |> List.tryFind (fun s -> s.Name = word)
+                                                    |> Option.map (fun s -> kv.Key, s))
+                                            | None -> None
+
+                                    match symbolAndUri with
+                                    | Some (targetUri, sym) ->
                                         lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                        logDebug $"resolved via record-field fallback name={localBinding.Name} decl=({localBinding.DeclSpan.Start.Line},{localBinding.DeclSpan.Start.Column})"
+                                        logDebug $"resolved via symbol lookup name={sym.Name} decl=({sym.Span.Start.Line},{sym.Span.Start.Column})"
                                         let loc = JsonObject()
-                                        let targetUri =
-                                            tryUriFromSpanFile uri localBinding.DeclSpan
-                                            |> Option.defaultValue uri
                                         loc["uri"] <- JsonValue.Create(targetUri)
-                                        loc["range"] <- toLspRange localBinding.DeclSpan
+                                        loc["range"] <- toLspRange sym.Span
                                         LspProtocol.sendResponse idNode (Some loc)
                                     | None ->
-                                        let localSymbol = tryResolveSymbol doc line character
-                                        let wordAtCursor = tryGetWordAtOrAdjacentPosition doc.Text line character
+                                        let injectedDefinition =
+                                            match wordAtCursor with
+                                            | Some word ->
+                                                let candidates =
+                                                    if word.Contains('.') then
+                                                        [ word; word.Split('.') |> Array.last ]
+                                                    else
+                                                        [ word ]
 
-                                        let symbolAndUri =
-                                            match localSymbol with
-                                            | Some sym ->
-                                                match tryUriFromSpanFile uri sym.Span with
-                                                | Some targetUri -> Some (targetUri, sym)
-                                                | None -> Some (uri, sym)
+                                                candidates
+                                                |> List.tryPick (fun candidate ->
+                                                    doc.InjectedFunctionDefinitions
+                                                    |> Map.tryFind candidate
+                                                    |> Option.map (fun target -> candidate, target))
                                             | None ->
-                                                match wordAtCursor with
-                                                | Some word ->
-                                                    documents
-                                                    |> Seq.tryPick (fun kv ->
-                                                        kv.Value.Symbols
-                                                        |> List.tryFind (fun s -> s.Name = word)
-                                                        |> Option.map (fun s -> kv.Key, s))
-                                                | None -> None
+                                                None
 
-                                        match symbolAndUri with
-                                        | Some (targetUri, sym) ->
+                                        match injectedDefinition with
+                                        | Some (_, (targetUri, targetSpan)) ->
                                             lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                            logDebug $"resolved via symbol lookup name={sym.Name} decl=({sym.Span.Start.Line},{sym.Span.Start.Column})"
+                                            logDebug $"resolved via injected definition decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
                                             let loc = JsonObject()
                                             loc["uri"] <- JsonValue.Create(targetUri)
-                                            loc["range"] <- toLspRange sym.Span
+                                            loc["range"] <- toLspRange targetSpan
                                             LspProtocol.sendResponse idNode (Some loc)
                                         | None ->
-                                            let injectedDefinition =
-                                                match wordAtCursor with
-                                                | Some word ->
-                                                    let candidates =
-                                                        if word.Contains('.') then
-                                                            [ word; word.Split('.') |> Array.last ]
-                                                        else
-                                                            [ word ]
-
-                                                    candidates
-                                                    |> List.tryPick (fun candidate ->
-                                                        doc.InjectedFunctionDefinitions
-                                                        |> Map.tryFind candidate
-                                                        |> Option.map (fun target -> candidate, target))
+                                            match tryResolveTypeTargetAtPosition doc line character with
+                                            | Some typeName ->
+                                                match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
+                                                | Some typeSym ->
+                                                    lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
+                                                    logDebug $"resolved via local type definition name={typeSym.Name} decl=({typeSym.Span.Start.Line},{typeSym.Span.Start.Column})"
+                                                    let loc = JsonObject()
+                                                    let targetUri =
+                                                        tryUriFromSpanFile uri typeSym.Span
+                                                        |> Option.defaultValue uri
+                                                    loc["uri"] <- JsonValue.Create(targetUri)
+                                                    loc["range"] <- toLspRange typeSym.Span
+                                                    LspProtocol.sendResponse idNode (Some loc)
                                                 | None ->
-                                                    None
-
-                                            match injectedDefinition with
-                                            | Some (_, (targetUri, targetSpan)) ->
-                                                lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                                logDebug $"resolved via injected definition decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
-                                                let loc = JsonObject()
-                                                loc["uri"] <- JsonValue.Create(targetUri)
-                                                loc["range"] <- toLspRange targetSpan
-                                                LspProtocol.sendResponse idNode (Some loc)
-                                            | None ->
-                                                match tryResolveTypeTargetAtPosition doc line character with
-                                                | Some typeName ->
-                                                    match doc.Symbols |> List.tryFind (fun s -> s.Kind = 5 && s.Name = typeName) with
-                                                    | Some typeSym ->
+                                                    match tryFindInjectedTypeDefinition typeName with
+                                                    | Some (targetUri, targetSpan) ->
                                                         lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                                        logDebug $"resolved via local type definition name={typeSym.Name} decl=({typeSym.Span.Start.Line},{typeSym.Span.Start.Column})"
+                                                        logDebug $"resolved via injected type definition name={typeName} decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
                                                         let loc = JsonObject()
-                                                        let targetUri =
-                                                            tryUriFromSpanFile uri typeSym.Span
-                                                            |> Option.defaultValue uri
                                                         loc["uri"] <- JsonValue.Create(targetUri)
-                                                        loc["range"] <- toLspRange typeSym.Span
+                                                        loc["range"] <- toLspRange targetSpan
                                                         LspProtocol.sendResponse idNode (Some loc)
                                                     | None ->
-                                                        match tryFindInjectedTypeDefinition typeName with
-                                                        | Some (targetUri, targetSpan) ->
-                                                            lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
-                                                            logDebug $"resolved via injected type definition name={typeName} decl=({targetSpan.Start.Line},{targetSpan.Start.Column})"
-                                                            let loc = JsonObject()
-                                                            loc["uri"] <- JsonValue.Create(targetUri)
-                                                            loc["range"] <- toLspRange targetSpan
-                                                            LspProtocol.sendResponse idNode (Some loc)
-                                                        | None ->
-                                                            lastDefinitionRequest <- None
-                                                            logDebug $"definition miss for type target name={typeName}"
-                                                            LspProtocol.sendResponse idNode None
-                                                | None ->
-                                                    lastDefinitionRequest <- None
-                                                    logDebug "definition miss"
-                                                    LspProtocol.sendResponse idNode None
+                                                        lastDefinitionRequest <- None
+                                                        logDebug $"definition miss for type target name={typeName}"
+                                                        LspProtocol.sendResponse idNode None
+                                            | None ->
+                                                lastDefinitionRequest <- None
+                                                logDebug "definition miss"
+                                                LspProtocol.sendResponse idNode None
         | _ ->
             lastDefinitionRequest <- None
             LspProtocol.sendResponse idNode None
