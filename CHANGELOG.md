@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.4]
+
 - Show record field types on hover and navigate from record literals to field declarations in VS Code.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.92.3...0.92.4
 
 ## [0.92.3]
 
