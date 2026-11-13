@@ -101,6 +101,7 @@ function loadExtension({ initialize = async () => {}, enabled = true, folders, c
   }
   class LanguageClient {
     constructor(id, name, serverOptions, clientOptions) {
+      this.serverOptions = serverOptions;
       this.options = clientOptions;
       this.stopped = false;
       clients.push(this);
@@ -176,6 +177,22 @@ test('activation uses a logging channel and registers only disposables', async (
   }
   await harness.extension.deactivate();
   assert.equal(harness.clients[0].stopped, true);
+});
+
+test('activation acquires the runtime targeted by the packaged language server', async () => {
+  const project = fs.readFileSync(path.join(extensionPath, '../src/FScript.LanguageServer/FScript.LanguageServer.csproj'), 'utf8');
+  const [, version] = project.match(/<TargetFramework>net(\d+\.\d+)<\/TargetFramework>/);
+  const harness = loadExtension();
+  const dotnetPath = '/acquired/dotnet';
+  const requests = [];
+  harness.vscode.commands.executeCommand = async (command, options) => {
+    requests.push([command, { ...options }]);
+    return { dotnetPath };
+  };
+  await harness.extension.activate(harness.context);
+  assert.deepEqual(requests, [['dotnet.acquire', { version, requestingExtensionId: 'MagnusOpera.fscript' }]]);
+  assert.equal(harness.clients[0].serverOptions.run.command, dotnetPath);
+  await harness.extension.deactivate();
 });
 
 test('activation stays pending and shows starting until initialization completes', async () => {

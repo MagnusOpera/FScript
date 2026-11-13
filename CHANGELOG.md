@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix VS Code language server startup by requesting the .NET 11 runtime.
+
 ## [0.92.0]
 
 - Restore animated progress in local Terrabuild builds and use Terrabuild’s diagnostic logs in CI.

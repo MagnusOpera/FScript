@@ -58,7 +58,7 @@ async function resolveDotnetCommand(context) {
   const requestingExtensionId = `${context.extension.packageJSON.publisher}.${context.extension.packageJSON.name}`;
   try {
     const runtime = await vscode.commands.executeCommand('dotnet.acquire', {
-      version: '10.0',
+      version: '11.0',
       requestingExtensionId
     });
     if (runtime && runtime.dotnetPath) {
