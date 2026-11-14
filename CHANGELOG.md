@@ -4,7 +4,11 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.92.5]
+
 - Fold more script-defined constants and remove unreachable code in C# and .NET builds.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.92.4...0.92.5
 
 ## [0.92.4]
 
