@@ -1,41 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <version>"
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: $0 <version> [changelog]"
   exit 2
 fi
 
 version="$1"
-section_header="## [${version}]"
+changelog="${2:-CHANGELOG.md}"
 
-if [[ ! -f CHANGELOG.md ]]; then
-  echo "ERROR: CHANGELOG.md not found."
+if [[ ! -f "$changelog" ]]; then
+  echo "ERROR: Changelog not found: $changelog" >&2
   exit 1
 fi
 
 section_body="$(
-  awk -v header="$section_header" '
-    BEGIN { in_section = 0 }
-    $0 == header { in_section = 1; next }
-    /^## \[/ && in_section { exit }
-    in_section { print }
-  ' CHANGELOG.md
+  awk -v version="[$version]" '
+    $0 == "### " version || $0 == "## " version { in_section = 1; next }
+    in_section && (/^## / || /^### \[[0-9]+\.[0-9]+\.[0-9]+(-next)?\]$/) { exit }
+    in_section && NF {
+      if (seen) printf "%s", blank
+      print
+      blank = ""
+      seen = 1
+      next
+    }
+    in_section && seen { blank = blank "\n" }
+  ' "$changelog"
 )"
 
 if [[ -z "${section_body//[[:space:]]/}" ]]; then
-  echo "ERROR: Missing or empty changelog section '${section_header}'."
-  echo "Add a '${section_header}' section to CHANGELOG.md before tagging."
+  echo "ERROR: Missing or empty changelog section '${version}'." >&2
+  echo "Add a patch section for ${version} to CHANGELOG.md before tagging." >&2
   exit 1
 fi
 
-if ! grep -q '^[[:space:]]*-\s\+' <<<"$section_body"; then
-  echo "ERROR: Section '${section_header}' must include at least one bullet line."
+if ! grep -Eq '^[[:space:]]*-[[:space:]]+' <<<"$section_body"; then
+  echo "ERROR: Section '${version}' must include at least one bullet line." >&2
   exit 1
 fi
 
 if ! grep -q '\*\*Full Changelog\*\*:' <<<"$section_body"; then
-  echo "ERROR: Section '${section_header}' must include a '**Full Changelog**' compare link."
+  echo "ERROR: Section '${version}' must include a '**Full Changelog**' compare link." >&2
   exit 1
 fi
 

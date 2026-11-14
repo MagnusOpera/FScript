@@ -39,7 +39,7 @@ Targeted test suites (when working on specific areas):
 - Write entries in user-facing terms (what changed), not implementation detail.
 - Keep one-line bullet entries adjacent with no blank lines between them; use exactly one blank line around headings and compare links.
 - After editing `CHANGELOG.md`, run `make format-changelog`; `make check-changelog-format` checks spacing without changing files.
-- At release time, move unreleased entries to the versioned section and reset `Unreleased`.
+- At release time, move unreleased entries to a `### [X.Y.Z]` section under `## [X.Y]` and reset `Unreleased`.
 - Each released version section should end with a compare link:
   - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
 - When publishing the GitHub release, include that same compare link in the release notes body.
@@ -63,13 +63,13 @@ Follow this exact sequence for every release:
    - Optional preview mode: `make release-prepare version=X.Y.Z dryrun=true`
 2. Push commit and tag together: `git push origin main --follow-tags`.
 3. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-4. Confirm the draft notes are sourced from `CHANGELOG.md` `## [X.Y.Z]` (including compare link).
+4. Confirm the draft notes are sourced from `CHANGELOG.md` `### [X.Y.Z]` (including compare link).
 5. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and draft release creation.
 - Do not bypass the draft step.
-- Tag workflow must fail if `CHANGELOG.md` has no non-empty `## [X.Y.Z]` section with bullets and compare link.
+- Tag workflow must fail if `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
 - `make release-prepare` supports `X.Y.Z` only.
 

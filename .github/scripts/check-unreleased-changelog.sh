@@ -30,7 +30,7 @@ if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-if ! printf '%s\n' "${CHANGED_FILES[@]}" | grep -qx 'CHANGELOG.md'; then
+if git diff --quiet "$DIFF_RANGE" -- CHANGELOG.md; then
   if [[ "$REQUIRE_CHANGELOG_ALWAYS" == "true" ]]; then
     echo "ERROR: CHANGELOG.md must be updated in every commit."
     exit 1

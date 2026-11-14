@@ -34,17 +34,14 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           routeBasePath: 'manual',
-          // Release builds can temporarily make the new snapshot the default. Regular builds
-          // keep Next as the default while the newest numbered snapshot remains maintained.
-          lastVersion: process.env.FSCRIPT_DOCS_LAST_VERSION ?? 'current',
+          lastVersion: latestReleasedVersion,
           versions: {
             current: {
               label: 'Next',
               banner: 'unreleased',
+              path: 'next',
             },
-            [latestReleasedVersion]: {
-              banner: 'none',
-            },
+            ...(versions.length > 0 ? {[latestReleasedVersion]: {banner: 'none'}} : {}),
           },
           editUrl: 'https://github.com/MagnusOpera/FScript/tree/main/website/',
         },
@@ -80,6 +77,7 @@ const config: Config = {
           type: 'docsVersionDropdown',
           position: 'left',
           dropdownActiveClassDisabled: true,
+          versions: ['current', ...versions],
         },
         {
           to: '/sandbox',

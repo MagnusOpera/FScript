@@ -14,7 +14,7 @@ npm run serve
 npm run typecheck
 ```
 
-Create a new versioned docs snapshot:
+Update the docs snapshot for the latest patch in a release line:
 
 ```bash
 npm run version-docs -- X.Y.Z
@@ -22,6 +22,7 @@ npm run version-docs -- X.Y.Z
 
 ## Publishing
 
-- GitHub Actions deploys this site from the primary release workflow when a GitHub release is published.
-- Docs versions are created during `make release-prepare version=X.Y.Z`.
-- Regular website builds keep `Next` as the default, label it as unreleased, and treat the first entry in `versions.json` as the maintained release; release preparation can make that release the default with `FSCRIPT_DOCS_LAST_VERSION`.
+- The **Publish Website** GitHub Actions workflow deploys the site from `main`.
+- `make release-prepare version=X.Y.Z` snapshots the release's docs under `X.Y`. A patch replaces its release line's snapshot. A new release line retires the oldest snapshot once there are five.
+- The latest stable manual is the default at `/manual`. The version selector lists `Next` first, followed by the five latest stable lines. Unreleased docs live at `/manual/next`.
+- Each stable manual's **What's New** page shows the patch notes for its release line. The root changelog preserves the full release history.

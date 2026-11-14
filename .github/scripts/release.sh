@@ -9,6 +9,7 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
 fi
 
 version="$1"
+release_line="${version%.*}"
 dryrun="${2:-false}"
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -34,8 +35,8 @@ if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
   exit 1
 fi
 
-if grep -q "^## \[${version}\]$" CHANGELOG.md; then
-  echo "ERROR: CHANGELOG section '## [${version}]' already exists."
+if grep -Fxq "### [${version}]" CHANGELOG.md || grep -Fxq "## [${version}]" CHANGELOG.md; then
+  echo "ERROR: CHANGELOG section for ${version} already exists."
   exit 1
 fi
 
@@ -45,7 +46,7 @@ unreleased_body="$(
   awk -v header="$section_header" '
     BEGIN { in_section = 0 }
     $0 == header { in_section = 1; next }
-    /^## \[/ && in_section { exit }
+    /^## / && in_section { exit }
     in_section { print }
   ' CHANGELOG.md
 )"
@@ -55,7 +56,7 @@ if [[ -z "${unreleased_body//[[:space:]]/}" ]]; then
   exit 1
 fi
 
-if ! grep -q '^[[:space:]]*-\s\+' <<<"$unreleased_body"; then
+if ! grep -Eq '^[[:space:]]*-[[:space:]]+' <<<"$unreleased_body"; then
   echo "ERROR: Unreleased section must include at least one bullet."
   exit 1
 fi
@@ -113,46 +114,49 @@ awk '
     skip = 1
     next
   }
-  skip && /^## \[/ { skip = 0 }
+  skip && /^## / { skip = 0 }
   !skip { print }
 ' CHANGELOG.md > "$stripped_changelog"
 
 {
-  echo "## [${version}]"
+  echo "### [${version}]"
   echo ""
   printf "%s\n" "$unreleased_body"
   echo ""
   echo "$compare_link"
 } > "$new_section_file"
 
-awk -v section_file="$new_section_file" '
-  BEGIN { inserted = 0; skip_next_blank = 0 }
-  $0 == "## [Unreleased]" && inserted == 0 {
-    print
-    print ""
-    while ((getline line < section_file) > 0) {
-      print line
-    }
+awk -v version="$version" -v release_line="$release_line" -v section_file="$new_section_file" '
+  function insert_release(new_group, line) {
+    if (new_group) print "## [" release_line "]"
+    while ((getline line < section_file) > 0) print line
     close(section_file)
-    print ""
     inserted = 1
-    skip_next_blank = 1
-    next
   }
-  skip_next_blank == 1 && $0 == "" {
-    skip_next_blank = 0
-    next
+  BEGIN { split(version, target, ".") }
+  !inserted && /^## / {
+    if (in_group) insert_release(0)
+    in_group = $0 == "## [" release_line "]"
+  }
+  !inserted && /^## \[[0-9]+\.[0-9]+\]$/ {
+    split(substr($0, 5, length($0) - 5), current, ".")
+    if (current[1]+0 < target[1]+0 ||
+        (current[1]+0 == target[1]+0 && current[2]+0 < target[2]+0)) {
+      insert_release(1)
+    }
+  }
+  !inserted && in_group && /^### \[[0-9]+\.[0-9]+\.[0-9]+(-next)?\]$/ {
+    split(substr($0, 6, length($0) - 6), current, ".")
+    if (current[3]+0 < target[3]+0 || /-next\]$/) insert_release(0)
   }
   { print }
+  END { if (!inserted) insert_release(!in_group) }
 ' "$stripped_changelog" > "$updated_changelog"
 
 # Normalize both the extracted body and existing history before publication.
 "${repo_root}/.github/scripts/format-changelog.sh" "$updated_changelog"
 
-if ! grep -q "^## \[${version}\]$" "$updated_changelog"; then
-  echo "ERROR: Failed to materialize CHANGELOG section for ${version}."
-  exit 1
-fi
+"$repo_root/.github/scripts/extract-release-notes.sh" "$version" "$updated_changelog" >/dev/null
 
 if [[ "$dryrun" == "true" ]]; then
   echo "[DRY RUN] Would update CHANGELOG.md, commit and create annotated tag '${version}'."
@@ -169,12 +173,12 @@ if [[ -d website ]]; then
     exit 1
   fi
 
-  echo "Preparing website docs version ${version}..."
+  echo "Preparing website docs for ${release_line} from ${version}..."
   (
     cd website
     npm ci
     npm run version-docs -- "${version}"
-    FSCRIPT_DOCS_LAST_VERSION="${version}" npm run build
+    npm run build
   )
 fi
 

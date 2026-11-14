@@ -4,8 +4,4 @@ title: What's New
 slug: /whats-new
 ---
 
-For the complete history, see the full [CHANGELOG.md](https://github.com/MagnusOpera/FScript/blob/main/CHANGELOG.md) on GitHub.
-
-## Unreleased
-
-
+See [Unreleased in the changelog](https://github.com/MagnusOpera/FScript/blob/main/CHANGELOG.md#unreleased) for changes planned for the next release.

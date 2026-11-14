@@ -42,7 +42,7 @@ The extension uses .NET runtime acquisition via `.NET Install Tool` when needed 
 ## Related docs
 
 - Continue with [Language Tour](./language-tour).
-- Go deeper in [Language chapters](/manual/language/values-and-bindings).
+- Go deeper in [Language chapters](../language/values-and-bindings).
 
 ## Numeric signatures
 
