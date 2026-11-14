@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fold more script-defined constants and remove unreachable code in C# and .NET builds.
+
 ## [0.92.4]
 
 - Show record field types on hover and navigate from record literals to field declarations in VS Code.

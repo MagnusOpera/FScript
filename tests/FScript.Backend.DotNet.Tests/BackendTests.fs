@@ -148,6 +148,23 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    [<TestCase(true, "let zero = 2 - 2\n42 / zero", typeof<DivideByZeroException>)>]
+    [<TestCase(false, "let zero = 2 - 2\n42 / zero", typeof<DivideByZeroException>)>]
+    [<TestCase(true, "let minimum = 9223372036854775807 + 1\nminimum % (0 - 1)", typeof<OverflowException>)>]
+    [<TestCase(false, "let minimum = 9223372036854775807 + 1\nminimum % (0 - 1)", typeof<OverflowException>)>]
+    member _.``Constant propagation leaves reachable arithmetic failures at runtime`` (assemblyTarget: bool, source: string, exceptionType: System.Type) =
+        let program = Harness.compile source
+        let assembly =
+            if assemblyTarget then
+                let files = Harness.generate Harness.options program
+                Assembly.Load((files |> List.find (fun file -> file.RelativePath.EndsWith(".dll"))).Content)
+            else Harness.csharpAssembly [] program
+        let run = ((assembly.GetType("Generated.Program") |> nonNull).GetMethod("Run") |> nonNull)
+        let error = Assert.Throws<TargetInvocationException>(fun () -> run.Invoke(null, [||]) |> ignore) |> nonNull
+        let rec cause (error: exn) =
+            match error.InnerException with null -> error | inner -> cause inner
+        Assert.That(cause error, Is.TypeOf(exceptionType))
+
     [<TestCase("SdkTask.await (SdkTask.fromResult (fun value -> value+2)) 40", "42")>]
     [<TestCase("SdkTask.await (SdkTask.continueWith (fun value -> value+1) (SdkTask.fromResult 41))", "42")>]
     [<TestCase("SdkTask.await (SdkTask.whenAll (List.fold (fun total value -> total+value) 0) [SdkTask.fromResult 20;SdkTask.fromResult 22])", "42")>]

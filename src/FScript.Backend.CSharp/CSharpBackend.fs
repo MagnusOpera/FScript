@@ -735,7 +735,14 @@ module CSharpBackend =
                             | Lir.IntRemainder -> "%" | Lir.NumericLessThan -> "<" | Lir.NumericGreaterThan -> ">"
                             | Lir.NumericLessThanOrEqual -> "<=" | Lir.NumericGreaterThanOrEqual -> ">="
                             | Lir.BooleanAnd -> "&&" | Lir.BooleanOr -> "||" | Lir.StructuralEqual -> "="
-                        if op = "=" then equal left.Type (emit left) (coerce right.Type left.Type (emit right)) else $"({emit left} {op} {emit right})"
+                        match operation, left.Node, right.Node with
+                        // C# rejects these constant expressions. Keep the failure at execution time.
+                        | (Lir.IntDivide | Lir.NumericDivide | Lir.IntRemainder), _, Lir.Constant(Lir.Int 0L)
+                        | (Lir.IntDivide | Lir.NumericDivide | Lir.IntRemainder), Lir.Constant(Lir.Int Int64.MinValue), Lir.Constant(Lir.Int -1L) ->
+                            let methodName = if operation = Lir.IntRemainder then "IntRemainder" else "IntDivide"
+                            $"FsPure.{methodName}({emit left}, {emit right})"
+                        | _ when op = "=" -> equal left.Type (emit left) (coerce right.Type left.Type (emit right))
+                        | _ -> $"({emit left} {op} {emit right})"
                     | Lir.Tuple items ->
                         let itemTypes=match value.Type with TTuple items -> items | _ -> items |> List.map (fun (item: Lir.Expression) -> item.Type)
                         let args=List.map2 (fun t (item: Lir.Expression) -> coerce item.Type t (emit item)) itemTypes items |> String.concat comma

@@ -97,5 +97,8 @@ Version-1 `.fsir` artifacts require compiler and language versions, source metad
 
 When specialization replaces a captured local callback with its implementation, the specialized closure must capture every free symbol introduced by that replacement. Nested inlining must rename those symbols with their enclosing lexical bindings so separate invocations retain separate environments.
 
+A binding remains live while a reachable lifted function needs it, even when the containing expression has no direct load of that binding. After simplification removes a value reference, the compiler updates the lifted body and its capture lists before reachability analysis. Task continuation callbacks follow the same closure rules.
 
-Pure constant-local substitution retains bindings captured by nested functions, even when the containing expression has no direct load of that binding. Captured-reference metadata and lifted function bodies must stay consistent during simplification; task continuation callbacks follow the same closure rules.
+## Native constant propagation
+
+The C# and .NET backends can replace known scalar loads with literals and eliminate branches whose conditions are known. Reachable effects and failures retain their evaluation order. Values supplied by the host remain dynamic even when an FFI purity contract permits removing an unused call. See [the backend constant propagation rules](dotnet-backends.md#constant-propagation).

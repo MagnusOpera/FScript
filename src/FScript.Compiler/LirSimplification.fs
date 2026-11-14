@@ -27,41 +27,48 @@ module LirSimplification =
             | _ -> 0
         size expression
 
-    let private mapExpression (mapper: Lir.Expression -> Lir.Expression) (expression: Lir.Expression) =
-        let recurse = mapper
-        let withNode node = { expression with Node = node }
-        match expression.Node with
-        | Lir.CallClosure(fn, argument) -> withNode (Lir.CallClosure(recurse fn, recurse argument))
-        | Lir.PipeClosure(argument, fn) -> withNode (Lir.PipeClosure(recurse argument, recurse fn))
-        | Lir.TailCallClosure(fn, argument) -> withNode (Lir.TailCallClosure(recurse fn, recurse argument))
-        | Lir.TailPipeClosure(argument, fn) -> withNode (Lir.TailPipeClosure(recurse argument, recurse fn))
-        | Lir.Branch(a, b, c) -> withNode (Lir.Branch(recurse a, recurse b, recurse c))
-        | Lir.Operation(operation, values) -> withNode (Lir.Operation(operation, List.map recurse values))
-        | Lir.Tuple values -> withNode (Lir.Tuple(List.map recurse values))
-        | Lir.List values -> withNode (Lir.List(List.map recurse values))
-        | Lir.Record fields -> withNode (Lir.Record(fields |> List.map (fun (name, value) -> name, recurse value)))
-        | Lir.FieldGet(target, name) -> withNode (Lir.FieldGet(recurse target, name))
-        | Lir.SomeValue value -> withNode (Lir.SomeValue(recurse value))
-        | Lir.Cons(left, right) -> withNode (Lir.Cons(recurse left, recurse right))
-        | Lir.Append(left, right) -> withNode (Lir.Append(recurse left, recurse right))
-        | Lir.Let(id, name, recursive, binding, body) -> withNode (Lir.Let(id, name, recursive, recurse binding, recurse body))
-        | Lir.LetRecursiveGroup(bindings, body) -> withNode (Lir.LetRecursiveGroup(bindings |> List.map (fun (id, name, valueType, value) -> id, name, valueType, recurse value), recurse body))
-        | Lir.Fail value -> withNode (Lir.Fail(recurse value))
-        | Lir.DecisionTree(target, cases) -> withNode (Lir.DecisionTree(recurse target, cases |> List.map (fun item -> { item with Guard = Option.map recurse item.Guard; Body = recurse item.Body })))
-        | Lir.Range(left, right) -> withNode (Lir.Range(recurse left, recurse right))
-        | Lir.RecordUpdate(target, fields) -> withNode (Lir.RecordUpdate(recurse target, fields |> List.map (fun (name, value) -> name, recurse value)))
-        | Lir.RecordConvert(target, targetType) -> withNode (Lir.RecordConvert(recurse target, targetType))
-        | Lir.IndexGet(target, index) -> withNode (Lir.IndexGet(recurse target, recurse index))
-        | Lir.Interpolate parts -> withNode (Lir.Interpolate(parts |> List.map (function Lir.TextPart text -> Lir.TextPart text | Lir.ValuePart value -> Lir.ValuePart(recurse value))))
-        | Lir.UnionCase(typeName, caseName, payload) -> withNode (Lir.UnionCase(typeName, caseName, Option.map recurse payload))
-        | Lir.Map entries -> withNode (Lir.Map(entries |> List.map (function Lir.KeyValue(key, value) -> Lir.KeyValue(recurse key, recurse value) | Lir.Spread value -> Lir.Spread(recurse value))))
-        | Lir.ForEach(id, name, itemType, source, body) -> withNode (Lir.ForEach(id, name, itemType, recurse source, recurse body))
-        | _ -> expression
+    let private mapExpression = LirTraversal.mapChildren
+
+    let private validDivision (dividend: int64) (divisor: int64) =
+        divisor <> 0L && (divisor <> -1L || dividend <> System.Int64.MinValue)
+
+    let private fold operation left right =
+        match operation, left, right with
+        | (Lir.IntAdd | Lir.NumericAdd), Lir.Int a, Lir.Int b -> Some(Lir.Int(a + b))
+        | (Lir.IntSubtract | Lir.NumericSubtract), Lir.Int a, Lir.Int b -> Some(Lir.Int(a - b))
+        | (Lir.IntMultiply | Lir.NumericMultiply), Lir.Int a, Lir.Int b -> Some(Lir.Int(a * b))
+        | (Lir.IntDivide | Lir.NumericDivide), Lir.Int a, Lir.Int b when validDivision a b -> Some(Lir.Int(a / b))
+        | Lir.IntRemainder, Lir.Int a, Lir.Int b when validDivision a b -> Some(Lir.Int(a % b))
+        | (Lir.FloatAdd | Lir.NumericAdd), Lir.Float a, Lir.Float b -> Some(Lir.Float(a + b))
+        | (Lir.FloatSubtract | Lir.NumericSubtract), Lir.Float a, Lir.Float b -> Some(Lir.Float(a - b))
+        | (Lir.FloatMultiply | Lir.NumericMultiply), Lir.Float a, Lir.Float b -> Some(Lir.Float(a * b))
+        | (Lir.FloatDivide | Lir.NumericDivide), Lir.Float a, Lir.Float b -> Some(Lir.Float(a / b))
+        | Lir.NumericLessThan, Lir.Int a, Lir.Int b -> Some(Lir.Bool(a < b))
+        | Lir.NumericGreaterThan, Lir.Int a, Lir.Int b -> Some(Lir.Bool(a > b))
+        | Lir.NumericLessThanOrEqual, Lir.Int a, Lir.Int b -> Some(Lir.Bool(a <= b))
+        | Lir.NumericGreaterThanOrEqual, Lir.Int a, Lir.Int b -> Some(Lir.Bool(a >= b))
+        | Lir.NumericLessThan, Lir.Float a, Lir.Float b -> Some(Lir.Bool(a < b))
+        | Lir.NumericGreaterThan, Lir.Float a, Lir.Float b -> Some(Lir.Bool(a > b))
+        | Lir.NumericLessThanOrEqual, Lir.Float a, Lir.Float b -> Some(Lir.Bool(a <= b))
+        | Lir.NumericGreaterThanOrEqual, Lir.Float a, Lir.Float b -> Some(Lir.Bool(a >= b))
+        | Lir.StructuralEqual, Lir.Float a, Lir.Float b -> Some(Lir.Bool(a = b))
+        | Lir.StructuralEqual, _, _ -> Some(Lir.Bool(left = right))
+        | _ -> None
+
+    /// Fold primitive operations only after their operands have been proven to be literals.
+    let foldPrimitive (value: Lir.Expression) =
+        match value.Node with
+        | Lir.Operation(operation, [{ Node = Lir.Constant left }; { Node = Lir.Constant right }]) ->
+            match fold operation left right with
+            // Non-finite results stay in the operation form accepted by LIR artifacts.
+            | Some(Lir.Float result) when not (System.Double.IsFinite result) -> value
+            | Some result -> { value with Node = Lir.Constant result }
+            | None -> value
+        | _ -> value
 
     let optimize (program: Lir.Program) =
         let program = LirAggregateElimination.optimize program
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
-        let declarations = program.Declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
         let effect = LirEffects.create program
 
         let rec substitute symbol replacement (expression: Lir.Expression) =
@@ -83,40 +90,83 @@ module LirSimplification =
                 mapExpression (fun child -> found <- found || capturedByClosure symbol child; child) expression |> ignore
                 found
 
-        let rec simplify (expression: Lir.Expression) =
-            let recurse = simplify
-            let value = mapExpression recurse expression
-            match value.Node with
-            | Lir.Branch({ Node = Lir.Constant(Lir.Bool true) }, whenTrue, _) -> whenTrue
-            | Lir.Branch({ Node = Lir.Constant(Lir.Bool false) }, _, whenFalse) -> whenFalse
-            | Lir.Let(id, _, false, binding, body) when body.Node = Lir.Load id -> binding
-            | Lir.Let(id, _, false, binding, body) when not (Set.contains id (LirOptimization.loadedSymbols body)) && effect binding = Pure -> body
-            | Lir.Let(id, _, false, binding, body) when replicable binding && effect binding = Pure && not (capturedByClosure id body) -> substitute id binding body |> recurse
-            | Lir.CallClosure({ Node = Lir.MakeClosure(functionId, _) }, argument)
-                when functions |> Map.tryFind functionId |> Option.exists (fun fn -> expressionSize fn.Body <= 18) ->
-                let fn = functions.[functionId]
-                { expression with Node = Lir.Let(fn.Parameter, "$inline", false, argument, fn.Body) } |> recurse
-            | Lir.PipeClosure(argument, { Node = Lir.MakeClosure(functionId, _) })
-                when functions |> Map.tryFind functionId |> Option.exists (fun fn -> expressionSize fn.Body <= 18) ->
-                let fn = functions.[functionId]
-                { expression with Node = Lir.Let(fn.Parameter, "$inline", false, argument, fn.Body) } |> recurse
-            | _ -> value
+        let rec simplify known (expression: Lir.Expression) =
+            let recurse = simplify known
+            let withNode node = { expression with Node = node }
+            match expression.Node with
+            | Lir.Load id ->
+                match Map.tryFind id known with
+                | Some literal -> withNode (Lir.Constant literal)
+                | None -> expression
+            | Lir.Branch(condition, whenTrue, whenFalse) ->
+                let condition = recurse condition
+                match condition.Node with
+                | Lir.Constant(Lir.Bool true) -> recurse whenTrue
+                | Lir.Constant(Lir.Bool false) -> recurse whenFalse
+                | _ -> withNode (Lir.Branch(condition, recurse whenTrue, recurse whenFalse))
+            | Lir.Operation((Lir.BooleanAnd | Lir.BooleanOr) as operation, [left; right]) ->
+                let left = recurse left
+                match left.Node with
+                | Lir.Constant(Lir.Bool value) ->
+                    if value = (operation = Lir.BooleanOr) then left else recurse right
+                | _ -> withNode (Lir.Operation(operation, [left; recurse right]))
+            | Lir.Let(id, name, false, binding, body) ->
+                let binding = recurse binding
+                let body =
+                    match binding.Node with
+                    | Lir.Constant literal -> simplify (Map.add id literal known) body
+                    | _ -> recurse body
+                match body.Node with
+                | Lir.Load loaded when loaded = id -> binding
+                | _ when not (Set.contains id (LirOptimization.loadedSymbols body)) && effect binding = Pure -> body
+                | _ when replicable binding && effect binding = Pure && not (capturedByClosure id body) ->
+                    substitute id binding body |> recurse
+                | _ -> withNode (Lir.Let(id, name, false, binding, body))
+            | _ ->
+                let value = mapExpression recurse expression |> foldPrimitive
+                match value.Node with
+                | Lir.CallClosure({ Node = Lir.MakeClosure(functionId, _) }, argument)
+                | Lir.PipeClosure(argument, { Node = Lir.MakeClosure(functionId, _) })
+                    when functions |> Map.tryFind functionId |> Option.exists (fun fn -> expressionSize fn.Body <= 18) ->
+                    let fn = functions.[functionId]
+                    withNode (Lir.Let(fn.Parameter, "$inline", false, argument, fn.Body)) |> recurse
+                | _ -> value
 
-        let optimizedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = simplify fn.Body })
-        let captureMap =
-            optimizedFunctions
-            |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber))
-            |> Map.ofList
-        let rec rewriteCaptures expression =
-            let value = mapExpression rewriteCaptures expression
+        // Populate facts in initialization order. A call, field read, or import
+        // can never enter this table merely because its type or contract is pure.
+        let mutable globals = Map.empty
+        let optimizedDeclarations =
+            program.Declarations |> List.map (fun declaration ->
+                let value = simplify globals declaration.Value
+                match value.Node with
+                | Lir.Constant literal when not declaration.IsRecursive ->
+                    globals <- Map.add declaration.Id literal globals
+                | _ -> ()
+                { declaration with Value = value })
+        let optimizedFunctions = program.Functions |> List.map (fun fn -> { fn with Body = simplify globals fn.Body })
+        let rec rewriteCaptures captureMap expression =
+            let value = mapExpression (rewriteCaptures captureMap) expression
             match value.Node with
             | Lir.MakeClosure(id, captures) -> { value with Node = Lir.MakeClosure(id, Map.tryFind id captureMap |> Option.defaultValue captures) }
             | _ -> value
+        let rec refreshCaptures (functions: Lir.Function list) =
+            let captureMap =
+                functions
+                |> List.map (fun fn -> fn.Id, (LirLowering.capturedReferences (Set.singleton fn.Parameter) fn.Body |> Set.toList |> List.sortBy Lir.symbolNumber))
+                |> Map.ofList
+            if functions |> List.forall (fun fn -> fn.Captures = captureMap.[fn.Id]) then functions, captureMap
+            else
+                functions
+                |> List.map (fun fn -> { fn with Captures = captureMap.[fn.Id]; Body = rewriteCaptures captureMap fn.Body })
+                |> refreshCaptures
+        let optimizedFunctions, captureMap = refreshCaptures optimizedFunctions
+        let rewrite = rewriteCaptures captureMap
         let optimized =
             { program with
-                Functions = optimizedFunctions |> List.map (fun fn -> { fn with Captures = captureMap.[fn.Id]; Body = rewriteCaptures fn.Body })
-                Declarations = program.Declarations |> List.map (fun declaration -> { declaration with Value = declaration.Value |> simplify |> rewriteCaptures })
-                Entry = program.Entry |> Option.map (simplify >> rewriteCaptures) }
+                Functions = optimizedFunctions
+                Declarations = optimizedDeclarations |> List.map (fun declaration -> { declaration with Value = rewrite declaration.Value })
+                Entry = program.Entry |> Option.map (simplify globals >> rewrite) }
+        let effect = LirEffects.create optimized
         let optimizedDeclarations = optimized.Declarations |> List.map (fun declaration -> declaration.Id, declaration) |> Map.ofList
         let optimizedFunctions = optimized.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         let reachableDeclarations = System.Collections.Generic.HashSet<Lir.SymbolId>()

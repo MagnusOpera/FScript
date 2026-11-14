@@ -13,7 +13,7 @@ These passes run automatically. There is no FScript CLI optimization-level switc
 | Transformation | C# project | .NET assembly |
 | --- | --- | --- |
 | Specialize reachable polymorphic uses | Yes | Yes |
-| Simplify constants, branches, aliases, and unused pure bindings in shared IR | Yes | Yes |
+| Propagate script-defined scalar constants and prune dead branches | Yes | Yes |
 | Use declared FFI purity and external-type guarantees | Yes | Yes |
 | Eliminate repeated proven-pure expressions | Yes | Yes |
 | Scalar-replace nonescaping internal records and forward compatible projections | Yes | Yes |
@@ -92,11 +92,24 @@ fibonacci 20
 
 The additions still need the call results, so this remains recursive. Mutual recursion is also not converted into a native loop by the current assembly pass. Do not assume arbitrary recursion is stack-safe in compiled output.
 
-## Collections and Boolean expressions
+## Constant propagation
+
+Both native targets fold scalar operations when the operands are known from FScript literals, including through local and top-level bindings.
+
+```fsharp
+let baseValue = 40
+let answer = baseValue + 2
+
+if answer = 42 then answer else raise "unexpected answer"
+```
+
+The compiler can emit `42` directly and remove the failure branch. It can also drop helpers used only by a removed branch. Short-circuiting still evaluates the left operand first and skips the right operand when the left operand determines the result. Reachable effects and arithmetic failures still run in source order.
+
+A scalar returned by FFI stays dynamic, including when the provider declares the call pure. For example, if `baseValue` comes from an FFI call, both `baseValue + 2` and the branch that tests its result stay dynamic.
+
+## Collections
 
 Known list callbacks can lower to typed loops and direct calls for mapping, iteration, folding, filtering, choosing, collecting, existence tests, and searches. This avoids some delegate machinery; operations that create changed immutable collections still allocate their results.
-
-Constant Boolean terms and branches are simplified when doing so preserves evaluation. A condition such as `condition && true` can become `condition`. Short-circuiting still skips the right operand when the left operand determines the result. An effectful or potentially failing expression cannot be dropped merely because a later term is constant.
 
 ## Common-subexpression elimination
 

@@ -147,22 +147,6 @@ module internal DotNetOptimization =
             match value.Node with
             | Lir.Load _ | Lir.Constant _ | Lir.MakeClosure _ | Lir.Intrinsic _ | Lir.TargetImport _ | Lir.HostExternal _ -> true
             | _ -> false
-        let fold (value: Lir.Expression) =
-            let constant=
-                match value.Node with
-                | Lir.Operation(operation,[{Node=Lir.Constant(Lir.Int a)};{Node=Lir.Constant(Lir.Int b)}]) ->
-                    match operation with
-                    | Lir.IntAdd | Lir.NumericAdd -> Some(Lir.Int(a+b))
-                    | Lir.IntSubtract | Lir.NumericSubtract -> Some(Lir.Int(a-b))
-                    | Lir.IntMultiply | Lir.NumericMultiply -> Some(Lir.Int(a*b))
-                    | Lir.NumericLessThan -> Some(Lir.Bool(a<b))
-                    | Lir.NumericGreaterThan -> Some(Lir.Bool(a>b))
-                    | Lir.NumericLessThanOrEqual -> Some(Lir.Bool(a<=b))
-                    | Lir.NumericGreaterThanOrEqual -> Some(Lir.Bool(a>=b))
-                    | Lir.StructuralEqual -> Some(Lir.Bool(a=b))
-                    | _ -> None
-                | _ -> None
-            match constant with Some constant -> {value with Node=Lir.Constant constant} | None -> value
         let specialized=System.Collections.Generic.Dictionary<Lir.FunctionId * (Lir.SymbolId * Lir.Expression) list,Lir.FunctionId>()
         let rec rewrite active (known: Map<Lir.SymbolId,Lir.Expression>) (expression: Lir.Expression) =
             let recurse = rewrite active known
@@ -192,7 +176,13 @@ module internal DotNetOptimization =
                         | Lir.Intrinsic _ | Lir.Constant _ -> Some(capture,value)
                         | _ -> None))
                 if bindings.IsEmpty then expression else
-                    let key=id,bindings
+                    let key =
+                        id, bindings |> List.map (fun (capture, value) ->
+                            // Structural equality treats both signs of floating zero as equal.
+                            match value.Node with
+                            | Lir.Constant(Lir.Float number) ->
+                                capture, { value with Node = Lir.Constant(Lir.Int(System.BitConverter.DoubleToInt64Bits number)) }
+                            | _ -> capture, value)
                     let specializedId=
                         match specialized.TryGetValue key with
                         | true, existing -> existing
@@ -227,7 +217,7 @@ module internal DotNetOptimization =
                 | _ -> {expression with Node=Lir.Let(id,name,false,binding,recurse body)}
             | Lir.CallClosure(fn,argument) | Lir.TailCallClosure(fn,argument) -> reduceCall (recurse fn) (recurse argument) false
             | Lir.PipeClosure(argument,fn) | Lir.TailPipeClosure(argument,fn) -> reduceCall (recurse fn) (recurse argument) true
-            | _ -> mapChildren recurse expression |> fold
+            | _ -> mapChildren recurse expression |> LirSimplification.foldPrimitive
         let rec hoist (declaration: Lir.Declaration) (value: Lir.Expression) =
             match value.Node with
             | Lir.Let(id,name,false,binding,body) ->

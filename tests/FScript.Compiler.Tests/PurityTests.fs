@@ -25,6 +25,39 @@ type PurityTests() =
     let pureFunctions names = {PurityContracts.empty with PureFunctions=Set.ofList names}
 
     [<Test>]
+    member _.``Script constants eliminate dead initializers and their dependencies`` () =
+        let source =
+            "let baseValue = 40\n"
+            + "let answer = baseValue + 2\n"
+            + "let ratio = (1.25 + 2.5) / 2.5\n"
+            + "let dead () : int = Host.read ()\n"
+            + "let discarded = if answer = 42 && ratio = 1.5 then 1 else dead ()\n"
+            + "if answer = 42 then answer else 1 / 0"
+        let externs = [external "Host.read" (TFun(TUnit, TInt)) 1]
+        let optimized = (compile HostInterop.empty PurityContracts.empty externs source).Lir |> optimize
+        Assert.That(optimized.Entry |> Option.map _.Node, Is.EqualTo(Some(Lir.Constant(Lir.Int 42L))))
+        Assert.That(optimized.Declarations, Is.Empty)
+        Assert.That(optimized.Functions, Is.Empty)
+
+    [<Test>]
+    member _.``Known globals used by nested closures are removed from captures`` () =
+        let source = "let bias = 20 * 2\nlet make () = fun (value: int) -> value + bias\nmake ()"
+        let optimized = (compile HostInterop.empty PurityContracts.empty [] source).Lir |> optimize
+        Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name = "bias"), Is.False)
+        Assert.That(optimized.Functions |> List.forall (fun fn -> fn.Captures.IsEmpty), Is.True)
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``Host scalars stay dynamic through script bindings and operations`` isPure =
+        let contracts = if isPure then pureFunctions ["Host.read"] else PurityContracts.empty
+        let externs = [external "Host.read" (TFun(TUnit, TInt)) 1]
+        let source = "let original = Host.read ()\nlet derived = original + 2\nif derived = 42 then 1 else 0"
+        let optimized = (compile HostInterop.empty contracts externs source).Lir |> optimize
+        Assert.That(optimized.Entry |> Option.map _.Node, Is.Not.EqualTo(Some(Lir.Constant(Lir.Int 1L))))
+        Assert.That(optimized.Declarations |> List.exists (fun d -> d.Name = "Host.read"), Is.True)
+        Assert.That(Lir.format optimized, Does.Contain("operation IntAdd").And.Contain("branch"))
+
+    [<Test>]
     member _.``Purity contracts survive the frontend HIR LIR and artifacts`` () =
         let registration={HostInterop.empty with Types=[{Name="Point";Fields=Map.ofList ["X",TInt];HostManaged=true}]}
         let purity={PureFunctions=Set.singleton "Host.make";PureTypes=Set.singleton "Point"}

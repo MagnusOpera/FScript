@@ -9,6 +9,8 @@ namespace __NAMESPACE__;
 
 internal static class FsPure
 {
+    public static long IntDivide(long left, long right) => left / right;
+    public static long IntRemainder(long left, long right) => left % right;
     private static bool WhiteSpace(char c) => (c>='\u0009' && c<='\u000d') || c=='\u0020' || c=='\u0085' || c=='\u00a0' || c=='\u1680' || (c>='\u2000' && c<='\u200a') || c=='\u2028' || c=='\u2029' || c=='\u202f' || c=='\u205f' || c=='\u3000';
     public static bool IsWhiteSpace(string text) => text.All(WhiteSpace);
     public static string Trim(string text,bool left,bool right)
