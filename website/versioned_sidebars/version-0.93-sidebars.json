@@ -57,6 +57,7 @@
         "stdlib/stdlib-builtins",
         "stdlib/stdlib-console",
         "stdlib/stdlib-task",
+        "stdlib/stdlib-mailbox",
         "stdlib/stdlib-list",
         "stdlib/stdlib-option",
         "stdlib/stdlib-map",

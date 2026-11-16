@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Document Mailbox usage, shutdown, and the Threading permission in the standard library reference.
+
 ## [0.93]
 
 ### [0.93.0]

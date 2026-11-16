@@ -11,7 +11,7 @@ Hosted interpreter execution starts with **no permissions**. The host selects a 
 | <span id="none" className="permission-definition"><code>None</code></span> | Pure built-ins and registered functions declaring no capabilities. |
 | <span id="io" className="permission-definition"><code>IO</code></span> | Built-in filesystem operations, console output, and host entropy through `Guid.new`. |
 | <span id="interactive" className="permission-definition"><code>Interactive</code></span> | Terminal input; `Console.readLine` additionally requires `IO`. |
-| <span id="threading" className="permission-definition"><code>Threading</code></span> | Every `Task.*` operation. |
+| <span id="threading" className="permission-definition"><code>Threading</code></span> | Every `Task.*` and `Mailbox.*` operation. |
 | <span id="native" className="permission-definition"><code>Native</code></span> | External provider loading and calls to SDK/FFI functions. This grants trust in arbitrary .NET/native code. |
 
 `Native` is a trust boundary: arbitrary provider code can access the host directly, so it is not confined by the interpreter's filesystem, IO, or threading checks. Tasks started directly by provider code remain the provider/host's responsibility; the runtime joins tasks started through its own Task API. Built-in implementation details such as `Math` calling the BCL do not require `Native`.

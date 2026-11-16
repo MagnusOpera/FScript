@@ -32,6 +32,21 @@ type HostPermissionsTests() =
         Assert.Throws<TypeException>(Action(fun () -> evaluate permissions source |> ignore)) |> ignore
 
     [<Test>]
+    member _.``Mailbox functions and handle type require Threading`` () =
+        let mailboxFunctions permissions =
+            (registration permissions).Functions
+            |> List.filter (fun fn -> fn.Name.StartsWith("Mailbox.", StringComparison.Ordinal))
+        let withoutThreading = HostPermissions.IO ||| HostPermissions.Interactive ||| HostPermissions.Native
+        Assert.That(mailboxFunctions withoutThreading, Is.Empty)
+        Assert.That((registration withoutThreading).Types |> List.map _.Name, Does.Not.Contain("Mailbox"))
+
+        let functions = mailboxFunctions HostPermissions.Threading
+        Assert.That(functions |> List.map _.Name, Is.EquivalentTo(["Mailbox.start"; "Mailbox.post"; "Mailbox.finish"]))
+        for fn in functions do
+            Assert.That(fn.RequiredPermissions, Is.EqualTo(HostPermissions.Threading))
+        Assert.That((registration HostPermissions.Threading).Types |> List.map _.Name, Does.Contain("Mailbox"))
+
+    [<Test>]
     member _.``IO and threading permit tasks without interactive input`` () =
         let permissions = HostPermissions.IO ||| HostPermissions.Threading
         let names = (registration permissions).Functions |> List.map _.Name

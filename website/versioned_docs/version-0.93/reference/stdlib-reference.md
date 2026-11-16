@@ -147,6 +147,14 @@ This is the complete catalog of core functions/values and default .NET runtime e
 | [`Json.deserialize`](../stdlib/json) | `type -> string -> 'a option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 | [`Json.serialize`](../stdlib/json) | `'a -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 
+### Mailbox
+
+| Name | Signature | Host permissions |
+| --- | --- | --- |
+| [`Mailbox.start`](../stdlib/mailbox#mailboxstart) | `int -> ('state -> 'message -> 'state) -> 'state -> Mailbox<'message, 'state>` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Mailbox.post`](../stdlib/mailbox#mailboxpost) | `'message -> Mailbox<'message, 'state> -> unit` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+| [`Mailbox.finish`](../stdlib/mailbox#mailboxfinish) | `Mailbox<'message, 'state> -> 'state` | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading" title="Threading permission definition">Threading</a> |
+
 ### Regex
 
 | Name | Signature | Host permissions |
