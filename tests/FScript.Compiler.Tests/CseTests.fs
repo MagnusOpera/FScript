@@ -147,7 +147,7 @@ type CseTests() =
     [<TestCase(false)>]
     [<TestCase(true)>]
     member _.``External observations require immutable type contracts for reuse`` isPure =
-        let registration={HostInterop.empty with Types=[{Name="Handle";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let registration={HostInterop.empty with Types=[{Name="Handle";Fields=Map.ofList ["Value",TInt];HostManaged=true; TypeParameters = [] }]}
         let host={Name="Host.obtain";Scheme=Forall([],TFun(TUnit,TNamed "Handle"));Arity=1;Kind=UnsupportedHostExtern}
         let contracts=if isPure then {PurityContracts.empty with PureTypes=Set.singleton "Handle"} else PurityContracts.empty
         let p=match Compiler.compileWithRegistrationAndPurity registration contracts {Program=Parser.parseProgram "let handle=Host.obtain ()\n(handle.Value,handle.Value)";Externs=[host]} with Ok p -> p.Lir | Error errors -> failwith (string errors)

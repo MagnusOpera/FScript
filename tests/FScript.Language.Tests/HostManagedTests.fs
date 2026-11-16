@@ -5,7 +5,7 @@ open FScript.Language
 open FScript.Runtime
 
 module HostManagedFixture =
-    let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }
+    let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true; TypeParameters = [] }
     let payload = ("host-secret" :> obj)
     let types = { HostInterop.empty with Types = [descriptor] }
     let node value = HostInterop.create types "Node" (Map.ofList ["Value", VInt value]) payload

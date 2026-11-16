@@ -35,13 +35,15 @@ module CSharpBackend =
     let private sym id = "v" + string (Lir.symbolNumber id)
     let private funName id = "Function" + string (Lir.functionNumber id)
     let private wrap resultType body = $"((Func<{resultType}>)(() => {{ {body} }}))()"
+    let private genericTypeName (definition: System.Type) =
+        let name = definition.FullName |> nonNull
+        "global::" + name.Substring(0, name.IndexOf('`')).Replace('+', '.')
+
     let private typeName (value: System.Type) =
         let rec render (value: System.Type) =
             if value.IsArray then render ((value.GetElementType() |> nonNull)) + "[]"
             elif value.IsGenericType then
-                let name = (value.GetGenericTypeDefinition().FullName |> nonNull)
-                let name = name.Substring(0, name.IndexOf('`')).Replace('+', '.')
-                "global::" + name + "<" + (value.GetGenericArguments() |> Array.map render |> String.concat comma) + ">"
+                genericTypeName (value.GetGenericTypeDefinition()) + "<" + (value.GetGenericArguments() |> Array.map render |> String.concat comma) + ">"
             else "global::" + (value.FullName |> nonNull).Replace('+', '.')
         render value
 
@@ -69,6 +71,11 @@ module CSharpBackend =
             | TOption item -> $"Option<{csType item}>"
             | TTask item -> usesTaskRuntime <- true; $"Task<{csType item}>"
             | TMap(key, value) -> $"OrderedMap<{csType key}, {csType value}>"
+            | TApplied (name, arguments) ->
+                match nativeTypes.TryFind name with
+                | Some definition when definition.IsGenericTypeDefinition ->
+                    genericTypeName definition + "<" + (arguments |> List.map csType |> String.concat comma) + ">"
+                | _ -> fail "FSC6003" $"Generic host type '{name}' requires a CLR type binding." None
             | TNamed name | THostManaged(name, _) ->
                 match nativeTypes.TryFind name with
                 | Some value -> typeName value
@@ -94,7 +101,7 @@ module CSharpBackend =
                 match value with
                 | TFun(a,b) | TMap(a,b) -> addType a; addType b
                 | TList item | TOption item | TTask item -> addType item
-                | TTuple items -> List.iter addType items
+                | TTuple items | TApplied (_, items) -> List.iter addType items
                 | TRecord fields | THostManaged(_, fields) -> fields |> Map.iter (fun _ -> addType)
                 | TUnion(_, cases) -> cases |> Map.iter (fun _ -> Option.iter addType)
                 | TNamed name -> definitions.TryFind name |> Option.iter addType
@@ -211,7 +218,10 @@ module CSharpBackend =
                     let payload=t |> Option.map (fun t -> $"global::Microsoft.FSharp.Core.FSharpOption<{st}>.Some({sdkType t})") |> Option.defaultValue "null"
                     $"Tuple.Create<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>({quote name},{payload})") |> String.concat comma
                 $"{st}.NewTUnion({quote name},global::Microsoft.FSharp.Collections.MapModule.OfSeq(new Tuple<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>[] {{ {values} }}))"
-            | TApplied _ | TGenericDefinition _ -> fail "FSC6008" "Script-defined generic types are unavailable in SDK extern signatures." None
+            | TApplied (name, arguments) ->
+                let values = arguments |> List.map sdkType |> String.concat comma
+                $"{st}.NewTApplied({quote name},global::Microsoft.FSharp.Collections.ListModule.OfArray(new {st}[] {{ {values} }}))"
+            | TGenericDefinition _ -> fail "FSC6008" "Generic type definitions are unavailable in SDK extern signatures." None
             | TRecordShape _ -> fail "FSC6008" "Unresolved structural witness in SDK signature." None
         let readField target name code =
             match resolve target with
@@ -501,6 +511,51 @@ module CSharpBackend =
                     let original = fresh "foreignOption"
                     wrap (csType semantic) $"var {original}={code}; return {original} is null ? default : {csType semantic}.Some({fromClr (native.GetGenericArguments().[0]) item (valueMember original)});"
                 | _ -> code
+        // Generic CLR arguments can include layouts declared in the generated C#
+        // itself. Match their shapes here and emit explicit type arguments.
+        let genericArguments span (method: MethodBase) inputs result (returnType: System.Type) =
+            let mismatch () = fail "FSC6006" $"CLR binding '{method.Name}' does not match the specialized FScript signature." (Some span)
+            let mutable arguments = Map.empty
+            let rec matchType semantic (native: System.Type) =
+                if native.IsGenericParameter then
+                    let position = native.GenericParameterPosition
+                    match Map.tryFind position arguments with
+                    | Some existing when csType existing <> csType semantic -> mismatch ()
+                    | _ -> arguments <- Map.add position semantic arguments
+                elif native.ContainsGenericParameters then
+                    if native.IsArray then
+                        match semantic with
+                        | TList item when native.GetArrayRank() = 1 -> matchType item (native.GetElementType() |> nonNull)
+                        | _ -> mismatch ()
+                    else
+                        let definition = native.GetGenericTypeDefinition()
+                        let items =
+                            match semantic with
+                            | TFun (a,b) when definition = typedefof<Func<_,_>> -> [a;b]
+                            | TTask item when definition = typedefof<System.Threading.Tasks.Task<_>> -> [item]
+                            | TApplied (name, items) when nativeTypes.TryFind name = Some definition -> items
+                            | _ -> mismatch ()
+                        List.iter2 matchType items (native.GetGenericArguments() |> Array.toList)
+                else
+                    let exact =
+                        match semantic with
+                        | TInt -> native = typeof<int64>
+                        | TFloat -> native = typeof<float>
+                        | TBool -> native = typeof<bool>
+                        | TString -> native = typeof<string>
+                        | TNamed name -> nativeTypes.TryFind name = Some native
+                        | _ -> csType semantic = typeName native
+                    if not exact then mismatch ()
+            inputs |> List.iter (fun (semantic, native: System.Type) ->
+                if native.ContainsGenericParameters then matchType semantic native)
+            if returnType.ContainsGenericParameters then matchType result returnType
+            method.GetGenericArguments()
+            |> Array.map (fun p ->
+                match arguments.TryFind p.GenericParameterPosition with
+                | Some argument -> csType argument
+                | None -> mismatch ())
+            |> String.concat comma
+
         let inlineMarkers = Collections.Generic.Dictionary<string,string>()
         let sdkProviders = Collections.Generic.Dictionary<string,string>()
         let targetImport (path: string) memberName signature span supplied =
@@ -527,16 +582,32 @@ module CSharpBackend =
                 let declaring = System.Type.GetType(link.DeclaringType, false)
                 if isNull declaring then fail "FSC6003" $"Cannot resolve CLR declaring type '{link.DeclaringType}'." (Some span)
                 let declaring = nonNull declaring
-                let parameterTypes = link.Parameters |> Array.map (fun name ->
-                    let t = System.Type.GetType(name,false)
-                    if isNull t then fail "FSC6003" $"Cannot resolve CLR parameter type '{name}'." (Some span)
-                    nonNull t)
                 let method: MethodBase | null =
-                    if link.IsConstructor then declaring.GetConstructor(parameterTypes)
-                    else declaring.GetMethod(memberName, BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.Instance, null, parameterTypes, null)
+                    if link.GenericArity > 0 then
+                        declaring.GetMethods(BindingFlags.Public ||| BindingFlags.Static)
+                        |> Array.filter (fun method ->
+                            method.Name = memberName && method.IsGenericMethodDefinition
+                            && method.GetGenericArguments().Length = link.GenericArity
+                            && (method.GetParameters() |> Array.map (fun p -> string p.ParameterType)) = link.Parameters)
+                        |> function [| method |] -> method | _ -> null
+                    else
+                        let parameterTypes = link.Parameters |> Array.map (fun name ->
+                            let t = System.Type.GetType(name,false)
+                            if isNull t then fail "FSC6003" $"Cannot resolve CLR parameter type '{name}'." (Some span)
+                            nonNull t)
+                        if link.IsConstructor then declaring.GetConstructor(parameterTypes)
+                        else declaring.GetMethod(memberName, BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.Instance, null, parameterTypes, null)
                 if isNull method then fail "FSC6006" $"Cannot resolve exact CLR overload '{declaring.FullName}.{memberName}'." (Some span)
                 let method = nonNull method
                 if method.IsStatic <> link.IsStatic || not method.IsPublic then fail "FSC6006" "CLR linkage accessibility or calling convention is invalid." (Some span)
+                let parameters = method.GetParameters() |> Array.map _.ParameterType
+                let parameterTypes =
+                    if link.SchedulesWorker then
+                        if not link.IsStatic || link.Inline || (parameters |> Array.tryLast) <> Some typeof<Action<Action>> then
+                            fail "FSC6006" "Invalid compiled worker linkage." (Some span)
+                        usesTaskRuntime <- true
+                        Array.take (parameters.Length - 1) parameters
+                    else parameters
                 let rec arguments = function TFun(a,b) -> a :: arguments b | _ -> []
                 let argumentTypes = arguments signature |> List.take (externalArity (Lir.TargetImport(path,memberName)) signature)
                 let receiverCount = if link.IsStatic || link.IsConstructor then 0 else 1
@@ -545,9 +616,16 @@ module CSharpBackend =
                 curryApplied (externalArity (Lir.TargetImport(path,memberName)) signature) supplied signature [] (fun args result ->
                     let inputs = if parameterTypes.Length = 0 then [] else args |> List.skip receiverCount
                     let semanticInputs = if parameterTypes.Length = 0 then [] else argumentTypes |> List.skip receiverCount
-                    let converted = List.map3 (fun t native value -> toClr t native value) semanticInputs (Array.toList parameterTypes) inputs |> String.concat comma
-                    let call = if link.IsConstructor then $"new {typeName declaring}({converted})" elif link.IsStatic then $"{typeName declaring}.@{memberName}({converted})" else $"({args.[0]}).@{memberName}({converted})"
                     let returnType = match method with :? MethodInfo as m -> m.ReturnType | _ -> declaring
+                    let genericSuffix =
+                        if link.GenericArity = 0 then ""
+                        else
+                            let generic = genericArguments span method (List.zip semanticInputs (Array.toList parameterTypes)) result returnType
+                            "<" + generic + ">"
+                    let converted = List.map3 (fun t (native: System.Type) value ->
+                        if native.ContainsGenericParameters then value else toClr t native value) semanticInputs (Array.toList parameterTypes) inputs
+                    let converted = (if link.SchedulesWorker then converted @ ["FsTasks.SpawnWorker"] else converted) |> String.concat comma
+                    let call = if link.IsConstructor then $"new {typeName declaring}({converted})" elif link.IsStatic then $"{typeName declaring}.@{memberName}{genericSuffix}({converted})" else $"({args.[0]}).@{memberName}({converted})"
                     let call =
                         if assemblyMode && link.Inline then
                             let name=ClrBindings.inlineMarkerName path
@@ -561,7 +639,7 @@ module CSharpBackend =
                             let receiver=if receiverCount=1 then args.[0]+(if converted="" then "" else comma) else ""
                             name+"("+receiver+converted+")"
                         else call
-                    fromClr returnType result call)
+                    if returnType.ContainsGenericParameters then call else fromClr returnType result call)
         for declaration in program.Declarations do knownBindings.[declaration.Id] <- declaration.Value
         let mutable recursiveClosureEnvironment: Map<Lir.SymbolId,string> option=None
         let mutable available=Set.ofSeq globalIds
@@ -834,7 +912,7 @@ module CSharpBackend =
                     | Lir.UnionCase(_,caseName,payload) ->
                         let cases = match resolve value.Type with TUnion(_,cases) -> cases | _ -> Map.empty
                         if cases |> Map.forall (fun _ -> Option.isNone) then $"{csType value.Type}.{ident caseName}"
-                        elif nativeTypes |> Map.exists (fun _ native -> typeName native = csType value.Type) then
+                        elif nativeTypes |> Map.exists (fun _ native -> not native.IsGenericTypeDefinition && typeName native = csType value.Type) then
                             match payload with None -> $"{csType value.Type}.@{caseName}" | Some item -> $"{csType value.Type}.New{caseName}({emit item})"
                         else $"new {csType value.Type}.{ident caseName}({payload |> Option.map emit |> Option.defaultValue String.Empty})"
                     | Lir.Map entries ->
@@ -974,7 +1052,7 @@ module CSharpBackend =
         let emittedTypes = Collections.Generic.HashSet<string>()
         for t in types |> Seq.sort do
             let name = csType t
-            if emittedTypes.Add name && not (nativeTypes |> Map.exists (fun _ native -> typeName native=name)) then
+            if emittedTypes.Add name && not (nativeTypes |> Map.exists (fun _ native -> not native.IsGenericTypeDefinition && typeName native=name)) then
                 match resolve t with
                 | TTuple items ->
                     let args = items |> List.mapi (fun i t -> $"{csType t} Item{i}") |> String.concat comma
@@ -1010,6 +1088,7 @@ module CSharpBackend =
                     | TTypeToken -> (if assemblyMode then "a.Name == b.Name" else "a == b"),"\"<type \" + value.Name + \">\""
                     | TFun _ -> "false",quote "<fun>"
                     | TTask _ -> "false",quote "<task>"
+                    | TApplied (name, _) -> "ReferenceEquals(a,b)", quote $"<{name}>"
                     | TList item -> $"a.Length == b.Length && a.Where((item,index) => !{eqName item}(item,b[index])).Any() == false",$"\"[\" + string.Join(\";\", value.Select(item => {fmtName item}(item))) + \"]\""
                     | TOption item -> $"a.HasValue == b.HasValue && (!a.HasValue || {eqName item}(a.Value,b.Value))",$"(value.HasValue ? \"Some \" + {fmtName item}(value.Value) : \"None\")"
                     | TTuple items ->
@@ -1134,6 +1213,9 @@ module CSharpBackend =
                             let values=fields |> Map.toList |> List.map (fun (name,ft) -> $"Tuple.Create({quote name}, {encName ft}({readField t name valueCode}))") |> String.concat comma
                             let decoded=fields |> Map.toList |> List.map (fun (name,ft) -> $"{decName ft}((({sv}.VRecord)value).Item[{quote name}])") |> String.concat comma
                             $"{sv}.NewVRecord(SdkInterop.Fields(new Tuple<string,{sv}>[] {{ {values} }}))",$"new {csType t}({decoded})"
+                        | TApplied (name, _) ->
+                            let message = quote $"Native generic host type '{name}' requires typed CLR bindings at the FFI boundary."
+                            $"throw new InvalidOperationException({message})", $"throw new InvalidOperationException({message})"
                         | THostManaged(name,_) ->
                             if nativeTypes.ContainsKey name then fail "FSC6009" "A program cannot combine native and SDK projections of the same host-managed type." None
                             $"{sv}.NewVHostManaged(value)",$"((({sv}.VHostManaged)value).Item.Descriptor.Name == {quote name} ? (({sv}.VHostManaged)value).Item : throw new InvalidOperationException(\"Host type mismatch\"))"

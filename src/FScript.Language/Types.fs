@@ -30,7 +30,8 @@ type Type =
 type HostTypeDescriptor =
     { Name: string
       Fields: Map<string, Type>
-      HostManaged: bool }
+      HostManaged: bool
+      TypeParameters: int list }
 
 /// Script-constructible union supplied by a host; payloads use ordinary script types.
 type HostUnionDescriptor =

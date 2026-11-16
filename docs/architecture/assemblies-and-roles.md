@@ -232,13 +232,15 @@ The tag workflow publishes the VS Code language server with the release `Version
 
 ## Independent extension SDK
 
-`FScript.Extensibility.dll` belongs to its own sibling repository and NuGet release lifecycle. Extension assemblies reference `MagnusOpera.FScript.Extensibility` without Language or Runtime. Attributes, CLR projection helpers, SDK descriptors, type schemes, values, and opaque callable/task interfaces live there. Public record and union shapes are frozen within 1.x; its unsigned assembly version stays `1.0.0.0`.
+`FScript.Extensibility.dll` belongs to its own sibling repository and NuGet release lifecycle. Extension assemblies reference `MagnusOpera.FScript.Extensibility` without Language or Runtime. Attributes, CLR projection helpers, SDK descriptors, type schemes, values, and opaque callable/task interfaces live there. Public record and union shapes are frozen within 2.x; its unsigned assembly version stays `2.0.0.0`.
 
-Runtime depends on the SDK and translates registrations through `ExtensionBridge.toLanguageRegistration`. Language retains its native inference types and values and has no SDK dependency, including in Fable builds. Providers receive SDK `HostContext` with adapted default functions. Configured loading still merges registrations atomically and performs native validation before analysis or evaluation.
+Runtime depends on the SDK and translates registrations through `ExtensionBridge.toLanguageRegistration`. The bridge transports generic opaque type metadata and schedules provider workers through the existing interpreter task boundary. Language retains its native inference types and values and has no SDK dependency, including in Fable builds. Providers receive SDK `HostContext` with adapted default functions. Configured loading still merges registrations atomically and performs native validation before analysis or evaluation.
+
+Runtime implements and registers the default library operations. It owns the filesystem root and denied-glob checks, and it injects `FsKind` and `Mailbox<'message, 'state>` through the normal registration path. The compiler receives the bundled mailbox's typed CLR bindings from the CLI host. Source and compiled mailboxes share the queue implementation.
 
 Callbacks and tasks cross through host-owned handles tied to an evaluation session. Contexts expire on handler return; sessions expire after evaluation/invocation. Conversion retains visible snapshots, payloads, and nominal metadata, while callback errors preserve interpreter source locations. The bridge never exports ASTs, closure environments, or worker state.
 
-For development, `/p:UseLocalFScriptExtensibility=true` selects the sibling SDK project. Ordinary builds and releases use the independently published NuGet package. No build configuration is shared in the umbrella directory.
+Builds default to the independently published SDK package. Set `/p:UseLocalFScriptExtensibility=true` to use the sibling SDK checkout for development.
 
 ## NuGet environment resolution
 

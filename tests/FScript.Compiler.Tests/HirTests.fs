@@ -39,7 +39,7 @@ type HirTests() =
     member _.``Host types and foreign union metadata survive compiler artifacts`` () =
         let fields = Map.ofList [ "Name", TString ]
         let registration =
-            { Permissions = FScript.Language.HostPermissions.All; Types = [ { Name = "Handle"; Fields = fields; HostManaged = true } ]
+            { Permissions = FScript.Language.HostPermissions.All; Types = [ { Name = "Handle"; Fields = fields; HostManaged = true; TypeParameters = [] } ]
               Unions = [ { Name = "State"; Cases = Map.ofList [ "Ready", None; "Value", Some TInt ] } ]
               Functions = [ { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Native.open"; Scheme = Forall([], TFun(TUnit, TNamed "Handle")); Arity = 1; Impl = fun _ _ -> VUnit } ] }
         match Compiler.compileWithRegistration registration { Program = Parser.parseProgram "let handle = Native.open ()\nhandle.Name"; Externs = [] } with
@@ -291,10 +291,15 @@ type HirTests() =
         Assert.That((projections = expected), Is.True)
 
     [<Test>]
-    member _.``Compiler emits intrinsic types and validates their union payload plans`` () =
+    member _.``Compiler emits injected unions and validates their payload plans`` () =
         let source = "match Fs.kind \".\" with | FsKind.Directory path -> path | _ -> \"missing\""
+        let kind = { Name = "FsKind"; Cases = Map.ofList ["File", Some TString; "Directory", Some TString; "Missing", None] }
+        let entry =
+            { Name = "Fs.kind"; Scheme = Forall([], TFun(TString, TNamed kind.Name)); Arity = 1
+              RequiredPermissions = HostPermissions.None; Impl = fun _ _ -> VUnit }
+        let registration = { HostInterop.empty with Unions = [kind]; Functions = [entry] }
         let compiled =
-            match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+            match Compiler.compileWithRegistration registration { Program = Parser.parseProgram source; Externs = [] } with
             | Ok value -> value
             | Error diagnostics -> failwith (System.String.Join("; ", diagnostics |> List.map _.Message))
         Assert.That(compiled.Lir.Types |> List.map _.Name, Does.Contain("Environment"))
@@ -302,7 +307,7 @@ type HirTests() =
         let fsKind = compiled.Lir.Types |> List.find (fun item -> item.Name = "FsKind")
         match fsKind.Definition with
         | TUnion(_, cases) -> Assert.That(cases |> Map.containsKey "Directory", Is.True)
-        | _ -> Assert.Fail("Expected intrinsic FsKind union")
+        | _ -> Assert.Fail("Expected an injected FsKind union")
 
     [<Test>]
     member _.``LIR validates recursive named representations without recursion overflow`` () =

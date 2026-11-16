@@ -154,6 +154,10 @@ module LirMonomorphization =
 
             let typeDefinitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
             let resolveType = Types.expand typeDefinitions
+            let opaqueRepresentation typ =
+                match typ, resolveType typ with
+                | TApplied _, THostManaged _ -> closeUnusedTypeArguments typ
+                | _ -> typ
             let rec preserveNamedRepresentation template concrete =
                 match template, concrete with
                 | TNamed name, _ ->
@@ -294,7 +298,8 @@ module LirMonomorphization =
                         match NativeSpecialization.unifyInstantiation source.Type concrete with
                         | Ok value -> value
                         | Error error -> fail "FSL2107" $"Cannot specialize declaration '{source.Name}': {error}" span
-                    if NativeSpecialization.containsVariable source.Type && nativeEffect source.Value = LirEffects.Observable && not isBottom then
+                    if NativeSpecialization.containsVariable source.Type && nativeEffect source.Value = LirEffects.Observable
+                       && not isBottom && opaqueRepresentation source.Type <> concrete then
                         fail "FSL2108" $"Generalized binding '{source.Name}' has observable initialization and cannot be cloned safely." source.Span
                     let replacement = freshSymbol state
                     state.DeclarationKeys.Add(key, replacement)
@@ -446,7 +451,8 @@ module LirMonomorphization =
                     | Lir.Cons(head, tail) -> Lir.Cons(recurse head, recurse tail)
                     | Lir.Append(left, right) -> Lir.Append(recurse left, recurse right)
                     | Lir.Let(id, name, recursive, binding, body) ->
-                        let bindingType = NativeSpecialization.apply effectiveSubstitution binding.Type
+                        let inferredType = NativeSpecialization.apply effectiveSubstitution binding.Type
+                        let bindingType = opaqueRepresentation inferredType
                         if NativeSpecialization.containsVariable bindingType then
                             let uses = collectLoads id effectiveSubstitution body
                             if uses.IsEmpty then
@@ -472,7 +478,17 @@ module LirMonomorphization =
                         else
                             let replacement = freshSymbol state
                             let scoped = bind id bindingType replacement environment
-                            Lir.Let(replacement, name, recursive, transform effectiveSubstitution (if recursive then scoped else environment) binding, recurseInAs scoped concreteType body)
+                            let bindingEnvironment = if recursive then scoped else environment
+                            let value =
+                                if bindingType = inferredType then transform effectiveSubstitution bindingEnvironment binding
+                                else recurseInAs bindingEnvironment bindingType binding
+                            let body =
+                                if bindingType = inferredType then recurseInAs scoped concreteType body
+                                else
+                                    match NativeSpecialization.unifyInstantiation inferredType bindingType with
+                                    | Ok substitution -> transform (mergeSubstitution effectiveSubstitution substitution) scoped body
+                                    | Error error -> fail "FSL2107" $"Cannot specialize local binding '{name}': {error}" binding.Span
+                            Lir.Let(replacement, name, recursive, value, body)
                     | Lir.LetRecursiveGroup(bindings, body) ->
                         let concreteBindings = bindings |> List.map (fun (id, name, valueType, value) -> id, name, NativeSpecialization.apply effectiveSubstitution valueType, value)
                         if concreteBindings |> List.exists (fun (_, _, valueType, _) -> NativeSpecialization.containsVariable valueType) then
@@ -517,11 +533,12 @@ module LirMonomorphization =
 
             for declaration in program.Declarations do
                 if nativeEffect declaration.Value = LirEffects.Observable then
-                    if NativeSpecialization.containsVariable declaration.Type then
+                    let representation = opaqueRepresentation declaration.Type
+                    if NativeSpecialization.containsVariable representation then
                         match declaration.Value.Node with
-                        | Lir.Fail _ -> requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
+                        | Lir.Fail _ -> requestDeclaration declaration.Id representation declaration.Span |> ignore
                         | _ -> fail "FSL2108" $"Generalized binding '{declaration.Name}' has observable initialization and cannot be omitted or cloned safely." declaration.Span
-                    else requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
+                    else requestDeclaration declaration.Id representation declaration.Span |> ignore
             let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
             let functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList
             let declarations = state.OutputDeclarations |> Seq.toList
@@ -534,6 +551,9 @@ module LirMonomorphization =
             let layouts = ResizeArray<Lir.TypeDeclaration>()
             let rec layoutType span typ =
                 match typ with
+                | TApplied (name, arguments) when templates.[name].Import.IsSome ->
+                    closedType span typ |> ignore
+                    TApplied (name, List.map (layoutType span) arguments)
                 | TApplied (name, _) as applied ->
                     match instances.TryGetValue applied with
                     | true, instance -> TNamed instance
@@ -600,6 +620,7 @@ module LirMonomorphization =
             let concreteTypes =
                 program.Types |> List.choose (fun declaration ->
                     match declaration.Definition with
+                    | TGenericDefinition _ when declaration.Import.IsSome -> Some declaration
                     | TGenericDefinition _ -> None
                     | definition -> Some { declaration with Definition = layoutType declaration.Span definition })
             let functions =

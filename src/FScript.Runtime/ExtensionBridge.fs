@@ -37,6 +37,8 @@ module ExtensionBridge =
         | ST.TMap(key, value) -> TMap(typeToLanguage key, typeToLanguage value)
         | ST.TFun(arg, result) -> TFun(typeToLanguage arg, typeToLanguage result)
         | ST.TNamed name -> TNamed name
+        | ST.TApplied (name, arguments) -> TApplied(name, List.map typeToLanguage arguments)
+        | ST.TGenericDefinition (parameters, body) -> TGenericDefinition(parameters, typeToLanguage body)
         | ST.TUnion(name, cases) -> TUnion(name, Map.map (fun _ -> Option.map typeToLanguage) cases)
         | ST.THostManaged(name, fields) -> THostManaged(name, Map.map (fun _ -> typeToLanguage) fields)
         | ST.TVar id -> TVar id
@@ -62,7 +64,8 @@ module ExtensionBridge =
         | THostManaged(name, fields) -> ST.THostManaged(name, Map.map (fun _ -> typeFromLanguage) fields)
         | TVar id -> ST.TVar id
         | TNumeric id -> ST.TNumeric id
-        | TApplied _ | TGenericDefinition _ -> raise (SE "Script-defined generic types are unavailable in SDK descriptors.")
+        | TApplied (name, arguments) -> ST.TApplied(name, List.map typeFromLanguage arguments)
+        | TGenericDefinition (parameters, body) -> ST.TGenericDefinition(parameters, typeFromLanguage body)
         | TRecordShape _ -> raise (SE "Interpreter inference witnesses cannot be exposed through the extension SDK.")
 
     type private Callable(owner: obj, value: Value, active: unit -> bool) =
@@ -109,74 +112,82 @@ module ExtensionBridge =
     /// Adapt one SDK environment. Values cross only at external-call boundaries.
     let toLanguageRegistration (registration: FScript.Extensibility.ExtensionRegistration) : ExtensionRegistration =
         FScript.Extensibility.HostInterop.typeDefinitions registration [] |> ignore
+        let rec invokeExternal (native: ExternalCallContext) invoke =
+            let invocationGate = obj()
+            let mutable active = true
+            let check () =
+                let invocationActive = lock invocationGate (fun () -> active)
+                if not invocationActive || not (native.IsActive()) then raise (SE "The extension invocation has expired.")
+                native.CheckRuntime()
+            let rec encode value =
+                match value with
+                | VUnit -> SV.VUnit
+                | VInt v -> SV.VInt v
+                | VFloat v -> SV.VFloat v
+                | VBool v -> SV.VBool v
+                | VString v -> SV.VString v
+                | VList vs -> SV.VList(List.map encode vs)
+                | VTuple vs -> SV.VTuple(List.map encode vs)
+                | VRecord vs -> SV.VRecord(Map.map (fun _ -> encode) vs)
+                | VMap vs -> SV.VMap(vs |> Map.toList |> List.map (fun (k,v) -> keyFromLanguage k, encode v) |> Map.ofList)
+                | VOption v -> SV.VOption(Option.map encode v)
+                | VUnionCase(n,c,v) -> SV.VUnionCase(n,c,Option.map encode v)
+                | VTypeToken t -> SV.VTypeToken(typeFromLanguage t)
+                | VHostManaged host ->
+                    SV.VHostManaged { Descriptor = { Name = host.Descriptor.Name; HostManaged = host.Descriptor.HostManaged; TypeParameters = host.Descriptor.TypeParameters; Fields = Map.map (fun _ -> typeFromLanguage) host.Descriptor.Fields }
+                                      Fields = Map.map (fun _ -> encode) host.Fields; Payload = host.Payload }
+                | VClosure _ | VExternal _ | VUnionCtor _ -> SV.VCallable(Callable(native.Session, value, native.IsActive))
+                | VTask _ -> SV.VTask(TaskValue(native.Session, value, native.IsActive))
+            and decode value =
+                match value with
+                | SV.VUnit -> VUnit
+                | SV.VInt v -> VInt v
+                | SV.VFloat v -> VFloat v
+                | SV.VBool v -> VBool v
+                | SV.VString v -> VString v
+                | SV.VList vs -> VList(List.map decode vs)
+                | SV.VTuple vs -> VTuple(List.map decode vs)
+                | SV.VRecord vs -> VRecord(Map.map (fun _ -> decode) vs)
+                | SV.VMap vs -> VMap(vs |> Map.toList |> List.map (fun (k,v) -> keyToLanguage k, decode v) |> Map.ofList)
+                | SV.VOption v -> VOption(Option.map decode v)
+                | SV.VUnionCase(n,c,v) -> VUnionCase(n,c,Option.map decode v)
+                | SV.VTypeToken t -> VTypeToken(typeToLanguage t)
+                | SV.VHostManaged host ->
+                    VHostManaged { Descriptor = { Name = host.Descriptor.Name; HostManaged = host.Descriptor.HostManaged; TypeParameters = host.Descriptor.TypeParameters; Fields = Map.map (fun _ -> typeToLanguage) host.Descriptor.Fields }
+                                   Fields = Map.map (fun _ -> decode) host.Fields; Payload = host.Payload }
+                | SV.VCallable (:? Callable as handle) when obj.ReferenceEquals(native.Session, handle.Owner) && handle.Active -> handle.Value
+                | SV.VTask (:? TaskValue as handle) when obj.ReferenceEquals(native.Session, handle.Owner) && handle.Active -> handle.Value
+                | SV.VCallable _ | SV.VTask _ -> raise (SE "Foreign or expired extension handle.")
+            let callback action =
+                check()
+                try action()
+                with EvalException error -> raise (SE(error.Message, EvalException error))
+            let context = FScript.Extensibility.ExternalCallContext(
+                (fun f x -> callback (fun () -> native.Apply (decode f) (decode x) |> encode)),
+                (fun f -> callback (fun () -> native.SpawnTask (decode f) |> encode)),
+                (fun t -> callback (fun () -> native.AwaitTask (decode t) |> encode)), check,
+                (fun work -> callback (fun () ->
+                    let worker =
+                        { Name = "<provider worker>"; Scheme = Forall([], TFun(TUnit, TUnit)); Arity = 1
+                          RequiredPermissions = HostPermissions.Threading
+                          Impl = fun child _ -> invokeExternal child (fun context _ -> work context; SV.VUnit) }
+                    native.SpawnTask (VExternal(worker, [])) |> encode)))
+            frames.Add(context, { Native = native; Encode = encode; Decode = decode })
+            try
+                try invoke context encode |> decode
+                with :? SE as error ->
+                    match error.InnerException with
+                    | :? EvalException as original -> raise original
+                    | _ -> raise (HostCommon.evalError error.Message)
+            finally
+                lock invocationGate (fun () -> active <- false)
+                frames.Remove context |> ignore
         let functions = registration.Functions |> List.map (fun fn ->
             let (FScript.Extensibility.Forall(vars, signature)) = fn.Scheme
             { RequiredPermissions = requiredPermissions fn; Name = fn.Name; Arity = fn.Arity; Scheme = Forall(vars, typeToLanguage signature)
               Impl = fun native arguments ->
-                  let invocationGate = obj()
-                  let mutable active = true
-                  let check () =
-                      let invocationActive = lock invocationGate (fun () -> active)
-                      if not invocationActive || not (native.IsActive()) then raise (SE "The extension invocation has expired.")
-                      native.CheckRuntime()
-                  let rec encode value =
-                      match value with
-                      | VUnit -> SV.VUnit
-                      | VInt v -> SV.VInt v
-                      | VFloat v -> SV.VFloat v
-                      | VBool v -> SV.VBool v
-                      | VString v -> SV.VString v
-                      | VList vs -> SV.VList(List.map encode vs)
-                      | VTuple vs -> SV.VTuple(List.map encode vs)
-                      | VRecord vs -> SV.VRecord(Map.map (fun _ -> encode) vs)
-                      | VMap vs -> SV.VMap(vs |> Map.toList |> List.map (fun (k,v) -> keyFromLanguage k, encode v) |> Map.ofList)
-                      | VOption v -> SV.VOption(Option.map encode v)
-                      | VUnionCase(n,c,v) -> SV.VUnionCase(n,c,Option.map encode v)
-                      | VTypeToken t -> SV.VTypeToken(typeFromLanguage t)
-                      | VHostManaged host ->
-                          SV.VHostManaged { Descriptor = { Name = host.Descriptor.Name; HostManaged = host.Descriptor.HostManaged; Fields = Map.map (fun _ -> typeFromLanguage) host.Descriptor.Fields }
-                                            Fields = Map.map (fun _ -> encode) host.Fields; Payload = host.Payload }
-                      | VClosure _ | VExternal _ | VUnionCtor _ -> SV.VCallable(Callable(native.Session, value, native.IsActive))
-                      | VTask _ -> SV.VTask(TaskValue(native.Session, value, native.IsActive))
-                  and decode value =
-                      match value with
-                      | SV.VUnit -> VUnit
-                      | SV.VInt v -> VInt v
-                      | SV.VFloat v -> VFloat v
-                      | SV.VBool v -> VBool v
-                      | SV.VString v -> VString v
-                      | SV.VList vs -> VList(List.map decode vs)
-                      | SV.VTuple vs -> VTuple(List.map decode vs)
-                      | SV.VRecord vs -> VRecord(Map.map (fun _ -> decode) vs)
-                      | SV.VMap vs -> VMap(vs |> Map.toList |> List.map (fun (k,v) -> keyToLanguage k, decode v) |> Map.ofList)
-                      | SV.VOption v -> VOption(Option.map decode v)
-                      | SV.VUnionCase(n,c,v) -> VUnionCase(n,c,Option.map decode v)
-                      | SV.VTypeToken t -> VTypeToken(typeToLanguage t)
-                      | SV.VHostManaged host ->
-                          VHostManaged { Descriptor = { Name = host.Descriptor.Name; HostManaged = host.Descriptor.HostManaged; Fields = Map.map (fun _ -> typeToLanguage) host.Descriptor.Fields }
-                                         Fields = Map.map (fun _ -> decode) host.Fields; Payload = host.Payload }
-                      | SV.VCallable (:? Callable as handle) when obj.ReferenceEquals(native.Session, handle.Owner) && handle.Active -> handle.Value
-                      | SV.VTask (:? TaskValue as handle) when obj.ReferenceEquals(native.Session, handle.Owner) && handle.Active -> handle.Value
-                      | SV.VCallable _ | SV.VTask _ -> raise (SE "Foreign or expired extension handle.")
-                  let callback action =
-                      check()
-                      try action()
-                      with EvalException error -> raise (SE(error.Message, EvalException error))
-                  let context = FScript.Extensibility.ExternalCallContext(
-                      (fun f x -> callback (fun () -> native.Apply (decode f) (decode x) |> encode)),
-                      (fun f -> callback (fun () -> native.SpawnTask (decode f) |> encode)),
-                      (fun t -> callback (fun () -> native.AwaitTask (decode t) |> encode)), check)
-                  frames.Add(context, { Native = native; Encode = encode; Decode = decode })
-                  try
-                      try fn.Impl context (List.map encode arguments) |> decode
-                      with :? SE as error ->
-                          match error.InnerException with
-                          | :? EvalException as original -> raise original
-                          | _ -> raise (HostCommon.evalError error.Message)
-                  finally
-                      lock invocationGate (fun () -> active <- false)
-                      frames.Remove context |> ignore })
-        { Permissions = FScript.Language.HostPermissions.None; Types = registration.Types |> List.map (fun d -> { Name = d.Name; HostManaged = d.HostManaged; Fields = Map.map (fun _ -> typeToLanguage) d.Fields })
+                  invokeExternal native (fun context encode -> fn.Impl context (List.map encode arguments)) })
+        { Permissions = FScript.Language.HostPermissions.None; Types = registration.Types |> List.map (fun d -> { Name = d.Name; HostManaged = d.HostManaged; TypeParameters = d.TypeParameters; Fields = Map.map (fun _ -> typeToLanguage) d.Fields })
           Unions = registration.Unions |> List.map (fun d -> { Name = d.Name; Cases = Map.map (fun _ -> Option.map typeToLanguage) d.Cases })
           Functions = functions }
 

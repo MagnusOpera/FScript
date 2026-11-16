@@ -49,7 +49,7 @@ module ProviderFixture =
         member _.Extra = extra
     type Provider =
         static member Provide() : ExtensionRegistration =
-            let descriptor={Name="Secret"; Fields=Map.ofList ["Name",TString]; HostManaged=true}
+            let descriptor={Name="Secret"; Fields=Map.ofList ["Name",TString]; HostManaged=true; TypeParameters = [] }
             { Types=[descriptor]; Unions=[{Name="ForeignState"; Cases=Map.ofList ["Ready",None; "Count",Some TInt]}]
               Functions=
                 [ {Name="Sdk.create"; Scheme=Forall([],TFun(TString,TNamed "Secret")); Arity=1
@@ -71,7 +71,7 @@ module ProviderFixture =
 
 module private Harness =
     let legacy source =
-        let registration=HostInterop.ofExternsWithPermissions FScript.Language.HostPermissions.All (FScript.Runtime.Registry.all { Permissions = FScript.Language.HostPermissions.All;RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]})
+        let registration=FScript.Runtime.Registry.registration { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration |> Pretty.valueToString
     let compile source =
         match Compiler.compile {Program=Parser.parseProgram source; Externs=[]} with
@@ -346,7 +346,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<Test>]
     member _.``A pure external type does not imply a pure constructor`` () =
         let native=typeof<ProviderFixture.ConstructedValue>
-        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=false}]}
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=false; TypeParameters = [] }]}
         let contracts={PurityContracts.empty with PureTypes=Set.singleton "NativeValue"}
         let input={Program=Parser.parseProgram "let discarded = { Value=7 }\n42";Externs=[]}
         let program=match Compiler.compileWithRegistrationAndPurity registration contracts input with Ok value -> value.Lir | Error errors -> failwith (string errors)
@@ -364,7 +364,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<TestCase(false,"$\"{value}\"")>]
     [<TestCase(true,"$\"{value}\"")>]
     member _.``Native getter pruning requires a pure external type`` (isPure: bool, expression: string) =
-        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true; TypeParameters = [] }]}
         let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
         let contracts=if isPure then {PurityContracts.empty with PureTypes=Set.singleton "NativeValue"} else PurityContracts.empty
         let native=typeof<ProviderFixture.QuietValue>
@@ -380,7 +380,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<Test>]
     member _.``Unmarked external getters execute once and cannot be duplicated`` () =
         let native=typeof<ProviderFixture.ObservedValue>
-        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt];HostManaged=true; TypeParameters = [] }]}
         let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
         let source="let value = Native.create ()\nlet useValue () =\n    let read = value.Value\n    (read,read)\nuseValue ()"
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[external]} with Ok value -> value.Lir | Error errors -> failwith (string errors)
@@ -624,7 +624,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<Test>]
     member _.``Host managed CLR values support constructors properties and instance methods`` () =
         let registration: ExtensionRegistration =
-            { Permissions = FScript.Language.HostPermissions.All; Types=[{Name="Buffer"; Fields=Map.ofList ["Length",TInt]; HostManaged=true}]; Unions=[]; Functions=[] }
+            { Permissions = FScript.Language.HostPermissions.All; Types=[{Name="Buffer"; Fields=Map.ofList ["Length",TInt]; HostManaged=true; TypeParameters = [] }]; Unions=[]; Functions=[] }
         let externs: CompilerExtern list =
             [ {Name="Native.create"; Scheme=Forall([],TFun(TString,TNamed "Buffer")); Arity=1; Kind=UnsupportedHostExtern}
               {Name="Native.text"; Scheme=Forall([],TFun(TNamed "Buffer",TString)); Arity=1; Kind=UnsupportedHostExtern} ]
@@ -675,7 +675,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
 
     [<Test>]
     member _.``Unused provider references and unresolved external types are omitted`` () =
-        let registration: ExtensionRegistration={ Permissions = FScript.Language.HostPermissions.All;Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true}];Unions=[];Functions=[]}
+        let registration: ExtensionRegistration={ Permissions = FScript.Language.HostPermissions.All;Types=[{Name="Unused";Fields=Map.ofList ["Value",TInt];HostManaged=true; TypeParameters = [] }];Unions=[];Functions=[]}
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram "42";Externs=[]} with Ok p -> p.Lir | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
         let imported: Lir.ImportedRecord={Name="Unused";ModulePath="clr:Missing.Type, Missing.Assembly";MemberName="Missing.Type";Fields=["Value",TInt];IsUnion=false;Span=program.Types.Head.Span}
         let program={program with ImportedRecords=[imported];Types=program.Types |> List.map (fun t -> if t.Name="Unused" then {t with Import=Some imported} else t)}
@@ -796,7 +796,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<TestCase("csharp")>]
     member _.``Explicit external record conversions preserve unmarked getters`` (backend: string) =
         let native=typeof<ProviderFixture.ProjectionValue>
-        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt;"Extra",TInt];HostManaged=false}]}
+        let registration: ExtensionRegistration={HostInterop.empty with Types=[{Name="NativeValue";Fields=Map.ofList ["Value",TInt;"Extra",TInt];HostManaged=false; TypeParameters = [] }]}
         let external: CompilerExtern={Name="Native.create";Scheme=Forall([],TFun(TUnit,TNamed "NativeValue"));Arity=1;Kind=UnsupportedHostExtern}
         let source="Native.create ()"
         let program=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[external]} with Ok value -> value.Lir | Error errors -> failwith (string errors)

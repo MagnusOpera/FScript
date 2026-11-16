@@ -12,6 +12,9 @@ type HostExternTests () =
     let host = { Permissions = FScript.Language.HostPermissions.All; RootDirectory = System.IO.Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
     let externs = Registry.all host
 
+    let evalRegistered registration source =
+        (ScriptHost.loadSourceWithRegistration registration source).LastValue
+
     [<Test>]
     member _.``Map externs support CRUD`` () =
         let script = "Map.empty |> Map.add \"a\" 1 |> Map.tryGet \"a\""
@@ -151,7 +154,7 @@ type HostExternTests () =
         let root = Path.Combine(Path.GetTempPath(), "fscript-host-extern-tests", Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory(root) |> ignore
         try
-            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
+            let registration = Registry.registration { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
             let script =
                 "let created = Fs.createDirectory \"tmp\"\n" +
                 "let written = Fs.writeText \"tmp/file.txt\" \"hello\"\n" +
@@ -161,7 +164,7 @@ type HostExternTests () =
                 "let missing = Fs.kind \"tmp/nope\"\n" +
                 "(created, written, exists, file, dir, missing)"
 
-            match Helpers.evalWithExterns localExterns script with
+            match evalRegistered registration script with
             | VTuple
                 [ VBool true
                   VBool true
@@ -181,13 +184,13 @@ type HostExternTests () =
         try
             let file = Path.Combine(root, "item.txt")
             File.WriteAllText(file, "x")
-            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
+            let registration = Registry.registration { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [] }
             let script =
                 "match Fs.kind \"item.txt\" with\n" +
                 "| FsKind.File file -> file\n" +
                 "| FsKind.Directory dir -> dir\n" +
                 "| FsKind.Missing -> \"missing\""
-            match Helpers.evalWithExterns localExterns script with
+            match evalRegistered registration script with
             | VString "item.txt" -> ()
             | _ -> Assert.Fail("Expected FsKind.File match branch")
         finally
@@ -202,18 +205,18 @@ type HostExternTests () =
             let blocked = Path.Combine(root, ".git")
             Directory.CreateDirectory(blocked) |> ignore
             File.WriteAllText(Path.Combine(blocked, "config"), "x")
-            let localExterns = Registry.all { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
+            let registration = Registry.registration { Permissions = FScript.Language.HostPermissions.All; RootDirectory = root; DeniedPathGlobs = [ ".git" ] }
 
-            match Helpers.evalWithExterns localExterns "Fs.kind \".git\"" with
+            match evalRegistered registration "Fs.kind \".git\"" with
             | VUnionCase("FsKind", "Missing", None) -> ()
             | _ -> Assert.Fail("Expected Fs.kind Missing for denied path")
 
-            match Helpers.evalWithExterns localExterns "Fs.exists \".git/config\"" with
+            match evalRegistered registration "Fs.exists \".git/config\"" with
             | VBool false -> ()
             | _ -> Assert.Fail("Expected Fs.exists false for denied path")
 
-            let readAct () = Helpers.evalWithExterns localExterns "Fs.readText \".git/config\"" |> ignore
-            let writeAct () = Helpers.evalWithExterns localExterns "Fs.writeText \".git/config\" \"y\"" |> ignore
+            let readAct () = evalRegistered registration "Fs.readText \".git/config\"" |> ignore
+            let writeAct () = evalRegistered registration "Fs.writeText \".git/config\" \"y\"" |> ignore
             Assert.Throws<EvalException>(System.Action readAct) |> ignore
             Assert.Throws<EvalException>(System.Action writeAct) |> ignore
         finally

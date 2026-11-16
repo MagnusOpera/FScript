@@ -710,12 +710,42 @@ module TypeInfer =
             let inferredIds = Set.difference (Types.ftvType inferred) (Set.union captured (Set.ofList ordered))
             Forall (ordered @ Set.toList inferredIds, inferred)
 
+    // An evaluated opaque host value keeps its type arguments for its entire lifetime.
+    let private generalizeValueBinding typeDefs expression generalize inferred =
+        let rec isNonExpansive = function
+            | EParen (inner, _) -> isNonExpansive inner
+            | ELambda _ | EVar _ -> true
+            | _ -> false
+        let rec containsGenericHostValue visited typ =
+            let contains = containsGenericHostValue visited
+            let expand name =
+                not (Set.contains name visited)
+                && containsGenericHostValue (Set.add name visited) (Types.expand typeDefs typ)
+            match typ with
+            | TApplied (name, arguments) ->
+                match Map.tryFind name typeDefs with
+                | Some (TGenericDefinition (_, THostManaged _)) -> true
+                | _ -> List.exists contains arguments || expand name
+            | TNamed name -> expand name
+            | TUnion (_, cases) -> cases |> Map.exists (fun _ payload -> Option.exists contains payload)
+            | TList item | TOption item | TTask item -> contains item
+            | TFun (a, b) | TMap (a, b) -> contains a || contains b
+            | TTuple items -> List.exists contains items
+            | TRecord fields | TRecordShape (_, fields, _) | THostManaged (_, fields) -> fields |> Map.exists (fun _ -> contains)
+            | _ -> false
+        match inferred with
+        | TFun _ -> generalize inferred
+        | _ when not (isNonExpansive expression)
+                 && not (Set.isEmpty (Types.ftvType inferred))
+                 && containsGenericHostValue Set.empty inferred -> Forall ([], inferred)
+        | _ -> generalize inferred
+
     let rec private functionReturnType arity typ =
         match typ with
         | TFun (_, result) when arity > 0 -> functionReturnType (arity - 1) result
         | _ -> typ
 
-    let rec private typeFromRef (variables: Map<string, Type>) (decls: Map<string, TypeDef>) (stack: string list) (tref: TypeRef) : Type =
+    let rec private typeFromRef (hostTypes: Map<string, Type>) (variables: Map<string, Type>) (decls: Map<string, TypeDef>) (stack: string list) (tref: TypeRef) : Type =
         match tref with
         | TRVariable name ->
             match variables.TryFind name with
@@ -731,9 +761,15 @@ module TypeInfer =
                         raise (TypeException { Message = $"Recursive reference to '{name}' requires its own 'type rec' declaration"; Span = span })
                     if arguments <> List.map TRVariable def.TypeParameters then
                         raise (TypeException { Message = $"Recursive type '{name}' must use its declared type parameters in order"; Span = span })
-                TApplied (resolved, List.map (typeFromRef variables decls stack) arguments)
+                TApplied (resolved, List.map (typeFromRef hostTypes variables decls stack) arguments)
             | Some def -> raise (TypeException { Message = $"Type '{name}' expects {def.TypeParameters.Length} type arguments"; Span = span })
-            | None -> raise (TypeException { Message = $"Unknown generic type '{name}'"; Span = span })
+            | None ->
+                match hostTypes.TryFind resolved with
+                | Some (TGenericDefinition (parameters, _)) when parameters.Length = arguments.Length ->
+                    TApplied (resolved, List.map (typeFromRef hostTypes variables decls stack) arguments)
+                | Some (TGenericDefinition (parameters, _)) ->
+                    raise (TypeException { Message = $"Type '{name}' expects {parameters.Length} type arguments"; Span = span })
+                | _ -> raise (TypeException { Message = $"Unknown generic type '{name}'"; Span = span })
         | TRForall _ -> raise (TypeException { Message = "Unexpected function type parameters"; Span = unknownSpan })
         | TRName name ->
             match builtinType name with
@@ -757,16 +793,16 @@ module TypeInfer =
                             TNamed resolvedName
                         else
                             def.Fields
-                            |> List.map (fun (field, t) -> field, typeFromRef Map.empty decls (resolvedName :: stack) t)
+                            |> List.map (fun (field, t) -> field, typeFromRef hostTypes Map.empty decls (resolvedName :: stack) t)
                             |> Map.ofList
                             |> TRecord
                 | None -> TNamed resolvedName
         | TRTuple ts ->
-            ts |> List.map (typeFromRef variables decls stack) |> TTuple
+            ts |> List.map (typeFromRef hostTypes variables decls stack) |> TTuple
         | TRFun (a, b) ->
-            TFun(typeFromRef variables decls stack a, typeFromRef variables decls stack b)
+            TFun(typeFromRef hostTypes variables decls stack a, typeFromRef hostTypes variables decls stack b)
         | TRPostfix (inner, suffix) ->
-            let resolved = typeFromRef variables decls stack inner
+            let resolved = typeFromRef hostTypes variables decls stack inner
             match suffix with
             | "list" -> TList resolved
             | "task" -> TTask resolved
@@ -774,21 +810,21 @@ module TypeInfer =
             | "map" -> TMap (TString, resolved)
             | _ -> raise (TypeException { Message = $"Unknown type suffix '{suffix}'"; Span = unknownSpan })
         | TRMap (keyType, valueType) ->
-            let key = typeFromRef variables decls stack keyType
+            let key = typeFromRef hostTypes variables decls stack keyType
             let resolvedKey = match key with | TNumeric _ -> TInt | _ -> key
-            TMap(resolvedKey, typeFromRef variables decls stack valueType)
+            TMap(resolvedKey, typeFromRef hostTypes variables decls stack valueType)
         | TRRecord fields ->
             fields
-            |> List.map (fun (name, t) -> name, typeFromRef variables decls stack t)
+            |> List.map (fun (name, t) -> name, typeFromRef hostTypes variables decls stack t)
             |> Map.ofList
             |> TRecord
         | TRStructuralRecord fields ->
             fields
-            |> List.map (fun (name, t) -> name, typeFromRef variables decls stack t)
+            |> List.map (fun (name, t) -> name, typeFromRef hostTypes variables decls stack t)
             |> Map.ofList
             |> TRecord
 
-    let internal scriptTypeDefinitions (declarations: Map<string, TypeDef>) =
+    let internal scriptTypeDefinitions hostTypes (declarations: Map<string, TypeDef>) =
         let definitions =
             declarations
             |> Map.map (fun name definition ->
@@ -796,7 +832,7 @@ module TypeInfer =
                     definition.TypeParameters
                     |> List.mapi (fun index parameter -> parameter, TVar index)
                 let variables = Map.ofList parameters
-                let resolve = typeFromRef variables declarations [name]
+                let resolve = typeFromRef hostTypes variables declarations [name]
                 let body =
                     if definition.Cases.IsEmpty then
                         definition.Fields |> List.map (fun (field, typ) -> field, resolve typ) |> Map.ofList |> TRecord
@@ -1158,7 +1194,8 @@ module TypeInfer =
                     | None -> emptySubst
                 let sValue = compose sRet (compose s2 s1)
                 let env1 = applyEnv sValue env
-                let scheme = generalizeBinding scope env1 sValue explicitParameters (applyType sValue t1) span
+                let scheme =
+                    generalizeValueBinding typeDefs value (fun inferred -> generalizeBinding scope env1 sValue explicitParameters inferred span) (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
                 let s3, tBody, _ =
                     withLocalBindings telemetry [ name ] (fun () ->
@@ -1181,7 +1218,8 @@ module TypeInfer =
                     | None -> emptySubst
                 let sValue = compose sRet (compose sDiscard s1)
                 let env1 = applyEnv sValue env
-                let scheme = generalizeBinding scope env1 sValue explicitParameters (applyType sValue t1) span
+                let scheme =
+                    generalizeValueBinding typeDefs value (fun inferred -> generalizeBinding scope env1 sValue explicitParameters inferred span) (applyType sValue t1)
                 let env2 = env1 |> Map.add name scheme
                 let s2, t2, _ =
                     withLocalBindings telemetry [ name ] (fun () ->
@@ -1200,7 +1238,7 @@ module TypeInfer =
             let env2 =
                 envPatTyped
                 |> Map.fold (fun state name bindingType ->
-                    let scheme = Types.generalize env1 bindingType
+                    let scheme = generalizeValueBinding typeDefs value (Types.generalize env1) bindingType
                     Map.add name scheme state) env1
             let boundNames = envPatTyped |> Map.toList |> List.map fst
             let sBody, tBody, _ =
@@ -1669,7 +1707,7 @@ module TypeInfer =
             (BuiltinTypes.typeDefs |> List.map (fun d -> d.Name, d))
             @ (program |> List.choose (function | SType d -> Some (d.Name, d) | _ -> None))
             |> Map.ofList
-        let scriptDefinitions = scriptTypeDefinitions decls
+        let scriptDefinitions = scriptTypeDefinitions hostDefinitions decls
         let typeDefs =
             Map.fold (fun acc name typ -> Map.add name typ acc) scriptDefinitions hostDefinitions
 
@@ -1705,6 +1743,23 @@ module TypeInfer =
             else None
 
         let typed = ResizeArray<TypedStmt>()
+        // Subsequent top-level uses can constrain weak type variables of earlier
+        // values. Preserve those resolutions in the typed program used by backends.
+        let mutable weakVariables = Types.ftvEnv env
+        let mutable laterSubstitutions = emptySubst
+        let remember scheme =
+            weakVariables <- Set.union weakVariables (Types.ftvScheme scheme)
+            scheme
+        let retainSubstitution substitution =
+            let relevant =
+                weakVariables |> Seq.choose (fun id ->
+                    if Map.containsKey id substitution then Some (id, applyType substitution (TVar id))
+                    else None)
+                |> Map.ofSeq
+            if not relevant.IsEmpty then
+                weakVariables <- relevant |> Map.fold (fun variables id typ ->
+                    Set.union (Set.remove id variables) (Types.ftvType typ)) weakVariables
+                laterSubstitutions <- compose relevant laterSubstitutions
         try
             for i, stmt in program |> List.indexed do
                 let scope = AnnotationScope()
@@ -1723,7 +1778,7 @@ module TypeInfer =
                     let importedType = annotationTypeFromRef typeDefs span signature
                     match importedType with
                     | TFun _ ->
-                        env <- Map.add name (Forall([], importedType)) env
+                        env <- Map.add name (remember (Forall([], importedType))) env
                         typed.Add(TSBackendImport(name, importedType, import, span))
                     | _ -> raise (TypeException { Message = "Backend imports require a complete function signature"; Span = span })
                 | SLet(name, args, returnAnnotation, expr, isRec, isExported, span) ->
@@ -1749,11 +1804,13 @@ module TypeInfer =
                         let s = compose sRet (compose s2 s1)
                         applySubstToCapturedLocals telemetry startIndex s
                         applySubstToCapturedExpressions telemetry expressionStartIndex s
+                        retainSubstitution s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
-                        let scheme = generalizeBinding scope env' s explicitParameters inferred span
-                        env <- env' |> Map.add name scheme
+                        let scheme =
+                            generalizeValueBinding typeDefs exprVal (fun typ -> generalizeBinding scope env' s explicitParameters typ span) inferred
+                        env <- env' |> Map.add name (remember scheme)
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
                     else
                         let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope env exprVal
@@ -1767,11 +1824,13 @@ module TypeInfer =
                         let s = compose sRet s1
                         applySubstToCapturedLocals telemetry startIndex s
                         applySubstToCapturedExpressions telemetry expressionStartIndex s
+                        retainSubstitution s
                         let env' = applyEnv s env
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
-                        let scheme = generalizeBinding scope env' s explicitParameters inferred span
-                        env <- env' |> Map.add name scheme
+                        let scheme =
+                            generalizeValueBinding typeDefs exprVal (fun typ -> generalizeBinding scope env' s explicitParameters typ span) inferred
+                        env <- env' |> Map.add name (remember scheme)
                         typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
                 | SLetPattern(pattern, expr, isExported, span) ->
                     let startIndex =
@@ -1785,6 +1844,7 @@ module TypeInfer =
                     let s = compose s2 s1
                     applySubstToCapturedLocals telemetry startIndex s
                     applySubstToCapturedExpressions telemetry expressionStartIndex s
+                    retainSubstitution s
                     let envBase = applyEnv s env
                     let typedBindings = envPat |> Map.map (fun _ ty -> applyType s ty)
                     typedBindings
@@ -1792,8 +1852,8 @@ module TypeInfer =
                     env <-
                         typedBindings
                         |> Map.fold (fun state name bindingType ->
-                            let scheme = Types.generalize envBase bindingType
-                            Map.add name scheme state) envBase
+                            let scheme = generalizeValueBinding typeDefs expr (Types.generalize envBase) bindingType
+                            Map.add name (remember scheme) state) envBase
                     typed.Add(TSLetPattern(pattern, expr, typedBindings, isExported, span))
                 | SLetRecGroup(bindings, isExported, span) ->
                     let startIndex =
@@ -1838,6 +1898,7 @@ module TypeInfer =
                     applySubstToCapturedLocals telemetry startIndex sRec
                     applySubstToCapturedExpressions telemetry expressionStartIndex sRec
 
+                    retainSubstitution sRec
                     let envGeneralize = applyEnv sRec env
                     let schemes =
                         foldedBindings
@@ -1853,7 +1914,7 @@ module TypeInfer =
 
                     env <-
                         schemes
-                        |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
+                        |> List.fold (fun acc (name, scheme) -> Map.add name (remember scheme) acc) envGeneralize
                     typed.Add(TSLetRecGroup(typedBindings, isExported, span))
                 | SExpr expr ->
                     let startIndex =
@@ -1871,9 +1932,23 @@ module TypeInfer =
                     applySubstToCapturedLocals telemetry startIndex s
                     applySubstToCapturedExpressions telemetry expressionStartIndex s
                     validateMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType s t1)
+                    retainSubstitution s
                     env <- applyEnv s env
                     typed.Add(TSExpr typedExpr)
 
+            if not laterSubstitutions.IsEmpty then
+                applySubstToCapturedLocals telemetry 0 laterSubstitutions
+                applySubstToCapturedExpressions telemetry 0 laterSubstitutions
+                let resolve = applyType laterSubstitutions
+                for i = 0 to typed.Count - 1 do
+                    typed.[i] <-
+                        match typed.[i] with
+                        | TSLet(name, expr, typ, recursive, exported, span) -> TSLet(name, expr, resolve typ, recursive, exported, span)
+                        | TSLetPattern(pattern, expr, bindings, exported, span) -> TSLetPattern(pattern, expr, Map.map (fun _ -> resolve) bindings, exported, span)
+                        | TSLetRecGroup(bindings, exported, span) ->
+                            TSLetRecGroup(bindings |> List.map (fun (name, expr, typ, bound) -> name, expr, resolve typ, bound), exported, span)
+                        | TSExpr expr -> TSExpr { expr with Type = resolve expr.Type }
+                        | statement -> statement
             let expressionTypes =
                 match telemetry with
                 | Some value -> value.ExpressionTypes |> Seq.toList
@@ -2123,7 +2198,7 @@ module TypeInfer =
             @ (typed |> List.choose (function TSType definition -> Some(definition.Name, definition) | _ -> None))
             |> Map.ofList
         let resolvedTypeDefinitions =
-            Map.fold (fun state name definition -> Map.add name definition state) (scriptTypeDefinitions declarations) hostDefinitions
+            Map.fold (fun state name definition -> Map.add name definition state) (scriptTypeDefinitions hostDefinitions declarations) hostDefinitions
         let resolvedLiteral = function
             | LInt value -> ResolvedInt value
             | LFloat value -> ResolvedFloat value
@@ -2446,7 +2521,7 @@ module TypeInfer =
             hostDefinitions |> Map.toList |> List.map (fun (name, definition) ->
                 { Span = syntheticSpan; Attributes = []; Export = None; Patterns = []; Expressions = []
                   Node = ResolvedTypeDeclaration
-                    { Binding = bindingAt TypeSymbol name syntheticSpan (TNamed name)
+                    { Binding = bindingAt TypeSymbol name syntheticSpan (Types.applied name definition)
                       IsRecursive = false; Definition = definition
                       Fields = match definition with TRecord fields | THostManaged(_, fields) -> Map.toList fields | _ -> []
                       Cases = match definition with TUnion(_, cases) -> Map.toList cases | _ -> []

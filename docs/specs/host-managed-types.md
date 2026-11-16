@@ -90,3 +90,7 @@ F# sets project as script lists. Host-to-script snapshots follow CLR set iterati
 ## Compiler purity
 
 External values are not assumed pure because their visible schema is immutable. A provider may separately declare the strong pure-type contract: deeply immutable visible data and opaque payloads, and safe, deterministic, terminating, effect-free registered field reads, structural equality, and formatting. This can enable pruning of otherwise unused projections and structural operations. It does not mark constructors or ordinary methods pure and does not skip runtime boundary validation. See [FFI purity contracts](external-functions.md#compiler-purity-contracts).
+
+## Generic provider types
+
+A provider may register an opaque host type with distinct type parameter IDs and no visible fields. The type checker resolves applications of the registered name, checks their arity, and unifies their type arguments. A binding that evaluates to a generic host value retains its type arguments across uses. Runtime calls validate the registered descriptor while keeping the payload opaque. Generic opaque values compare by payload identity.

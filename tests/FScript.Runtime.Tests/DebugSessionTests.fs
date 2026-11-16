@@ -99,7 +99,7 @@ type DebugSessionTests() =
 
     [<Test>]
     member _.``Host values expose visible snapshots and never payloads``() =
-        let descriptor = { Name = "Node"; Fields = Map.ofList ["Value",TInt]; HostManaged = true }
+        let descriptor = { Name = "Node"; Fields = Map.ofList ["Value",TInt]; HostManaged = true; TypeParameters = [] }
         let registration = { HostInterop.empty with Types = [descriptor] }
         let node = HostInterop.create registration "Node" (Map.ofList ["Value",VInt 42L]) ("TOP SECRET PAYLOAD" :> obj)
         let registration = { registration with Functions = [{ RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Host.node"; Scheme = Forall([],TNamed "Node"); Arity = 0; Impl = fun _ _ -> node }] }

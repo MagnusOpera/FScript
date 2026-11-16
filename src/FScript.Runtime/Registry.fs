@@ -3,6 +3,15 @@ namespace FScript.Runtime
 open FScript.Language
 
 module Registry =
+    let internal mailbox =
+        let registration = MailboxProvider.register () |> ExtensionBridge.toLanguageRegistration
+        let functions = registration.Functions |> List.map (fun fn -> { fn with RequiredPermissions = HostPermissions.Threading })
+        { registration with Functions = functions }
+
+    /// Default providers that also supply typed compiled linkage.
+    let compiledProviders () =
+        [ mailbox.Functions |> List.map _.Name, typeof<CompiledMailbox>.GetMethod("Start") |> nonNull ]
+
     let all (ctx: HostContext) : ExternalFunction list =
         [ FsExterns.read_text ctx
           FsExterns.exists ctx
@@ -22,9 +31,12 @@ module Registry =
           ConsoleExterns.read_line
           JsonExterns.deserialize
           JsonExterns.serialize
-          XmlExterns.query_values ] @ PureExterns.functions @ TaskExterns.all
+          XmlExterns.query_values ] @ PureExterns.functions @ TaskExterns.all @ mailbox.Functions
         |> List.filter (fun fn -> HostInterop.allows ctx.Permissions fn.RequiredPermissions)
 
     /// Create an interpreter registration with exactly the host's grants.
     let registration (context: HostContext) =
-        HostInterop.ofExternsWithPermissions context.Permissions (all context)
+        let registration = HostInterop.ofExternsWithPermissions context.Permissions (all context)
+        { registration with
+            Unions = if HostInterop.allows context.Permissions HostPermissions.IO then [FsExterns.kindType] else []
+            Types = if HostInterop.allows context.Permissions HostPermissions.Threading then mailbox.Types else [] }

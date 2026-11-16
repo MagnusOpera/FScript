@@ -92,6 +92,10 @@ internal static class FsTasks
         // StartNew has no automatic Task<Task<T>> unwrapping overload.
         return Track(Task.Factory.StartNew(()=>{ Check(); return callback(default); },CancellationToken.None,TaskCreationOptions.DenyChildAttach,TaskScheduler.Default));
     }
+    public static void SpawnWorker(Action work)
+    {
+        _ = Spawn<Unit>(_ => { work(); return default; });
+    }
     public static Task<T> FromResult<T>(T value)
     {
         Check(); var completion=new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);

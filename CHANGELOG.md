@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Add bounded mailboxes to the default runtime with source, C#, and .NET execution support.
+- Support generic opaque types and tracked provider workers through the Extensibility 2.0 SDK.
 - Support unconstrained generic functions, records, and unions with F#-style type parameters and arguments.
 - Highlight generic type parameters and arguments in VS Code.
 - Keep one manual for each of the five latest release lines and group patch notes under their release line.

@@ -36,3 +36,12 @@ type RegistryTests () =
         names.Contains "Xml.queryValues" |> should equal true
         names.Contains "Xml.deserialize" |> should equal false
         names.Contains "Xml.serialize" |> should equal false
+
+
+    [<Test>]
+    member _.``Filesystem kind is a registered library type`` () =
+        let context = HostContext.create "."
+        let registration = Registry.registration { context with Permissions = FScript.Language.HostPermissions.IO }
+        Assert.That(registration.Unions |> List.map _.Name, Does.Contain("FsKind"))
+        Assert.That((Registry.registration context).Unions, Is.Empty)
+        Assert.That(FScript.Language.BuiltinTypes.typeDefs |> List.map _.Name, Does.Not.Contain("FsKind"))

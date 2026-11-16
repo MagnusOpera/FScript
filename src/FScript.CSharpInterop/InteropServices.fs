@@ -15,9 +15,12 @@ module InteropServices =
         with _ ->
             Directory.GetCurrentDirectory()
 
-    let runtimeExternsForSourcePath (sourcePath: string) : ExternalFunction list =
+    let runtimeRegistrationForSourcePath (sourcePath: string) : ExtensionRegistration =
         let ctx = { Permissions = FScript.Language.HostPermissions.All; HostContext.RootDirectory = resolveRootDirectory sourcePath; DeniedPathGlobs = [] }
-        Registry.all ctx
+        Registry.registration ctx
+
+    let runtimeExternsForSourcePath (sourcePath: string) : ExternalFunction list =
+        (runtimeRegistrationForSourcePath sourcePath).Functions
 
     let private lspEnvironmentPreludeProgram : Program =
         FScript.parseWithSourceName

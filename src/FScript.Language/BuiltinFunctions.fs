@@ -118,6 +118,9 @@ module BuiltinFunctions =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | VTuple xs, VTuple ys ->
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
+        | VHostManaged left, VHostManaged right when not (left.Descriptor.TypeParameters.IsEmpty && right.Descriptor.TypeParameters.IsEmpty) ->
+            left.Descriptor.Name = right.Descriptor.Name && obj.ReferenceEquals(left.Payload, right.Payload)
+        | VHostManaged value, _ | _, VHostManaged value when not value.Descriptor.TypeParameters.IsEmpty -> false
         | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
             && (xf |> Map.forall (fun key value ->

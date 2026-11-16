@@ -1,12 +1,12 @@
 # FScript Stdlib Functions
 
 ## Purpose
-This document lists core standard-library functions and the optional default .NET runtime extern catalog. Core functions are loaded automatically by `FScript.Language`. Runtime functions require host registration through `FScript.Runtime.Registry.all`; the CLI enables them by default. `Env` is a CLI/REPL-injected value, not an always-injected language value.
+This document lists core standard-library functions and the optional default .NET runtime extern catalog. Core functions are loaded automatically by `FScript.Language`. Runtime functions require host registration through `FScript.Runtime.Registry.registration`; the CLI enables them by default. `Env` is a CLI/REPL-injected value, not an always-injected language value.
 
 ## Modules
 
 - Core: `Env.setExitCode`, `List`, `Option`, `Map`, `Int`, `Float`, `Bool`, `String`.
-- Default .NET runtime: `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
+- Default .NET runtime: `Console`, `Task`, `Mailbox`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
 
 ## Top-level surface
 - `ignore : 'a -> unit` is an always-available core function.
@@ -16,9 +16,10 @@ This document lists core standard-library functions and the optional default .NE
 - `Console.writeLine : string -> unit`
 - `Console.readLine : unit -> string option`
 
+FScript.Runtime registers the default Console and filesystem functions. Use `Registry.registration` when embedding the library so filesystem union metadata accompanies its functions.
+
 ## Built-in types and values
 - `type Environment = { ScriptName: string option; Arguments: string list }`
-- `type FsKind = File of string | Directory of string | Missing`
 - `let Env : Environment`
   - Injected by the CLI and REPL hosts.
   - `Env.ScriptName` is `Some "<path>"` for file execution and `None` for stdin/REPL execution.
@@ -172,6 +173,7 @@ The following functions require runtime registration. See [external functions](.
 - `Fs.extension : string -> string option`
 - `Fs.fileNameWithoutExtension : string -> string`
 - `Fs.glob : string -> string list option`
+- FScript.Runtime registers `type FsKind = File of string | Directory of string | Missing` with filesystem I/O.
 - `Fs.kind : string -> FsKind`
 - `Fs.parentDirectory : string -> string option`
 - `Fs.readText : string -> string option`
@@ -372,6 +374,16 @@ WhenAny registers the race at invocation, consumes only its selected task, and d
 The canonical evaluator/SDK task functions remain optional runtime registrations. Fable task execution and unadapted standalone LIR task calls fail explicitly; compiler catalogs and artifacts preserve the signatures and arities. Tasks are observable scheduling capabilities and receive no automatic compiler purity guarantee.
 
 Task continuation argument order is callback first and task/task list last. All three combinators support pipeline application and reusable partial application, e.g. `let increment = Task.continueWith (fun value -> value + 1)` followed by `Task.fromResult 41 |> increment`. Parameter metadata, evaluator/native/SDK dispatch, and static task-sharing analysis use this same order.
+
+## Mailbox
+
+- `Mailbox.start : int -> ('state -> 'message -> 'state) -> 'state -> Mailbox<'message, 'state>`
+- `Mailbox.post : 'message -> Mailbox<'message, 'state> -> unit`
+- `Mailbox.finish : Mailbox<'message, 'state> -> 'state`
+
+Capacity is the maximum number of queued messages, excluding any message the handler is processing. A post waits for capacity. The handler runs asynchronously and threads its state through messages in admission order. Finishing closes admission, drains queued messages and posts that were already waiting, and returns the final state. A handler failure wakes waiters and propagates through the task scope. Mailbox functions require Threading in the source interpreter.
+
+Both compiled targets call typed CLR methods and track mailbox workers in the compiled task scope. See the [mailbox sample](../../samples/mailbox.fss).
 
 ## Hosted interpreter capability requirements
 

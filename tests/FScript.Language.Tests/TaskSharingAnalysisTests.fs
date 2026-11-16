@@ -11,7 +11,7 @@ type TaskSharingAnalysisTests() =
     let handle = TNamed "Handle"
     let registration =
         { HostInterop.empty with
-            Types = [{ Name = "Handle"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }]
+            Types = [{ Name = "Handle"; Fields = Map.ofList ["Value", TInt]; HostManaged = true; TypeParameters = [] }]
             Functions = TaskFunctions.all @ [
                          external "Host.make" TInt handle
                          external "Host.read" handle TInt

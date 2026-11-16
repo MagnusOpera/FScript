@@ -5,6 +5,10 @@ open System.Text.RegularExpressions
 open FScript.Language
 
 module FsExterns =
+    let internal kindType : HostUnionDescriptor =
+        { Name = "FsKind"
+          Cases = Map.ofList ["File", Some TString; "Directory", Some TString; "Missing", None] }
+
     let private normalizeSeparators (path: string) =
         path.Replace("\\", "/")
 

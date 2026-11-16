@@ -59,7 +59,7 @@ type PurityTests() =
 
     [<Test>]
     member _.``Purity contracts survive the frontend HIR LIR and artifacts`` () =
-        let registration={HostInterop.empty with Types=[{Name="Point";Fields=Map.ofList ["X",TInt];HostManaged=true}]}
+        let registration={HostInterop.empty with Types=[{Name="Point";Fields=Map.ofList ["X",TInt];HostManaged=true; TypeParameters = [] }]}
         let purity={PureFunctions=Set.singleton "Host.make";PureTypes=Set.singleton "Point"}
         let externs=[external "Host.make" (TFun(TInt,TNamed "Point")) 1]
         let source="Host.make 42"
@@ -131,7 +131,7 @@ type PurityTests() =
     [<TestCase(false)>]
     [<TestCase(true)>]
     member _.``External field reads need a pure type contract`` (isPure: bool) =
-        let registration={HostInterop.empty with Types=[{Name="Handle";Fields=Map.ofList ["Value",TInt];HostManaged=true}]}
+        let registration={HostInterop.empty with Types=[{Name="Handle";Fields=Map.ofList ["Value",TInt];HostManaged=true; TypeParameters = [] }]}
         let contracts=if isPure then {PurityContracts.empty with PureTypes=Set.singleton "Handle"} else PurityContracts.empty
         let externs=[external "Host.obtain" (TFun(TUnit,TNamed "Handle")) 1]
         let optimized=(compile registration contracts externs "let handle = Host.obtain ()\nlet discarded = handle.Value\n42").Lir |> optimize

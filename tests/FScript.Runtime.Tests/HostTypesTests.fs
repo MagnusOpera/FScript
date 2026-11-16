@@ -165,7 +165,7 @@ type HostTypesTests() =
     [<Test>]
     member _.``Missing mismatched and duplicate registrations cannot wrap values`` () =
         let descriptor = HostTypes.describe<ReflectedNode>()
-        for descriptors in [ []; [{descriptor with HostManaged = false}]; [{descriptor with Fields = Map.empty}]; [descriptor; descriptor] ] do
+        for descriptors in [ []; [{descriptor with HostManaged = false; TypeParameters = [] }]; [{descriptor with Fields = Map.empty}]; [descriptor; descriptor] ] do
             Assert.That(error (fun () -> HostTypes.wrap (registration descriptors) (node ()) |> ignore), Is.Not.Empty)
 
     [<Test>]

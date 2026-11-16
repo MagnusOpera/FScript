@@ -12,6 +12,7 @@
     <Compile Include="RegistryTests.fs" />
     <Compile Include="HostPermissionsTests.fs" />
     <Compile Include="FsExternsTests.fs" />
+    <Compile Include="MailboxTests.fs" />
     <Compile Include="RegexExternsTests.fs" />
     <Compile Include="HashExternsTests.fs" />
     <Compile Include="GuidExternsTests.fs" />

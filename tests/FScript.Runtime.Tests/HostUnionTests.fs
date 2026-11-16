@@ -79,7 +79,7 @@ match result.Mode with
     member _.``registration checks cover unions records and script declarations``() =
         let duplicate = { types with Unions = types.Unions @ types.Unions }
         Assert.That(Action(fun () -> HostInterop.typeDefinitions duplicate [] |> ignore), Throws.TypeOf<ExtensionException>())
-        let conflict = { types with Types = [{ Name = "Foreign.Mode"; Fields = Map.empty; HostManaged = false }] }
+        let conflict = { types with Types = [{ Name = "Foreign.Mode"; Fields = Map.empty; HostManaged = false; TypeParameters = [] }] }
         Assert.That(Action(fun () -> HostInterop.typeDefinitions conflict [] |> ignore), Throws.TypeOf<ExtensionException>())
         Assert.That(Action(fun () -> HostFunctions.create HostInterop.empty "Host.mode" (fun (mode: ForeignMode) -> mode) |> ignore), Throws.TypeOf<ExtensionException>())
 

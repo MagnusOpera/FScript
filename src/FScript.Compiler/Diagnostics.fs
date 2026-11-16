@@ -55,7 +55,6 @@ module CompilerExternCatalog =
 
     let unsupportedHostRuntime =
         [ descriptor "Fs.exists" (Forall([], TFun(TString, TBool))) 1 UnsupportedHostExtern
-          descriptor "Fs.kind" (Forall([], TFun(TString, TNamed "FsKind"))) 1 UnsupportedHostExtern
           descriptor "Fs.createDirectory" (Forall([], TFun(TString, TBool))) 1 UnsupportedHostExtern
           descriptor "Fs.writeText" (Forall([], TFun(TString, TFun(TString, TBool)))) 2 UnsupportedHostExtern
           descriptor "Fs.combinePath" (Forall([], TFun(TString, TFun(TString, TString)))) 2 UnsupportedHostExtern

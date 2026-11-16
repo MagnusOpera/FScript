@@ -1,14 +1,14 @@
-decl %185 add: ('a -> ('a -> 'a))
-  lambda %186 x: 'a : ('a -> ('a -> 'a))
-    lambda %187 y: 'a : ('a -> 'a)
+decl %180 add: ('a -> ('a -> 'a))
+  lambda %181 x: 'a : ('a -> ('a -> 'a))
+    lambda %182 y: 'a : ('a -> 'a)
       primitive NumericAdd : 'a
-        ref %186 : 'a
-        ref %187 : 'a
-decl %188 $expression188: int
+        ref %181 : 'a
+        ref %182 : 'a
+decl %183 $expression183: int
   apply : int
     apply : (int -> int)
-      ref %185 : (int -> (int -> int))
+      ref %180 : (int -> (int -> int))
       const int 1 : int
     const int 2 : int
 entry
-  ref %188 : int
+  ref %183 : int

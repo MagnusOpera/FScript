@@ -6,7 +6,7 @@ open FScript.Runtime
 
 [<TestFixture>]
 type HostManagedTests() =
-    let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true }
+    let descriptor = { Name = "Node"; Fields = Map.ofList ["Value", TInt]; HostManaged = true; TypeParameters = [] }
     let payload = ("private-native-handle" :> obj)
     let types = { HostInterop.empty with Permissions = HostPermissions.All; Types = [descriptor] }
     let node = HostInterop.create types "Node" (Map.ofList ["Value", VInt 42L]) payload
@@ -64,13 +64,13 @@ type HostManagedTests() =
 
     [<Test>]
     member _.``Non-managed registered types retain ordinary record semantics`` () =
-        let registration = { HostInterop.empty with Types = [{ descriptor with HostManaged = false }] }
+        let registration = { HostInterop.empty with Types = [{ descriptor with HostManaged = false; TypeParameters = [] }] }
         let loaded = ScriptHost.loadSourceWithRegistration registration "let n = { Value = 1 }\n{ n with Value = 2 }"
         Assert.That(Pretty.valueToString loaded.LastValue, Is.EqualTo("{ Value = 2 }"))
 
     [<Test>]
     member _.``Nested host values are validated and preserve their private state`` () =
-        let parent = { Name = "Parent"; Fields = Map.ofList ["Child", TNamed "Node"]; HostManaged = true }
+        let parent = { Name = "Parent"; Fields = Map.ofList ["Child", TNamed "Node"]; HostManaged = true; TypeParameters = [] }
         let registered = { registration with Types = [descriptor; parent] }
         let value = HostInterop.create registered "Parent" (Map.ofList ["Child", node]) ("parent-secret" :> obj)
         let registered =

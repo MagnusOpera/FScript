@@ -99,8 +99,8 @@ internal static class LspHandlers
         try
         {
             var program = InteropServices.parseProgramFromSourceWithIncludes(sourcePath, sourceText);
-            var externs = InteropServices.runtimeExternsForSourcePath(sourcePath);
-            var typed = InteropServices.inferProgramWithExterns(externs, program);
+            var registration = InteropServices.runtimeRegistrationForSourcePath(sourcePath);
+            var typed = InteropServices.inferProgramWithRegistration(registration, program);
             var data = global::FScript.LanguageServer.AstJson.typedProgramToJson(sourcePath, typed);
             return new JsonObject
             {
@@ -130,8 +130,8 @@ internal static class LspHandlers
         try
         {
             var program = InteropServices.parseProgramFromSourceWithIncludes(sourcePath, text);
-            var externs = InteropServices.runtimeExternsForSourcePath(sourcePath);
-            _ = InteropServices.inferProgramWithExterns(externs, program);
+            var registration = InteropServices.runtimeRegistrationForSourcePath(sourcePath);
+            _ = InteropServices.inferProgramWithRegistration(registration, program);
         }
         catch (ParseException ex)
         {

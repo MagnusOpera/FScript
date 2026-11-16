@@ -93,9 +93,20 @@ let runCompileCommand (argv: string array) =
                         4
                     | Ok compiled ->
                         let lir = loaded.ProviderMethods |> List.fold (fun program (names,method) -> FScript.Compiler.ClrBindings.bindProvider names method program) compiled.Lir
+                        let nativeTarget = normalizedTarget = "dotnet" || normalizedTarget = "csharp"
+                        let bundled =
+                            if nativeTarget && settings.DefaultExterns then
+                                let usedNames = lir.Declarations |> List.map _.Name |> Set.ofList
+                                Registry.compiledProviders ()
+                                |> List.choose (fun (names, method) ->
+                                    if names |> List.exists usedNames.Contains then Some method else None)
+                            else []
+                        let references =
+                            references @ (bundled |> List.map (fun method -> method.Module.Assembly.Location))
+                            |> List.distinct
                         let lir =
-                            if normalizedTarget="dotnet" || normalizedTarget="csharp" then
-                                FScript.Compiler.ClrBindings.bindCompiledProviders (loaded.ProviderMethods |> List.map snd) lir
+                            if nativeTarget then
+                                FScript.Compiler.ClrBindings.bindCompiledProviders (bundled @ (loaded.ProviderMethods |> List.map snd)) lir
                             else lir
                         Directory.CreateDirectory(outputDirectory) |> ignore
                         match normalizedTarget with

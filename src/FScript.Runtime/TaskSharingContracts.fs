@@ -9,14 +9,21 @@ module TaskSharingContracts =
     /// Add known runtime guarantees only for the actual built-in implementations.
     /// A provider rebinding the same name does not inherit these contracts.
     let withRuntime (registration: ExtensionRegistration) (options: TaskSharingAnalysis.Options) =
-        let knownFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line] @ PureExterns.functions @ TaskFunctions.all
+        let knownFunctions = [ConsoleExterns.write_line; ConsoleExterns.read_line] @ PureExterns.functions @ TaskFunctions.all @ Registry.mailbox.Functions
         let known =
             registration.Functions
             |> List.choose (fun fn ->
                 if knownFunctions |> List.exists (fun builtin -> Object.ReferenceEquals(fn.Impl, builtin.Impl)) then Some fn.Name
                 else None)
             |> Set.ofList
-        { options with ThreadSafeFunctions = Set.union options.ThreadSafeFunctions known }
+        let safeTypes =
+            registration.Types |> List.fold (fun types descriptor ->
+                if Registry.mailbox.Types |> List.exists (fun target -> Object.ReferenceEquals(target, descriptor)) then
+                    Set.add descriptor.Name types
+                else types) options.ThreadSafeTypes
+        { options with
+            ThreadSafeFunctions = Set.union options.ThreadSafeFunctions known
+            ThreadSafeTypes = safeTypes }
 
     /// Optional concurrency contracts, read only when static task-sharing analysis is requested.
     let fromProviders (providers: MethodInfo list) : TaskSharingAnalysis.Options =

@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' != 'true'">
-    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="1.0.0" />
+    <PackageReference Include="MagnusOpera.FScript.Extensibility" Version="2.0.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(UseLocalFScriptExtensibility)' == 'true'">
     <ProjectReference Include="$(FScriptExtensibilityProject)" />

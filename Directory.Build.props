@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <UseLocalFScriptExtensibility Condition="'$(UseLocalFScriptExtensibility)' == ''">false</UseLocalFScriptExtensibility>
     <FScriptExtensibilityProject>$(MSBuildThisFileDirectory)../FScript.Extensibility/src/FScript.Extensibility/FScript.Extensibility.fsproj</FScriptExtensibilityProject>
+    <UseLocalFScriptExtensibility Condition="'$(UseLocalFScriptExtensibility)' == ''">false</UseLocalFScriptExtensibility>
     <TargetFramework>net11.0</TargetFramework>
     <!-- Keep the assembly version used by the published FScript.Extensibility SDK. -->
     <FSharpCoreImplicitPackageVersion>10.1.404</FSharpCoreImplicitPackageVersion>

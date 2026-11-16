@@ -14,18 +14,4 @@ module BuiltinTypes =
           Import = None
           Span = unknownSpan }
 
-    let fsKindType : TypeDef =
-        { Name = "FsKind"
-          TypeParameters = []
-          IsRecursive = false
-          Fields = []
-          Cases =
-              [ "File", Some (TRName "string")
-                "Directory", Some (TRName "string")
-                "Missing", None ]
-          Import = None
-          Span = unknownSpan }
-
-    let typeDefs : TypeDef list =
-        [ environmentType
-          fsKindType ]
+    let typeDefs : TypeDef list = [environmentType]

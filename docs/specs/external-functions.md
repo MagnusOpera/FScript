@@ -192,3 +192,7 @@ companions supply trusted concurrency contracts for opt-in task-sharing analysis
 They use BCL `IEnumerable<string>` registered names and do not change the SDK,
 purity contracts, or runtime behavior. See
 [static task-sharing analysis](static-task-sharing-analysis.md).
+
+## Provider workers
+
+In the .NET source interpreter, an SDK 2 provider can call `ExternalCallContext.SpawnWorker` to run work with a fresh callback context inside the current evaluation. The host checks the Threading grant and tracks the worker through script completion. Callable handles can be used by other invocations in the same evaluation. Each invocation context expires when its own call returns.

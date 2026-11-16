@@ -221,8 +221,7 @@ module HirLowering =
                 | _ -> None)
         let declaredTypeNames = typeDefinitions |> List.map (snd >> _.Binding.Name) |> Set.ofList
         let builtinTypeDefinitions =
-            [ "Environment", TRecord(Map.ofList [ "ScriptName", TOption TString; "Arguments", TList TString ])
-              "FsKind", TUnion("FsKind", Map.ofList [ "File", Some TString; "Directory", Some TString; "Missing", None ]) ]
+            [ "Environment", TRecord(Map.ofList [ "ScriptName", TOption TString; "Arguments", TList TString ]) ]
             |> List.filter (fun (name, _) -> not (Set.contains name declaredTypeNames))
             |> List.map (fun (name, definition) -> name, definition, findSymbol state TypeInfer.TypeSymbol name syntheticSpan)
         let unionDefinitions =

@@ -156,6 +156,9 @@ module Eval =
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
         | VTuple xs, VTuple ys ->
             xs.Length = ys.Length && List.forall2 valueEquals xs ys
+        | VHostManaged left, VHostManaged right when not (left.Descriptor.TypeParameters.IsEmpty && right.Descriptor.TypeParameters.IsEmpty) ->
+            left.Descriptor.Name = right.Descriptor.Name && obj.ReferenceEquals(left.Payload, right.Payload)
+        | VHostManaged value, _ | _, VHostManaged value when not value.Descriptor.TypeParameters.IsEmpty -> false
         | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
             && (xf |> Map.forall (fun key value ->
@@ -1154,9 +1157,8 @@ module Eval =
             @ (program |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None))
             |> Map.ofList
 
-        let typeDefs = TypeInfer.scriptTypeDefinitions decls
-
         let hostDefinitions = HostInterop.typeDefinitions registration (decls |> Map.keys |> Seq.toList)
+        let typeDefs = TypeInfer.scriptTypeDefinitions hostDefinitions decls
         let typeDefs = Map.fold (fun acc name t -> Map.add name t acc) typeDefs hostDefinitions
 
         let constructorValues =

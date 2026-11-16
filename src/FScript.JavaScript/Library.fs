@@ -821,7 +821,7 @@ let private describeType definition =
         | None -> false
         | Some value when jsTypeOf value = "boolean" -> unbox<bool> value
         | _ -> failwith "scriptConstructible must be a boolean"
-    let descriptor = { Name = name; Fields = fields; HostManaged = not constructible }
+    let descriptor = { Name = name; Fields = fields; HostManaged = not constructible; TypeParameters = [] }
     HostInterop.typeDefinitions { HostInterop.empty with Types = [descriptor] } [] |> ignore
     createObj [ "name" ==> name
                 "fields" ==> (fields |> Map.toList |> List.map (fun (k, v) -> k ==> v) |> propertiesObject |> deepFreeze)
@@ -848,7 +848,7 @@ let registration (definition: obj) : obj =
             let d = describeType d
             { Name = getProperty d "name" |> unbox<string>
               Fields = getProperty d "fields" |> fieldTypes
-              HostManaged = not (getProperty d "scriptConstructible" |> unbox<bool>) })
+              HostManaged = not (getProperty d "scriptConstructible" |> unbox<bool>); TypeParameters = [] })
         let unions : HostUnionDescriptor list = entries "unions" |> List.map (fun d ->
             let name = getRequiredProperty "name" d |> unbox<string>
             let cases = getRequiredProperty "cases" d

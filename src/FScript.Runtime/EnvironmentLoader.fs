@@ -23,7 +23,7 @@ module EnvironmentLoader =
             if not settings.DefaultExterns then
                 []
             else
-                [ "runtime default externs", HostInterop.ofExterns (Registry.all context) ]
+                [ "runtime default externs", Registry.registration context ]
 
         let packageEnvironment = NuGetEnvironment.restore settings
         let assemblyInputs = settings.ExternAssemblies

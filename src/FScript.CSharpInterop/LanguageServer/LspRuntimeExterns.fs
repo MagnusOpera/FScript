@@ -61,7 +61,7 @@ module LspRuntimeExterns =
         | None -> ()
 
     let forSourcePath (sourcePath: string) : ExtensionRegistration =
-        registration |> Option.defaultWith (fun () -> HostInterop.ofExterns (InteropServices.runtimeExternsForSourcePath sourcePath))
+        registration |> Option.defaultWith (fun () -> InteropServices.runtimeRegistrationForSourcePath sourcePath)
 
     let descriptors sourcePath = (forSourcePath sourcePath).Types
 

@@ -118,7 +118,7 @@ module LspHandlers =
     let private builtinTypeTokenSet =
         [ "unit"; "int"; "float"; "numeric"; "bool"; "string"
           "list"; "option"; "map"; "task"
-          "Environment"; "FsKind" ]
+          "Environment" ]
         |> Set.ofList
 
     let private classifyToken (line: string) (startIndex: int) (token: string) =

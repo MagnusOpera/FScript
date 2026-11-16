@@ -70,6 +70,64 @@ type CliTests() =
     let basicSampleDirectory (repoRoot: string) =
         Path.Combine(repoRoot, "samples", "basic")
 
+    [<TestCase("dotnet", "success")>]
+    [<TestCase("csharp", "success")>]
+    [<TestCase("dotnet", "worker failure")>]
+    [<TestCase("dotnet", "closed mailbox")>]
+    [<TestCase("dotnet", "list state")>]
+    [<TestCase("dotnet", "empty mailbox")>]
+    member _.``Mailbox compiles and runs through typed CLR bindings``(target: string, scenario: string) =
+        let root = findRepoRoot ()
+        let folder = Directory.CreateTempSubdirectory("fscript-mailbox-")
+        try
+            let script = Path.Combine(folder.FullName, "mailbox.fss")
+            let source =
+                match scenario with
+                | "worker failure" ->
+                    "let inbox = Mailbox.start 1 (fun (_: int) (_: int) -> raise \"handler failed\") 0\nMailbox.post 1 inbox\n42"
+                | "closed mailbox" ->
+                    "let inbox = Mailbox.start 1 (fun state message -> state + message) 0\nMailbox.finish inbox |> ignore\nMailbox.post 1 inbox"
+                | "list state" ->
+                    "let inbox = Mailbox.start 1 (fun state message -> message :: state) []\nMailbox.post 1 inbox\nMailbox.post 2 inbox\nMailbox.finish inbox"
+                | "empty mailbox" ->
+                    "let inbox = Mailbox.start 1 (fun state _ -> state) 7\nMailbox.finish inbox"
+                | _ -> File.ReadAllText(Path.Combine(root, "samples", "mailbox.fss"))
+            File.WriteAllText(script, source)
+            let output = Path.Combine(folder.FullName, "out")
+            let code, _, error = runCli root folder.FullName ["compile"; script; "--target"; target; "--output"; output] None
+            Assert.That(code, Is.Zero, error)
+            let start = ProcessStartInfo("dotnet", WorkingDirectory = folder.FullName,
+                                         RedirectStandardOutput = true, RedirectStandardError = true)
+            if target = "dotnet" then start.ArgumentList.Add(Path.Combine(output, "mailbox.dll"))
+            else
+                let generated = File.ReadAllText(Path.Combine(output, "Program.cs"))
+                Assert.That(generated, Does.Contain("MailboxInstance<"))
+                Assert.That(File.Exists(Path.Combine(output, "RuntimeSDK.cs")), Is.False)
+                for arg in ["run"; "--project"; Path.Combine(output, "Program.csproj")] do
+                    start.ArgumentList.Add(arg)
+            use proc = new Process(StartInfo = start)
+            proc.Start() |> ignore
+            let stdout = proc.StandardOutput.ReadToEndAsync()
+            let stderr = proc.StandardError.ReadToEndAsync()
+            if not (proc.WaitForExit(60000)) then
+                proc.Kill(true)
+                Assert.Fail("Compiled mailbox did not finish.")
+            let errors = stderr.GetAwaiter().GetResult()
+            match scenario with
+            | "worker failure" ->
+                Assert.That(proc.ExitCode, Is.Not.Zero)
+                Assert.That(errors, Does.Contain("handler failed"))
+            | "closed mailbox" ->
+                Assert.That(proc.ExitCode, Is.Not.Zero)
+                Assert.That(errors, Does.Contain("finished mailbox"))
+            | _ ->
+                Assert.That(proc.ExitCode, Is.Zero, errors)
+                let expected =
+                    match scenario with "list state" -> "[2;1]" | "empty mailbox" -> "7" | _ -> "15"
+                Assert.That(stdout.GetAwaiter().GetResult().Trim(), Is.EqualTo(expected))
+        finally
+            folder.Delete(true)
+
     [<Test>]
     member _.``Provider binaries reference SDK without interpreter implementation`` () =
         let assembly = typeof<FScript.Cli.Tests.Fixtures.Valid.ValidExternProvider>.Assembly

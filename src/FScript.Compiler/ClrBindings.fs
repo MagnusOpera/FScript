@@ -3,6 +3,7 @@ namespace FScript.Compiler
 open System
 open System.Reflection
 open System.Text.Json
+open System.Text.Json.Serialization
 open System.IO
 open System.Reflection.Metadata
 open System.Reflection.PortableExecutable
@@ -16,7 +17,11 @@ type ClrMethodLink =
       Parameters: string array
       IsStatic: bool
       IsConstructor: bool
-      Inline: bool }
+      Inline: bool
+      [<JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)>]
+      GenericArity: int
+      [<JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)>]
+      SchedulesWorker: bool }
 
 module ClrBindings =
     /// Keep only explicitly supplied dependencies referenced by the emitted PE and their
@@ -88,18 +93,29 @@ module ClrBindings =
     let private typeName (value: System.Type) =
         match value.AssemblyQualifiedName with null -> invalidArg "value" "CLR types must have assembly-qualified names." | name -> name
 
-    let methodLink (method: MethodBase) =
+    let private describeMethod schedulesWorker (method: MethodBase) =
         let declaring = method.DeclaringType |> nonNull
-        if not method.IsPublic || method.ContainsGenericParameters || not declaring.IsVisible then
-            invalidArg "method" "Compiled FFI requires a public, closed method on a public CLR type."
-        if method.GetParameters() |> Array.exists (fun parameter -> parameter.ParameterType.IsByRef || parameter.ParameterType.IsPointer) then
+        let generic = method.IsGenericMethodDefinition
+        if not method.IsPublic || not declaring.IsVisible || declaring.ContainsGenericParameters
+           || (method.ContainsGenericParameters && not generic) || (generic && not method.IsStatic) then
+            invalidArg "method" "Compiled FFI requires a public closed member or a public static generic method on a public closed CLR type."
+        let parameters = method.GetParameters() |> Array.map _.ParameterType
+        if parameters |> Array.exists (fun parameter -> parameter.IsByRef || parameter.IsPointer) then
             invalidArg "method" "Compiled FFI does not accept by-reference or pointer parameters."
-        "clr:" + JsonSerializer.Serialize<ClrMethodLink>(
-            { DeclaringType = typeName declaring
-              MemberName = method.Name
-              Parameters = method.GetParameters() |> Array.map (fun parameter -> typeName parameter.ParameterType)
-              IsStatic = method.IsStatic
-              IsConstructor = method.IsConstructor; Inline = false })
+        if schedulesWorker && (not method.IsStatic || parameters |> Array.tryLast <> Some typeof<Action<Action>>) then
+            invalidArg "method" "A compiled worker binding requires a static method with a final Action<Action> parameter."
+        { DeclaringType = typeName declaring
+          MemberName = method.Name
+          Parameters = parameters |> Array.map (fun parameter -> if generic then string parameter else typeName parameter)
+          IsStatic = method.IsStatic
+          IsConstructor = method.IsConstructor
+          Inline = false
+          GenericArity = if generic then method.GetGenericArguments().Length else 0
+          SchedulesWorker = schedulesWorker }
+
+    let private serializeMethod link = "clr:" + JsonSerializer.Serialize<ClrMethodLink>(link)
+
+    let methodLink method = describeMethod false method |> serializeMethod
 
     let tryMethodLink (path: string) : ClrMethodLink option =
         if path.StartsWith("clr:{", StringComparison.Ordinal) then
@@ -112,8 +128,8 @@ module ClrBindings =
 
     /// Bind an existing host-external declaration to an exact CLR overload.
     /// Instance methods take their receiver as the first curried FScript argument.
-    let bindMethod name (method: MethodBase) (program: Lir.Program) =
-        let link = methodLink method
+    let private bindMethodWithScheduler schedulesWorker name (method: MethodBase) (program: Lir.Program) =
+        let link = describeMethod schedulesWorker method |> serializeMethod
         let mutable found = false
         let declarations = program.Declarations |> List.map (fun declaration ->
             if declaration.Name = name then
@@ -122,6 +138,8 @@ module ClrBindings =
             else declaration)
         if not found then invalidArg "name" $"No reachable external declaration named '{name}' exists."
         { program with Declarations = declarations }
+
+    let bindMethod name method program = bindMethodWithScheduler false name method program
 
     /// Link existing SDK providers without retaining compiler-process delegates.
     /// Generated adapters invoke SDK implementations directly and marshal compiled callbacks.
@@ -140,6 +158,7 @@ module ClrBindings =
     /// Explicit permission to expand this exact typed FFI call in the .NET backend.
     /// Independent of purity; legacy SDK adapters are not eligible.
     let bindInlineMethod name (method: MethodInfo) program =
+        if method.IsGenericMethodDefinition then invalidArg "method" "Open generic CLR bindings cannot be inlined."
         let linked = bindMethod name method program
         let declarations = linked.Declarations |> List.map (fun declaration ->
             if declaration.Name <> name then declaration
@@ -150,12 +169,19 @@ module ClrBindings =
 
     /// Retain a native type projection in the ordinary serialized target-type linkage.
     let bindType name (clrType: System.Type) (program: Lir.Program) =
-        if not clrType.IsVisible || clrType.ContainsGenericParameters || clrType.IsByRef || clrType.IsPointer then
-            invalidArg "clrType" "Compiled FFI requires a public, closed CLR type."
+        if not clrType.IsVisible || (clrType.ContainsGenericParameters && not clrType.IsGenericTypeDefinition)
+           || clrType.IsByRef || clrType.IsPointer then
+            invalidArg "clrType" "Compiled FFI requires a public closed CLR type or a public generic type definition."
         let definition = program.Types |> List.tryFind (fun declaration -> declaration.Name = name)
         match definition with
         | None -> invalidArg "name" $"No external type named '{name}' exists."
         | Some definition ->
+            match definition.Definition, clrType.IsGenericTypeDefinition with
+            | TGenericDefinition (parameters, THostManaged (_, fields)), true
+                when fields.IsEmpty && not clrType.IsValueType && parameters.Length = clrType.GetGenericArguments().Length -> ()
+            | TGenericDefinition _, _ | _, true ->
+                invalidArg "clrType" "A generic CLR type must bind an opaque generic host type with matching arity."
+            | _ -> ()
             let fields = match definition.Definition with TRecord fields | THostManaged(_, fields) -> Map.toList fields | _ -> []
             let imported: Lir.ImportedRecord =
                 { Name = name; ModulePath = "clr:" + typeName clrType; MemberName = clrType.FullName |> nonNull
@@ -257,16 +283,23 @@ module ClrBindings =
                     | :? Collections.Generic.IEnumerable<string> as names ->
                         names |> Seq.map (fun name -> if String.IsNullOrWhiteSpace name then invalidOp "FScriptInlineFunctions contains an empty name." else name) |> Set.ofSeq
                     | _ -> invalidOp "FScriptInlineFunctions must return IEnumerable<string>."
-            let bindings =
-                match companion "FScriptCompiledFunctions" with
+            let bindings name =
+                match companion name with
                 | None -> []
                 | Some factory ->
                     match factory.Invoke(null,[||]) with
                     | :? Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string,MethodInfo>> as bindings -> Seq.toList bindings
-                    | _ -> invalidOp $"{typ.FullName}.FScriptCompiledFunctions must return IEnumerable<KeyValuePair<string, MethodInfo>>."
-            let unknown = Set.difference inlineNames (bindings |> List.map _.Key |> Set.ofList)
+                    | _ -> invalidOp $"{typ.FullName}.{name} must return IEnumerable<KeyValuePair<string, MethodInfo>>."
+            let direct = bindings "FScriptCompiledFunctions"
+            let workers = bindings "FScriptCompiledWorkerFunctions"
+            let unknown = Set.difference inlineNames (direct |> List.map _.Key |> Set.ofList)
             if not unknown.IsEmpty then invalidOp ("Inline requires an exact FScriptCompiledFunctions binding: " + String.concat ", " unknown)
-            for binding in bindings do
+            let duplicate = Set.intersect (direct |> List.map _.Key |> Set.ofList) (workers |> List.map _.Key |> Set.ofList)
+            if not duplicate.IsEmpty then invalidOp ("Duplicate compiled provider bindings: " + String.concat ", " duplicate)
+            for binding in direct do
                 if program.Declarations |> List.exists (fun declaration -> declaration.Name = binding.Key) then
                     program <- if inlineNames.Contains binding.Key then bindInlineMethod binding.Key binding.Value program else bindMethod binding.Key binding.Value program
+            for binding in workers do
+                if program.Declarations |> List.exists (fun declaration -> declaration.Name = binding.Key) then
+                    program <- bindMethodWithScheduler true binding.Key binding.Value program
         program

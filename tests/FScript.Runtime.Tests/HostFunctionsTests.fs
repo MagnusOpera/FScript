@@ -139,7 +139,7 @@ type HostFunctionsTests() =
         Assert.That(message, Does.Contain("Host.nodes.result"))
         Assert.That(message, Does.Contain("FunctionNode"))
         let descriptor = HostTypes.describe<FunctionNode>()
-        let wrong = registration [{descriptor with HostManaged=false}]
+        let wrong = registration [{descriptor with HostManaged=false; TypeParameters = [] }]
         error (fun () -> HostFunctions.create wrong "Host.nodes" make |> ignore) |> ignore
         Assert.That(calls, Is.Zero)
 
@@ -183,7 +183,7 @@ type HostFunctionsTests() =
         let handler = HostFunctions.create types "Host.node" (fun (node: FunctionNode) -> calls <- calls + 1; node.Value)
         let original = HostTypes.wrap types ({Value=42L;Token=Guid.NewGuid()}: FunctionNode)
         let host = HostInterop.unwrap descriptor.Name original
-        let invalid = [VRecord host.Fields; VHostManaged {host with Descriptor={descriptor with HostManaged=false}};
+        let invalid = [VRecord host.Fields; VHostManaged {host with Descriptor={descriptor with HostManaged=false; TypeParameters = [] }};
                        VHostManaged {host with Payload=(box "wrong" |> nonNull)}; VHostManaged {host with Fields=Map.ofList ["Value", VString "wrong"]}]
         for value in invalid do error (fun () -> FScript.Testing.SdkTestHost.invokeExternal handler [value] |> ignore) |> ignore
         Assert.That(calls, Is.Zero)
