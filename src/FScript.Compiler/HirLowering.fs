@@ -40,8 +40,8 @@ module HirLowering =
         | TTask item -> TTask(representationType state item)
         | TRecord fields -> TRecord(fields |> Map.map (fun _ -> representationType state))
         | TUnion(name, cases) -> TUnion(name, cases |> Map.map (fun _ -> Option.map (representationType state)))
-        | TNamed name -> TNamed name
-        | value -> value
+        | TGenericDefinition (parameters, body) -> TGenericDefinition (parameters, representationType state body)
+        | value -> Types.mapChildren (representationType state) value
 
     let private resolvedOperation = function
         | TypeInfer.NumericAddition -> Hir.NumericAdd
@@ -228,7 +228,7 @@ module HirLowering =
         let unionDefinitions =
             typeDefinitions
             |> List.choose (fun (statement, definition) ->
-                match definition.Definition with
+                match Types.definitionBody definition.Definition with
                 | TUnion(name, cases) -> Some(statement, definition, name, cases)
                 | _ -> None)
         let constructorDefinitions =
@@ -241,17 +241,21 @@ module HirLowering =
                         cases
                         |> Map.toList
                         |> List.map (fun (caseName, payload) ->
-                            name, caseName, payload, syntheticSpan,
+                            TNamed name, name, caseName, payload, syntheticSpan,
                             findSymbol state TypeInfer.UnionCaseSymbol $"{name}.{caseName}" syntheticSpan)
-                        |> List.filter (fun (_, _, _, _, id) -> Set.contains (Hir.symbolNumber id) referencedSymbols)
+                        |> List.filter (fun (_, _, _, _, _, id) -> Set.contains (Hir.symbolNumber id) referencedSymbols)
                     | _ -> [])
             let source =
                 unionDefinitions
                 |> List.collect (fun (_, definition, name, cases) ->
+                let unionType =
+                    match definition.Definition with
+                    | TGenericDefinition (parameters, _) -> TApplied (name, List.map TVar parameters)
+                    | _ -> TNamed name
                 cases
                 |> Map.toList
                 |> List.map (fun (caseName, payload) ->
-                    name, caseName, payload, definition.Binding.Span,
+                    unionType, name, caseName, payload, definition.Binding.Span,
                     findSymbol state TypeInfer.UnionCaseSymbol $"{name}.{caseName}" definition.Binding.Span))
             builtins @ source
         let mutable declarations =
@@ -270,8 +274,7 @@ module HirLowering =
                         | PortableRuntimeIntrinsic -> Hir.Intrinsic external.Name
                         | UnsupportedHostExtern -> Hir.HostExternal(external.Name, external.Arity)
                     ({ Id = externSymbols.[external.Name]; Name = external.Name; Scheme = schemeFor externSymbols.[external.Name] external.Scheme; Attributes = []; IsRecursive = false; IsExported = false; IsPure = Set.contains external.Name resolved.Purity.PureFunctions; ExternalArity = Some external.Arity; Export = None; Span = span; Value = { Type = valueType; Span = span; Node = node } }: Hir.Declaration))
-            builtinDeclarations @ externalDeclarations @ (constructorDefinitions |> List.map (fun (typeName, caseName, payloadType, span, id) ->
-                let unionType = TNamed typeName
+            builtinDeclarations @ externalDeclarations @ (constructorDefinitions |> List.map (fun (unionType, typeName, caseName, payloadType, span, id) ->
                 let value =
                     match payloadType with
                     | None -> ({ Type = unionType; Span = span; Node = Hir.UnionCase(typeName, caseName, None) }: Hir.Expression)

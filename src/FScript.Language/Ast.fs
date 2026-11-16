@@ -7,6 +7,7 @@ type BackendImport =
 
 type TypeDef =
     { Name: string
+      TypeParameters: string list
       IsRecursive: bool
       Fields: (string * TypeRef) list
       Cases: (string * TypeRef option) list
@@ -15,6 +16,9 @@ type TypeDef =
 
 and TypeRef =
     | TRName of string
+    | TRVariable of string
+    | TRApplied of string * TypeRef list
+    | TRForall of parameters: string list * result: TypeRef option
     | TRTuple of TypeRef list
     | TRFun of TypeRef * TypeRef
     | TRPostfix of TypeRef * string
@@ -56,6 +60,7 @@ and Expr =
     | EUnit of Span
     | ELiteral of Literal * Span
     | EVar of string * Span
+    | ETypeApply of Expr * TypeRef list * Span
     | EParen of Expr * Span
     | ELambda of Param * Expr * Span
     | EApply of Expr * Expr * Span
@@ -63,7 +68,7 @@ and Expr =
     | ERaise of Expr * Span
     | EFor of string * Expr * Expr * Span
     | EMatch of Expr * (Pattern * Expr option * Expr * Span) list * Span
-    | ELet of string * Expr * Expr * bool * TypeRef option * Span
+    | ELet of string * Expr * Expr * bool * TypeRef option * parameterCount: int * Span
     | ELetPattern of Pattern * Expr * Expr * Span
     | ELetRecGroup of (string * Param list * TypeRef option * Expr * Span) list * Expr * Span
     | EList of Expr list * Span
@@ -126,6 +131,7 @@ module Ast =
         | EUnit s -> s
         | ELiteral (_, s) -> s
         | EVar (_, s) -> s
+        | ETypeApply (_, _, s) -> s
         | EParen (_, s) -> s
         | ELambda (_, _, s) -> s
         | EApply (_, _, s) -> s
@@ -133,7 +139,7 @@ module Ast =
         | ERaise (_, s) -> s
         | EFor (_, _, _, s) -> s
         | EMatch (_, _, s) -> s
-        | ELet (_, _, _, _, _, s) -> s
+        | ELet (_, _, _, _, _, _, s) -> s
         | ELetPattern (_, _, _, s) -> s
         | ELetRecGroup (_, _, s) -> s
         | EList (_, s) -> s

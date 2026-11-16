@@ -82,6 +82,8 @@ module internal HostDecode =
             if ok then Some (VRecord map) else None
         | THostManaged _
         | TRecordShape _
+        | TApplied _
+        | TGenericDefinition _
         | TNamed _
         | TUnion _
         | TTypeToken
@@ -145,6 +147,8 @@ module internal HostDecode =
         | TTuple _
         | THostManaged _
         | TRecordShape _
+        | TApplied _
+        | TGenericDefinition _
         | TNamed _
         | TUnion _
         | TTypeToken

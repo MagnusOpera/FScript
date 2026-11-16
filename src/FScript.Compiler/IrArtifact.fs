@@ -61,6 +61,16 @@ module IrArtifact =
             | TOption item -> "option", [ item ], None | TTuple items -> "tuple", items, None
             | TMap(key, item) -> "map", [ key; item ], None | TFun(argument, result) -> "function", [ argument; result ], None
             | TNamed typeName -> "named", [], Some typeName
+            | TApplied (typeName, arguments) -> "applied", arguments, Some typeName
+            | TGenericDefinition (parameters, body) ->
+                writer.WriteString("kind", "generic-definition")
+                writer.WriteStartArray("parameters")
+                for parameter in parameters do writer.WriteNumberValue(parameter)
+                writer.WriteEndArray()
+                writer.WritePropertyName("body")
+                writeType writer body
+                writer.WriteEndObject()
+                "", [], None
             | TVar id -> "variable", [], Some(string id)
             | TNumeric id -> "numeric", [], Some(string id)
             | TRecordShape(id, fields, constructible) ->
@@ -363,6 +373,10 @@ module IrArtifact =
         | "function" -> let values = args() in TFun(values.[0], values.[1])
         | "named" -> TNamed(stringProperty "name" element) | "variable" -> TVar(Int32.Parse(stringProperty "name" element))
         | "numeric" -> TNumeric(Int32.Parse(stringProperty "name" element))
+        | "applied" -> TApplied(stringProperty "name" element, args())
+        | "generic-definition" ->
+            let parameters = (property "parameters" element).EnumerateArray() |> Seq.map _.GetInt32() |> Seq.toList
+            TGenericDefinition(parameters, readType (property "body" element))
         | "host-managed" ->
             THostManaged(stringProperty "name" element, property "fields" element |> _.EnumerateArray()
                 |> Seq.map (fun field -> stringProperty "name" field, readType (property "type" field)) |> Map.ofSeq)

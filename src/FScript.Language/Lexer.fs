@@ -294,6 +294,13 @@ module Lexer =
                         addToken (IntLit (Int64.Parse(text))) span tokens
                     i <- idx
                     col <- startCol + (idx - start)
+                | '\'' when i + 1 < src.Length && isIdentStart src.[i + 1] ->
+                    let mutable finish = i + 2
+                    while finish < src.Length && isIdentPart src.[finish] do finish <- finish + 1
+                    let length = finish - i
+                    addToken (TypeVariable (src.Substring(i + 1, length - 1))) (mkSpan sourceName line col length) tokens
+                    i <- finish
+                    col <- col + length
                 | c when isIdentStart c ->
                     let start = i
                     let startCol = col

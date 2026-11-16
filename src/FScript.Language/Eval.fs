@@ -204,6 +204,10 @@ module Eval =
             | TRTuple ts ->
                 resolveTypeList ts |> Option.map TTuple
             | TRFun _ -> None
+            | TRVariable _ | TRForall _ -> None
+            | TRApplied (name, arguments) ->
+                let resolved = List.choose resolve arguments
+                if resolved.Length = arguments.Length then Some (TApplied (name, resolved)) else None
             | TRPostfix (inner, "list") -> resolve inner |> Option.map TList
             | TRPostfix (inner, "task") -> resolve inner |> Option.map TTask
             | TRPostfix (inner, "option") -> resolve inner |> Option.map TOption
@@ -262,7 +266,7 @@ module Eval =
                     match values.TryFind name with
                     | Some fv -> valueHasType fv ft
                     | None -> false)
-            | THostManaged _, _ -> HostInterop.matches typeDefs t value
+            | (TApplied _ | THostManaged _), _ -> HostInterop.matches typeDefs t value
             | TRecordShape (_, fields, _), RecordFields values ->
                 fields |> Map.forall (fun name ft -> values.TryFind name |> Option.exists (fun fv -> valueHasType fv ft))
             | TNamed name, v ->
@@ -779,7 +783,7 @@ module Eval =
             | _ -> do! debugPoint runtime expr env "before"
 #endif
         match expr with
-        | EParen(inner,_) -> return! evalExpr runtime typeDefs env inner
+        | EParen(inner,_) | ETypeApply(inner, _, _) -> return! evalExpr runtime typeDefs env inner
         | EApply(fn, arg, span) ->
             let! f = evalExpr runtime typeDefs env fn
             let! a = evalExpr runtime typeDefs env arg
@@ -812,7 +816,7 @@ module Eval =
                     ()
                 return VUnit
             | _ -> return raise (EvalException { Message = "For loop source must be list"; Span = span })
-        | ELet(name, value, body, isRec, _, span) ->
+        | ELet(name, value, body, isRec, _, _, span) ->
             if isRec then
                 match value with
                 | ELambda(param, lambdaBody, _) ->
@@ -1150,73 +1154,7 @@ module Eval =
             @ (program |> List.choose (function | TypeInfer.TSType def -> Some(def.Name, def) | _ -> None))
             |> Map.ofList
 
-        let rec fromRef (stack: string list) (tref: TypeRef) =
-            match tref with
-            | TRName "unit" -> TUnit
-            | TRName "int" -> TInt
-            | TRName "float" -> TFloat
-            | TRName "bool" -> TBool
-            | TRName "string" -> TString
-            | TRName n ->
-                match decls.TryFind n with
-                | Some d ->
-                    match stack |> List.tryFindIndex ((=) n) with
-                    | Some 0 ->
-                        if d.IsRecursive then
-                            TNamed n
-                        else
-                            raise (EvalException { Message = $"Recursive type '{n}' requires 'type rec'"; Span = unknownSpan })
-                    | Some _ ->
-                        raise (EvalException { Message = "Mutual recursive types are not supported"; Span = unknownSpan })
-                    | None ->
-                        if not d.Cases.IsEmpty then
-                            let cases =
-                                d.Cases
-                                |> List.map (fun (caseName, payload) ->
-                                    caseName, payload |> Option.map (fromRef (n :: stack)))
-                                |> Map.ofList
-                            TUnion(n, cases)
-                        else
-                            d.Fields
-                            |> List.map (fun (fname, ft) -> fname, fromRef (n :: stack) ft)
-                            |> Map.ofList
-                            |> TRecord
-                | None -> TNamed n
-            | TRTuple ts -> ts |> List.map (fromRef stack) |> TTuple
-            | TRFun (a, b) -> TFun(fromRef stack a, fromRef stack b)
-            | TRPostfix (inner, "list") -> TList (fromRef stack inner)
-            | TRPostfix (inner, "task") -> TTask (fromRef stack inner)
-            | TRPostfix (inner, "option") -> TOption (fromRef stack inner)
-            | TRPostfix (inner, "map") -> TMap (TString, fromRef stack inner)
-            | TRMap (keyType, valueType) -> TMap((if keyType = TRName "numeric" then TInt else fromRef stack keyType), fromRef stack valueType)
-            | TRPostfix (_, suffix) ->
-                raise (EvalException { Message = $"Unsupported type suffix {suffix}"; Span = unknownSpan })
-            | TRRecord fields ->
-                fields
-                |> List.map (fun (name, t) -> name, fromRef stack t)
-                |> Map.ofList
-                |> TRecord
-            | TRStructuralRecord fields ->
-                fields
-                |> List.map (fun (name, t) -> name, fromRef stack t)
-                |> Map.ofList
-                |> TRecord
-
-        let typeDefs =
-            decls
-            |> Map.map (fun name def ->
-                if not def.Cases.IsEmpty then
-                    let cases =
-                        def.Cases
-                        |> List.map (fun (caseName, payload) ->
-                            caseName, payload |> Option.map (fromRef [ name ]))
-                        |> Map.ofList
-                    TUnion(name, cases)
-                else
-                    def.Fields
-                    |> List.map (fun (fname, ft) -> fname, fromRef [ name ] ft)
-                    |> Map.ofList
-                    |> TRecord)
+        let typeDefs = TypeInfer.scriptTypeDefinitions decls
 
         let hostDefinitions = HostInterop.typeDefinitions registration (decls |> Map.keys |> Seq.toList)
         let typeDefs = Map.fold (fun acc name t -> Map.add name t acc) typeDefs hostDefinitions

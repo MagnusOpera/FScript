@@ -40,8 +40,28 @@ This document specifies type annotations for function parameters and returns in 
 - Return annotations are valid only for function bindings (bindings with at least one parameter).
   - `let value : int = 1` is not valid.
 
+## Generic functions
+
+A function can introduce a named type variable by using it in an annotation, as in
+`let identity (value: 'a) : 'a = value`. Occurrences of the same name share one type
+within the function's annotation scope.
+
+A declaration can give its type parameters explicitly.
+
+```fsharp
+let pair<'left, 'right> (left: 'left) (right: 'right) = (left, right)
+let inferred = pair 42 "answer"
+let explicit = pair<int, string> 42 "answer"
+```
+
+Type arguments follow the declared parameter order. The opening angle bracket
+in an expression touches the function name. Ordinary calls infer the arguments.
+Explicitly declared parameters are unconstrained and distinct. A body that
+forces one to be numeric or equates two declared parameters is a type error.
+Recursive bindings use monomorphic references within their own recursive group.
+
 ## Supported annotation type syntax
-- Named/basic: `int`, `float`, `numeric`, `string`, `Node`
+- Named/basic and applied types: `int`, `float`, `numeric`, `string`, `Node`, `Box<int>`
 - Postfix containers:
   - `int list`
   - `Node option`

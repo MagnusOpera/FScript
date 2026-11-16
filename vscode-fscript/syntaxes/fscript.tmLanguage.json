@@ -73,6 +73,22 @@
     "types": {
       "patterns": [
         {
+          "name": "entity.name.type.parameter.fscript",
+          "match": "(?<![\\p{L}\\p{N}_'])'[\\p{L}_][\\p{L}\\p{N}_']*"
+        },
+        {
+          "name": "meta.type.arguments.fscript",
+          "begin": "(?<=[\\p{L}\\p{N}_'])<(?=[ \\t]*['\\p{L}_({][^=\\r\\n&]*?(?<!-)>)",
+          "beginCaptures": { "0": { "name": "punctuation.definition.type.arguments.begin.fscript" } },
+          "end": "(?<!-)>|$",
+          "endCaptures": { "0": { "name": "punctuation.definition.type.arguments.end.fscript" } },
+          "patterns": [
+            { "include": "#types" },
+            { "name": "entity.name.type.fscript", "match": "\\b[\\p{L}_][\\p{L}\\p{N}_'.]*" },
+            { "include": "#operators" }
+          ]
+        },
+        {
           "name": "meta.type.map.fscript",
           "begin": "\\b(map)(\\s*\\[)",
           "beginCaptures": {
@@ -88,7 +104,7 @@
         },
         {
           "name": "storage.type.fscript",
-          "match": "\\b(int|float|numeric|string|bool|unit|list|option|map)\\b"
+          "match": "\\b(int|float|numeric|string|bool|unit|list|option|task|map)\\b"
         }
       ]
     },

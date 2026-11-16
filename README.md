@@ -170,6 +170,7 @@ Useful samples:
 
 - [`samples/ffi`](samples/ffi/README.md): a rotating OpenGL teapot with FScript-generated geometry, lighting, and camera, typed host functions, and opaque GPU resources.
 - [`samples/types-showcase.fss`](samples/types-showcase.fss)
+- [`samples/generics.fss`](samples/generics.fss) demonstrates generic functions, records, and unions.
 - [`samples/patterns-and-collections.fss`](samples/patterns-and-collections.fss)
 - [`samples/quicksort.fss`](samples/quicksort.fss)
 - [`samples/parallel-quicksort.fss`](samples/parallel-quicksort.fss)

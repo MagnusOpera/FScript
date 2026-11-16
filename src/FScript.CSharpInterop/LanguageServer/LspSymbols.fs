@@ -357,6 +357,8 @@ let queryValues : string -> string -> string list option
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
+            | TApplied (name, arguments) -> sprintf "%s<%s>" name (arguments |> List.map go |> String.concat ", ")
+            | TGenericDefinition (_, body) -> go body
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
             | TNumeric _ -> "numeric"
@@ -499,6 +501,9 @@ let queryValues : string -> string -> string list option
     let rec private typeRefToString (typeRef: TypeRef) =
         match typeRef with
         | TRName name -> name
+        | TRVariable name -> "'" + name
+        | TRApplied (name, arguments) -> sprintf "%s<%s>" name (arguments |> List.map typeRefToString |> String.concat ", ")
+        | TRForall (_, result) -> result |> Option.map typeRefToString |> Option.defaultValue ""
         | TRTuple parts -> parts |> List.map typeRefToString |> String.concat " * " |> sprintf "(%s)"
         | TRFun (a, b) -> sprintf "%s -> %s" (typeRefToString a) (typeRefToString b)
         | TRPostfix (inner, suffix) -> sprintf "%s %s" (typeRefToString inner) suffix
@@ -718,7 +723,7 @@ let queryValues : string -> string -> string list option
             let rec typeTargetFromType (t: Type) =
                 match t with
                 | THostManaged (name, _) -> Some name
-                | TNamed name -> Some name
+                | TNamed name | TApplied (name, _) -> Some name
                 | TUnion (name, _) -> Some name
                 | TRecord _ -> tryResolveRecordTarget t
                 | TFun (_, ret) -> typeTargetFromType ret
@@ -849,7 +854,7 @@ let queryValues : string -> string -> string list option
         let rec resolveTypeTarget (t: Type) =
             match t with
             | THostManaged (name, _) -> Some name
-            | TNamed name -> Some name
+            | TNamed name | TApplied (name, _) -> Some name
             | TUnion (name, _) -> Some name
             | TRecord _ ->
                 match canonicalRecordSignatureFromType t with
@@ -967,7 +972,7 @@ let queryValues : string -> string -> string list option
         let rec collectExpr (acc: Map<string, Span list>) (expr: Expr) =
             match expr with
             | EVar (name, span) -> addOccurrence name span acc
-            | EParen (inner, _) -> collectExpr acc inner
+            | EParen (inner, _) | ETypeApply (inner, _, _) -> collectExpr acc inner
             | ELambda (_, body, _) -> collectExpr acc body
             | EApply (fn, arg, _) ->
                 let withFn = collectExpr acc fn
@@ -989,7 +994,7 @@ let queryValues : string -> string -> string list option
                         | Some g -> collectExpr state g
                         | None -> state
                     collectExpr withGuard body) withScrutinee
-            | ELet (_, value, body, _, _, _) ->
+            | ELet (_, value, body, _, _, _, _) ->
                 let withValue = collectExpr acc value
                 collectExpr withValue body
             | ELetPattern (_, value, body, _) ->
@@ -1111,7 +1116,7 @@ let queryValues : string -> string -> string list option
                 match lookupBinding scopes name with
                 | Some declSpan -> [ usageSpan, declSpan ]
                 | None -> []
-            | EParen (inner, _)
+            | EParen (inner, _) | ETypeApply (inner, _, _)
             | ERaise (inner, _)
             | ESome (inner, _) ->
                 resolveExpr scopes inner
@@ -1146,7 +1151,7 @@ let queryValues : string -> string -> string list option
                                 | None -> []
                             inGuard @ resolveExpr scopedWithPattern body))
                 inScrutinee @ inCases
-            | ELet (name, value, body, isRec, _, span) ->
+            | ELet (name, value, body, isRec, _, _, span) ->
                 if isRec then
                     withScope scopes (fun scoped ->
                         let scopedWithSelf = pushBindings scoped [ name, span ]
@@ -1527,9 +1532,9 @@ let queryValues : string -> string -> string list option
 
         let rec terminalExpr (expr: Expr) =
             match expr with
-            | ELet (_, _, body, _, _, _) -> terminalExpr body
+            | ELet (_, _, body, _, _, _, _) -> terminalExpr body
             | ELetRecGroup (_, body, _) -> terminalExpr body
-            | EParen (inner, _) -> terminalExpr inner
+            | EParen (inner, _) | ETypeApply (inner, _, _) -> terminalExpr inner
             | _ -> expr
 
         let tryResolve expr =
@@ -1617,7 +1622,7 @@ let queryValues : string -> string -> string list option
                     @ collectFieldVarUses fieldTypes f
                 | ERaise (inner, _)
                 | ESome (inner, _)
-                | EParen (inner, _) -> collectFieldVarUses fieldTypes inner
+                | EParen (inner, _) | ETypeApply (inner, _, _) -> collectFieldVarUses fieldTypes inner
                 | EFor (_, source, body, _) ->
                     collectFieldVarUses fieldTypes source @ collectFieldVarUses fieldTypes body
                 | EMatch (scrutinee, cases, _) ->
@@ -1631,7 +1636,7 @@ let queryValues : string -> string -> string list option
                                 | None -> []
                             inGuard @ collectFieldVarUses fieldTypes body)
                     inScrutinee @ inCases
-                | ELet (_, value, body, _, _, _) ->
+                | ELet (_, value, body, _, _, _, _) ->
                     collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
                 | ELetPattern (_, value, body, _) ->
                     collectFieldVarUses fieldTypes value @ collectFieldVarUses fieldTypes body
@@ -1779,7 +1784,7 @@ let queryValues : string -> string -> string list option
                             | None -> []
                         fromPattern @ fromGuard @ collectExprBindings body)
                 inScrutinee @ inCases
-            | ELet (name, value, body, _, _, span) ->
+            | ELet (name, value, body, _, _, _, span) ->
                 mkBinding name span (Ast.spanOfExpr body) LetBound None
                 :: (collectExprBindings value @ collectExprBindings body)
             | ELetPattern (pattern, value, body, _) ->
@@ -1804,7 +1809,7 @@ let queryValues : string -> string -> string list option
                 collectExprBindings c @ collectExprBindings t @ collectExprBindings f
             | ERaise (inner, _)
             | ESome (inner, _)
-            | EParen (inner, _) ->
+            | EParen (inner, _) | ETypeApply (inner, _, _) ->
                 collectExprBindings inner
             | EList (items, _)
             | ETuple (items, _) ->
@@ -1882,7 +1887,7 @@ let queryValues : string -> string -> string list option
             match expr with
             | ELambda (param, body, _) ->
                 param :: collectLambdaParams body
-            | EParen (inner, _) ->
+            | EParen (inner, _) | ETypeApply (inner, _, _) ->
                 collectLambdaParams inner
             | _ ->
                 []
@@ -1945,7 +1950,7 @@ let queryValues : string -> string -> string list option
             match expr with
             | ELambda (param, body, _) ->
                 param :: collectLambdaParams body
-            | EParen (inner, _) ->
+            | EParen (inner, _) | ETypeApply (inner, _, _) ->
                 collectLambdaParams inner
             | _ ->
                 []
@@ -2049,7 +2054,7 @@ let queryValues : string -> string -> string list option
                 collectExpr acc inner
             | EFor (_, source, body, _) ->
                 collectExpr (collectExpr acc source) body
-            | ELet (_, value, body, _, _, _) ->
+            | ELet (_, value, body, _, _, _, _) ->
                 collectExpr (collectExpr acc value) body
             | ELetPattern (_, value, body, _) ->
                 collectExpr (collectExpr acc value) body
@@ -2085,7 +2090,7 @@ let queryValues : string -> string -> string list option
             | EBinOp (_, target, key, _) ->
                 collectExpr (collectExpr acc target) key
             | ESome (inner, _)
-            | EParen (inner, _) ->
+            | EParen (inner, _) | ETypeApply (inner, _, _) ->
                 collectExpr acc inner
             | EInterpolatedString (parts, _) ->
                 parts
@@ -2171,7 +2176,7 @@ let queryValues : string -> string -> string list option
                             | Some g -> collectExpr state false g
                             | None -> state
                         collectExpr withGuard false body) withScrutinee
-                | ELet (_, value, body, _, _, _) ->
+                | ELet (_, value, body, _, _, _, _) ->
                     collectExpr (collectExpr acc false value) false body
                 | ELetPattern (_, value, body, _) ->
                     collectExpr (collectExpr acc false value) false body
@@ -2209,7 +2214,7 @@ let queryValues : string -> string -> string list option
                 | EBinOp (_, target, key, _) ->
                     collectExpr (collectExpr acc false target) false key
                 | ESome (inner, _)
-                | EParen (inner, _) ->
+                | EParen (inner, _) | ETypeApply (inner, _, _) ->
                     collectExpr acc false inner
                 | EInterpolatedString (parts, _) ->
                     parts

@@ -62,6 +62,7 @@ module ExtensionBridge =
         | THostManaged(name, fields) -> ST.THostManaged(name, Map.map (fun _ -> typeFromLanguage) fields)
         | TVar id -> ST.TVar id
         | TNumeric id -> ST.TNumeric id
+        | TApplied _ | TGenericDefinition _ -> raise (SE "Script-defined generic types are unavailable in SDK descriptors.")
         | TRecordShape _ -> raise (SE "Interpreter inference witnesses cannot be exposed through the extension SDK.")
 
     type private Callable(owner: obj, value: Value, active: unit -> bool) =

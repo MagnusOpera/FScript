@@ -7,6 +7,25 @@ const grammar = JSON.parse(fs.readFileSync(path.join(__dirname, "../../vscode-fs
 const declarations = grammar.repository.declarations.patterns;
 const prefix = declarations.find(pattern => pattern.name === "keyword.control.fscript");
 const binding = declarations.find(pattern => pattern.name === "meta.let.binding.fscript");
+const typePatterns = grammar.repository.types.patterns;
+
+test("TextMate highlights generic parameters, applications and postfix task types", () => {
+  const parameter = typePatterns.find(pattern => pattern.name === "entity.name.type.parameter.fscript");
+  const parameters = new RegExp(parameter.match, "gu");
+  const source = "let copy<'item> (items: 'item list) = items'";
+  assert.deepEqual([...source.matchAll(parameters)].map(match => match[0]), ["'item", "'item"]);
+
+  const application = typePatterns.find(pattern => pattern.name === "meta.type.arguments.fscript");
+  const opening = new RegExp(application.begin, "gu");
+  assert.equal([..."Box<Box<int list>>".matchAll(opening)].length, 2);
+  assert.equal([..."copy<int> [42]".matchAll(opening)].length, 1);
+  assert.equal([..."copy<(int -> int)> fn".matchAll(opening)].length, 1);
+  assert.equal([..."left < right && a>b".matchAll(opening)].length, 0);
+  assert.equal([..."left<right".matchAll(opening)].length, 0);
+  assert.equal(new RegExp(application.end).exec("int -> int>")[0], ">");
+  const builtIn = typePatterns.find(pattern => pattern.name === "storage.type.fscript");
+  assert.deepEqual("int task".match(new RegExp(builtIn.match, "g")), ["int", "task"]);
+});
 
 test("TextMate classifies the contextual export prefix for values, functions and recursive groups", () => {
   for (const source of ["export let value = 42", "export let run x = x", "export let rec run x = run x", "  export\tlet export = 42"]) {

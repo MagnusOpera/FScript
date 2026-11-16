@@ -22,6 +22,20 @@ let ping () = "pong"
 let message = ping ()
 ```
 
+## Generic functions
+
+Use a named type variable such as `'item` in an annotation. Repeating the name within a function means the types must agree.
+
+```fsharp
+let first (items: 'item list) : 'item option = List.tryHead items
+
+let pair<'left, 'right> (left: 'left) (right: 'right) = (left, right)
+let inferred = pair 42 "answer"
+let explicit = pair<int, string> 42 "answer"
+```
+
+The order in `<'left, 'right>` determines the order of explicit type arguments. At a call, put the opening angle bracket immediately after the function name. Declared type parameters are unconstrained, so the function body must work for any type supplied in their place.
+
 ## Anonymous functions
 
 ```fsharp

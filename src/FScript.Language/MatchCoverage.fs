@@ -19,9 +19,7 @@ module internal MatchCoverage =
         | Constructed of Constructor * CoveragePattern list
         | Restricted
 
-    let private expandType (typeDefs: Map<string, Type>) = function
-        | TNamed name as typ -> Map.tryFind name typeDefs |> Option.defaultValue typ
-        | typ -> typ
+    let private expandType = Types.expand
 
     let private recordConstructor (fields: Map<string, Type>) =
         let names, types = fields |> Map.toList |> List.unzip

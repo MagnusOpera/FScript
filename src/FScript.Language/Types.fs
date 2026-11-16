@@ -17,6 +17,8 @@ type Type =
     | TOption of Type
     | TFun of Type * Type
     | TNamed of string
+    | TApplied of name: string * arguments: Type list
+    | TGenericDefinition of parameters: int list * body: Type
     | TUnion of string * Map<string, Type option>
     | TTypeToken
     | TVar of int
@@ -64,6 +66,65 @@ module Types =
         | TVar id -> TNumeric id
         | _ -> failwith "Expected fresh type variable"
 
+    type TypeConstructor =
+        | ListType
+        | OptionType
+        | TaskType
+        | MapType
+        | UserType of string
+
+    // Keep the established built-in cases at the public boundary and expose all
+    // applications uniformly to unification and specialization.
+    let (|TypeApplication|_|) = function
+        | TList item -> Some (ListType, [item])
+        | TOption item -> Some (OptionType, [item])
+        | TTask item -> Some (TaskType, [item])
+        | TMap (key, value) -> Some (MapType, [key; value])
+        | TApplied (name, arguments) -> Some (UserType name, arguments)
+        | _ -> None
+
+    let mapChildren map = function
+        | TypeApplication (constructor, arguments) ->
+            match constructor, List.map map arguments with
+            | ListType, [item] -> TList item
+            | OptionType, [item] -> TOption item
+            | TaskType, [item] -> TTask item
+            | MapType, [key; value] -> TMap (key, value)
+            | UserType name, arguments -> TApplied (name, arguments)
+            | _ -> invalidOp "Invalid type constructor arity"
+        | TTuple items -> TTuple (List.map map items)
+        | TFun (input, output) -> TFun (map input, map output)
+        | TRecord fields -> TRecord (Map.map (fun _ -> map) fields)
+        | TRecordShape (id, fields, constructible) -> TRecordShape (id, Map.map (fun _ -> map) fields, constructible)
+        | TUnion (name, cases) -> TUnion (name, Map.map (fun _ -> Option.map map) cases)
+        | typ -> typ
+
+    let rec substitute (replacements: Map<int, Type>) typ =
+        match typ with
+        | TVar id | TNumeric id -> replacements.TryFind id |> Option.defaultValue typ
+        | TGenericDefinition (parameters, body) ->
+            let scope = List.fold (fun state parameter -> Map.remove parameter state) replacements parameters
+            TGenericDefinition (parameters, substitute scope body)
+        | _ -> mapChildren (substitute replacements) typ
+
+    let expand (definitions: Map<string, Type>) typ =
+        match typ with
+        | TNamed name -> definitions.TryFind name |> Option.defaultValue typ
+        | TApplied (name, arguments) ->
+            match definitions.TryFind name with
+            | Some (TGenericDefinition (parameters, body)) when parameters.Length = arguments.Length ->
+                substitute (List.zip parameters arguments |> Map.ofList) body
+            | _ -> typ
+        | _ -> typ
+
+    let definitionBody = function
+        | TGenericDefinition (_, body) -> body
+        | typ -> typ
+
+    let applied name = function
+        | TGenericDefinition (parameters, _) -> TApplied (name, parameters |> List.map (fun _ -> freshVar ()))
+        | _ -> TNamed name
+
     let rec ftvType t =
         match t with
         | TUnit | TInt | TFloat | TBool | TString -> Set.empty
@@ -76,6 +137,8 @@ module Types =
         | TMap (tk, tv) -> Set.union (ftvType tk) (ftvType tv)
         | TOption t1 -> ftvType t1
         | TFun (a, b) -> Set.union (ftvType a) (ftvType b)
+        | TApplied (_, arguments) -> arguments |> List.map ftvType |> List.fold Set.union Set.empty
+        | TGenericDefinition (parameters, body) -> Set.difference (ftvType body) (Set.ofList parameters)
         | TNamed _ | TUnion _ | TTypeToken -> Set.empty
         | TVar v | TNumeric v -> Set.singleton v
 
@@ -119,6 +182,8 @@ module Types =
             | TOption t1 -> sprintf "%s option" (postfixArg t1)
             | TFun (a, b) -> sprintf "(%s -> %s)" (go a) (go b)
             | TNamed n -> n
+            | TApplied (name, arguments) -> sprintf "%s<%s>" name (arguments |> List.map go |> String.concat ", ")
+            | TGenericDefinition (_, body) -> go body
             | TUnion (name, _) -> name
             | TTypeToken -> "type"
             | TNumeric _ -> "numeric"

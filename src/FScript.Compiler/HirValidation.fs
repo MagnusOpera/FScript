@@ -32,7 +32,7 @@ module HirValidation =
             (program.Types |> List.map _.Name |> List.distinct |> List.length) <> program.Types.Length
             || program.Types |> List.exists (fun declaration ->
                 not (validSpan declaration.Span)
-                || match declaration.Definition with
+                || match Types.definitionBody declaration.Definition with
                    | TRecord _ | THostManaged _ -> false
                    | TUnion(name, _) -> name <> declaration.Name
                    | _ -> true
@@ -46,7 +46,8 @@ module HirValidation =
         let invalidImports =
             program.ImportedRecords |> List.exists (fun record -> System.String.IsNullOrWhiteSpace(record.ModulePath) || System.String.IsNullOrWhiteSpace(record.MemberName))
             || (program.ImportedRecords |> List.map _.Name |> List.distinct |> List.length) <> program.ImportedRecords.Length
-        let knownTypes = program.Types |> List.map _.Name |> Set.ofList
+        let definitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
+        let knownTypes = definitions |> Map.keys |> Set.ofSeq
         let rec validType (quantified: Set<int>) = function
             | TVar variable -> variable >= 0 && (quantified.IsEmpty || Set.contains variable quantified)
             | TFun(argument, result) -> validType quantified argument && validType quantified result
@@ -57,7 +58,17 @@ module HirValidation =
             | TUnion(name, cases) ->
                 Set.contains name knownTypes
                 && cases |> Map.forall (fun caseName payload -> not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall (validType quantified))
-            | TNamed name -> Set.contains name knownTypes
+            | TApplied (name, arguments) ->
+                match definitions.TryFind name with
+                | Some (TGenericDefinition (parameters, _)) ->
+                    parameters.Length = arguments.Length && List.forall (validType quantified) arguments
+                | _ -> false
+            | TGenericDefinition (parameters, body) ->
+                not parameters.IsEmpty && List.distinct parameters = parameters && validType (Set.ofList parameters) body
+            | TNamed name ->
+                match definitions.TryFind name with
+                | None | Some (TGenericDefinition _) -> false
+                | _ -> true
             | _ -> true
         let validClosedType = validType Set.empty
         let validScheme (Forall(variables, valueType)) =

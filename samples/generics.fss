@@ -1,0 +1,22 @@
+type Box<'item> = { Items: 'item list }
+
+type Outcome<'value, 'error> =
+    | Found of 'value
+    | Failed of 'error
+
+let box<'item> (items: 'item list) : Box<'item> = { Items = items }
+
+let tryFirst (value: Box<'item>) : 'item option =
+    List.tryHead value.Items
+
+let firstOrError (value: Box<'item>) : Outcome<'item, string> =
+    match tryFirst value with
+    | Some item -> Found item
+    | None -> Failed "empty box"
+
+// The first call infers int. The other calls supply explicit type arguments.
+let numbers = firstOrError (box [42; 7])
+let words = firstOrError (box<string> ["hello"])
+let empty = firstOrError (box<int> [])
+
+(numbers, words, empty)

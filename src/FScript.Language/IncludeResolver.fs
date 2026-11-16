@@ -326,6 +326,11 @@ module IncludeResolver =
         match tref with
         | TRName name ->
             TRName (rewriteTypeName aliases selfPrefix selfTypeNames name)
+        | TRVariable _ -> tref
+        | TRApplied (name, arguments) ->
+            TRApplied (rewriteTypeName aliases selfPrefix selfTypeNames name, List.map (rewriteTypeRef aliases selfPrefix selfTypeNames) arguments)
+        | TRForall (parameters, result) ->
+            TRForall (parameters, Option.map (rewriteTypeRef aliases selfPrefix selfTypeNames) result)
         | TRTuple ts ->
             TRTuple (ts |> List.map (rewriteTypeRef aliases selfPrefix selfTypeNames))
         | TRFun (a, b) ->
@@ -412,6 +417,8 @@ module IncludeResolver =
             | ENone _ -> expr
             | EVar (name, span) ->
                 EVar(rewriteValueName boundNames name, span)
+            | ETypeApply (target, arguments, span) ->
+                ETypeApply (rewriteExpr boundNames target, List.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames) arguments, span)
             | ENameOf (name, span) ->
                 ENameOf(rewriteValueName boundNames name, span)
             | ETypeOf (name, span) ->
@@ -438,14 +445,14 @@ module IncludeResolver =
                         let boundWithPattern = Set.union boundNames (collectPatternBindings rewrittenPattern)
                         rewrittenPattern, guard |> Option.map (rewriteExpr boundWithPattern), rewriteExpr boundWithPattern body, caseSpan)
                 EMatch(rewriteExpr boundNames scrutinee, rewrittenCases, span)
-            | ELet (name, valueExpr, bodyExpr, isRec, returnAnnotation, span) ->
+            | ELet (name, valueExpr, bodyExpr, isRec, returnAnnotation, arity, span) ->
                 let rewrittenReturnAnnotation =
                     returnAnnotation |> Option.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames)
                 if isRec then
                     let boundWithName = Set.add name boundNames
-                    ELet(name, rewriteExpr boundWithName valueExpr, rewriteExpr boundWithName bodyExpr, true, rewrittenReturnAnnotation, span)
+                    ELet(name, rewriteExpr boundWithName valueExpr, rewriteExpr boundWithName bodyExpr, true, rewrittenReturnAnnotation, arity, span)
                 else
-                    ELet(name, rewriteExpr boundNames valueExpr, rewriteExpr (Set.add name boundNames) bodyExpr, false, rewrittenReturnAnnotation, span)
+                    ELet(name, rewriteExpr boundNames valueExpr, rewriteExpr (Set.add name boundNames) bodyExpr, false, rewrittenReturnAnnotation, arity, span)
             | ELetPattern (pattern, valueExpr, bodyExpr, span) ->
                 let rewrittenPattern = rewritePattern aliases selfPrefix topLevelTypeNames pattern
                 let boundWithPattern = Set.union boundNames (collectPatternBindings rewrittenPattern)

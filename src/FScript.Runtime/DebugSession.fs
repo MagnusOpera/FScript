@@ -65,7 +65,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
         | EParen(x, _) | ELambda(_, x, _) | ERaise(x, _) | ESome(x, _) | EFieldGet(x, _, _) -> [x]
         | EApply(a,b,_) | ERange(a,b,_) | EIndexGet(a,b,_) | ECons(a,b,_) | EAppend(a,b,_) | EBinOp(_,a,b,_) -> [a;b]
         | EIf(a,b,c,_) -> [a;b;c]
-        | EFor(_,a,b,_) | ELet(_,a,b,_,_,_) | ELetPattern(_,a,b,_) -> [a;b]
+        | EFor(_,a,b,_) | ELet(_,a,b,_,_, _,_) | ELetPattern(_,a,b,_) -> [a;b]
         | ELetRecGroup(bindings, body, _) -> (bindings |> List.map (fun (_,_,_,body,_) -> body)) @ [body]
         | EMatch(value, cases, _) -> value :: (cases |> List.collect (fun (_,guard,body,_) -> Option.toList guard @ [body]))
         | EList(items, _) | ETuple(items, _) -> items
@@ -99,7 +99,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
         lexicalLocals[expression] <- locals
         match expression with
         | ELambda(_,body,_) -> annotate body Set.empty
-        | ELet(name,value,body,_,_,_) -> annotate value locals; annotate body (locals.Add name)
+        | ELet(name,value,body,_,_, _,_) -> annotate value locals; annotate body (locals.Add name)
         | ELetPattern(pattern,value,body,_) -> annotate value locals; annotate body (Set.union locals (boundNames pattern))
         | EFor(name,source,body,_) -> annotate source locals; annotate body (locals.Add name)
         | ELetRecGroup(bindings,body,_) ->
@@ -123,7 +123,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
             | EFor(_,_,body,_) -> roots.Add body |> ignore
             | EIf(_,yes,no,_) -> roots.Add yes |> ignore; roots.Add no |> ignore
             | EMatch(_,cases,_) -> for _,_,body,_ in cases do roots.Add body |> ignore
-            | ELet(binding,value,_,_,_,_) -> addFunction binding value
+            | ELet(binding,value,_,_,_, _,_) -> addFunction binding value
             | _ -> ()
         if name <> "" then addFunction name expression
     do

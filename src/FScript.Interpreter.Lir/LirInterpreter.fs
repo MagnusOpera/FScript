@@ -53,6 +53,7 @@ module LirInterpreter =
     let private currentOutput = AsyncLocal<ResizeArray<string>>()
     let private currentFunctions = AsyncLocal<Map<Lir.FunctionId, Lir.Function>>()
     let private currentHostExternals = AsyncLocal<Map<string, HostExternal>>()
+    let private currentTypeDefinitions = AsyncLocal<Map<string, Type>>()
     let private constantValue = function
         | Lir.Unit -> VUnit | Lir.Int value -> VInt value | Lir.Float value -> VFloat value
         | Lir.Bool value -> VBool value | Lir.String value -> VString value
@@ -301,6 +302,14 @@ module LirInterpreter =
         let rec matchesType expected item =
             match expected, item with
             | TUnit, VUnit | TInt, VInt _ | TFloat, VFloat _ | TBool, VBool _ | TString, VString _ | TTypeToken, VTypeToken _ -> true
+            | TApplied _, _ ->
+                match Types.expand currentTypeDefinitions.Value expected, item with
+                | TUnion (name, cases), VUnion (actualName, caseName, payload) when name = actualName ->
+                    match cases.TryFind caseName, payload with
+                    | Some None, None -> true
+                    | Some (Some payloadType), Some value -> matchesType payloadType value
+                    | _ -> false
+                | expanded, _ -> expanded <> expected && matchesType expanded item
             | TTuple types, VTuple values -> types.Length = values.Length && List.forall2 matchesType types values
             | TList itemType, VList values -> values |> List.forall (matchesType itemType)
             | TOption _, VOption None -> true
@@ -717,6 +726,7 @@ module LirInterpreter =
         currentOutput.Value <- output
         currentFunctions.Value <- program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         currentHostExternals.Value <- hostExternals |> List.map (fun external -> external.Name, external) |> Map.ofList
+        currentTypeDefinitions.Value <- program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
         let runtimeContext =
             VRecord(Map.ofList
                 [ "ScriptName", VOption(Option.map VString context.ScriptName)
@@ -784,6 +794,7 @@ module LirInterpreter =
         currentOutput.Value <- output
         currentFunctions.Value <- loaded.Program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
         currentHostExternals.Value <- loaded.HostExternals
+        currentTypeDefinitions.Value <- loaded.Program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
         match loaded.Exports |> Map.tryFind exportName with
         | None ->
             Error

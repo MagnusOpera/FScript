@@ -450,6 +450,8 @@ module LirValidation =
         | TVar _, _ | _, TVar _ -> true
         | TFun(la, lr), TFun(ra, rr) -> compatible la ra && compatible lr rr
         | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 compatible left right
+        | TApplied (left, leftArgs), TApplied (right, rightArgs) ->
+            left = right && leftArgs.Length = rightArgs.Length && List.forall2 compatible leftArgs rightArgs
         | TList left, TList right | TOption left, TOption right | TTask left, TTask right -> compatible left right
         | TMap(lk, lv), TMap(rk, rv) -> compatible lk rk && compatible lv rv
         | TRecord left, TRecord right ->
@@ -468,9 +470,8 @@ module LirValidation =
         let typeDefinitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
         let knownTypes = typeDefinitions |> Map.keys |> Set.ofSeq
         let resolve = function
-            | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
             | TRecordShape(_, fields, _) -> TRecord fields
-            | value -> value
+            | value -> Types.expand typeDefinitions value
         let compatible left right =
             let rec loop visited left right =
                 let resolvedLeft, resolvedRight = resolve left, resolve right
@@ -478,20 +479,24 @@ module LirValidation =
                 if Set.contains pair visited then true
                 else
                     let visited = Set.add pair visited
-                    match resolvedLeft, resolvedRight with
-                    | TVar _, _ | _, TVar _ -> true
-                    | TFun(la, lr), TFun(ra, rr) -> loop visited la ra && loop visited lr rr
-                    | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 (loop visited) left right
-                    | TList left, TList right | TOption left, TOption right | TTask left, TTask right -> loop visited left right
-                    | TMap(lk, lv), TMap(rk, rv) -> loop visited lk rk && loop visited lv rv
-                    | TRecord leftFields, TRecord rightFields when (match left, right with TRecordShape _, _ | _, TRecordShape _ -> true | _ -> false) ->
-                        let required, actual = if leftFields.Count <= rightFields.Count then leftFields, rightFields else rightFields, leftFields
-                        required |> Map.forall (fun name item -> actual |> Map.tryFind name |> Option.exists (loop visited item))
-                    | TRecord left, TRecord right ->
-                        left.Count = right.Count
-                        && (left |> Map.forall (fun name item -> right |> Map.tryFind name |> Option.exists (loop visited item)))
-                    | TUnion(ln, _), TUnion(rn, _) -> ln = rn
-                    | left, right -> left = right
+                    match left, right with
+                    | TApplied (leftName, leftArgs), TApplied (rightName, rightArgs) when leftName = rightName ->
+                        leftArgs.Length = rightArgs.Length && List.forall2 (loop visited) leftArgs rightArgs
+                    | _ ->
+                      match resolvedLeft, resolvedRight with
+                      | TVar _, _ | _, TVar _ -> true
+                      | TFun(la, lr), TFun(ra, rr) -> loop visited la ra && loop visited lr rr
+                      | TTuple left, TTuple right -> left.Length = right.Length && List.forall2 (loop visited) left right
+                      | TList left, TList right | TOption left, TOption right | TTask left, TTask right -> loop visited left right
+                      | TMap(lk, lv), TMap(rk, rv) -> loop visited lk rk && loop visited lv rv
+                      | TRecord leftFields, TRecord rightFields when (match left, right with TRecordShape _, _ | _, TRecordShape _ -> true | _ -> false) ->
+                          let required, actual = if leftFields.Count <= rightFields.Count then leftFields, rightFields else rightFields, leftFields
+                          required |> Map.forall (fun name item -> actual |> Map.tryFind name |> Option.exists (loop visited item))
+                      | TRecord left, TRecord right ->
+                          left.Count = right.Count
+                          && (left |> Map.forall (fun name item -> right |> Map.tryFind name |> Option.exists (loop visited item)))
+                      | TUnion(ln, _), TUnion(rn, _) -> ln = rn
+                      | left, right -> left = right
             loop Set.empty left right
         let validSpan (span: Span) =
             span.Start.Line >= 0 && span.Start.Column >= 0 && span.End.Line >= 0 && span.End.Column >= 0
@@ -508,7 +513,17 @@ module LirValidation =
             | TUnion(name, cases) ->
                 Set.contains name knownTypes
                 && cases |> Map.forall (fun caseName payload -> not (System.String.IsNullOrWhiteSpace caseName) && payload |> Option.forall validType)
-            | TNamed name -> Set.contains name knownTypes
+            | TApplied (name, arguments) ->
+                match typeDefinitions.TryFind name with
+                | Some (TGenericDefinition (parameters, _)) ->
+                    parameters.Length = arguments.Length && List.forall validType arguments
+                | _ -> false
+            | TGenericDefinition (parameters, body) ->
+                not parameters.IsEmpty && List.distinct parameters = parameters && validType body
+            | TNamed name ->
+                match typeDefinitions.TryFind name with
+                | None | Some (TGenericDefinition _) -> false
+                | _ -> true
             | _ -> true
         let functionIds = program.Functions |> List.map _.Id
         let functions = program.Functions |> List.map (fun fn -> fn.Id, fn) |> Map.ofList
@@ -523,7 +538,7 @@ module LirValidation =
             || (typeIds @ ids |> List.distinct |> List.length) <> typeIds.Length + ids.Length
             || program.Types |> List.exists (fun declaration ->
                 not (validSpan declaration.Span) || not (validType declaration.Definition)
-                || match declaration.Definition with
+                || match Types.definitionBody declaration.Definition with
                    | TRecord _ | THostManaged _ -> false
                    | TUnion(name, _) -> name <> declaration.Name
                    | _ -> true)
@@ -716,7 +731,7 @@ module LirOptimization =
         if effects |> List.exists ((=) Observable) then Observable else Pure
 
     let rec private unknownExternalValue = function
-        | TNamed _ | THostManaged _ -> true
+        | TNamed _ | TApplied _ | THostManaged _ -> true
         | TRecord fields | TRecordShape(_,fields,_) -> fields |> Map.exists (fun _ value -> unknownExternalValue value)
         | TUnion(_,cases) -> cases |> Map.exists (fun _ value -> value |> Option.exists unknownExternalValue)
         | TTuple values -> List.exists unknownExternalValue values

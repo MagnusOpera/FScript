@@ -46,7 +46,9 @@ module HostInterop =
             fields |> Map.forall (fun name fieldType ->
                 values |> Map.tryFind name |> Option.exists (matches definitions fieldType))
         match expected, value with
-        | TNamed name, _ -> definitions.TryFind name |> Option.exists (fun t -> matches definitions t value)
+        | (TNamed _ | TApplied _) as typ, _ ->
+            let expanded = Types.expand definitions typ
+            expanded <> typ && matches definitions expanded value
         | THostManaged (name, fields), VHostManaged host ->
             host.Descriptor.HostManaged && host.Descriptor.Name = name && host.Descriptor.Fields = fields
             && host.Fields.Count = fields.Count && fieldsMatch fields host.Fields
@@ -90,7 +92,7 @@ module HostInterop =
         | _ -> fail $"Expected host-managed type '{typeName}'"
 
     /// Validate a call with one set of type-variable bindings, including polymorphic round trips.
-    let internal prepareCall definitions signature arguments =
+    let internal prepareCall (definitions: Map<string, Type>) signature arguments =
         let mutable bindings : Map<int, Type> = Map.empty
         let variables = Types.ftvType signature
         let mutable nextVariable = if Set.isEmpty variables then -1 else min -1 (Set.minElement variables - 1)
@@ -117,7 +119,10 @@ module HostInterop =
             | VRecord fields -> TRecord(fields |> Map.map (fun _ _ -> fresh ()))
             | VMap _ -> TMap(fresh (), fresh ())
             | VOption _ -> TOption(fresh ())
-            | VUnionCase (name, _, _) -> TNamed name
+            | VUnionCase (name, _, _) ->
+                match definitions.TryFind name with
+                | Some (TGenericDefinition (parameters, _)) -> TApplied (name, parameters |> List.map (fun _ -> fresh ()))
+                | _ -> TNamed name
             | VTypeToken _ -> TTypeToken
             | VTask _ -> TTask(fresh ())
             | VClosure _ | VExternal _ | VUnionCtor _ -> TFun(fresh (), fresh ())
@@ -133,10 +138,10 @@ module HostInterop =
                     let bound = valueType value
                     bindings <- bindings.Add(id, bound)
                     observe bound value
-            | TNamed name ->
-                match Map.tryFind name definitions with
-                | Some expanded -> observe expanded value
-                | None -> validate definitions expected value
+            | TNamed _ | TApplied _ ->
+                let expanded = Types.expand definitions expected
+                if expanded = expected then validate definitions expected value
+                else observe expanded value
             | TRecordShape (id, fields, constructible) ->
                 validate definitions expected value
                 match bindings.TryFind id with

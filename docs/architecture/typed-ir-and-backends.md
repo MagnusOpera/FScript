@@ -19,6 +19,18 @@ Resolved inference assigns deterministic artifact-local IDs to builtins, externs
 
 Validated LIR consumers are separate leaf assemblies: `FScript.Interpreter.Lir` owns LIR values and execution, `FScript.Backend.CSharp` emits independent source projects, and `FScript.Backend.DotNet` emits optimized assemblies. Public modules retain the `FScript.Compiler` namespace while assembly ownership remains explicit.
 
+Generic definitions carry a parameter list and an open record or union template.
+An applied type carries the definition name and its ordered arguments. Inference
+and specialization use one application model for built-in containers and
+user-defined types. Built-in type case tags continue to serve the hosting APIs
+and their postfix spelling continues to serve source and type displays.
+
+HIR and serialized LIR retain applied types and templates. The reference and LIR
+interpreters use their existing record and union values. Native specialization
+materializes a named layout per reachable closed application, allocating its
+identity before substituting its fields or case payloads so recursive references
+can reuse the same layout. Compiled exports require a closed signature.
+
 ## IR boundaries
 
 The parser uses an array-backed token stream for constant-time lookahead and backtracking;

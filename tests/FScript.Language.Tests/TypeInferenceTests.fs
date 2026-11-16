@@ -68,6 +68,36 @@ type TypeInferenceTests () =
             | _ -> Assert.Fail("Expected a -> a")
         | _ -> Assert.Fail("Expected let")
 
+    [<TestCase("let f<'a> (value: 'a) = value + 1", "unconstrained")>]
+    [<TestCase("let f<'a, 'b> (value: 'a) : 'b = value", "distinct")>]
+    [<TestCase("let f (value: 'a) : 'a = if value then 1 else 0", "Type mismatch")>]
+    [<TestCase("type Box<'a> = { Value: 'other }", "Unbound type parameter")>]
+    [<TestCase("type Box<'a> = { Value: 'a }\nlet f (box: Box) = box.Value", "expects 1 type arguments")>]
+    [<TestCase("type Box<'a> = { Value: 'a }\nlet f (box: Box<int, string>) = box.Value", "expects 1 type arguments")>]
+    [<TestCase("let f<'a> (value: 'a) = value\nf<int> \"bad\"", "Type mismatch")>]
+    [<TestCase("let f<'a> (value: 'a) = value\nf<int, string> 1", "Expected 1 type arguments")>]
+    member _.``Rejects invalid generic code`` (source: string, message: string) =
+        let error = Assert.Throws<TypeException>(System.Action(fun () -> Helpers.infer source |> ignore)) |> nonNull
+        Assert.That(error.Message, Does.Contain(message))
+
+    [<TestCase("Task<int>")>]
+    [<TestCase("option<int>")>]
+    [<TestCase("list<int>")>]
+    [<TestCase("Map<int, string>")>]
+    member _.``Rejects angle bracket syntax for built-in types`` (annotation: string) =
+        Assert.Throws<ParseException>(System.Action(fun () -> Parser.parseProgram $"let f (x: {annotation}) = x" |> ignore)) |> ignore
+
+    [<Test>]
+    member _.``Generic arguments nest around postfix built-in types`` () =
+        let typed = Helpers.infer "type Box<'a> = { Value: 'a }\nlet f (x: Box<Box<int list option task>>) = x"
+        let expected = TApplied ("Box", [TApplied ("Box", [TTask (TOption (TList TInt))])])
+        match List.last typed with
+        | TypeInfer.TSLet (_, _, TFun (input, result), _, _, _) ->
+            Assert.That(input, Is.EqualTo(expected))
+            Assert.That(result, Is.EqualTo(expected))
+            Assert.That(Types.typeToString input, Is.EqualTo("Box<Box<int list option task>>"))
+        | _ -> Assert.Fail("Expected an annotated function")
+
     [<TestCase("+")>]
     [<TestCase("-")>]
     [<TestCase("*")>]

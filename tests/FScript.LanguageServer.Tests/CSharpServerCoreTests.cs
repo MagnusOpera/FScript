@@ -429,6 +429,7 @@ public sealed class CSharpServerCoreTests
     [TestCase("let add x y = x + y\n(add 1 2, add 1.5 2.6)\n", "add: (x: numeric) -> (y: numeric) -> numeric")]
     [TestCase("let add x (y: int) = x + y\n", "add: (x: int) -> (y: int) -> int")]
     [TestCase("let apply f x = f x\n", "apply: (f: ('a -> 'b)) -> (x: 'a) -> 'b")]
+    [TestCase("let identity<'a> (value: 'a list) : 'a list = value\nidentity<int> [42]\n", "identity: (value: 'a list) -> 'a list")]
     public void CSharp_server_hover_preserves_polymorphic_function_variables(string source, string expected)
     {
         var client = LspClient.StartCSharp();

@@ -13,16 +13,19 @@ This page indexes the script syntax. Start with the [Language Tour](../learn/lan
 | `import "file.fss" as Alias` | Import before all executable/type code; use `Alias.member` |
 | `type Name = { Field: int }` | Declare an ordinary record |
 | `type Choice = \| First \| Second of string` | Declare union cases |
+| `type Box<'a> = { Value: 'a }` | Declare a generic record |
+| `type Outcome<'a, 'err> = \| Found of 'a \| Failed of 'err` | Declare a generic union |
 | `type rec Name = ...` | Permit self-references in a record or union declaration |
 | `let name = expr` | Bind an immutable value |
 | `let f x y = expr` | Declare a curried function |
+| `let identity<'a> (x: 'a) : 'a = x` | Declare a function with an explicit type parameter |
 | `let rec f x = ... and g y = ...` | Declare mutually recursive functions |
 | `export let name = expr` | Expose a top-level binding to embedding hosts |
 | `expr` | Evaluate a top-level expression |
 
 `export` is contextual: `let export = 42`, parameters named `export`, and `export let export value = value` are valid. Only a top-level `export let` declaration sets export visibility; a recursive group exports all its members. Script attributes are unsupported.
 
-Imports use explicit aliases, not `open` or a `module` declaration. Type declarations are top-level and support records/unions; generic type declarations, mutual recursive type groups, classes, and arbitrary type aliases are not script syntax.
+Imports use explicit aliases. Declare records and unions at the top level. For type parameters and self-recursion, see [Type Declarations](../language/type-declarations).
 
 ## Expressions
 
@@ -30,6 +33,7 @@ Imports use explicit aliases, not `open` or a `module` declaration. Type declara
 | --- | --- |
 | `42`, `3.14`, `true`, `"text"`, `()` | Integer, float, boolean, string, unit |
 | `f x y` | Apply arguments from left to right: `(f x) y` |
+| `identity<int> 42` | Apply a function with explicit type arguments |
 | `fun x -> expr`, `fun () -> expr` | Anonymous function |
 | `if condition then a elif other then b else c` | Select a branch; branch types must agree |
 | `for item in values do body` | Iterate a list for effects; produces unit |
@@ -105,7 +109,7 @@ An ordinary `{ Field = value }` literal must match exactly one declared record f
 
 Tuple patterns are also supported in nonrecursive `let` bindings: `let (left, right) = pair`. Record destructuring uses `match`; it is not a `let { ... }` form. See [Pattern Matching](../language/pattern-matching) for guards and [map matching](https://github.com/MagnusOpera/FScript/blob/main/docs/specs/map-matching-reference.md) for extraction rules.
 
-Annotate parameters as `(value: Type)` and function returns as `let f x : Type = ...`. Return annotations require at least one parameter; `let value : int = 1` is unsupported. Type forms include scalars, `numeric`, named types, postfix `list`/`option`/`task`/`map[key]`, tuples, arrows, and both record annotation forms. See [Structural vs Named Annotations](../language/structural-vs-named-annotations).
+Annotate parameters as `(value: Type)` and function returns as `let f x : Type = ...`. Return annotations require at least one parameter. Type forms include scalars, `numeric`, named types, type variables such as `'a`, applied user-defined types such as `Box<int>`, tuples, arrows, and both record annotation forms. Built-in containers use postfix forms such as `int list`, `int option`, `int task`, `int map`, and `string map[int]`. See [Structural vs Named Annotations](../language/structural-vs-named-annotations).
 
 ## Text and layout
 

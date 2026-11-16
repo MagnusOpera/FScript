@@ -18,6 +18,12 @@ The helper returns the SDK `FScript.Extensibility.ExternalFunction` record, whos
 
 Referenced host types use `HostTypeDescriptor` records with `Name: string`, `Fields: Map<string, ScriptType>`, and `HostManaged: bool`. `HostTypes.describe` produces these descriptors from attributed CLR types. Descriptors contain only script-visible type metadata, never CLR conversion code or opaque payloads. A named type appears in function schemes as `TNamed descriptor.Name`; `HostManaged = false` permits script record construction and updates, while `true` requires host-created opaque values.
 
+FScript source can declare generic records and unions. A script export can accept
+or return an applied type such as `Box<int>`, with the script host validating
+its substituted fields or case payloads. Provider registrations describe their
+own types through the SDK descriptors, which currently describe concrete
+records and unions. Manual extern schemes can quantify SDK type variables.
+
 `ExtensionRegistration` groups `Types: HostTypeDescriptor list`, `Unions: HostUnionDescriptor list`, and `Functions: ExternalFunction list`. Both helpers produce these SDK data structures; direct descriptor authoring remains supported.
 
 ## Signatures and registration

@@ -42,6 +42,22 @@ module LirMonomorphization =
             fail "FSL2107" $"Reachable value at {source}:{span.Start.Line}:{span.Start.Column} has open type '{Types.typeToString value}' after native specialization." span
         value
 
+    let private closeUnusedTypeArguments typ =
+        // At a fully checked call or match, a remaining variable confined to a
+        // data type's arguments has no observable value of its own. Use unit to
+        // select a native layout, e.g. for the unused error type of Success 42.
+        if not (NativeSpecialization.containsVariable typ) then typ else
+        let mutable argumentVariables = Set.empty
+        let rec maskApplications typ =
+            match typ with
+            | TApplied _ ->
+                argumentVariables <- Set.union argumentVariables (Types.ftvType typ)
+                TUnit
+            | _ -> Types.mapChildren maskApplications typ
+        let remaining = maskApplications typ |> Types.ftvType
+        let defaults = Set.difference argumentVariables remaining |> Seq.map (fun id -> id, TUnit) |> Map.ofSeq
+        NativeSpecialization.apply defaults typ
+
     let private bindingKey value = Types.typeToString value
     type private Environment = Map<Lir.SymbolId, Map<string, Type * Lir.SymbolId>>
 
@@ -137,9 +153,7 @@ module LirMonomorphization =
                   NextFunction = (program.Functions |> List.map (_.Id >> functionNumber) |> function [] -> 1 | values -> List.max values + 1) }
 
             let typeDefinitions = program.Types |> List.map (fun declaration -> declaration.Name, declaration.Definition) |> Map.ofList
-            let resolveType = function
-                | TNamed name as named -> typeDefinitions |> Map.tryFind name |> Option.defaultValue named
-                | value -> value
+            let resolveType = Types.expand typeDefinitions
             let rec preserveNamedRepresentation template concrete =
                 match template, concrete with
                 | TNamed name, _ ->
@@ -372,7 +386,7 @@ module LirMonomorphization =
                         let fn = state.OutputFunctions |> Seq.find (fun item -> item.Id = specialized)
                         Lir.MakeClosure(specialized, fn.Captures)
                     | Lir.CallClosure(fn, argument) ->
-                        let argumentType = resolvedType argument
+                        let argumentType = resolvedType argument |> closeUnusedTypeArguments
                         let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
                         let concreteArgument =
                             match transformedFunction.Type with
@@ -380,7 +394,7 @@ module LirMonomorphization =
                             | _ -> argumentType
                         Lir.CallClosure(transformedFunction, recurseAs concreteArgument argument)
                     | Lir.TailCallClosure(fn, argument) ->
-                        let argumentType = resolvedType argument
+                        let argumentType = resolvedType argument |> closeUnusedTypeArguments
                         let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
                         let concreteArgument =
                             match transformedFunction.Type with
@@ -388,7 +402,7 @@ module LirMonomorphization =
                             | _ -> argumentType
                         Lir.TailCallClosure(transformedFunction, recurseAs concreteArgument argument)
                     | Lir.PipeClosure(argument, fn) ->
-                        let argumentType = resolvedType argument
+                        let argumentType = resolvedType argument |> closeUnusedTypeArguments
                         let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
                         let concreteArgument =
                             match transformedFunction.Type with
@@ -396,7 +410,7 @@ module LirMonomorphization =
                             | _ -> argumentType
                         Lir.PipeClosure(recurseAs concreteArgument argument, transformedFunction)
                     | Lir.TailPipeClosure(argument, fn) ->
-                        let argumentType = resolvedType argument
+                        let argumentType = resolvedType argument |> closeUnusedTypeArguments
                         let transformedFunction = recurseAs (TFun(argumentType, concreteType)) fn
                         let concreteArgument =
                             match transformedFunction.Type with
@@ -470,13 +484,13 @@ module LirMonomorphization =
                             transform effectiveSubstitution scoped body)
                     | Lir.Fail value -> Lir.Fail(recurse value)
                     | Lir.DecisionTree(target, cases) ->
-                        let targetType = resolvedType target
+                        let targetType = resolvedType target |> closeUnusedTypeArguments
                         let transformedCases = cases |> List.map (fun item ->
                             let plan, scoped = transformPattern effectiveSubstitution environment targetType item.Plan
                             { item with Plan = plan
                                         Guard = Option.map (recurseInAs scoped TBool) item.Guard
                                         Body = recurseInAs scoped concreteType item.Body })
-                        Lir.DecisionTree(recurse target, transformedCases)
+                        Lir.DecisionTree(recurseAs targetType target, transformedCases)
                     | Lir.Range(first, last) -> Lir.Range(recurse first, recurse last)
                     | Lir.RecordUpdate(target, fields) -> Lir.RecordUpdate(recurse target, fields |> List.map (fun (name, value) -> name, recurse value))
                     | Lir.RecordConvert(target, targetType) -> Lir.RecordConvert(recurse target, NativeSpecialization.apply effectiveSubstitution targetType)
@@ -509,11 +523,94 @@ module LirMonomorphization =
                         | _ -> fail "FSL2108" $"Generalized binding '{declaration.Name}' has observable initialization and cannot be omitted or cloned safely." declaration.Span
                     else requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
             let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
-            Ok
-                { program with
-                    Functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList
-                    Declarations = state.OutputDeclarations |> Seq.toList
-                    Entry = entry }
+            let functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList
+            let declarations = state.OutputDeclarations |> Seq.toList
+
+            // Native backends already emit concrete named record and union layouts.
+            // Allocate those names before expanding the fields so recursive types can
+            // refer back to their own layout.
+            let templates = program.Types |> List.map (fun declaration -> declaration.Name, declaration) |> Map.ofList
+            let instances = Dictionary<Type, string>()
+            let layouts = ResizeArray<Lir.TypeDeclaration>()
+            let rec layoutType span typ =
+                match typ with
+                | TApplied (name, _) as applied ->
+                    match instances.TryGetValue applied with
+                    | true, instance -> TNamed instance
+                    | _ ->
+                        closedType span applied |> ignore
+                        let template = templates.[name]
+                        let id = freshSymbol state
+                        let instance = $"$generic{symbolNumber id}_{name}"
+                        instances.Add(applied, instance)
+                        let definition =
+                            match resolveType applied with
+                            | TUnion (_, cases) -> TUnion (instance, cases)
+                            | body -> body
+                        layouts.Add { template with Id = id; Name = instance; Definition = Types.mapChildren (layoutType span) definition }
+                        TNamed instance
+                | THostManaged (name, fields) -> THostManaged (name, Map.map (fun _ -> layoutType span) fields)
+                | _ -> Types.mapChildren (layoutType span) typ
+            let projected checks root path = projectionType checks [] root path
+            let rec layoutPlan root (plan: Lir.PatternPlan) =
+                let close = layoutType plan.Span
+                let checks =
+                    plan.Checks |> List.map (function
+                        | Lir.TypeCheck (path, typ) -> Lir.TypeCheck (path, close typ)
+                        | Lir.UnionCaseCheck (path, name, caseName, payload) ->
+                            let instance =
+                                match projected plan.Checks root path with
+                                | Some (TApplied _ as applied) ->
+                                    match close applied with TNamed instance -> instance | _ -> name
+                                | _ -> name
+                            Lir.UnionCaseCheck (path, instance, caseName, payload)
+                        | check -> check)
+                let maps =
+                    plan.Maps |> List.map (fun map ->
+                        match projected plan.Checks root map.Projection with
+                        | Some (TMap (keyType, valueType) as mapType) ->
+                            let clauses =
+                                map.Clauses |> List.map (fun clause ->
+                                    { clause with Key = layoutPlan keyType clause.Key; Value = layoutPlan valueType clause.Value })
+                            { map with Clauses = clauses; Tail = Option.map (layoutPlan mapType) map.Tail }
+                        | _ -> map)
+                { plan with
+                    Checks = checks
+                    Maps = maps
+                    Bindings = plan.Bindings |> List.map (fun binding -> { binding with Type = close binding.Type }) }
+            let rec layoutExpression (expression: Lir.Expression) =
+                let mapped = LirTraversal.mapChildren layoutExpression expression
+                let close = layoutType expression.Span
+                let typ = close expression.Type
+                let node =
+                    match mapped.Node, expression.Node with
+                    | Lir.DecisionTree (target, cases), Lir.DecisionTree (original, _) ->
+                        Lir.DecisionTree (target, cases |> List.map (fun case -> { case with Plan = layoutPlan original.Type case.Plan }))
+                    | Lir.UnionCase (_, caseName, payload), _ ->
+                        match expression.Type, typ with
+                        | TApplied _, TNamed instance -> Lir.UnionCase (instance, caseName, payload)
+                        | _ -> mapped.Node
+                    | Lir.LetRecursiveGroup (bindings, body), _ ->
+                        Lir.LetRecursiveGroup (bindings |> List.map (fun (id, name, typ, value) -> id, name, close typ, value), body)
+                    | Lir.RecordConvert (target, targetType), _ -> Lir.RecordConvert (target, close targetType)
+                    | Lir.ForEach (id, name, itemType, source, body), _ -> Lir.ForEach (id, name, close itemType, source, body)
+                    | Lir.TypeToken typ, _ -> Lir.TypeToken (close typ)
+                    | node, _ -> node
+                { mapped with Type = typ; Node = node }
+            let concreteTypes =
+                program.Types |> List.choose (fun declaration ->
+                    match declaration.Definition with
+                    | TGenericDefinition _ -> None
+                    | definition -> Some { declaration with Definition = layoutType declaration.Span definition })
+            let functions =
+                functions |> List.map (fun fn ->
+                    let close = layoutType fn.Span
+                    { fn with ParameterType = close fn.ParameterType; ReturnType = close fn.ReturnType; Body = layoutExpression fn.Body })
+            let declarations =
+                declarations |> List.map (fun declaration ->
+                    { declaration with Type = layoutType declaration.Span declaration.Type; Value = layoutExpression declaration.Value })
+            let entry = Option.map layoutExpression entry
+            Ok { program with Types = concreteTypes @ List.ofSeq layouts; Functions = functions; Declarations = declarations; Entry = entry }
         with
         | Failure value -> Error [ value ]
         | ex -> Error [ { Code = "FSL2101"; Stage = Lowering; Message = ex.Message; Span = None } ]

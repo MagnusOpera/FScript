@@ -115,6 +115,27 @@ Angle-bracket map type syntax is not supported.
   - payload: `| Circle of int`
 - Payloads are single-type payloads; tuple payloads are used for multi-value payloads.
 
+## Generic record and union declarations
+
+A type declaration can introduce one or more unconstrained type parameters.
+
+```fsharp
+type Box<'a> = { Value: 'a }
+type Outcome<'value, 'error> = | Success of 'value | Failure of 'error
+
+let unbox (box: Box<'a>) : 'a = box.Value
+let wrap (value: 'a) : Outcome<Box<'a>, string> = Success { Value = value }
+```
+
+Use a user-defined type with the number of arguments declared by the type.
+Field access and record updates use the fields of the applied type. Union case
+constructors and patterns infer fresh arguments at each use. A recursive generic
+record or union uses `type rec` and refers to itself with its declared parameters
+in order.
+
+Built-in containers use postfix syntax in source and type displays, including
+`int list`, `int option`, `int task`, `int map`, and `string map[int]`.
+
 ## Union constructors and matching
 - Union cases are constructors in expression position:
   - `let x = Circle 3`

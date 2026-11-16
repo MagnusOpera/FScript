@@ -197,3 +197,33 @@ test("JavaScript ignores exit status and preserves the returned value", () => {
   const loaded = load("export let configure code =\n    Env.setExitCode code\n    code+1\n42");
   assert.equal(invoke(loaded, "configure", [7]).value, 8n);
 });
+
+test("generic declarations and explicit type arguments evaluate through Fable", () => {
+  const source = `type Box<'a> = { Item: 'a }
+type Result<'a, 'err> = | Success of 'a | Failure of 'err
+let wrap<'a> (value: 'a) : Box<'a> = { Item = value }
+let getOr (fallback: 'a) (value: Result<Box<'a>, 'err>) : 'a =
+    match value with
+    | Success box -> box.Item
+    | Failure _ -> fallback
+getOr 0 (Success (wrap<int> 42))`;
+  assert.deepEqual(run(source), { kind: "int", value: 42n });
+  assert.throws(() => run("let f (value: list<int>) = value"), /Built-in type/);
+});
+
+test("virtual imports and host calls retain applied script types", () => {
+  const loaded = load(`import "shared.fss" as Shared
+export let make () = Shared.wrap<int> 42
+export let unwrap (value: Shared.Box<int>) = value.Item`, {
+    rootDirectory: "/",
+    entryFile: "/main.fss",
+    sources: {
+      "/shared.fss": "type Box<'a> = { Item: 'a }\nlet wrap<'a> (value: 'a) : Box<'a> = { Item = value }",
+    },
+  });
+  const result = invoke(loaded, "make", [{ kind: "unit" }]);
+  assert.deepEqual(invoke(loaded, "unwrap", [result]), { kind: "int", value: 42n });
+  assert.throws(() => invoke(loaded, "unwrap", [{
+    kind: "record", fields: { Item: { kind: "string", value: "wrong type" } },
+  }]), /does not match/);
+});

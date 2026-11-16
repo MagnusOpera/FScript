@@ -21,9 +21,14 @@ module LirEffects =
         let declarations = program.Declarations |> List.map (fun value -> value.Id,value) |> Map.ofList
         let functions = program.Functions |> List.map (fun value -> value.Id,value) |> Map.ofList
         let types = program.Types |> List.map (fun value -> value.Name,value) |> Map.ofList
+        let definitions = types |> Map.map (fun _ declaration -> declaration.Definition)
         let mutable summaries = functions |> Map.map (fun _ _ -> Observable)
         let rec arity = function TFun(_,result) -> 1 + arity result | _ -> 0
         let rec stable seen = function
+            | TApplied (name, _) as applied ->
+                if Set.contains name seen then true else
+                let definition = Types.expand definitions applied
+                definition <> applied && stable (Set.add name seen) definition
             | TNamed name | THostManaged(name,_) ->
                 if Set.contains name seen then true else
                 match Map.tryFind name types with
@@ -50,6 +55,8 @@ module LirEffects =
             | TMap(key,value) -> hasCallback seen key || hasCallback seen value
             | TRecord fields | TRecordShape(_,fields,_) | THostManaged(_,fields) -> fields |> Map.exists (fun _ value -> hasCallback seen value)
             | TUnion(_,cases) -> cases |> Map.exists (fun _ value -> value |> Option.exists (hasCallback seen))
+            | TApplied (name, _) as applied when not (Set.contains name seen) ->
+                hasCallback (Set.add name seen) (Types.expand definitions applied)
             | TNamed name when not (Set.contains name seen) -> Map.tryFind name types |> Option.exists (fun value -> hasCallback (Set.add name seen) value.Definition)
             | _ -> false
         let rec resolve environment seen (value: Lir.Expression) =
@@ -82,7 +89,7 @@ module LirEffects =
             let irrefutable = function Lir.TupleArityCheck _ | Lir.RecordFieldCheck _ -> true | _ -> false
             let unconditional (case: Lir.DecisionCase) = case.Guard.IsNone && case.Plan.Maps.IsEmpty && bindingsUnique case && List.forall irrefutable case.Plan.Checks
             if cases |> List.tryLast |> Option.exists unconditional then true else
-                let definition=match targetType with TNamed name -> Map.tryFind name types |> Option.map _.Definition |> Option.defaultValue targetType | _ -> targetType
+                let definition = Types.expand definitions targetType
                 match definition with
                 | TUnion(name,declared) ->
                     let covered=cases |> List.choose (fun case ->

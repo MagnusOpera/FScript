@@ -50,6 +50,7 @@ module TaskSharingAnalysis =
             program.ResolvedStatements
             |> List.choose (fun statement -> match statement.Node with ResolvedTypeDeclaration declaration -> Some(declaration.Binding.Name, declaration) | _ -> None)
             |> Map.ofList
+        let typeDefinitions = declaredTypes |> Map.map (fun _ declaration -> declaration.Definition)
         let hostUnions = registration.Unions |> List.map (fun item -> item.Name, item.Cases) |> Map.ofList
         let functions = registration.Functions |> List.map (fun item -> item.Name, item.Arity) |> Map.ofList
         let knownTypes = Set.union (hostTypes |> Map.toSeq |> Seq.map fst |> Set.ofSeq) (registration.Unions |> List.map _.Name |> Set.ofList)
@@ -97,15 +98,17 @@ module TaskSharingAnalysis =
             match typ with
             | THostManaged(name, _) when not (Set.contains name safeTypes) ->
                 { empty with Resources = Set.singleton { Key = source + ":" + name; Name = name; IsFunction = false } }
-            | TNamed name when not (Set.contains name visited) ->
+            | TApplied (name, _) as applied when not (Set.contains typ visited) ->
+                fromType source (Set.add typ visited) (Types.expand typeDefinitions applied)
+            | TNamed name when not (Set.contains typ visited) ->
                 match Map.tryFind name hostTypes with
                 | Some descriptor when not (Set.contains name safeTypes) ->
                     let value = { empty with Resources = Set.singleton { Key = source + ":" + name; Name = name; IsFunction = false } }
                     if descriptor.HostManaged then value
-                    else combine (value :: (descriptor.Fields |> Map.toList |> List.map (fun (_, typ) -> fromType source (Set.add name visited) typ)))
+                    else combine (value :: (descriptor.Fields |> Map.toList |> List.map (fun (_, typ) -> fromType source (Set.add typ visited) typ)))
                 | _ when Set.contains name safeTypes -> empty
                 | _ ->
-                    let visited = Set.add name visited
+                    let visited = Set.add typ visited
                     match Map.tryFind name hostUnions, Map.tryFind name declaredTypes with
                     | Some cases, _ -> cases |> Map.toList |> List.choose (snd >> Option.map (fromType source visited)) |> combine
                     | _, Some declaration ->

@@ -6,6 +6,7 @@ type TokenKind =
     | Indent
     | Dedent
     | Ident of string
+    | TypeVariable of string
     | IntLit of int64
     | FloatLit of float
     | StringLit of string

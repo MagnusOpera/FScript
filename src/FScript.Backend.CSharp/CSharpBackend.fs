@@ -75,6 +75,7 @@ module CSharpBackend =
                 | None when hasSdk && (match definitions.TryFind name with Some(THostManaged _) -> true | _ -> false) -> "global::FScript.Extensibility.HostManagedValue"
                 | None when (match definitions.TryFind name with Some(THostManaged _) -> true | _ -> false) ->
                     fail "FSC6003" $"Host-managed type '{name}' requires ClrBindings.bindType." None
+                | None when name.StartsWith("$generic", StringComparison.Ordinal) -> "Layout_" + ident name
                 | None -> ident name
             | (TRecord _ | TTuple _ | TUnion _) as value -> "Shape_" + hash value
             | value -> fail "FSC6004" $"Cannot represent open type '{Types.typeToString value}' in C#." None
@@ -210,6 +211,7 @@ module CSharpBackend =
                     let payload=t |> Option.map (fun t -> $"global::Microsoft.FSharp.Core.FSharpOption<{st}>.Some({sdkType t})") |> Option.defaultValue "null"
                     $"Tuple.Create<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>({quote name},{payload})") |> String.concat comma
                 $"{st}.NewTUnion({quote name},global::Microsoft.FSharp.Collections.MapModule.OfSeq(new Tuple<string,global::Microsoft.FSharp.Core.FSharpOption<{st}>?>[] {{ {values} }}))"
+            | TApplied _ | TGenericDefinition _ -> fail "FSC6008" "Script-defined generic types are unavailable in SDK extern signatures." None
             | TRecordShape _ -> fail "FSC6008" "Unresolved structural witness in SDK signature." None
         let readField target name code =
             match resolve target with

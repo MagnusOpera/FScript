@@ -257,7 +257,7 @@ type ParserTests () =
     member _.``Parses let expression without in`` () =
         let p = Helpers.parse "let x = (let y = 1\n    y + 1\n)"
         match p.[0] with
-        | SLet (_, _, _, EParen (ELet ("y", _, _, _, _, _), _), _, _, _) -> ()
+        | SLet (_, _, _, EParen (ELet ("y", _, _, _, _, _, _), _), _, _, _) -> ()
         | _ -> Assert.Fail("Expected nested let expression")
 
     [<Test>]
@@ -645,7 +645,7 @@ type ParserTests () =
             + "    ops"
         let p = Helpers.parse src
         match p.[1] with
-        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord (fields, _) ], _), EVar ("ops", _), false, _, _), false, _, _) ->
+        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord (fields, _) ], _), EVar ("ops", _), false, _, _, _), false, _, _) ->
             fields.Length |> should equal 3
         | _ ->
             Assert.Fail("Expected block let with list containing multiline record literal")
@@ -661,7 +661,7 @@ type ParserTests () =
             + "    ops"
         let p = Helpers.parse src
         match p.[0] with
-        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord _; ERecord _ ], _), EVar ("ops", _), false, _, _), false, _, _) -> ()
+        | SLet ("run", [], _, ELet ("ops", EList ([ ERecord _; ERecord _ ], _), EVar ("ops", _), false, _, _, _), false, _, _) -> ()
         | _ -> Assert.Fail("Expected block-local compact list with multiline record items")
 
     [<Test>]

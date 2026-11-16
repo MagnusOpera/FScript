@@ -148,6 +148,28 @@ module private IL =
 
 [<TestFixture>]
 type BackendTests() =
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Compiled generic functions and data types specialize at each use`` (assemblyTarget: bool) =
+        let source = """type Box<'a> = { Content: 'a }
+type Outcome<'ok, 'err> = | Empty | Success of 'ok | Failure of 'err
+let box<'a> (value: 'a) : Box<'a> = { Content = value }
+let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
+    match result with
+    | Success value -> value.Content
+    | Failure _ -> fallback
+    | Empty -> fallback
+(valueOr 0 (Success (box 42)), valueOr<int, string> "ok" Empty)"""
+        let program = Harness.compile source
+        let result =
+            if assemblyTarget then Harness.execute program
+            else
+                let target = Harness.csharpAssembly [] program
+                let programType = target.GetType("Generated.Program") |> nonNull
+                let value = (programType.GetMethod("Run") |> nonNull).Invoke(null, [||])
+                ((programType.GetMethod("FormatResult") |> nonNull).Invoke(null, [|value|]) |> nonNull) :?> string
+        Assert.That(result, Is.EqualTo(Harness.legacy source))
+
     [<TestCase(true, "let zero = 2 - 2\n42 / zero", typeof<DivideByZeroException>)>]
     [<TestCase(false, "let zero = 2 - 2\n42 / zero", typeof<DivideByZeroException>)>]
     [<TestCase(true, "let minimum = 9223372036854775807 + 1\nminimum % (0 - 1)", typeof<OverflowException>)>]

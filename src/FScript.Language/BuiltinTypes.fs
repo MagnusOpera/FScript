@@ -5,6 +5,7 @@ module BuiltinTypes =
 
     let environmentType : TypeDef =
         { Name = "Environment"
+          TypeParameters = []
           IsRecursive = false
           Fields =
               [ "ScriptName", TRPostfix(TRName "string", "option")
@@ -15,6 +16,7 @@ module BuiltinTypes =
 
     let fsKindType : TypeDef =
         { Name = "FsKind"
+          TypeParameters = []
           IsRecursive = false
           Fields = []
           Cases =

@@ -173,6 +173,8 @@ module ClrBindings =
             if names.Add name then definitions.TryFind name |> Option.iter visitType
         and visitType = function
             | TNamed name -> named name
+            | TApplied (name, arguments) -> named name; List.iter visitType arguments
+            | TGenericDefinition (_, body) -> visitType body
             | THostManaged(name,fields) -> named name; fields |> Map.iter (fun _ t -> visitType t)
             | TUnion(name,cases) -> named name; cases |> Map.iter (fun _ t -> Option.iter visitType t)
             | TRecord fields | TRecordShape(_,fields,_) -> fields |> Map.iter (fun _ t -> visitType t)

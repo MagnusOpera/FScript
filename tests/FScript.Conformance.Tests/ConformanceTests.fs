@@ -105,6 +105,12 @@ type ConformanceTests() =
             Assert.That(optimized.Value,Is.EqualTo(expected))
         | plain,optimized -> Assert.Fail($"LIR: {plain}; optimized: {optimized}")
 
+    [<TestCase("let swap<'a, 'b> (x: 'a) (y: 'b) : ('b * 'a) = (y, x)\n(swap<int, string> 42 \"ok\", swap true 7)")>]
+    [<TestCase("let identity<'a> (value: 'a) : ('a -> 'a) = fun _ -> value\n(identity<int> 42) 0")>]
+    [<TestCase("type Box<'a> = { Content: 'a }\nlet create<'a> (value: 'a) : Box<'a> = { Content = value }\nlet get (item: Box<'a>) : 'a = item.Content\nlet box = create 41\n(get { box with Content = 42 }, get (create<string> \"ok\"))")>]
+    [<TestCase("type Result<'a, 'err> = | Empty | Succeeded of 'a | Failed of 'err\nlet orElse<'a, 'err> (fallback: 'a) (value: Result<'a, 'err>) : 'a =\n    match value with\n    | Succeeded item -> item\n    | Empty -> fallback\n    | Failed _ -> fallback\n(orElse<int, string> 0 (Succeeded 42), orElse<string, int> \"ok\" Empty)")>]
+    [<TestCase("type rec Tree<'a> = | Leaf of 'a | Branch of Tree<'a>\nlet rec first (tree: Tree<'a>) : 'a = match tree with | Leaf value -> value | Branch next -> first next\n(first (Branch (Leaf 42)), first (Leaf \"ok\"))")>]
+    [<TestCase("type Box<'a> = { Item: 'a }\nlet get (box: Box<'a>) : 'a = box.Item\nget {| Item = 42; Other = true |}")>]
     [<TestCase("[Some 1; None] = [Some 1; None]")>]
     [<TestCase("type Person = { Name: string; Age: int }\nlet age (person: Person) = person.Age\nage {| Name = \"Ada\"; Age = 42 |}")>]
     [<TestCase("type Address = { City: string; Zip: int }\nlet check value = match value with | {| City: string |} -> 1 | _ -> 2\ncheck { City=\"Paris\"; Zip=75000 }")>]

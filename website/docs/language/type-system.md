@@ -88,5 +88,6 @@ Curried function types are right-associative:
 - `'a option`
 - tuples like `(int * string)`
 - record and union types
+- type variables such as `'item` and user-defined generic types such as `Box<int>`
 
 Next: [Structural vs Named Annotations](./structural-vs-named-annotations).

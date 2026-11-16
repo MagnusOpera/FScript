@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Support unconstrained generic functions, records, and unions with F#-style type parameters and arguments.
+- Highlight generic type parameters and arguments in VS Code.
 - Keep one manual for each of the five latest release lines and group patch notes under their release line.
 
 ## [0.92]
