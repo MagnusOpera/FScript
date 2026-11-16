@@ -13,7 +13,7 @@ FScript is a lightweight, embeddable interpreter with an F#/ML-style language.
 
 ## Extension authoring
 
-Reference the independently versioned `MagnusOpera.FScript.Extensibility` SDK to author providers without interpreter dependencies. Embedding applications use Language/Runtime and adapt SDK registrations through `ExtensionBridge.toLanguageRegistration`. Compatible SDK 1.x releases retain unsigned assembly identity 1.0.0.0 independently of FScript product versions.
+Reference the independently versioned `MagnusOpera.FScript.Extensibility` SDK to author providers without interpreter dependencies. Embedding applications use Language/Runtime and adapt SDK registrations through `ExtensionBridge.toLanguageRegistration`. FScript 0.93 requires SDK 2.x. Compatible SDK 2.x releases retain unsigned assembly identity 2.0.0.0 independently of FScript product versions.
 
 ## License
 
