@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.94]
+
+### [0.94.0]
+
 - Preserve verifiable IL when opted-in FFI loops execute inside larger expressions.
 - Reject FFI expansion that would reference inaccessible generic method type arguments.
 - Add reproducible FFI inlining tests for argument effects, exceptions, closures, and IL control flow.
@@ -17,6 +21,8 @@ All notable changes to FScript are documented in this file.
 - Preserve opaque instance types through captured closures while keeping unrelated callbacks polymorphic.
 - Report concurrent host access from mailbox handlers, state, and messages, respecting completion ordering.
 - Document Mailbox usage, shutdown, and the Threading permission in the standard library reference.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.93.0...0.94.0
 
 ## [0.93]
 
