@@ -4,9 +4,13 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.94]
+
+### [0.94.2]
+
 - Add go-to-definition from generic type parameter uses to their declarations in VS Code.
 
-## [0.94]
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.94.1...0.94.2
 
 ### [0.94.1]
 
