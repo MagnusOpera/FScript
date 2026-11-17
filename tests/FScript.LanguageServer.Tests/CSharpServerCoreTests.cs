@@ -835,6 +835,64 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_semantic_tokens_highlight_whole_type_parameters()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspClient.SendRequest(client, 1, "initialize", new JsonObject { ["capabilities"] = new JsonObject() });
+            var initialization = LspClient.ReadUntil(client, 20_000, msg => msg["id"]?.GetValue<int>() == 1);
+            var legend = initialization["result"]!["capabilities"]!["semanticTokensProvider"]!["legend"]!["tokenTypes"]!.AsArray();
+            var typeParameterIndex = legend.Select(token => token!.GetValue<string>()).ToList().IndexOf("typeParameter");
+            Assert.That(typeParameterIndex, Is.GreaterThanOrEqualTo(0));
+            LspClient.SendNotification(client, "initialized", null);
+            var uri = "file:///tmp/csharp-semantic-type-parameters.fss";
+            var source = "type Box<'item> = { Items: 'item list }\n"
+                + "type Outcome<'value, 'error> =\n"
+                + "    | Found of 'value\n"
+                + "    | Failed of 'error\n"
+                + "let tryFirst (value: Box<'item>) = List.tryHead value.Items\n"
+                + "let firstOrError (value: Box<'item>) : Outcome<'item, string> =\n"
+                + "    match tryFirst value with\n"
+                + "    | Some item -> Found item\n"
+                + "    | None -> Failed \"empty box\"\n"
+                + "let copy<'_élément'> (item': '_élément') = item'\n"
+                + "// 'comment must not become a type parameter\n"
+                + "let text = \"'string must not become a type parameter\"";
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = source
+                }
+            });
+            _ = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var tokens = DecodeSemanticTokens((response["result"]?["data"] as JsonArray) ?? new JsonArray());
+            var lines = source.Split('\n');
+            var expected = lines.Take(10).SelectMany((line, index) =>
+                System.Text.RegularExpressions.Regex.Matches(line, @"(?<![\p{L}\p{N}_'])'[\p{L}_][\p{L}\p{N}_']*")
+                    .Select(match => (line: index, start: match.Index, length: match.Length, tokenType: typeParameterIndex))).ToList();
+            Assert.That(expected.Count, Is.EqualTo(11));
+            Assert.That(tokens.Where(token => token.tokenType == typeParameterIndex), Is.EqualTo(expected),
+                "Type parameters must include the apostrophe in declarations, union payloads and annotations.");
+            var ordinaryItems = tokens.Where(token => lines[token.line].Substring(token.start, token.length) is "item" or "item'").ToList();
+            Assert.That(ordinaryItems.Count, Is.EqualTo(4));
+            Assert.That(ordinaryItems.All(token => token.tokenType == 5), Is.True,
+                "Value identifiers, including trailing apostrophes, must remain whole variable tokens.");
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_semantic_tokens_classify_export_contextually()
     {
         var client = LspClient.StartCSharp();

@@ -118,6 +118,8 @@ The extension supplies a VS Code logging output channel for language-client logs
 
 The language server classifies `numeric` as a type in semantic tokens. The extension also recognizes `numeric` annotations as `storage.type.fscript`, alongside built-in types, even when the language server is inactive. Identifier substrings such as `numericValue` do not receive this type scope.
 
+Generic type parameters such as `'item` and `'error` receive the standard `typeParameter` semantic token, including the leading apostrophe, in declarations, union payloads, and annotations. The TextMate fallback uses `entity.name.type.parameter.fscript`. Ordinary value identifiers, including names with trailing apostrophes, remain value tokens; quoted text and comments do not emit type-parameter tokens.
+
 ## Imported symbol hover names
 
 Hover signatures for imported functions and values display the document's public module alias, for example `Scene.render`, instead of resolver-generated names such as `__imp1.render`. This applies to named-parameter, ordinary typed-value, and fallback signature formatting. Parameter and type information is preserved. Internal symbol names remain the lookup keys for inference and definition navigation.

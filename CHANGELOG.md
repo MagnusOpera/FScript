@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Fix VS Code highlighting of generic type parameters such as `'item` when the language server is active.
+
 ## [0.94]
 
 ### [0.94.0]

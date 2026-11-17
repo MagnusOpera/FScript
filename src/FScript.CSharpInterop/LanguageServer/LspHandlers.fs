@@ -94,7 +94,7 @@ module LspHandlers =
         capabilities["inlayHintProvider"] <- JsonValue.Create(true)
         let semanticLegend = JsonObject()
         let tokenTypeNodes = JsonArray()
-        [| "keyword"; "string"; "number"; "function"; "type"; "variable" |]
+        [| "keyword"; "string"; "number"; "function"; "type"; "variable"; "typeParameter" |]
         |> Array.iter (fun s -> tokenTypeNodes.Add(JsonValue.Create(s)))
         semanticLegend["tokenTypes"] <- tokenTypeNodes
         semanticLegend["tokenModifiers"] <- JsonArray()
@@ -133,6 +133,7 @@ module LspHandlers =
             && Regex.IsMatch(line.Substring(startIndex + token.Length), @"^\s+let\b", RegexOptions.CultureInvariant)
 
         if isExportPrefix || keywordSet.Contains(token) then 0
+        elif token.StartsWith("'") then 6
         elif builtinTypeTokenSet.Contains(token) then 4
         elif token.Length > 1 && token.StartsWith("\"") && token.EndsWith("\"") then 1
         elif token |> Seq.forall Char.IsDigit then 2
@@ -174,10 +175,11 @@ module LspHandlers =
                     data.Add(0)
                     previousLine <- lineIndex
                     previousStart <- start
-                elif Char.IsLetter(c) || c = '_' then
+                elif Char.IsLetter(c) || c = '_'
+                     || (c = '\'' && i + 1 < line.Length && (Char.IsLetter(line[i + 1]) || line[i + 1] = '_')) then
                     let start = i
                     i <- i + 1
-                    while i < line.Length && (Char.IsLetterOrDigit(line[i]) || line[i] = '_' || line[i] = '.') do
+                    while i < line.Length && (Char.IsLetterOrDigit(line[i]) || line[i] = '_' || line[i] = '\'' || (c <> '\'' && line[i] = '.')) do
                         i <- i + 1
                     let token = line.Substring(start, i - start)
                     let tokenType = classifyToken line start token
