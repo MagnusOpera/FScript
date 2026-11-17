@@ -1134,7 +1134,7 @@ module CSharpBackend =
                     match resolve t with
                     | TUnit -> quote "null","default(Unit)"
                     | TInt -> "value.ToString(CultureInfo.InvariantCulture)","value.GetInt64()"
-                    | TFloat -> "value.ToString(CultureInfo.InvariantCulture)","value.GetDouble()"
+                    | TFloat -> "(double.IsFinite(value) ? value.ToString(CultureInfo.InvariantCulture) : throw new InvalidOperationException(\"Non-finite JSON number\"))","value.GetDouble()"
                     | TBool -> "(value ? \"true\" : \"false\")","value.GetBoolean()"
                     | TString -> (if assemblyMode then "FsRuntime.JsonString(value)" else "JsonSerializer.Serialize(value)"),"value.GetString() ?? throw new InvalidOperationException()"
                     | TOption item ->

@@ -88,7 +88,7 @@ internal static class SdkInterop
     private static string EncodeJson(SV value) => value switch
     {
         SV.VInt item => item.Item.ToString(CultureInfo.InvariantCulture),
-        SV.VFloat item => item.Item.ToString(CultureInfo.InvariantCulture),
+        SV.VFloat item when double.IsFinite(item.Item) => item.Item.ToString(CultureInfo.InvariantCulture),
         SV.VBool item => item.Item ? "true" : "false",
         SV.VString item => JsonSerializer.Serialize(item.Item),
         SV.VList item => "["+string.Join(",",item.Item.Select(EncodeJson))+"]",

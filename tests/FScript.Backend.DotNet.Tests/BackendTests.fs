@@ -68,6 +68,11 @@ module ProviderFixture =
             {Types=[]; Unions=[]
              Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name.StartsWith("Task.",StringComparison.Ordinal)) |> List.map (fun fn -> {fn with Name="SdkTask."+fn.Name.Substring(5)})}
 
+    type JsonContextProvider =
+        static member Provide(context: HostContext) : ExtensionRegistration =
+            { Types=[]; Unions=[]
+              Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name="Json.serialize") |> List.map (fun fn -> {fn with Name="SdkJson.serialize"}) }
+
 
 module private Harness =
     let legacy source =
@@ -456,6 +461,32 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<TestCase("{| Z=1; A=2 |}")>]
     member _.``Generated formatting JSON XML and interpolation conform to the legacy evaluator`` (source: string) =
         Assert.That(Harness.execute (Harness.compile source), Is.EqualTo(Harness.legacy source))
+
+    [<TestCase(true, false)>]
+    [<TestCase(false, false)>]
+    [<TestCase(true, true)>]
+    [<TestCase(false, true)>]
+    member _.``JSON serializers reject nonfinite numbers across native and SDK calls`` (assemblyTarget: bool, sdk: bool) =
+        let name = if sdk then "SdkJson.serialize" else "Json.serialize"
+        let source = $"let invalid = [0.0 / 0.0; 1.0 / 0.0; (0.0 - 1.0) / 0.0]\n(List.map (fun value -> {name} value) invalid, {name} {{| Nested = invalid |}}, {name} 1.25)"
+        let program, references =
+            if not sdk then Harness.compile source, []
+            else
+                let defaults = FScript.Runtime.Registry.all { Permissions=FScript.Language.HostPermissions.All; RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[] } |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
+                let context = FScript.Extensibility.HostContext(Directory.GetCurrentDirectory(), [], defaults)
+                let registration = ProviderFixture.JsonContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
+                let compiled = match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (string errors)
+                let provider = typeof<ProviderFixture.JsonContextProvider>.GetMethod("Provide") |> nonNull
+                ClrBindings.bindProvider [name] provider compiled.Lir,
+                [typeof<ProviderFixture.JsonContextProvider>.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+        let actual =
+            if assemblyTarget then Harness.executeWith {Harness.options with References=references} program
+            else
+                let assembly = Harness.csharpAssembly references program
+                let typ = assembly.GetType("Generated.Program") |> nonNull
+                let result = (typ.GetMethod("Run") |> nonNull).Invoke(null, [||])
+                ((typ.GetMethod("FormatResult") |> nonNull).Invoke(null, [|result|]) |> nonNull) :?> string
+        Assert.That(actual, Is.EqualTo("([None;None;None], None, Some \"1.25\")"))
 
     [<TestCase("let rec walk n acc = if n=0 then acc else walk (n-1) (acc+1)\nwalk 1000000 0")>]
     [<TestCase("let count start =\n    let rec walk n acc = if n=0 then acc else walk (n-1) (acc+1)\n    walk start 0\ncount 1000000")>]

@@ -108,6 +108,22 @@ Initial eligibility excludes generic owners/methods, instance methods/constructo
 
 Tests cover granularity, ordered effects, void and value returns, branches/loops, retained failures, private/EH rejection, dead bindings, artifact round trips, deterministic bytes, dependency pruning, and unchanged C# output. CLR JIT preparation runs for all closed generated methods; a representative mixed-body assembly is additionally checked by ILVerify when installed.
 
+Access checks recurse through closed generic method arguments as well as declaring
+types. A public helper instantiated with an inaccessible type cannot be copied or
+retargeted into the generated assembly. Closed public type arguments remain
+supported.
+
+Before expanding a body with backward branches, the rewriter proves that the
+caller's evaluation stack contains only the call arguments at that site. Live
+values below the arguments, or an unsupported stack analysis case, retain the
+ordinary typed call. This preserves CLI forward-scan stack requirements at loop
+headers that become reachable by a backward branch. Calls with a proven empty
+stack below their arguments remain eligible under the normal growth policy.
+
+The [FFI property campaign](../guides/ffi-inline-property-tests.md) compares original
+and rewritten execution, checks source calls against a host reference, and verifies
+a generated IL corpus both before and after rewriting when ILVerify is installed.
+
 ### Foreign expansion profitability
 
 Inline is permission rather than unconditional expansion. The initial policy uses original callee IL bytes (excluding metadata): up to 16 is tiny, 17–100 discretionary, and above 100 remains an exact typed call. Ordinary candidates with more than 32 parameters or locals are also retained. These screens follow .NET 10 RyuJIT's normal constants, not its dynamic profitability model; F# expression weights are not treated as byte counts.

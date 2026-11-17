@@ -102,3 +102,14 @@ A binding remains live while a reachable lifted function needs it, even when the
 ## Native constant propagation
 
 The C# and .NET backends can replace known scalar loads with literals and eliminate branches whose conditions are known. Reachable effects and failures retain their evaluation order. Values supplied by the host remain dynamic even when an FFI purity contract permits removing an unused call. See [the backend constant propagation rules](dotnet-backends.md#constant-propagation).
+
+## Generated backend conformance checks
+
+The bounded conformance campaign generates typed source programs independently of
+parser/type-checker acceptance. It compares source evaluation, artifact-round-tripped
+LIR, generated C#, and optimized .NET assembly execution. Successful runs agree on
+formatted values and ordered console-call arguments. Programs dedicated to explicit
+raise or integer division by zero must reach the intended failure category on every
+target. Unexpected compiler/runtime failures fail the
+check. The initial subset and replay contract are documented in
+[Backend conformance property tests](../guides/backend-property-tests.md).

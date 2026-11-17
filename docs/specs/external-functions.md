@@ -118,6 +118,7 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - `Json.serialize : 'a -> string option`
   - encoding supports scalars, unit/options, lists, tuples, records, visible host-managed fields, and maps with string/int/bool keys
   - unsupported nested values (including unions, functions, tasks, and union-keyed maps) return `None`
+  - non-finite float values (`NaN` and either infinity), at the root or nested in containers, return `None` instead of invalid JSON, including compiled and SDK-forwarded calls
 - JSON decoding uses the runtime token, with missing option fields mapped to `None` and extra record properties ignored; unsupported targets, including opaque host-managed types, cannot be manufactured
 - The generic decoder scheme does not statically associate its token with the result; receiving functions can declare the intended return type
 - `Xml.queryValues : string -> string -> string list option`
@@ -131,6 +132,16 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - Type/arity mismatch in extern calls raises eval errors.
 - Options describe supported absence/conversion failures, not a universal exception boundary. JSON parsing and regex failures return `None`; denied filesystem reads/writes raise errors, and reading an existing unreadable file can propagate I/O errors.
 - `Xml.queryValues` does not support XML namespaces.
+
+## Runtime FFI property validation
+
+Bounded property campaigns cover every default runtime provider: Task, Mailbox,
+filesystem, JSON, XML queries, regex, encoding, hashes, GUIDs, and console IO.
+The runtime suite also directly tests the internal JSON/XML codecs against typed
+data models, without adding a script-visible `Decode` module. A separate
+capability matrix accounts for every default registered extern. See
+[runtime FFI property tests](../guides/runtime-ffi-property-tests.md) for the
+generated subsets, independent expectations, shrinking, and replay commands.
 
 ## Extending with new externs
 Recommended steps:

@@ -189,6 +189,15 @@ The following functions require runtime registration. See [external functions](.
 
 `Json.deserialize` selects a decoder from a runtime token; its generic scheme does not statically associate the token and output. `Guid.new` ignores its argument; scripts conventionally pass `()`. Filesystem and serialization options represent supported absence/conversion failure, not a universal exception boundary.
 
+`Json.serialize` returns `None` for non-finite floats, including inside options,
+lists, tuples, records, and maps. It does not emit `NaN` or infinity as JSON
+numbers. Source, compiled, and SDK-forwarded calls follow this rule.
+
+The [runtime FFI property campaign](../guides/runtime-ffi-property-tests.md)
+validates the complete default extern inventory with deterministic generated
+inputs, typed codec expectations, bounded filesystem and Task models, shrinking,
+and replay.
+
 ## Quick examples
 ```fsharp
 let xs = List.map (fun x -> x + 1) [1;2;3]
@@ -384,6 +393,19 @@ Task continuation argument order is callback first and task/task list last. All 
 Capacity is the maximum number of queued messages, excluding any message the handler is processing. A post waits for capacity. The handler runs asynchronously and threads its state through messages in admission order. Finishing closes admission, drains queued messages and posts that were already waiting, and returns the final state. A handler failure wakes waiters and propagates through the task scope. Mailbox functions require Threading in the source interpreter.
 
 Both compiled targets call typed CLR methods and track mailbox workers in the compiled task scope. See the [mailbox sample](../../samples/mailbox.fss).
+
+Repeated calls to `Mailbox.finish` return the drained state, or propagate the
+handler's failure. A post made after admission has closed is rejected and does
+not change the mailbox state.
+
+The runtime property suite checks bounded single-producer sequences against an
+independent state model, including FIFO state, repeated finish, closed admission,
+and handler failures. A gated-worker campaign checks that a full queue blocks a
+post and that finishing drains posts already waiting while rejecting later
+posts. A failing held handler must wake both the waiting post and finish call
+without handling later queued messages. See
+[mailbox property tests](../guides/mailbox-property-tests.md) for bounds,
+deterministic scheduling, shrinking, and replay.
 
 ## Hosted interpreter capability requirements
 

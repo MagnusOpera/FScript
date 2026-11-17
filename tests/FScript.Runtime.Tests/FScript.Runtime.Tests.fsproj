@@ -9,10 +9,17 @@
 
   <ItemGroup>
     <Compile Include="HostTestHelpers.fs" />
+    <Compile Include="RuntimePropertySupport.fs" />
+    <Compile Include="CodecPropertyTests.fs" />
+    <Compile Include="FfiPropertyTests.fs" />
+    <Compile Include="FsPropertyTests.fs" />
+    <Compile Include="TaskPropertyTests.fs" />
     <Compile Include="RegistryTests.fs" />
     <Compile Include="HostPermissionsTests.fs" />
     <Compile Include="FsExternsTests.fs" />
     <Compile Include="MailboxTests.fs" />
+    <Compile Include="MailboxProperties.fs" />
+    <Compile Include="MailboxPropertyTests.fs" />
     <Compile Include="RegexExternsTests.fs" />
     <Compile Include="HashExternsTests.fs" />
     <Compile Include="GuidExternsTests.fs" />
@@ -34,6 +41,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="FsCheck" Version="3.6.0" />
     <PackageReference Include="FsUnit" Version="7.1.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <!-- FsUnit 7.1.1 depends on TestDelegate, which NUnit 5 removed. -->

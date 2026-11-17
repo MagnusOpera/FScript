@@ -7,14 +7,18 @@
   <ItemGroup>
     <Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" />
     <Compile Include="ConformanceTests.fs" />
+    <Compile Include="BackendPrograms.fs" />
+    <Compile Include="BackendPropertyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="FsCheck" Version="3.6.0" />
     <PackageReference Include="NUnit" Version="4.4.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="6.1.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/FScript.Backend.DotNet/FScript.Backend.DotNet.fsproj" />
     <ProjectReference Include="..\..\src\FScript.Language\FScript.Language.fsproj" />
     <ProjectReference Include="..\..\src\FScript.Compiler\FScript.Compiler.fsproj" />
     <ProjectReference Include="..\..\src\FScript.Interpreter.Lir\FScript.Interpreter.Lir.fsproj" />

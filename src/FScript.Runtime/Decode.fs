@@ -171,6 +171,7 @@ module internal HostEncode =
         match value with
         | VUnit -> Some "null"
         | VInt v -> Some (string v)
+        | VFloat v when Double.IsNaN v || Double.IsInfinity v -> None
         | VFloat v -> Some (v.ToString(CultureInfo.InvariantCulture))
         | VBool true -> Some "true"
         | VBool false -> Some "false"

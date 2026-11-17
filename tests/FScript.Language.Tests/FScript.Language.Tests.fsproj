@@ -17,6 +17,8 @@
     <Compile Include="IncludeResolverTests.fs" />
     <Compile Include="ParserTests.fs" />
     <Compile Include="TypeInferenceTests.fs" />
+    <Compile Include="InferenceProperties.fs" />
+    <Compile Include="InferencePropertyTests.fs" />
     <Compile Include="ResolvedInferenceTests.fs" />
     <Compile Include="TaskSharingAnalysisTests.fs" />
     <Compile Include="EvalTests.fs" />
@@ -30,6 +32,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="FsCheck" Version="3.6.0" />
     <PackageReference Include="FsUnit" Version="7.1.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <!-- FsUnit 7.1.1 depends on TestDelegate, which NUnit 5 removed. -->

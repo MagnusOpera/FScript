@@ -5,7 +5,7 @@ open FScript.Compiler
 open FScript.Language
 open NUnit.Framework
 
-module private Harness =
+module internal Harness =
     type Outcome = { Value: string; Stdout: string list }
     type FailureCategory = Raised | MatchFailure | DivisionByZero
 

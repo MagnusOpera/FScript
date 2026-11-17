@@ -1793,7 +1793,16 @@ module TypeInfer =
         let initialSchemes =
             (envFromExterns externs, constructorSchemes)
             ||> List.fold (fun acc (name, scheme) -> acc.Add(name, scheme))
-        let mutable env = { Schemes = initialSchemes; OpaqueEffects = Map.empty; Frames = ResizeArray() }
+        // Union constructors wrap their payload without invoking a factory it
+        // contains. Store the proof on the binding so ordinary shadowing removes
+        // it through InferenceEnv.Add, just like other forwarding functions.
+        let constructorEffects =
+            constructors
+            |> Map.toList
+            |> List.choose (fun (name, signature) ->
+                signature.Payload |> Option.map (fun _ -> name, { noOpaque with FactoryDelay = Some 0 }))
+            |> Map.ofList
+        let mutable env = { Schemes = initialSchemes; OpaqueEffects = constructorEffects; Frames = ResizeArray() }
 
         let telemetry =
             if captureTelemetry then Some(createTelemetry ())

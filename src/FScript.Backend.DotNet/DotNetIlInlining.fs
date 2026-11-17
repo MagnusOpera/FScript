@@ -53,6 +53,9 @@ module internal DotNetIlInlining =
                    (target.DeclaringType.FullName="System.Environment" && target.Name="get_StackTrace") || target.Name="GetCallingAssembly" || target.Name="GetExecutingAssembly" || target.Name="GetCurrentMethod" then
                     fail "stack-sensitive reflection is unsupported."
                 safeType target.DeclaringType
+                match target with
+                | :? GenericInstanceMethod as generic -> for argument in generic.GenericArguments do safeType argument
+                | _ -> ()
             | :? FieldReference as field ->
                 let definition=field.Resolve()
                 if isNull definition || not definition.IsPublic || not (visible definition.DeclaringType) then fail $"field '{field.FullName}' is not public."
@@ -209,6 +212,82 @@ module internal DotNetIlInlining =
         let mutable previous=site
         for instruction in emitted do processor.InsertAfter(previous,instruction);previous<-instruction
         argumentSlots
+
+    let private hasBackwardBranch (body:MethodBody) =
+        body.Instructions |> Seq.mapi (fun index instruction ->
+            match instruction.Operand with
+            | :? Instruction as target -> body.Instructions.IndexOf target <= index
+            | :? (Instruction array) as targets -> targets |> Array.exists (fun target -> body.Instructions.IndexOf target <= index)
+            | _ -> false) |> Seq.exists id
+
+    /// A copied loop may have a header reached first by a backward branch. CLI
+    /// verification assumes an empty stack there during its forward scan. Keep
+    /// the original call unless no caller values survive below its arguments.
+    let private emptyBelowArguments (caller:MethodDefinition) site argumentCount =
+        let depths=Dictionary<Instruction,int>()
+        let pending=Queue<Instruction>()
+        let mutable valid=true
+        let enqueue (instruction:Instruction | null) depth =
+            if not (isNull instruction) then
+                let instruction=nonNull instruction
+                match depths.TryGetValue instruction with
+                | true,previous when previous<>depth -> valid<-false
+                | true,_ -> ()
+                | _ -> depths.Add(instruction,depth);pending.Enqueue instruction
+        let popCount (instruction:Instruction) =
+            match instruction.OpCode.StackBehaviourPop with
+            | StackBehaviour.Pop0 -> Some 0
+            | StackBehaviour.Pop1 | StackBehaviour.Popi | StackBehaviour.Popref -> Some 1
+            | StackBehaviour.Pop1_pop1 | StackBehaviour.Popi_pop1 | StackBehaviour.Popi_popi
+            | StackBehaviour.Popi_popi8 | StackBehaviour.Popi_popr4 | StackBehaviour.Popi_popr8
+            | StackBehaviour.Popref_pop1 | StackBehaviour.Popref_popi -> Some 2
+            | StackBehaviour.Popi_popi_popi | StackBehaviour.Popref_popi_popi | StackBehaviour.Popref_popi_popi8
+            | StackBehaviour.Popref_popi_popr4 | StackBehaviour.Popref_popi_popr8 | StackBehaviour.Popref_popi_popref -> Some 3
+            | StackBehaviour.Varpop ->
+                match instruction.OpCode.Code,instruction.Operand with
+                | Code.Ret,_ -> Some (if caller.ReturnType.MetadataType=MetadataType.Void then 0 else 1)
+                | (Code.Call | Code.Callvirt | Code.Newobj),(:? MethodReference as target) ->
+                    Some(target.Parameters.Count + if target.HasThis && instruction.OpCode<>OpCodes.Newobj then 1 else 0)
+                | _ -> None
+            | _ -> None
+        let pushCount (instruction:Instruction) =
+            match instruction.OpCode.StackBehaviourPush with
+            | StackBehaviour.Push0 -> Some 0
+            | StackBehaviour.Push1 | StackBehaviour.Pushi | StackBehaviour.Pushi8
+            | StackBehaviour.Pushr4 | StackBehaviour.Pushr8 | StackBehaviour.Pushref -> Some 1
+            | StackBehaviour.Push1_push1 -> Some 2
+            | StackBehaviour.Varpush ->
+                match instruction.OpCode.Code,instruction.Operand with
+                | Code.Newobj,_ -> Some 1
+                | (Code.Call | Code.Callvirt),(:? MethodReference as target) -> Some (if target.ReturnType.MetadataType=MetadataType.Void then 0 else 1)
+                | _ -> None
+            | _ -> None
+        if caller.Body.Instructions.Count>0 then enqueue caller.Body.Instructions[0] 0
+        for handler in caller.Body.ExceptionHandlers do
+            enqueue handler.HandlerStart (if handler.HandlerType=ExceptionHandlerType.Catch || handler.HandlerType=ExceptionHandlerType.Filter then 1 else 0)
+            if handler.HandlerType=ExceptionHandlerType.Filter then enqueue handler.FilterStart 1
+        while valid && pending.Count>0 do
+            let instruction=pending.Dequeue()
+            match popCount instruction,pushCount instruction with
+            | Some pop,Some push when depths[instruction]>=pop ->
+                let depth=depths[instruction]-pop+push
+                match instruction.OpCode.FlowControl with
+                | FlowControl.Return | FlowControl.Throw -> ()
+                | FlowControl.Branch ->
+                    match instruction.Operand with
+                    | :? Instruction as target -> enqueue target (if instruction.OpCode.Code=Code.Leave || instruction.OpCode.Code=Code.Leave_S then 0 else depth)
+                    | _ -> valid<-false
+                | FlowControl.Cond_Branch ->
+                    match instruction.Operand with
+                    | :? Instruction as target -> enqueue target depth
+                    | :? (Instruction array) as targets -> for target in targets do enqueue target depth
+                    | _ -> valid<-false
+                    enqueue instruction.Next depth
+                | _ -> enqueue instruction.Next depth
+            | _ -> valid<-false
+        match depths.TryGetValue site with
+        | true,depth -> valid && depth=argumentCount
+        | _ -> false
 
     /// Remove only newly unreferenced provider assembly scopes, never guessed dependencies.
     let private pruneReferences (moduleDef:ModuleDefinition) candidates =
@@ -369,17 +448,19 @@ module internal DotNetIlInlining =
                                     | None when size>maximumBytes || callee.Parameters.Count>32 || callee.Body.Variables.Count>32 || growth>=budget -> originalCall ()
                                     | None ->
                                         validate span callee
-                                        let original=method.Body
-                                        let before=encodedSize original
-                                        let trial,copies=copyBody method
-                                        method.Body<-trial
-                                        trial.SimplifyMacros()
-                                        let arguments=expand span moduleDef method copies.[instruction] callee
-                                        cleanup trial arguments
-                                        let delta=encodedSize trial-before
-                                        let limit=if size<=tinyBytes then 32 else 16
-                                        if delta<=limit && growth+delta<=budget then growth<-max 0 (growth+delta)
-                                        else method.Body<-original;originalCall ()
+                                        if hasBackwardBranch callee.Body && not (emptyBelowArguments method instruction callee.Parameters.Count) then originalCall ()
+                                        else
+                                            let original=method.Body
+                                            let before=encodedSize original
+                                            let trial,copies=copyBody method
+                                            method.Body<-trial
+                                            trial.SimplifyMacros()
+                                            let arguments=expand span moduleDef method copies.[instruction] callee
+                                            cleanup trial arguments
+                                            let delta=encodedSize trial-before
+                                            let limit=if size<=tinyBytes then 32 else 16
+                                            if delta<=limit && growth+delta<=budget then growth<-max 0 (growth+delta)
+                                            else method.Body<-original;originalCall ()
                                     changed<-true
                                     site<-firstSite ()
                     for typ in moduleDef.Types |> Seq.collect types do

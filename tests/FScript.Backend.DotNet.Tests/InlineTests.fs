@@ -19,9 +19,21 @@ module InlineFixtures =
         static member Record(value:int64) = values<-value::values;value
     type private Storage(value:int64) =
         member _.Value = value
+    type PublicGeneric =
+        [<MethodImpl(MethodImplOptions.NoInlining)>]
+        static member Keep<'T>(value:int64) = value
     type Kernels =
         static member Add(value:int64) = value+1L
         static member Pair(left:int64,right:int64) = left+right
+        static member Difference(left:int64,right:int64) = left-right
+        static member Reuse(left:int64,right:int64) = left+left-right
+        static member TouchAndDivide(left:int64,right:int64) =
+            Effects.Record left |> ignore
+            left/right
+        static member HiddenGeneric(value:int64) = PublicGeneric.Keep<Storage>(value)
+        static member PublicGeneric(value:int64) = PublicGeneric.Keep<int64>(value)
+        static member Switch(value:int32) =
+            match value with 0 -> 7L | 1 -> 13L | 2 -> 19L | 3 -> 23L | _ -> 31L
         static member Branch(value:int64) = if value<0L then -value else value*2L+1L
         static member Loop(value:int64) =
             let mutable count=value
@@ -75,7 +87,7 @@ module InlineFixtures =
         static member FScriptCompiledFunctions() : Collections.Generic.IEnumerable<Collections.Generic.KeyValuePair<string,MethodInfo>> =
             [Collections.Generic.KeyValuePair("Host.inline",typeof<Kernels>.GetMethod("Add") |> nonNull)]
 
-module private InlineHarness =
+module internal InlineHarness =
     let methodInfo name = typeof<InlineFixtures.Kernels>.GetMethod(name) |> nonNull
     let compile source bindings =
         let externs:CompilerExtern list=bindings |> List.map (fun (name,methodName,_) ->
@@ -126,6 +138,12 @@ type InlineTests() =
         let fn=(typ.GetProperty("v_exposed") |> nonNull).GetValue(null) |> nonNull :?> Func<int64,int64>
         Assert.That(fn.Invoke(argument),Is.EqualTo(42L))
         Assert.That(InlineHarness.calls assembly name,Is.Empty)
+
+    [<Test>]
+    member _.``Closed public generic helper calls survive expansion`` () =
+        let assembly=InlineHarness.compile "Host.inline 41" ["Host.inline","PublicGeneric",true] |> InlineHarness.generate |> InlineHarness.load
+        Assert.That(InlineHarness.run assembly,Is.EqualTo("41"))
+        Assert.That(InlineHarness.calls assembly "PublicGeneric",Is.Empty)
 
     [<Test>]
     member _.``Large opted-in callees remain typed calls`` () =
@@ -208,6 +226,7 @@ type InlineTests() =
 
     [<TestCase("Handler","exception-handler")>]
     [<TestCase("PrivateCall","not public")>]
+    [<TestCase("HiddenGeneric","not public")>]
     member _.``Unsupported explicit bodies produce actionable diagnostics`` (name,reason) =
         let program=InlineHarness.compile "Host.inline 0" ["Host.inline",name,true]
         match DotNetBackend.generate InlineHarness.options program with

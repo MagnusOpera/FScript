@@ -38,6 +38,15 @@ Use this when:
 - You want to embed the language in another .NET application.
 - You need language processing independently from default runtime extern catalog.
 
+### Runtime property validation
+
+`FScript.Runtime.Tests` has friend access to Runtime's internal codec modules so
+generated tests exercise the actual JSON/XML implementations. Other provider
+properties use public descriptors or `ScriptHost`, with independent data models
+and a shared FsCheck runner. The generated C#/.NET serializers and compiled SDK
+adapter separately reject non-finite JSON numbers to preserve runtime behavior.
+See [runtime FFI properties](../guides/runtime-ffi-property-tests.md).
+
 ### `FScript.Compiler`
 Role:
 - Reusable .NET compiler pipeline for typed HIR, executable LIR, and IR artifacts.
@@ -69,6 +78,8 @@ Role:
 - Optionally publish self-contained or Native AOT executables through the .NET SDK.
 
 Consumer tests follow the same boundary: `FScript.Interpreter.Lir.Tests` owns LIR execution; `FScript.Backend.DotNet.Tests` owns native generation. `FScript.Compiler.Tests` covers HIR, lowering, LIR validation, and artifacts.
+`FScript.Conformance.Tests` compares source, artifact-round-tripped LIR, generated C#,
+and optimized .NET execution using bounded typed programs with shrinking and replay.
 
 NuGet:
 - `MagnusOpera.FScript.Language`

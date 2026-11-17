@@ -16,6 +16,11 @@ This folder is organized into three layers:
 ## Build and test
 
 - [Container-backed Terrabuild workflow](./guides/terrabuild.md)
+- [Inference property tests, shrinking, and replay](./guides/inference-property-tests.md)
+- [Mailbox state-model property tests](./guides/mailbox-property-tests.md)
+- [Runtime FFI property tests and coverage](./guides/runtime-ffi-property-tests.md)
+- [Backend conformance property tests](./guides/backend-property-tests.md)
+- [FFI inlining and IL rewriting property tests](./guides/ffi-inline-property-tests.md)
 
 ## Compilation
 

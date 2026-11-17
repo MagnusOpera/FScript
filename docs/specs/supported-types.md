@@ -133,6 +133,14 @@ constructors and patterns infer fresh arguments at each use. A recursive generic
 record or union uses `type rec` and refers to itself with its declared parameters
 in order.
 
+Generic record and union wrappers preserve generalization according to their
+contents. Pure values and unrelated callbacks may remain polymorphic, while an
+existing opaque instance inside a wrapper retains its type arguments through
+record projection, record updates, union matching, and captured closures.
+Constructing a union around a factory forwards the factory without calling it;
+separate calls to that factory still instantiate independently. An ordinary
+function that shadows a constructor follows its own allocation behavior.
+
 Built-in containers use postfix syntax in source and type displays, including
 `int list`, `int option`, `int task`, `int map`, and `string map[int]`.
 
@@ -156,6 +164,20 @@ Built-in containers use postfix syntax in source and type displays, including
 - Numeric variables retain separate identities internally. Identical `numeric` labels do not imply that unrelated numeric expressions or parameters are tied; operators and ordinary unification establish the relationship.
 - Structural typing for record values.
 - Field access is typed when the target expression is inferred as a record.
+
+### Generalization validation
+
+The language suite checks let-polymorphism and captured-variable restrictions
+with deterministic generated programs. Expectations cover independent pure
+instantiations, monomorphic captured parameters and opaque instances, fresh
+factory calls, and independent callbacks paired with captured opaque instances.
+Generic campaigns cover two-parameter records and unions, nesting in both orders,
+concrete type-argument mismatches, pure aggregate polymorphism, and opaque cells
+paired with unrelated callbacks. Generic containers required by a scenario remain
+present during shrinking.
+Every generated rejection has a compatible acceptance control. See
+[inference property tests](../guides/inference-property-tests.md) for the bounded
+generation model, shrinking rules, and replay commands.
 
 ## Runtime value representation (high level)
 - `VUnit`, `VInt`, `VFloat`, `VBool`, `VString`

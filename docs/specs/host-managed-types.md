@@ -94,3 +94,9 @@ External values are not assumed pure because their visible schema is immutable. 
 ## Generic provider types
 
 A provider may register an opaque host type with distinct type parameter IDs and no visible fields. The type checker resolves applications of the registered name, checks their arity, and unifies their type arguments. A binding that evaluates to a generic host value retains its type arguments across uses, including aliases, aggregates, and closures that capture the value. Inference tracks instance-associated variables separately from unrelated polymorphic variables. Calling a factory creates fresh instance variables; forwarding that factory does not create an instance. This allocation information is private to inference and does not expose payload fields or add an IR type. Runtime calls validate the registered descriptor while keeping the payload opaque. Generic opaque values compare by payload identity.
+
+Script-defined generic records and unions can contain opaque instances alongside
+independently polymorphic values. Extracting or capturing the opaque instance
+does not freshen its type arguments. Union constructors, including qualified
+names and aliases, wrap factories without invoking them; a shadowing function
+does not inherit this constructor behavior.

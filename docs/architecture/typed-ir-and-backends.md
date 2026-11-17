@@ -125,6 +125,13 @@ Provider `Inline` metadata is owned by `FScript.Compiler.ClrBindings` and stored
 Foreign IL expansion uses a two-stage profitability policy: original-byte screening followed by measured post-cleanup caller growth. Trial bodies are isolated copies, including locals and exception boundaries; failed trials leave ordinary typed calls. Exact forwarder collapsing does not duplicate code. This caps static expansion without introducing JIT profiling, runtime instrumentation, or interpreter costs.
 
 
+The IL pass checks generic method type arguments for accessibility before importing
+method specifications. Loop expansion additionally uses a conservative stack-depth
+analysis over caller control flow and exception entries. It retains the typed call
+when caller values would survive below the copied loop or the proof is unknown.
+Generated caller tests compare execution and independently verify ordinary and
+rewritten bodies, including catch/finally boundaries and constant-folding entries.
+
 ## Capture cleanup after tail-loop lowering
 
 The assembly backend specializes known captured functions before native lowering. A local partial function whose implementation and captures are known can become direct arithmetic in its consumer, including a recursive loop. Actual captures remain explicit; separate invocations retain separate immutable environments.
@@ -214,8 +221,27 @@ through aliases, patterns, higher-order calls, and closure captures, then filter
 only instance-associated variables from generalization. Public generic types and
 HIR/LIR representations are unchanged.
 
+The initial inference environment attaches a zero-delay forwarding proof to each
+payload-bearing union constructor, including its qualified name. Aliasing and
+instantiation preserve that binding metadata, allowing generic union wrappers to
+carry factories without promoting their latent instance variables. Ordinary
+binding replacement and parameter shadowing remove the proof; no name-based
+constructor shortcut is used at call sites.
+
 Task-sharing options can describe creation, sending, and completion roles for a
 registered consumer API. Runtime attaches those roles to the bundled Mailbox
 implementation by delegate identity. The analyzer retains abstract handlers and
 state, serializes messages on each consumer clock, and joins work at completion.
 This extends the existing static pass without evaluator or scheduler hooks.
+
+## Generated conformance tests
+
+`FScript.Conformance.Tests` owns a typed source-program grammar and four-way
+property runner. The source evaluator supplies the reference outcome; the LIR
+path round-trips the serialized artifact. The C# path compiles generated files
+with Roslyn without assembly-only transformations, while the .NET path exercises
+`DotNetBackend.generate` with its optimization and IL-rewriting passes. Both paths
+load binaries into collectible assembly contexts. Console capture runs serially
+and restores the host writer even when script execution fails. Deterministic
+seeds and scope-preserving shrinkers produce replayable source counterexamples.
+See [the campaign guide](../guides/backend-property-tests.md) for bounds and limits.
