@@ -49,8 +49,22 @@ module CSharpBackend =
 
     let private emit externalArities assemblyMode printResult options (program: Lir.Program) =
         let mutable usesTaskRuntime=false
+        let rec sdkTransport (typ: System.Type) =
+            typ.FullName = "FScript.Extensibility.ScriptValue"
+            || (typ.IsArray && sdkTransport (typ.GetElementType() |> nonNull))
+            || (typ.IsGenericType && (typ.GetGenericArguments() |> Array.exists sdkTransport))
         let hasSdk =
             (program.Declarations |> List.exists (fun d -> match d.Value.Node with Lir.TargetImport(path,_) -> path.StartsWith("clr-sdk:",StringComparison.Ordinal) | _ -> false)) ||
+            (program.Declarations |> List.exists (fun declaration ->
+                match declaration.Value.Node with
+                | Lir.TargetImport(path,name) ->
+                    match ClrBindings.tryMethodLink path with
+                    | Some link ->
+                        match System.Type.GetType(link.DeclaringType,false) |> Option.ofObj with
+                        | Some typ -> typ.GetMethods() |> Array.exists (fun method -> method.Name=name && (sdkTransport method.ReturnType || (method.GetParameters() |> Array.exists (fun parameter -> sdkTransport parameter.ParameterType))))
+                        | None -> false
+                    | None -> false
+                | _ -> false)) ||
             (program.Types |> List.exists (fun declaration ->
                 match declaration.Definition with THostManaged _ -> declaration.Import.IsNone | _ -> false))
         let definitions = program.Types |> List.map (fun d -> d.Name, d.Definition) |> Map.ofList
@@ -462,7 +476,8 @@ module CSharpBackend =
             | "Task.awaitAll", _ -> build (fun a _ -> $"FsTasks.AwaitAll({a.[0]})")
             | _ -> fail "FSC6005" $"External or intrinsic '{name}' has no compiled CLR implementation. Bind host functions with ClrBindings.bindMethod." None
         let rec toClr semantic (native: System.Type) code =
-            if native = typeof<Void> then code
+            if native.FullName = "FScript.Extensibility.ScriptValue" then $"{encName semantic}({code})"
+            elif native = typeof<Void> then code
             elif csType semantic = typeName native then code
             elif native = typeof<int64> || native = typeof<int> || native = typeof<float> || native = typeof<float32> || native = typeof<bool> || native = typeof<string> then $"(({typeName native})({code}))"
             elif native = typeof<unit> then "default(global::Microsoft.FSharp.Core.Unit)"
@@ -499,7 +514,16 @@ module CSharpBackend =
                 match semantic with TOption item -> $"(({code}).HasValue ? {typeName native}.Some({toClr item (native.GetGenericArguments().[0]) (valueMember code)}) : null)" | _ -> code
             else code
         and fromClr (native: System.Type) semantic code =
-            if native = typeof<Void> || native = typeof<unit> then wrap "Unit" $"{code}; return default;"
+            if native.FullName = "FScript.Extensibility.ScriptValue" then $"{decName semantic}({code})"
+            elif native.IsGenericType && native.GetGenericTypeDefinition() = typedefof<System.Threading.Tasks.Task<_>> then
+                match semantic with
+                | TTask item ->
+                    usesTaskRuntime <- true
+                    let argument = fresh "foreignTaskResult"
+                    let converted = fromClr (native.GetGenericArguments().[0]) item argument
+                    $"FsTasks.Track(FsTasks.Convert({code}, {argument} => {converted}))"
+                | _ -> fail "FSC6006" "CLR task return requires a script task result." None
+            elif native = typeof<Void> || native = typeof<unit> then wrap "Unit" $"{code}; return default;"
             elif csType semantic = typeName native then code
             else
                 match semantic with

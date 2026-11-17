@@ -268,3 +268,15 @@ test('host permissions default to none and guard declared effects', () => {
   assert.equal(calls, 2);
   assert.throws(() => run('42', {permissions: ['Unknown']}), /Unknown host permission/);
 });
+
+test('Process grants are recognized without adding browser process execution', () => {
+  assert.equal(run('42', {permissions: ['Process']}).value, 42n);
+  assert.throws(() => run('Process.exec "program" [] ()', {permissions: ['Process', 'Threading']}), /Unbound variable 'Process'/);
+});
+
+
+test('script union constructors take precedence over unqualified host cases', () => {
+  const source = 'type Local = | Off of string\nlet local = Off "local"\nmatch local with | Off value -> value';
+  assert.equal(run(source, {registration: types}).value, 'local');
+  assert.doesNotThrow(() => run('Mode.Off', {registration: types}));
+});

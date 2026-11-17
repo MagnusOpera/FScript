@@ -51,7 +51,7 @@ internal static class FsTasks
         public void Close() { lock(Gate) Active=false; }
     }
     private static readonly AsyncLocal<Scope?> Current=new();
-    private static T Track<T>(T task) where T:Task
+    public static T Track<T>(T task) where T:Task
     {
         var scope=Current.Value;
         if(scope is not null) lock(scope.Gate) scope.Pending.TryAdd(task,false);

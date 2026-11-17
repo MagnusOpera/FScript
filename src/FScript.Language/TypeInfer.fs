@@ -1768,7 +1768,7 @@ module TypeInfer =
             Map.fold (fun acc name typ -> Map.add name typ acc) scriptDefinitions hostDefinitions
 
         let constructors =
-            Map.toList scriptDefinitions @ Map.toList hostDefinitions
+            Map.toList hostDefinitions @ Map.toList scriptDefinitions
             |> List.collect (fun (typeName, definition) ->
                 let parameters, result =
                     match definition with

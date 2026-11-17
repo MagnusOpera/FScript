@@ -10,10 +10,13 @@ module Registry =
 
     /// Default providers that also supply typed compiled linkage.
     let compiledProviders () =
-        [ mailbox.Functions |> List.map _.Name, typeof<CompiledMailbox>.GetMethod("Start") |> nonNull ]
+        [ mailbox.Functions |> List.map _.Name, typeof<CompiledMailbox>.GetMethod("Start") |> nonNull
+          ["Process.defaults"; "Process.exec"], typeof<FScript.Runtime.CompiledProcess>.GetMethod("Exec") |> nonNull ]
 
     let all (ctx: HostContext) : ExternalFunction list =
-        [ FsExterns.read_text ctx
+        [ ProcessExterns.defaults
+          ProcessExterns.exec ctx
+          FsExterns.read_text ctx
           FsExterns.exists ctx
           FsExterns.entry_kind ctx
           FsExterns.create_directory ctx
@@ -38,5 +41,5 @@ module Registry =
     let registration (context: HostContext) =
         let registration = HostInterop.ofExternsWithPermissions context.Permissions (all context)
         { registration with
-            Unions = if HostInterop.allows context.Permissions HostPermissions.IO then [FsExterns.kindType] else []
-            Types = if HostInterop.allows context.Permissions HostPermissions.Threading then mailbox.Types else [] }
+            Unions = ProcessSignatures.resultDescriptor :: (if HostInterop.allows context.Permissions HostPermissions.IO then [FsExterns.kindType] else [])
+            Types = ProcessSignatures.optionsDescriptor :: (if HostInterop.allows context.Permissions HostPermissions.Threading then mailbox.Types else []) }

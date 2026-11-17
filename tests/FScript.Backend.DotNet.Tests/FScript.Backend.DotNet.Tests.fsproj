@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net11.0</TargetFramework><IsPackable>false</IsPackable><GenerateProgramFile>false</GenerateProgramFile></PropertyGroup>
-  <ItemGroup><Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" /><Compile Include="../TaskLibraryCases.fs" Link="TaskLibraryCases.fs" /><Compile Include="BackendTests.fs" /><Compile Include="DeadCaptureTests.fs" /><Compile Include="ComparisonTests.fs" /><Compile Include="InlineTests.fs" /><Compile Include="InlinePropertyTests.fs" /><Compile Include="Program.fs" /></ItemGroup>
+  <PropertyGroup><TargetFramework>net11.0</TargetFramework><OutputType>Exe</OutputType><IsPackable>false</IsPackable><GenerateProgramFile>false</GenerateProgramFile></PropertyGroup>
+  <ItemGroup><Compile Include="../FScript.Runtime.Tests/Processes/ProcessFixture.fs" Link="ProcessFixture.fs" /><Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" /><Compile Include="../TaskLibraryCases.fs" Link="TaskLibraryCases.fs" /><Compile Include="BackendTests.fs" /><Compile Include="DeadCaptureTests.fs" /><Compile Include="ComparisonTests.fs" /><Compile Include="InlineTests.fs" /><Compile Include="InlinePropertyTests.fs" /><Compile Include="Program.fs" /></ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="FsCheck" Version="3.6.0" />

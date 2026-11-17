@@ -16,7 +16,7 @@ JavaScript treats `Env.setExitCode` as a no-op for source portability. It does n
 
 ## Hosted interpreter permissions
 
-JavaScript hosting grants no capabilities by default. Pass `permissions: ['IO']` (or `Interactive`, `Threading`, `Native`) in run/load/parse/session options to grant them explicitly. `extern` and `HostFunctions.create` accept `requiredPermissions: ['IO']`; omitted requirements declare a host-authored callback as requiring none. Loaded exports and sessions retain grants; returned callables and invocation-context operations check the active policy. For example:
+JavaScript hosting grants no capabilities by default. Pass `permissions: ['IO']` (or `Interactive`, `Threading`, `Native`, `Process`) in run/load/parse/session options to grant them explicitly. `extern` and `HostFunctions.create` accept `requiredPermissions: ['IO']`; omitted requirements declare a host-authored callback as requiring none. Loaded exports and sessions retain grants; returned callables and invocation-context operations check the active policy. For example:
 
 ```javascript
 const write = HostFunctions.create({
@@ -28,3 +28,5 @@ run('Host.write "hello"', {externs: [write], permissions: ['IO']});
 ```
 
 These declarations rely on truthful host classification; arbitrary JavaScript handlers are trusted code. Granting `Threading` does not add Task implementation support to Fable: task operations remain unsupported. See the [host permissions guide](https://fscript.magnusopera.io/manual/embedding/host-permissions) for the capability model and .NET host API.
+
+`Process` is a recognized permission name but does not add a built-in browser process implementation.

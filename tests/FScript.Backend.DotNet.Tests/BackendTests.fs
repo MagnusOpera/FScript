@@ -95,7 +95,9 @@ module private Harness =
             for method in typ.GetMethods(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Static ||| BindingFlags.Instance ||| BindingFlags.DeclaredOnly) do
                 if not method.IsAbstract && not method.ContainsGenericParameters && not (nonNull method.DeclaringType).ContainsGenericParameters then
                     RuntimeHelpers.PrepareMethod(method.MethodHandle)
-        Assert.That(assembly.GetReferencedAssemblies() |> Array.exists (fun a -> List.contains (a.Name |> Option.ofObj |> Option.defaultValue "") ["FScript.Language"; "FScript.Runtime"; "FScript.Interpreter.Lir"]), Is.False)
+        let runtimeLibrary = options.References |> List.exists (fun path -> Path.GetFileNameWithoutExtension(path) = "FScript.Runtime")
+        let forbidden = ["FScript.Language"; "FScript.Interpreter.Lir"] @ (if runtimeLibrary then [] else ["FScript.Runtime"])
+        Assert.That(assembly.GetReferencedAssemblies() |> Array.exists (fun a -> List.contains (a.Name |> Option.ofObj |> Option.defaultValue "") forbidden), Is.False)
         let programType=assembly.GetType("Generated.Program") |> nonNull
         let result=(programType.GetMethod("Run") |> nonNull).Invoke(null,[||])
         ((programType.GetMethod("FormatResult") |> nonNull).Invoke(null,[|result|]) |> nonNull) :?> string
@@ -1064,3 +1066,110 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
         let allocated=GC.GetAllocatedBytesForCurrentThread()-before
         Assert.That(result.Length,Is.EqualTo(256))
         Assert.That(allocated,Is.LessThanOrEqualTo(2200L))
+
+[<TestFixture>]
+type ProcessBackendTests() =
+    let quote (text: string) = System.Text.Json.JsonSerializer.Serialize(text)
+    let fixture = typeof<FScript.Runtime.Tests.ProcessFixture>.Assembly.Location
+    let call arguments options = $"Process.exec \"dotnet\" [{quote fixture}; \"--process-fixture\"; {arguments}] {options}"
+    let execute assemblyTarget source =
+        let registration = FScript.Runtime.Registry.registration { FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions = FScript.Language.HostPermissions.All }
+        let compiled =
+            match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[]} with
+            | Ok compiled -> compiled.Lir
+            | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let provider = typeof<FScript.Runtime.CompiledProcess>.GetMethod("Exec") |> nonNull
+        let program = ClrBindings.bindCompiledProviders [provider] compiled
+        let references = [provider.Module.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location]
+        if assemblyTarget then Harness.executeWith {Harness.options with References=references} program
+        else
+            let assembly = Harness.csharpAssembly references program
+            let programType = assembly.GetType("Generated.Program") |> nonNull
+            let value = (programType.GetMethod("Run") |> nonNull).Invoke(null,[||])
+            ((programType.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|]) |> nonNull) :?> string
+
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Process outcomes defaults and task composition match interpreter`` (assemblyTarget: bool) =
+        let source =
+            "let a = " + call "\"echo\"; \"a b\"; \"\"; \"quote\\\"\"; \"$HOME;*\"; \"hé🐈\"" "Process.defaults" + "\n"
+            + "let b = " + call "\"stdin\"" "{ Process.defaults with stdin = Some \"hé🐈\\n\" }" + "\n"
+            + "let c = Process.exec \"fscript-missing-executable-\" [] Process.defaults\n"
+            + "let d = " + call "\"delay\"; \"10000\"" "{ Process.defaults with timeoutMilliseconds = Some 100 }" + "\n"
+            + "let e = " + call "\"flood\"; \"200000\"" "{ Process.defaults with maxOutputBytes = 1024 }" + "\n"
+            + "let f = " + call "\"flood\"; \"200000\"" "Process.defaults" + "\n"
+            + "let classify result =\n  match result with\n  | ProcessResult.Exited info -> (info.exitCode, String.length info.stdout, String.length info.stderr)\n  | ProcessResult.Failed _ -> (0 - 1, 0, 0)\n"
+            + "let results = [a; b; c; d; e; f] |> Task.awaitAll\n"
+            + "(results |> List.map classify, Process.defaults.maxOutputBytes)"
+        Assert.That(execute assemblyTarget source, Is.EqualTo(Harness.legacy source))
+
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Compiled execution preserves working directory environment and stdin EOF`` (assemblyTarget: bool) =
+        let key = "FSCRIPT_PROCESS_BACKEND_TEST"
+        let directory = Path.GetTempPath() |> Path.TrimEndingDirectorySeparator
+        let source =
+            "let options = { Process.defaults with workingDirectory = Some " + quote directory + "; environment = Map.ofList [(" + quote key + ", \"child\")] }\n"
+            + "let context = " + call ("\"context\"; " + quote key) "options" + " |> Task.await\n"
+            + "let eof = " + call "\"stdin\"" "Process.defaults" + " |> Task.await\n(context, eof)"
+        Assert.That(execute assemblyTarget source, Is.EqualTo(Harness.legacy source))
+
+    [<TestCase(true, false)>]
+    [<TestCase(false, false)>]
+    [<TestCase(true, true)>]
+    [<TestCase(false, true)>]
+    member _.``Unused process calls survive optimization and are joined on failure`` (assemblyTarget: bool, fail: bool) =
+        let directory = Path.Combine(Path.GetTempPath(),"fscript-process-join-"+Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory(directory) |> ignore
+        try
+            let path = Path.Combine(directory,"result")
+            let source = "let pending = " + call ("\"write\"; " + quote path) "Process.defaults" + (if fail then "\n1 / 0" else "\n42")
+            if fail then Assert.Catch(fun () -> execute assemblyTarget source |> ignore) |> ignore
+            else Assert.That(execute assemblyTarget source, Is.EqualTo("42"))
+            Assert.That(File.ReadAllText(path), Is.EqualTo("done"))
+        finally Directory.Delete(directory,true)
+
+
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Process library compiles under arbitrary FFI names`` (assemblyTarget: bool) =
+        let registration = FScript.Runtime.Registry.registration { FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions = FScript.Language.HostPermissions.All }
+        let registration =
+            { registration with
+                Functions =
+                    registration.Functions |> List.map (fun fn ->
+                        match fn.Name with
+                        | "Process.exec" -> {fn with Name="Host.command"}
+                        | "Process.defaults" -> {fn with Name="Host.options"}
+                        | _ -> fn) }
+        let source = "Host.command \"dotnet\" [" + quote fixture + "; \"--process-fixture\"; \"stdin\"] Host.options |> Task.await"
+        let program =
+            match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with
+            | Ok compiled -> compiled.Lir
+            | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
+        let provider = typeof<FScript.Runtime.CompiledProcess>
+        let program = program |> ClrBindings.bindMethod "Host.command" (provider.GetMethod("Exec") |> nonNull) |> ClrBindings.bindMethod "Host.options" (provider.GetMethod("Defaults") |> nonNull)
+        let references = [provider.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location]
+        let result =
+            if assemblyTarget then Harness.executeWith {Harness.options with References=references} program
+            else
+                let assembly = Harness.csharpAssembly references program
+                let target = assembly.GetType("Generated.Program") |> nonNull
+                let value = (target.GetMethod("Run") |> nonNull).Invoke(null,[||])
+                ((target.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|]) |> nonNull) :?> string
+        Assert.That(result, Is.EqualTo(Harness.legacy (source.Replace("Host.command","Process.exec").Replace("Host.options","Process.defaults"))))
+
+
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Process host union leaves script constructors in scope`` (assemblyTarget: bool) =
+        let source = """
+type Outcome<'ok, 'error> = | Found of 'ok | Failed of 'error
+let makeLocal () : Outcome<int, string> = Failed "local"
+let local = makeLocal ()
+let foreign = Process.exec "" [] Process.defaults |> Task.await
+let localMessage = match local with | Failed message -> message | Found _ -> ""
+let foreignMatched = match foreign with | ProcessResult.Failed _ -> true | _ -> false
+(localMessage, foreignMatched)
+"""
+        Assert.That(execute assemblyTarget source, Is.EqualTo("(\"local\", true)"))

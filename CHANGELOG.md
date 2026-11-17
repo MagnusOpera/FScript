@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep script union constructors from being shadowed by registered host unions.
+- Add asynchronous `Process.exec` with explicit process permissions, bounded output, timeouts, and matching interpreter and compiled .NET behavior.
+
 ## [0.94]
 
 ### [0.94.2]

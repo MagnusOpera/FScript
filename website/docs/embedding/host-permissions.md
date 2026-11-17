@@ -13,6 +13,7 @@ Hosted interpreter execution starts with **no permissions**. The host selects a 
 | <span id="interactive" className="permission-definition"><code>Interactive</code></span> | Terminal input; `Console.readLine` additionally requires `IO`. |
 | <span id="threading" className="permission-definition"><code>Threading</code></span> | Every `Task.*` and `Mailbox.*` operation. |
 | <span id="native" className="permission-definition"><code>Native</code></span> | External provider loading and calls to SDK/FFI functions. This grants trust in arbitrary .NET/native code. |
+| <span id="process" className="permission-definition"><code>Process</code></span> | Launch child programs with host OS privileges. `Process.exec` also requires `Threading`; child programs are outside the script filesystem sandbox. |
 
 `Native` is a trust boundary: arbitrary provider code can access the host directly, so it is not confined by the interpreter's filesystem, IO, or threading checks. Tasks started directly by provider code remain the provider/host's responsibility; the runtime joins tasks started through its own Task API. Built-in implementation details such as `Math` calling the BCL do not require `Native`.
 
@@ -54,3 +55,5 @@ Permissions govern script operations. Host-controlled source loading and import 
 ## Migration
 
 The Language/Runtime host API now requires permission declarations on native function descriptors, a policy on native registrations and runtime contexts, and `CheckPermissions` on custom native call contexts. Existing extern-list loading APIs remain default-deny. Use `ScriptHost.loadSourceWithPermissions` or `loadFileWithPermissions` for explicit grants, or switch to registration-based loading for includes and custom types. The independently versioned Extensibility SDK requires no ABI change. New permissions are never granted by a manifest or a provider.
+
+`HostPermissions.Process = 16`; `All = 31` now includes it. Existing individual flags keep their values. The native call-context and independently versioned Extensibility SDK ABIs are unchanged.

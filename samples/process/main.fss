@@ -1,0 +1,9 @@
+let options = { Process.defaults with timeoutMilliseconds = Some 5000 }
+let pending = Process.exec "dotnet" ["--version"] options
+match Task.await pending with
+| ProcessResult.Exited result ->
+    Console.writeLine result.stdout
+    Env.setExitCode result.exitCode
+| ProcessResult.Failed error ->
+    Console.writeLine error.message
+    Env.setExitCode 1

@@ -2,12 +2,14 @@
 
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <GenerateProgramFile>false</GenerateProgramFile>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Processes/ProcessFixture.fs" />
     <Compile Include="HostTestHelpers.fs" />
     <Compile Include="RuntimePropertySupport.fs" />
     <Compile Include="CodecPropertyTests.fs" />
@@ -16,6 +18,7 @@
     <Compile Include="TaskPropertyTests.fs" />
     <Compile Include="RegistryTests.fs" />
     <Compile Include="HostPermissionsTests.fs" />
+    <Compile Include="Processes/ProcessTests.fs" />
     <Compile Include="FsExternsTests.fs" />
     <Compile Include="MailboxTests.fs" />
     <Compile Include="MailboxProperties.fs" />

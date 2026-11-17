@@ -43,5 +43,5 @@ type RegistryTests () =
         let context = HostContext.create "."
         let registration = Registry.registration { context with Permissions = FScript.Language.HostPermissions.IO }
         Assert.That(registration.Unions |> List.map _.Name, Does.Contain("FsKind"))
-        Assert.That((Registry.registration context).Unions, Is.Empty)
+        Assert.That((Registry.registration context).Unions |> List.map _.Name, Does.Not.Contain("FsKind"))
         Assert.That(FScript.Language.BuiltinTypes.typeDefs |> List.map _.Name, Does.Not.Contain("FsKind"))

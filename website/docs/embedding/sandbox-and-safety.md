@@ -6,7 +6,7 @@ slug: /embedding/sandbox-and-safety
 
 FScript security is capability-based.
 
-Scripts can only perform actions that your host exposes and permits. See [Host Permissions](./host-permissions) for the default-deny `Interactive`, `Threading`, `IO`, and `Native` policy.
+Scripts can only perform actions that your host exposes and permits. See [Host Permissions](./host-permissions) for the default-deny `Interactive`, `Threading`, `IO`, `Native`, and `Process` policy.
 
 ## Practical safety model
 
@@ -27,3 +27,5 @@ Scripts can only perform actions that your host exposes and permits. See [Host P
 Loading a configured provider in an embedding host requires `Native`. A configured provider is executable .NET code. Registration may have side effects or access native code; `HostContext` and `fscript.toml` do not sandbox it. The CLI trusts configured providers, including providers in an automatically discovered manifest beside the entry script (or in the working directory for stdin/REPL). Use `--no-config` to skip manifest loading. VS Code gates configured execution on workspace trust while retaining default analysis in Restricted Mode. Hosts can parse and inspect effective configuration without loading providers; see [Environment Configuration](../reference/environment-configuration).
 
 [Host-managed values](./host-managed-types) prevent scripts from constructing or updating opaque host resources and expose only registered visible fields. They preserve private payloads through calls and containers, but do not supply a disposal protocol or resource isolation. The host owns lifetime, synchronization, cloning, and the capabilities available through registered functions.
+
+`Process.exec` requires `Process | Threading` and runs child programs with host OS access. Filesystem root and deny rules do not contain these children; use OS isolation if containment is needed.

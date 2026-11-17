@@ -347,3 +347,12 @@ Path, Glob, SemVer, scalar, and collection additions are core builtins. Encoding
 | --- | --- | --- |
 | [`Hash.sha256`](../stdlib/hash#hashsha256) | `string -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
 | [`Hash.sha256Bytes`](../stdlib/hash#hashsha256bytes) | `int list -> string option` | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none" title="None permission definition">None</a> |
+
+### Process
+
+| Name | Type | Availability | Host permissions |
+| --- | --- | --- | --- |
+| [`Process.defaults`](../stdlib/process) | `ProcessOptions` | Runtime value | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none">None</a> |
+| [`Process.exec`](../stdlib/process) | `string -> string list -> ProcessOptions -> ProcessResult task` | Runtime function | <a className="permission-tag permission-tag--process" href="../embedding/host-permissions#process">Process</a>, <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading">Threading</a> |
+| [`ProcessOptions`](../stdlib/process) | Process configuration record | Runtime type | None |
+| [`ProcessResult`](../stdlib/process) | `Exited of { exitCode: int; stdout: string; stderr: string }` / `Failed of { message: string; stdout: string; stderr: string }` | Runtime union | None |
