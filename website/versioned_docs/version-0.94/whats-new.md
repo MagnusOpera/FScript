@@ -8,6 +8,12 @@ For the complete history, see the full [CHANGELOG.md](https://github.com/MagnusO
 
 ## 0.94
 
+### 0.94.1
+
+- Fix VS Code highlighting of generic type parameters such as `'item` when the language server is active.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.94.0...0.94.1
+
 ### 0.94.0
 
 - Preserve verifiable IL when opted-in FFI loops execute inside larger expressions.
