@@ -96,7 +96,9 @@ module LspModel =
           // This avoids text-based false positives (for example record field labels).
           VariableOccurrences: Map<string, Span list>
           // Lexically resolved local-definition targets keyed by variable-usage spans.
-          ResolvedLocalDefinitions: (Span * Span) list }
+          ResolvedLocalDefinitions: (Span * Span) list
+          // All explicit type-variable tokens, with their lexical generic declaration when present.
+          TypeParameterDefinitions: (Span * Span option) list }
 
     let documents = Dictionary<string, DocumentState>(StringComparer.Ordinal)
 

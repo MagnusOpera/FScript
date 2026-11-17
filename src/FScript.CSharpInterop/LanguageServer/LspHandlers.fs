@@ -807,6 +807,15 @@ module LspHandlers =
         | Some uri, Some (line, character) when documents.ContainsKey(uri) ->
             let doc = documents[uri]
             logDebug $"request uri={uri} line={line} char={character}"
+            let typeParameterDefinition = tryTypeParameterDefinitionAtPosition doc line character
+            let typeParameterLocation =
+                typeParameterDefinition
+                |> Option.flatten
+                |> Option.map (fun span ->
+                    let loc = JsonObject()
+                    loc["uri"] <- JsonValue.Create(uri)
+                    loc["range"] <- toLspRange span
+                    loc)
             let fieldLocation =
                 tryGetRecordFieldAtPosition doc line character
                 |> Option.bind (fun field -> field.Definition)
@@ -816,10 +825,12 @@ module LspHandlers =
                     loc["uri"] <- JsonValue.Create(targetUri)
                     loc["range"] <- toLspRange span
                     loc)
-            match fieldLocation |> Option.orElseWith (fun () -> tryResolveIncludeLocation uri doc line character) with
+            match typeParameterLocation |> Option.orElse fieldLocation |> Option.orElseWith (fun () -> tryResolveIncludeLocation uri doc line character) with
             | Some location ->
                 lastDefinitionRequest <- Some (uri, line, character, DateTime.UtcNow)
                 LspProtocol.sendResponse idNode (Some location)
+            | None when typeParameterDefinition.IsSome ->
+                LspProtocol.sendResponse idNode None
             | None ->
                 logDebug "record field and include resolution miss"
                 let isLikelyLetDeclarationContextAtCursor () =

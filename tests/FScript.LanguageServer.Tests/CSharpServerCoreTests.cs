@@ -835,6 +835,86 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_definition_resolves_generic_parameters_in_their_lexical_scope()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/generic-parameter-definitions.fss";
+            var lines = new[]
+            {
+                "type Outcome<'value, 'error> =",
+                "    | Found of 'value",
+                "    | Failed of 'error",
+                "type Box<'error> = { Value: 'error }",
+                "let copy<'error> (value: 'error) : 'error = value",
+                "let outer<'error> (value: 'error) =",
+                "    let inner<'error> (other: 'error) : 'error = other",
+                "    let keep (other: 'error) = copy<'error> other",
+                "    keep value",
+                "let error = 42",
+                "let implicit (value: 'error) = value",
+                "// 'error is not a type reference",
+                "let text = \"'error is not a type reference\"",
+                "let rec first<'error> (value: 'error) : 'error = second value",
+                "and second<'error> (value: 'error) : 'error = value",
+                "type Last<'_élément'> = Last of '_élément'"
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1,
+                    ["text"] = string.Join("\n", lines)
+                }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000, msg => msg["method"]?.GetValue<string>() == "textDocument/publishDiagnostics");
+            Assert.That(diagnostics["params"]!["diagnostics"]!.AsArray(), Is.Empty);
+
+            var requestId = 2000;
+            JsonNode? Definition(int line, int character)
+            {
+                var id = requestId++;
+                LspClient.SendRequest(client, id, "textDocument/definition", new JsonObject
+                {
+                    ["textDocument"] = new JsonObject { ["uri"] = uri },
+                    ["position"] = new JsonObject { ["line"] = line, ["character"] = character }
+                });
+                return LspClient.ReadUntil(client, 10_000, msg => msg["id"]?.ToString() == id.ToString())["result"];
+            }
+
+            foreach (var (usageLine, name, targetLine) in new[]
+            {
+                (0, "'value", 0), (0, "'error", 0), (1, "'value", 0), (2, "'error", 0),
+                (3, "'error", 3), (4, "'error", 4), (5, "'error", 5), (6, "'error", 6), (7, "'error", 5),
+                (13, "'error", 13), (14, "'error", 14), (15, "'_élément'", 15)
+            })
+            {
+                var target = lines[targetLine].IndexOf(name, StringComparison.Ordinal);
+                for (var usage = lines[usageLine].IndexOf(name, StringComparison.Ordinal); usage >= 0;
+                     usage = lines[usageLine].IndexOf(name, usage + name.Length, StringComparison.Ordinal))
+                for (var offset = 0; offset < name.Length; offset++)
+                {
+                    var result = Definition(usageLine, usage + offset);
+                    Assert.That(result?["uri"]?.GetValue<string>(), Is.EqualTo(uri), $"{name} on line {usageLine}, offset {offset}");
+                    Assert.That(result?["range"]?["start"]?["line"]?.GetValue<int>(), Is.EqualTo(targetLine));
+                    Assert.That(result?["range"]?["start"]?["character"]?.GetValue<int>(), Is.EqualTo(target));
+                    Assert.That(result?["range"]?["end"]?["character"]?.GetValue<int>(), Is.EqualTo(target + name.Length));
+                }
+            }
+            var implicitParameter = lines[10].IndexOf("'error", StringComparison.Ordinal);
+            Assert.That(Definition(10, implicitParameter + 2), Is.Null,
+                "An implicitly quantified parameter must not jump to an unrelated type parameter or value.");
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_semantic_tokens_highlight_whole_type_parameters()
     {
         var client = LspClient.StartCSharp();

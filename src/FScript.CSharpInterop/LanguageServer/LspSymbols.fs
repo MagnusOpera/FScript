@@ -1271,6 +1271,128 @@ let queryValues : string -> string -> string list option
             uf, usage.Start.Line, usage.Start.Column, usage.End.Line, usage.End.Column,
             df, decl.Start.Line, decl.Start.Column, decl.End.Line, decl.End.Column)
 
+    let private buildTypeParameterDefinitions (sourceName: string) (text: string) (program: Program) =
+        let contains (scope: Span) (span: Span) =
+            scope.Start.File = span.Start.File
+            && (scope.Start.Line, scope.Start.Column) <= (span.Start.Line, span.Start.Column)
+            && (span.End.Line, span.End.Column) <= (scope.End.Line, scope.End.Column)
+
+        let tokens = Lexer.tokenizeWithSourceName (Some sourceName) text
+        let parameters =
+            tokens
+            |> List.choose (fun token ->
+                match token.Kind with
+                | TypeVariable name -> Some (name, token.Span)
+                | _ -> None)
+        let statementStarts =
+            program
+            |> List.map (Ast.spanOfStmt >> fun span -> span.Start)
+            |> List.filter (fun position -> position.File = Some sourceName)
+            |> List.sortBy (fun position -> position.Line, position.Column)
+        let endOfDocument = (List.last tokens).Span.End
+        let typeScope (span: Span) =
+            // TypeDef spans can stop at the final case name, before its payload.
+            let finish =
+                statementStarts
+                |> List.tryFind (fun position -> (position.Line, position.Column) > (span.Start.Line, span.Start.Column))
+                |> Option.defaultValue endOfDocument
+            { span with End = finish }
+        let scopes = ResizeArray<Span * Map<string, Span>>()
+        let addScope span names =
+            if not (List.isEmpty names) && span.Start.File = Some sourceName then
+                // Explicit parameters precede annotations in each declaration header.
+                let declarations =
+                    parameters
+                    |> List.filter (fun (_, usage) -> contains span usage)
+                    |> List.truncate names.Length
+                    |> Map.ofList
+                scopes.Add(span, declarations)
+        let addFunction span annotation =
+            match annotation with
+            | Some (TRForall(names, _)) -> addScope span names
+            | _ -> ()
+
+        let rec visitExpr expr =
+            match expr with
+            | ELet(_, value, body, _, annotation, _, span) ->
+                // A local function's parameters stop at its value, before the continuation.
+                addFunction { span with End = (Ast.spanOfExpr value).End } annotation
+                visitExpr value
+                visitExpr body
+            | ELetRecGroup(bindings, body, _) ->
+                for _, _, annotation, value, span in bindings do
+                    addFunction span annotation
+                    visitExpr value
+                visitExpr body
+            | ELetPattern(_, value, body, _) | EApply(value, body, _)
+            | EFor(_, value, body, _) | ERange(value, body, _)
+            | EIndexGet(value, body, _) | ECons(value, body, _)
+            | EAppend(value, body, _) | EBinOp(_, value, body, _) ->
+                visitExpr value
+                visitExpr body
+            | EIf(condition, ifTrue, ifFalse, _) ->
+                visitExpr condition
+                visitExpr ifTrue
+                visitExpr ifFalse
+            | EMatch(value, cases, _) ->
+                visitExpr value
+                for _, guard, body, _ in cases do
+                    Option.iter visitExpr guard
+                    visitExpr body
+            | EParen(inner, _) | ETypeApply(inner, _, _) | ELambda(_, inner, _)
+            | ERaise(inner, _) | ESome(inner, _) | EFieldGet(inner, _, _) -> visitExpr inner
+            | EList(items, _) | ETuple(items, _) -> List.iter visitExpr items
+            | ERecord(fields, _) | EStructuralRecord(fields, _) -> fields |> List.iter (snd >> visitExpr)
+            | ERecordUpdate(value, fields, _) | EStructuralRecordUpdate(value, fields, _) ->
+                visitExpr value
+                fields |> List.iter (snd >> visitExpr)
+            | EMap(entries, _) ->
+                for entry in entries do
+                    match entry with
+                    | MEKeyValue(key, value) -> visitExpr key; visitExpr value
+                    | MESpread(value) -> visitExpr value
+            | EInterpolatedString(parts, _) ->
+                for part in parts do
+                    match part with
+                    | IPExpr(inner) -> visitExpr inner
+                    | IPText _ -> ()
+            | EUnit _ | ELiteral _ | EVar _ | ENone _ | ETypeOf _ | ENameOf _ -> ()
+
+        let rec visitStmt statement =
+            match statement with
+            | SType definition -> addScope (typeScope definition.Span) definition.TypeParameters
+            | SLet(_, _, annotation, value, _, _, span) ->
+                addFunction span annotation
+                visitExpr value
+            | SLetRecGroup(bindings, _, _) ->
+                for _, _, annotation, value, span in bindings do
+                    addFunction span annotation
+                    visitExpr value
+            | SLetPattern(_, value, _, _) | SExpr value -> visitExpr value
+            | SAttributed(_, inner, _) -> visitStmt inner
+            | SImport _ | SBackendImport _ -> ()
+        List.iter visitStmt program
+
+        let innermostFirst =
+            scopes
+            |> Seq.sortByDescending (fun (span, _) -> span.Start.Line, span.Start.Column)
+            |> Seq.toList
+        parameters
+        |> List.map (fun (name, usage) ->
+            let target =
+                innermostFirst
+                |> List.tryPick (fun (scope, declarations) ->
+                    if contains scope usage then Map.tryFind name declarations else None)
+            usage, target)
+
+    let tryTypeParameterDefinitionAtPosition (doc: DocumentState) line character =
+        doc.TypeParameterDefinitions
+        |> List.tryPick (fun (usage, target) ->
+            if usage.Start.Line = line + 1
+               && character >= usage.Start.Column - 1 && character < usage.End.Column - 1 then
+                Some target
+            else None)
+
     let tryResolveLocalDefinitionAtPosition (doc: DocumentState) (line: int) (character: int) : Span option =
         let spanContains (span: Span) (line: int) (character: int) =
             let line1 = line + 1
@@ -2322,6 +2444,7 @@ let queryValues : string -> string -> string list option
         let mutable symbols : TopLevelSymbol list = []
         let mutable occurrences : Map<string, Span list> = Map.empty
         let mutable resolvedLocalDefinitions : (Span * Span) list = []
+        let mutable typeParameterDefinitions : (Span * Span option) list = []
         let mutable recordFields = Map.empty
         let mutable recordParamFields : Map<string, (string * string) list> = Map.empty
         let mutable parameterTypeTargets : Map<string, string> = Map.empty
@@ -2354,6 +2477,7 @@ let queryValues : string -> string -> string list option
             parsedProgram <- Some program
             occurrences <- collectVariableOccurrences program
             resolvedLocalDefinitions <- buildResolvedLocalDefinitions program
+            typeParameterDefinitions <- buildTypeParameterDefinitions sourceName text program
             recordParamFields <- buildRecordParameterFields program
             parameterTypeTargets <- buildParameterTypeTargets program
             functionParameters <- buildFunctionParameters program
@@ -2491,7 +2615,8 @@ let queryValues : string -> string -> string list option
               ImportAliasToInternal = importAliasToInternal
               ImportInternalToAlias = importInternalToAlias
               VariableOccurrences = occurrences
-              ResolvedLocalDefinitions = resolvedLocalDefinitions }
+              ResolvedLocalDefinitions = resolvedLocalDefinitions
+              TypeParameterDefinitions = typeParameterDefinitions }
         publishDiagnostics uri (diagnostics |> Seq.toList)
 
     let tryResolveSymbol (doc: DocumentState) (line: int) (character: int) : TopLevelSymbol option =
