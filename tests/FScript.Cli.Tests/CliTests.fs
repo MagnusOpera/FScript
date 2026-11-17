@@ -76,6 +76,10 @@ type CliTests() =
     [<TestCase("dotnet", "closed mailbox")>]
     [<TestCase("dotnet", "list state")>]
     [<TestCase("dotnet", "empty mailbox")>]
+    [<TestCase("dotnet", "independent callback")>]
+    [<TestCase("csharp", "independent callback")>]
+    [<TestCase("dotnet", "captured sender")>]
+    [<TestCase("csharp", "captured sender")>]
     member _.``Mailbox compiles and runs through typed CLR bindings``(target: string, scenario: string) =
         let root = findRepoRoot ()
         let folder = Directory.CreateTempSubdirectory("fscript-mailbox-")
@@ -89,6 +93,10 @@ type CliTests() =
                     "let inbox = Mailbox.start 1 (fun state message -> state + message) 0\nMailbox.finish inbox |> ignore\nMailbox.post 1 inbox"
                 | "list state" ->
                     "let inbox = Mailbox.start 1 (fun state message -> message :: state) []\nMailbox.post 1 inbox\nMailbox.post 2 inbox\nMailbox.finish inbox"
+                | "independent callback" ->
+                    "let pair = (Mailbox.start 1 (fun state (message: int) -> state + message) 0, fun value -> value)\nlet (inbox, identity) = pair\nlet (alias, _) = pair\nMailbox.post 1 inbox\nMailbox.post 2 alias\n(identity 1, identity \"two\", Mailbox.finish inbox, Mailbox.finish alias)"
+                | "captured sender" ->
+                    "let make () =\n    let inbox = Mailbox.start 1 (fun state message -> message :: state) []\n    ((fun message -> Mailbox.post message inbox), (fun () -> Mailbox.finish inbox))\nlet (send, finish) = make ()\nsend 42\nfinish ()"
                 | "empty mailbox" ->
                     "let inbox = Mailbox.start 1 (fun state _ -> state) 7\nMailbox.finish inbox"
                 | _ -> File.ReadAllText(Path.Combine(root, "samples", "mailbox.fss"))
@@ -123,7 +131,12 @@ type CliTests() =
             | _ ->
                 Assert.That(proc.ExitCode, Is.Zero, errors)
                 let expected =
-                    match scenario with "list state" -> "[2;1]" | "empty mailbox" -> "7" | _ -> "15"
+                    match scenario with
+                    | "list state" -> "[2;1]"
+                    | "empty mailbox" -> "7"
+                    | "independent callback" -> "(1, \"two\", 3, 3)"
+                    | "captured sender" -> "[42]"
+                    | _ -> "15"
                 Assert.That(stdout.GetAwaiter().GetResult().Trim(), Is.EqualTo(expected))
         finally
             folder.Delete(true)

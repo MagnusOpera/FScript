@@ -21,7 +21,14 @@ module TaskSharingContracts =
                 if Registry.mailbox.Types |> List.exists (fun target -> Object.ReferenceEquals(target, descriptor)) then
                     Set.add descriptor.Name types
                 else types) options.ThreadSafeTypes
+        let operations =
+            [ "Mailbox.start", TaskSharingAnalysis.CreateConsumer(1, 2)
+              "Mailbox.post", TaskSharingAnalysis.SendMessage(1, 0)
+              "Mailbox.finish", TaskSharingAnalysis.FinishConsumer 0 ]
+            |> List.filter (fun (name, _) -> Set.contains name known)
+            |> List.fold (fun operations (name, operation) -> Map.add name operation operations) options.ConsumerOperations
         { options with
+            ConsumerOperations = operations
             ThreadSafeFunctions = Set.union options.ThreadSafeFunctions known
             ThreadSafeTypes = safeTypes }
 
@@ -40,5 +47,6 @@ module TaskSharingContracts =
                         values |> Seq.map (fun value -> if String.IsNullOrWhiteSpace value then invalidOp $"{methodName} contains an empty binding name." else value) |> Seq.toList
                     | _ -> invalidOp $"{methodName} must return IEnumerable<string>.")
             |> Set.ofList
-        { ThreadSafeTypes = names "FScriptThreadSafeTypes"
-          ThreadSafeFunctions = names "FScriptThreadSafeFunctions" }
+        { TaskSharingAnalysis.defaults with
+            ThreadSafeTypes = names "FScriptThreadSafeTypes"
+            ThreadSafeFunctions = names "FScriptThreadSafeFunctions" }

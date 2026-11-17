@@ -89,7 +89,7 @@ not suppress an independent warning about an unclassified captured instance.
 
 `TaskSharingAnalysis.analyze registration options resolved` returns a list of
 `Diagnostic` records. `TaskSharingAnalysis.defaults` contains no thread-safety
-claims. Options contain `ThreadSafeTypes` and `ThreadSafeFunctions` sets; resolved
+claims. Options contain `ThreadSafeTypes` and `ThreadSafeFunctions` sets and an optional `ConsumerOperations` map; resolved
 program purity contracts are also honored. The pass never calls FFI implementations.
 
 Hosts can request analysis before interpreting:
@@ -126,3 +126,26 @@ unspecified. No purity contracts or optimizer behavior are changed.
 
 
 Task continuation ordering uses the declared runtime Task signatures. `continueWith` joins its prerequisite before evaluating callback captures. `whenAll` joins every candidate and passes an abstract result list; `awaitAll` joins every input before subsequent caller accesses. `whenAny` analyzes each possible winner as an alternative and preserves only ordering guaranteed across alternatives, so losing candidates can still race with its callback. `fromResult` retains resources/tasks carried by its value, while delay carries no host resources. Canonical runtime task operations are thread-safe for analysis; callback/FFI resources still need their own guarantees.
+
+## Registered consumers
+
+Hosts can declare operation roles with `ConsumerOperations`: creation identifies
+callback and initial-state arguments, sending identifies receiver and message
+arguments, and finishing identifies the receiver. Runtime supplies these roles
+only for the actual bundled Mailbox implementation delegates, including when
+functions are aliased in script. A provider replacing the same names does not
+inherit the roles. Other providers may supply their own explicit analysis roles;
+no SDK registration or runtime scheduling changes are required.
+
+Creation retains an abstract handler and state. Each send evaluates the handler
+on the receiver's logical consumer clock, serially with its earlier messages.
+It transfers state, captures, and message resources to that consumer. Returning
+from a send establishes acceptance only; producer code after it can overlap the
+handler. Finishing joins consumer work and returns its abstract state. Consumer
+state and clock alternatives follow branch joins, so conditional finishing does
+not prove unconditional completion. Idle consumers do not execute callbacks.
+
+The Mailbox container's thread-safety contract covers the container only. Captured
+host values, host values in state or messages, and handler calls retain their own
+sharing checks. A thread-safe function contract suppresses warnings about that
+function's hidden state, while its arguments still require shareability guarantees.

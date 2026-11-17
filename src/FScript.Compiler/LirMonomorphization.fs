@@ -134,7 +134,38 @@ module LirMonomorphization =
         visit expression
         results |> Seq.distinct |> Seq.sortBy Types.typeToString |> Seq.toList
 
+    // A polymorphic result may have concrete, effectful inputs. Evaluate those
+    // inputs once before specializing the pure result, rather than cloning them.
+    let private shareInitializerInputs (program: Lir.Program) =
+        let effect=LirEffects.create program
+        let mutable next=LirTraversal.symbols program |> Seq.map symbolNumber |> Seq.fold max -1
+        let declarations=ResizeArray<Lir.Declaration>()
+        for declaration in program.Declarations do
+            let share (value: Lir.Expression) =
+                if not (NativeSpecialization.containsVariable value.Type) && effect value=LirEffects.Observable then
+                    next <- next+1
+                    let id=Lir.SymbolId next
+                    declarations.Add {declaration with Id=id;Name="$sharedInitializer";Type=value.Type;Value=value;IsExported=false;Export=None;IsRecursive=false}
+                    {value with Node=Lir.Load id}
+                else value
+            let value=
+                if NativeSpecialization.containsVariable declaration.Type then
+                    match declaration.Value.Node with
+                    | Lir.Tuple items ->
+                        // Do not move an effect past an earlier open computation.
+                        let mutable blocked=false
+                        let items=items |> List.map (fun item ->
+                            if blocked then item
+                            elif effect item=LirEffects.Observable && NativeSpecialization.containsVariable item.Type then blocked <- true;item
+                            else share item)
+                        {declaration.Value with Node=Lir.Tuple items}
+                    | _ -> declaration.Value
+                else declaration.Value
+            declarations.Add {declaration with Value=value}
+        {program with Declarations=List.ofSeq declarations}
+
     let specialize (program: Lir.Program) : Result<Lir.Program, CompilerDiagnostic list> =
+        let program = shareInitializerInputs program
         try
             let nativeEffect = LirEffects.create program
             let allSymbols =
@@ -500,7 +531,13 @@ module LirMonomorphization =
                             transform effectiveSubstitution scoped body)
                     | Lir.Fail value -> Lir.Fail(recurse value)
                     | Lir.DecisionTree(target, cases) ->
-                        let targetType = resolvedType target |> closeUnusedTypeArguments
+                        let targetType =
+                            match resolvedType target with
+                            | TTuple _ as typ ->
+                                // Unused tuple fields need one representative layout.
+                                let defaults = Types.ftvType typ |> Seq.map (fun variable -> variable, TUnit) |> Map.ofSeq
+                                NativeSpecialization.apply defaults typ
+                            | typ -> closeUnusedTypeArguments typ
                         let transformedCases = cases |> List.map (fun item ->
                             let plan, scoped = transformPattern effectiveSubstitution environment targetType item.Plan
                             { item with Plan = plan

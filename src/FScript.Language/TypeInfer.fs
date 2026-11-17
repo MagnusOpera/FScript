@@ -1,6 +1,7 @@
 namespace FScript.Language
 
 module TypeInfer =
+    open OpaqueInference
     let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
     type Subst = Map<int, Type>
 
@@ -35,9 +36,17 @@ module TypeInfer =
             let s' = vars |> List.fold (fun acc v -> Map.remove v acc) s
             Forall (vars, applyType s' t)
 
-    let private applyEnv (s: Subst) (env: Map<string, Scheme>) =
+    let private applyOpaqueEffect substitution effect = mapOpaqueEffect (applyType substitution) effect
+
+    let private applyEnv (s: Subst) (env: InferenceEnv) =
         if Map.isEmpty s then env
-        else env |> Map.map (fun _ sc -> applyScheme s sc)
+        else
+            { env with
+                Schemes = env.Schemes |> Map.map (fun _ scheme -> applyScheme s scheme)
+                OpaqueEffects = env.OpaqueEffects |> Map.map (fun name effect ->
+                    let (Forall(variables, _)) = env.Schemes[name]
+                    let substitution = variables |> List.fold (fun state variable -> Map.remove variable state) s
+                    applyOpaqueEffect substitution effect) }
 
     let private compose (s1: Subst) (s2: Subst) : Subst =
         if Map.isEmpty s1 then
@@ -225,6 +234,29 @@ module TypeInfer =
         substitution, applyType substitution instantiated
 
     type TypedExpr = { Expr: Expr; Type: Type; Span: Span }
+    type private InferredExpr = { Typed: TypedExpr; Opaque: OpaqueEffect option }
+    let private withOpaqueEffect effect value = { value with Opaque = Some effect }
+    let private effectOf value = value.Opaque |> Option.defaultValue noOpaque
+
+    let private valueSignature (env: InferenceEnv) name typ =
+        let effect = env.OpaqueEffects |> Map.tryFind name |> Option.defaultValue noOpaque
+        if effect = noOpaque then typ, (fun typ -> typ, noOpaque)
+        else
+            let depths = effect.Latent |> Map.toList |> List.map fst
+            let encode variables = TTuple(variables |> Set.toList |> List.map TVar)
+            let signature = TTuple(typ :: encode effect.Live :: (depths |> List.map (fun depth -> encode effect.Latent[depth])))
+            let decode = function
+                | TTuple(typ :: live :: latent) ->
+                    typ, { Live = Types.ftvType live
+                           Latent = List.zip depths latent |> List.map (fun (depth, typ) -> depth, Types.ftvType typ) |> Map.ofList
+                           FactoryDelay = effect.FactoryDelay }
+                | _ -> failwith "Invalid opaque inference metadata"
+            signature, decode
+
+    let private instantiateValue env name (Forall(variables, typ)) =
+        let signature, decode = valueSignature env name typ
+        instantiate (Forall(variables, signature)) |> decode
+
     type LocalVariableTypeInfo =
         { Name: string
           Span: Span
@@ -523,7 +555,7 @@ module TypeInfer =
           Payload: Type option
           Parameters: int list }
 
-    let private asTyped (telemetry: InferenceTelemetry option) expr t : TypedExpr =
+    let private asTyped (telemetry: InferenceTelemetry option) expr t : InferredExpr =
         let span = Ast.spanOfExpr expr
         match telemetry with
         | Some capture ->
@@ -532,7 +564,7 @@ module TypeInfer =
                   Type = t
                   Span = span }
         | None -> ()
-        { Expr = expr; Type = t; Span = span }
+        { Typed = { Expr = expr; Type = t; Span = span }; Opaque = None }
 
     let private builtinType (name: string) : Type option =
         match name with
@@ -709,36 +741,6 @@ module TypeInfer =
             let ordered = List.rev explicitIds
             let inferredIds = Set.difference (Types.ftvType inferred) (Set.union captured (Set.ofList ordered))
             Forall (ordered @ Set.toList inferredIds, inferred)
-
-    // An evaluated opaque host value keeps its type arguments for its entire lifetime.
-    let private generalizeValueBinding typeDefs expression generalize inferred =
-        let rec isNonExpansive = function
-            | EParen (inner, _) -> isNonExpansive inner
-            | ELambda _ | EVar _ -> true
-            | _ -> false
-        let rec containsGenericHostValue visited typ =
-            let contains = containsGenericHostValue visited
-            let expand name =
-                not (Set.contains name visited)
-                && containsGenericHostValue (Set.add name visited) (Types.expand typeDefs typ)
-            match typ with
-            | TApplied (name, arguments) ->
-                match Map.tryFind name typeDefs with
-                | Some (TGenericDefinition (_, THostManaged _)) -> true
-                | _ -> List.exists contains arguments || expand name
-            | TNamed name -> expand name
-            | TUnion (_, cases) -> cases |> Map.exists (fun _ payload -> Option.exists contains payload)
-            | TList item | TOption item | TTask item -> contains item
-            | TFun (a, b) | TMap (a, b) -> contains a || contains b
-            | TTuple items -> List.exists contains items
-            | TRecord fields | TRecordShape (_, fields, _) | THostManaged (_, fields) -> fields |> Map.exists (fun _ -> contains)
-            | _ -> false
-        match inferred with
-        | TFun _ -> generalize inferred
-        | _ when not (isNonExpansive expression)
-                 && not (Set.isEmpty (Types.ftvType inferred))
-                 && containsGenericHostValue Set.empty inferred -> Forall ([], inferred)
-        | _ -> generalize inferred
 
     let rec private functionReturnType arity typ =
         match typ with
@@ -1053,17 +1055,52 @@ module TypeInfer =
             | _ -> ()
         loop t
 
-    let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (scope: AnnotationScope) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+    let rec private inferExpr (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (scope: AnnotationScope) (env: InferenceEnv) (expr: Expr) : Subst * Type * InferredExpr =
         let expressionStart = match telemetry with Some t -> t.ExpressionTypes.Count | None -> 0
-        let subst, inferred, _ = inferExprRaw telemetry typeDefs constructors scope env expr
-        let keySubst = constrainMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType subst inferred)
-        let combined = compose keySubst subst
-        let resolved = applyType combined inferred
-        applyAnnotationScope scope combined
-        applySubstToCapturedExpressions telemetry expressionStart combined
-        combined, resolved, { Expr = expr; Type = resolved; Span = Ast.spanOfExpr expr }
+        let children=ResizeArray<OpaqueEffect>()
+        env.Frames.Add children
+        let result=
+            try
+                let subst,inferred,value=inferExprRaw telemetry typeDefs constructors scope env expr
+                let keySubst=constrainMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType subst inferred)
+                let combined=compose keySubst subst
+                let resolved=applyType combined inferred
+                let call fn argument =
+                    let promoted=fn.Latent |> Map.tryFind 1 |> Option.defaultValue Set.empty
+                    let forwarded=
+                        match fn.FactoryDelay with
+                        | Some delay -> {argument with Latent=argument.Latent |> Map.toList |> List.map (fun (depth,variables) -> depth+delay,variables) |> Map.ofList}
+                        | None ->
+                            // Unknown higher-order code may invoke a supplied factory.
+                            {argument with Live=Set.union argument.Live (argument.Latent |> Map.values |> Seq.fold Set.union Set.empty);Latent=Map.empty}
+                    let combined=combineOpaqueEffects [forwarded;
+                        { noOpaque with
+                            Live=Set.union fn.Live promoted
+                            Latent=fn.Latent |> Map.toList |> List.choose (fun (depth,variables) -> if depth>1 then Some(depth-1,variables) else None) |> Map.ofList }]
+                    {combined with FactoryDelay=fn.FactoryDelay |> Option.bind (fun delay -> if delay>0 then Some(delay-1) else None)}
+                let effect=
+                    match value.Opaque with
+                    | Some effect -> effect
+                    | None ->
+                        match expr with
+                        | EApply _ when children.Count=2 -> call children[0] children[1]
+                        | EBinOp("|>",_,_,_) when children.Count=2 -> call children[1] children[0]
+                        | EIf _ when children.Count=3 ->
+                            let combined=combineOpaqueEffects children
+                            match children[1].FactoryDelay,children[2].FactoryDelay with
+                            | Some left,Some right -> {combined with FactoryDelay=Some(min left right)}
+                            | _ -> combined
+                        | _ -> combineOpaqueEffects children
+                let effect=applyOpaqueEffect combined effect
+                let effect = { effect with Live = Set.union effect.Live (opaqueVariables typeDefs resolved) }
+                applyAnnotationScope scope combined
+                applySubstToCapturedExpressions telemetry expressionStart combined
+                combined,resolved,{Typed={Expr=expr;Type=resolved;Span=Ast.spanOfExpr expr};Opaque=Some effect}
+            finally env.Frames.RemoveAt(env.Frames.Count-1)
+        if env.Frames.Count>0 then env.Frames[env.Frames.Count-1].Add(effectOf (let _,_,value=result in value))
+        result
 
-    and private inferExprRaw (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (scope: AnnotationScope) (env: Map<string, Scheme>) (expr: Expr) : Subst * Type * TypedExpr =
+    and private inferExprRaw (telemetry: InferenceTelemetry option) (typeDefs: Map<string, Type>) (constructors: Map<string, ConstructorSig>) (scope: AnnotationScope) (env: InferenceEnv) (expr: Expr) : Subst * Type * InferredExpr =
         match expr with
         | EUnit _ ->
             emptySubst, TUnit, asTyped telemetry expr TUnit
@@ -1076,11 +1113,11 @@ module TypeInfer =
                 | LString _ -> TString
             emptySubst, t, asTyped telemetry expr t
         | EVar (name, span) ->
-            match env |> Map.tryFind name with
+            match env.TryFind name with
             | Some scheme ->
-                let t = instantiate scheme
+                let t, effect = instantiateValue env name scheme
                 recordLocalVariableUse telemetry name span t
-                emptySubst, t, asTyped telemetry expr t
+                emptySubst, t, asTyped telemetry expr t |> withOpaqueEffect effect
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
         | ETypeApply (target, arguments, span) ->
             let rec qualified = function
@@ -1090,9 +1127,11 @@ module TypeInfer =
             match qualified target |> Option.bind env.TryFind with
             | Some (Forall (parameters, signature)) when not parameters.IsEmpty && parameters.Length = arguments.Length ->
                 let values = List.map (scopedAnnotation scope typeDefs span) arguments
-                let substitution, t = instantiateExplicit typeDefs span parameters values signature
+                let signature, decode = valueSignature env (qualified target |> Option.get) signature
+                let substitution, packed = instantiateExplicit typeDefs span parameters values signature
+                let t, effect = decode packed
                 asTyped telemetry target t |> ignore
-                substitution, t, asTyped telemetry expr t
+                substitution, t, asTyped telemetry expr t |> withOpaqueEffect effect
             | Some (Forall (parameters, _)) ->
                 raise (TypeException { Message = $"Expected {parameters.Length} type arguments, got {arguments.Length}"; Span = span })
             | None ->
@@ -1126,13 +1165,27 @@ module TypeInfer =
                 | Some tref -> scopedAnnotation scope typeDefs param.Span tref
                 | None -> Types.freshVar()
             recordLocalVariableDeclaration telemetry param.Name param.Span tv
-            let env' = env |> Map.add param.Name (Forall([], tv))
-            let s1, tBody, _ =
+            let env' = env.Add(param.Name, Forall([], tv))
+            let s1, tBody, bodyValue =
                 withLocalBindings telemetry [ param.Name ] (fun () ->
                     inferExpr telemetry typeDefs constructors scope env' body)
             let tArg = applyType s1 tv
             let tFun = TFun (tArg, tBody)
-            s1, tFun, asTyped telemetry expr tFun
+            let bodyEffect=effectOf bodyValue |> applyOpaqueEffect s1
+            let capturedEnv=applyEnv s1 env
+            let captured=
+                seq {
+                    for KeyValue(_,scheme) in capturedEnv.Schemes do
+                        let (Forall(_,typ))=scheme
+                        yield opaqueVariables typeDefs typ
+                    for KeyValue(_,effect) in capturedEnv.OpaqueEffects do yield effect.Live
+                } |> Seq.fold Set.union Set.empty
+            let live=Set.intersect captured bodyEffect.Live
+            let created=Set.difference bodyEffect.Live captured
+            let latent=bodyEffect.Latent |> Map.toList |> List.map (fun (depth,variables) -> depth+1,variables) |> Map.ofList
+            let knownForwarders=capturedEnv.OpaqueEffects |> Map.toList |> List.choose (fun (name,effect) -> effect.FactoryDelay |> Option.map (fun delay -> name,delay)) |> Map.ofList |> Map.remove param.Name
+            let effect={Live=live;Latent=(if created.IsEmpty then latent else Map.add 1 created latent);FactoryDelay=factoryDelay knownForwarders body}
+            s1,tFun,asTyped telemetry expr tFun |> withOpaqueEffect effect
         | EApply (fn, arg, span) ->
             let s1, t1, _ = inferExpr telemetry typeDefs constructors scope env fn
             let env2 = applyEnv s1 env
@@ -1162,14 +1215,14 @@ module TypeInfer =
             let tRes = Types.freshVar()
             s, tRes, asTyped telemetry expr tRes
         | EFor (name, source, body, span) ->
-            let s1, tSource, _ = inferExpr telemetry typeDefs constructors scope env source
+            let s1, tSource, sourceInfo = inferExpr telemetry typeDefs constructors scope env source
             let tv = Types.freshVar()
             let sList = unify typeDefs (applyType s1 tSource) (TList tv) span
             let sSource = compose sList s1
             let itemType = applyType sSource tv
             let envBody =
                 applyEnv sSource env
-                |> Map.add name (Forall([], itemType))
+                |> fun env -> env.AddValue(name, Forall([], itemType), effectOf sourceInfo |> applyOpaqueEffect sSource)
             let s2, tBody, _ =
                 withLocalBindings telemetry [ name ] (fun () ->
                     inferExpr telemetry typeDefs constructors scope envBody body)
@@ -1180,8 +1233,8 @@ module TypeInfer =
             let valueScope, explicitParameters, returnAnnotation = bindingScope scope returnAnnotation
             if isRec then
                 let tv = Types.freshVar()
-                let envRec = env |> Map.add name (Forall([], tv))
-                let s1, t1, _ =
+                let envRec = env.Add(name, Forall([], tv))
+                let s1, t1, valueInfo =
                     withLocalBindings telemetry [ name ] (fun () ->
                         inferExpr telemetry typeDefs constructors valueScope envRec value)
                 let s2 = unify typeDefs (applyType s1 tv) t1 span
@@ -1195,15 +1248,15 @@ module TypeInfer =
                 let sValue = compose sRet (compose s2 s1)
                 let env1 = applyEnv sValue env
                 let scheme =
-                    generalizeValueBinding typeDefs value (fun inferred -> generalizeBinding scope env1 sValue explicitParameters inferred span) (applyType sValue t1)
-                let env2 = env1 |> Map.add name scheme
+                    generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect sValue) (fun inferred -> generalizeBinding scope env1.Schemes sValue explicitParameters inferred span) (applyType sValue t1)
+                let env2 = env1.AddValue(name, scheme, effectOf valueInfo |> applyOpaqueEffect sValue)
                 let s3, tBody, _ =
                     withLocalBindings telemetry [ name ] (fun () ->
                         inferExpr telemetry typeDefs constructors scope env2 body)
                 let s = compose s3 sValue
                 s, tBody, asTyped telemetry expr tBody
             else
-                let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope env value
+                let s1, t1, valueInfo = inferExpr telemetry typeDefs constructors valueScope env value
                 let sDiscard =
                     if name = "_" then
                         unify typeDefs (applyType s1 t1) TUnit (Ast.spanOfExpr value)
@@ -1219,8 +1272,8 @@ module TypeInfer =
                 let sValue = compose sRet (compose sDiscard s1)
                 let env1 = applyEnv sValue env
                 let scheme =
-                    generalizeValueBinding typeDefs value (fun inferred -> generalizeBinding scope env1 sValue explicitParameters inferred span) (applyType sValue t1)
-                let env2 = env1 |> Map.add name scheme
+                    generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect sValue) (fun inferred -> generalizeBinding scope env1.Schemes sValue explicitParameters inferred span) (applyType sValue t1)
+                let env2 = env1.AddValue(name, scheme, effectOf valueInfo |> applyOpaqueEffect sValue)
                 let s2, t2, _ =
                     withLocalBindings telemetry [ name ] (fun () ->
                         inferExpr telemetry typeDefs constructors scope env2 body)
@@ -1228,7 +1281,7 @@ module TypeInfer =
                 s, t2, asTyped telemetry expr t2
         | ELetPattern (pat, value, body, span) ->
             let startIndex = currentTelemetryCaptureCount telemetry
-            let s1, tValue, _ = inferExpr telemetry typeDefs constructors scope env value
+            let s1, tValue, valueInfo = inferExpr telemetry typeDefs constructors scope env value
             let envPat, tPat = inferPattern telemetry typeDefs constructors pat
             let s2 = unify typeDefs (applyType s1 tValue) tPat span
             let sValue = compose s2 s1
@@ -1237,9 +1290,9 @@ module TypeInfer =
             let envPatTyped = envPat |> Map.map (fun _ ty -> applyType sValue ty)
             let env2 =
                 envPatTyped
-                |> Map.fold (fun state name bindingType ->
-                    let scheme = generalizeValueBinding typeDefs value (Types.generalize env1) bindingType
-                    Map.add name scheme state) env1
+                |> Map.fold (fun (state: InferenceEnv) name bindingType ->
+                    let scheme = generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect sValue) (Types.generalize env1.Schemes) bindingType
+                    state.AddValue(name, scheme, effectOf valueInfo |> applyOpaqueEffect sValue)) env1
             let boundNames = envPatTyped |> Map.toList |> List.map fst
             let sBody, tBody, _ =
                 withLocalBindings telemetry boundNames (fun () ->
@@ -1262,14 +1315,16 @@ module TypeInfer =
 
             let envRec =
                 freshByName
-                |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
+                |> Map.fold (fun (acc: InferenceEnv) name tv -> acc.Add(name, Forall([], tv))) env
 
             let mutable sRec = emptySubst
+            let groupEffects = ResizeArray<OpaqueEffect>()
             let recursiveNames = freshByName |> Map.toList |> List.map fst
             withLocalBindings telemetry recursiveNames (fun () ->
                 for (name, (valueScope, _, _), exprVal, _, bindingSpan) in foldedBindings do
                     let envForBinding = applyEnv sRec envRec
-                    let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope envForBinding exprVal
+                    let s1, t1, valueInfo = inferExpr telemetry typeDefs constructors valueScope envForBinding exprVal
+                    groupEffects.Add(effectOf valueInfo)
                     let expected = applyType s1 (applyType sRec freshByName.[name])
                     let s2 = unify typeDefs expected t1 bindingSpan
                     sRec <- compose s2 (compose s1 sRec))
@@ -1284,15 +1339,16 @@ module TypeInfer =
                 | None -> ()
 
             let envGeneralize = applyEnv sRec env
+            let groupEffect = recursiveOpaqueEffects groupEffects |> applyOpaqueEffect sRec
             let schemes =
                 foldedBindings
                 |> List.map (fun (name, (_, explicitParameters, _), _, _, bindingSpan) ->
                     let inferred = applyType sRec freshByName.[name]
-                    name, generalizeBinding scope envGeneralize sRec explicitParameters inferred bindingSpan)
+                    name, generalizeValue typeDefs groupEffect (fun typ -> generalizeBinding scope envGeneralize.Schemes sRec explicitParameters typ bindingSpan) inferred)
 
             let envBody =
                 schemes
-                |> List.fold (fun acc (name, scheme) -> Map.add name scheme acc) envGeneralize
+                |> List.fold (fun (acc: InferenceEnv) (name, scheme) -> acc.AddValue(name, scheme, groupEffect)) envGeneralize
 
             let sBody, tBody, _ =
                 withLocalBindings telemetry recursiveNames (fun () ->
@@ -1300,7 +1356,7 @@ module TypeInfer =
             let s = compose sBody sRec
             s, tBody, asTyped telemetry expr tBody
         | EMatch (scrutinee, cases, span) ->
-            let s1, tScrut, _ = inferExpr telemetry typeDefs constructors scope env scrutinee
+            let s1, tScrut, scrutineeInfo = inferExpr telemetry typeDefs constructors scope env scrutinee
             let mutable sAcc = s1
             let mutable resultTypeOpt : Type option = None
             for (pat, guard, body, caseSpan) in cases do
@@ -1308,7 +1364,7 @@ module TypeInfer =
                 let sPat = unify typeDefs (applyType sAcc tScrut) tPat caseSpan
                 applyAnnotationScope scope sPat
                 let envCase = applyEnv (compose sPat sAcc) env
-                let envCase' = envPat |> Map.fold (fun acc k v -> Map.add k (Forall([], applyType sPat v)) acc) envCase
+                let envCase' = envPat |> Map.fold (fun (acc: InferenceEnv) k v -> acc.AddValue(k, Forall([], applyType sPat v), effectOf scrutineeInfo |> applyOpaqueEffect (compose sPat sAcc))) envCase
                 let caseBoundNames = envPat |> Map.toList |> List.map fst
                 let sBody, tBody, _ =
                     withLocalBindings telemetry caseBoundNames (fun () ->
@@ -1523,8 +1579,8 @@ module TypeInfer =
                 let qualifiedName = $"{moduleName}.{fieldName}"
                 match env.TryFind qualifiedName with
                 | Some scheme ->
-                    let t = instantiate scheme
-                    emptySubst, t, asTyped telemetry expr t
+                    let t, effect = instantiateValue env qualifiedName scheme
+                    emptySubst, t, asTyped telemetry expr t |> withOpaqueEffect effect
                 | None ->
                     let s1, tTarget, _ = inferExpr telemetry typeDefs constructors scope env target
                     let sField, tField = inferRecordField s1 tTarget
@@ -1734,9 +1790,10 @@ module TypeInfer =
                 let typ = signature.Payload |> Option.map (fun payload -> TFun (payload, signature.Result)) |> Option.defaultValue signature.Result
                 caseName, Forall (signature.Parameters, typ))
 
-        let mutable env : Map<string, Scheme> =
+        let initialSchemes =
             (envFromExterns externs, constructorSchemes)
             ||> List.fold (fun acc (name, scheme) -> acc.Add(name, scheme))
+        let mutable env = { Schemes = initialSchemes; OpaqueEffects = Map.empty; Frames = ResizeArray() }
 
         let telemetry =
             if captureTelemetry then Some(createTelemetry ())
@@ -1745,7 +1802,7 @@ module TypeInfer =
         let typed = ResizeArray<TypedStmt>()
         // Subsequent top-level uses can constrain weak type variables of earlier
         // values. Preserve those resolutions in the typed program used by backends.
-        let mutable weakVariables = Types.ftvEnv env
+        let mutable weakVariables = Types.ftvEnv env.Schemes
         let mutable laterSubstitutions = emptySubst
         let remember scheme =
             weakVariables <- Set.union weakVariables (Types.ftvScheme scheme)
@@ -1778,7 +1835,7 @@ module TypeInfer =
                     let importedType = annotationTypeFromRef typeDefs span signature
                     match importedType with
                     | TFun _ ->
-                        env <- Map.add name (remember (Forall([], importedType))) env
+                        env <- env.Add(name, remember (Forall([], importedType)))
                         typed.Add(TSBackendImport(name, importedType, import, span))
                     | _ -> raise (TypeException { Message = "Backend imports require a complete function signature"; Span = span })
                 | SLet(name, args, returnAnnotation, expr, isRec, isExported, span) ->
@@ -1791,8 +1848,8 @@ module TypeInfer =
 
                     if isRec then
                         let tv = Types.freshVar()
-                        let envRec = env |> Map.add name (Forall([], tv))
-                        let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope envRec exprVal
+                        let envRec = env.Add(name, Forall([], tv))
+                        let s1, t1, valueInfo = inferExpr telemetry typeDefs constructors valueScope envRec exprVal
                         let s2 = unify typeDefs (applyType s1 tv) t1 span
                         let sRet =
                             match returnAnnotation with
@@ -1809,11 +1866,11 @@ module TypeInfer =
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
                         let scheme =
-                            generalizeValueBinding typeDefs exprVal (fun typ -> generalizeBinding scope env' s explicitParameters typ span) inferred
-                        env <- env' |> Map.add name (remember scheme)
+                            generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect s) (fun typ -> generalizeBinding scope env'.Schemes s explicitParameters typ span) inferred
+                        env <- env'.AddValue(name, remember scheme, effectOf valueInfo |> applyOpaqueEffect s)
                         typed.Add(TSLet(name, exprVal, inferred, true, isExported, span))
                     else
-                        let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope env exprVal
+                        let s1, t1, valueInfo = inferExpr telemetry typeDefs constructors valueScope env exprVal
                         let sRet =
                             match returnAnnotation with
                             | Some tref ->
@@ -1829,8 +1886,8 @@ module TypeInfer =
                         let inferred = applyType s t1
                         validateMapKeyTypes typeDefs span inferred
                         let scheme =
-                            generalizeValueBinding typeDefs exprVal (fun typ -> generalizeBinding scope env' s explicitParameters typ span) inferred
-                        env <- env' |> Map.add name (remember scheme)
+                            generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect s) (fun typ -> generalizeBinding scope env'.Schemes s explicitParameters typ span) inferred
+                        env <- env'.AddValue(name, remember scheme, effectOf valueInfo |> applyOpaqueEffect s)
                         typed.Add(TSLet(name, exprVal, inferred, false, isExported, span))
                 | SLetPattern(pattern, expr, isExported, span) ->
                     let startIndex =
@@ -1838,7 +1895,7 @@ module TypeInfer =
                         | Some t -> t.LocalVariableTypes.Count
                         | None -> 0
 
-                    let s1, tValue, _ = inferExpr telemetry typeDefs constructors scope env expr
+                    let s1, tValue, valueInfo = inferExpr telemetry typeDefs constructors scope env expr
                     let envPat, tPat = inferPattern telemetry typeDefs constructors pattern
                     let s2 = unify typeDefs (applyType s1 tValue) tPat span
                     let s = compose s2 s1
@@ -1851,9 +1908,9 @@ module TypeInfer =
                     |> Map.iter (fun _ ty -> validateMapKeyTypes typeDefs span ty)
                     env <-
                         typedBindings
-                        |> Map.fold (fun state name bindingType ->
-                            let scheme = generalizeValueBinding typeDefs expr (Types.generalize envBase) bindingType
-                            Map.add name (remember scheme) state) envBase
+                        |> Map.fold (fun (state: InferenceEnv) name bindingType ->
+                            let scheme = generalizeValue typeDefs (effectOf valueInfo |> applyOpaqueEffect s) (Types.generalize envBase.Schemes) bindingType
+                            state.AddValue(name, remember scheme, effectOf valueInfo |> applyOpaqueEffect s)) envBase
                     typed.Add(TSLetPattern(pattern, expr, typedBindings, isExported, span))
                 | SLetRecGroup(bindings, isExported, span) ->
                     let startIndex =
@@ -1876,12 +1933,14 @@ module TypeInfer =
 
                     let envRec =
                         freshByName
-                        |> Map.fold (fun acc name tv -> Map.add name (Forall([], tv)) acc) env
+                        |> Map.fold (fun (acc: InferenceEnv) name tv -> acc.Add(name, Forall([], tv))) env
 
                     let mutable sRec = emptySubst
+                    let groupEffects = ResizeArray<OpaqueEffect>()
                     for (name, (valueScope, _, _), exprVal, _, bindingSpan) in foldedBindings do
                         let envForBinding = applyEnv sRec envRec
-                        let s1, t1, _ = inferExpr telemetry typeDefs constructors valueScope envForBinding exprVal
+                        let s1, t1, valueInfo = inferExpr telemetry typeDefs constructors valueScope envForBinding exprVal
+                        groupEffects.Add(effectOf valueInfo)
                         let expected = applyType s1 (applyType sRec freshByName.[name])
                         let s2 = unify typeDefs expected t1 bindingSpan
                         sRec <- compose s2 (compose s1 sRec)
@@ -1900,12 +1959,13 @@ module TypeInfer =
 
                     retainSubstitution sRec
                     let envGeneralize = applyEnv sRec env
+                    let groupEffect = recursiveOpaqueEffects groupEffects |> applyOpaqueEffect sRec
                     let schemes =
                         foldedBindings
                         |> List.map (fun (name, (_, explicitParameters, _), _, _, bindingSpan) ->
                             let inferred = applyType sRec freshByName.[name]
                             validateMapKeyTypes typeDefs span inferred
-                            name, generalizeBinding scope envGeneralize sRec explicitParameters inferred bindingSpan)
+                            name, generalizeValue typeDefs groupEffect (fun typ -> generalizeBinding scope envGeneralize.Schemes sRec explicitParameters typ bindingSpan) inferred)
 
                     let typedBindings =
                         foldedBindings
@@ -1914,7 +1974,7 @@ module TypeInfer =
 
                     env <-
                         schemes
-                        |> List.fold (fun acc (name, scheme) -> Map.add name (remember scheme) acc) envGeneralize
+                        |> List.fold (fun (acc: InferenceEnv) (name, scheme) -> acc.AddValue(name, remember scheme, groupEffect)) envGeneralize
                     typed.Add(TSLetRecGroup(typedBindings, isExported, span))
                 | SExpr expr ->
                     let startIndex =
@@ -1934,7 +1994,7 @@ module TypeInfer =
                     validateMapKeyTypes typeDefs (Ast.spanOfExpr expr) (applyType s t1)
                     retainSubstitution s
                     env <- applyEnv s env
-                    typed.Add(TSExpr typedExpr)
+                    typed.Add(TSExpr typedExpr.Typed)
 
             if not laterSubstitutions.IsEmpty then
                 applySubstToCapturedLocals telemetry 0 laterSubstitutions

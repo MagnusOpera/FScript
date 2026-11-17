@@ -4,11 +4,17 @@ open TypeInfer
 
 /// Optional, warning-only analysis. No evaluator or task scheduler instrumentation.
 module TaskSharingAnalysis =
+    type ConsumerOperation =
+        | CreateConsumer of handler: int * initialState: int
+        | SendMessage of receiver: int * message: int
+        | FinishConsumer of receiver: int
+
     type Options =
         { ThreadSafeTypes: Set<string>
-          ThreadSafeFunctions: Set<string> }
+          ThreadSafeFunctions: Set<string>
+          ConsumerOperations: Map<string, ConsumerOperation> }
 
-    let defaults = { ThreadSafeTypes = Set.empty; ThreadSafeFunctions = Set.empty }
+    let defaults = { ThreadSafeTypes = Set.empty; ThreadSafeFunctions = Set.empty; ConsumerOperations = Map.empty }
 
     type Diagnostic =
         { Code: string
@@ -23,12 +29,18 @@ module TaskSharingAnalysis =
           Fields: Map<string, AbstractValue>
           Callables: Callable list
           Tasks: Set<int>
+          Consumers: Set<int>
           Count: int option }
     and private Callable =
         | Closure of int * ResolvedBinding * ResolvedExpression * Map<int, AbstractValue> ref
         | Function of string * int * bool * Type * AbstractValue list
 
-    let private empty = { Resources = Set.empty; Fields = Map.empty; Callables = []; Tasks = Set.empty; Count = None }
+    type private Consumer =
+        { Handler: AbstractValue
+          State: AbstractValue
+          Clock: Clock }
+
+    let private empty = { Resources = Set.empty; Fields = Map.empty; Callables = []; Tasks = Set.empty; Consumers = Set.empty; Count = None }
     let private combine values =
         match values with
         | [value] -> value
@@ -36,7 +48,8 @@ module TaskSharingAnalysis =
             { empty with
                 Resources = values |> List.map _.Resources |> List.fold Set.union Set.empty
                 Callables = values |> List.collect _.Callables
-                Tasks = values |> List.map _.Tasks |> List.fold Set.union Set.empty }
+                Tasks = values |> List.map _.Tasks |> List.fold Set.union Set.empty
+                Consumers = values |> List.map _.Consumers |> List.fold Set.union Set.empty }
 
     let private container key count value =
         { empty with Resources = value.Resources; Fields = Map.ofList [key, value]; Count = count }
@@ -55,7 +68,7 @@ module TaskSharingAnalysis =
         let functions = registration.Functions |> List.map (fun item -> item.Name, item.Arity) |> Map.ofList
         let knownTypes = Set.union (hostTypes |> Map.toSeq |> Seq.map fst |> Set.ofSeq) (registration.Unions |> List.map _.Name |> Set.ofList)
         let knownFunctions = Set.union (functions |> Map.toSeq |> Seq.map fst |> Set.ofSeq) (program.Symbols |> List.filter (fun symbol -> symbol.Kind = ExternSymbol || symbol.Kind = BuiltinSymbol) |> List.map _.Name |> Set.ofList)
-        let invalid = Set.union (Set.difference options.ThreadSafeTypes knownTypes) (Set.difference options.ThreadSafeFunctions knownFunctions)
+        let invalid = Set.unionMany [Set.difference options.ThreadSafeTypes knownTypes; Set.difference options.ThreadSafeFunctions knownFunctions; Set.difference (options.ConsumerOperations |> Map.keys |> Set.ofSeq) knownFunctions]
         if not invalid.IsEmpty then invalidArg "options" ("Unknown thread-safety contract names: " + String.concat ", " (Set.toList invalid))
         let safeTypes = Set.union options.ThreadSafeTypes program.Purity.PureTypes
         let safeFunctions = Set.union options.ThreadSafeFunctions program.Purity.PureFunctions
@@ -63,6 +76,7 @@ module TaskSharingAnalysis =
         let reported = System.Collections.Generic.HashSet<string * Span * Span>()
         let histories = System.Collections.Generic.Dictionary<Resource, ResizeArray<int * Clock * Span>>()
         let tasks = System.Collections.Generic.Dictionary<int, Clock * AbstractValue>()
+        let consumers = System.Collections.Generic.Dictionary<int, Consumer>()
         let activeCalls = System.Collections.Generic.HashSet<int>()
         let mutable callSites: Span list = []
         let mutable nextTask = 0
@@ -98,8 +112,9 @@ module TaskSharingAnalysis =
             match typ with
             | THostManaged(name, _) when not (Set.contains name safeTypes) ->
                 { empty with Resources = Set.singleton { Key = source + ":" + name; Name = name; IsFunction = false } }
-            | TApplied (name, _) as applied when not (Set.contains typ visited) ->
-                fromType source (Set.add typ visited) (Types.expand typeDefinitions applied)
+            | TApplied (_, arguments) as applied when not (Set.contains typ visited) ->
+                let visited = Set.add typ visited
+                combine (fromType source visited (Types.expand typeDefinitions applied) :: List.map (fromType source visited) arguments)
             | TNamed name when not (Set.contains typ visited) ->
                 match Map.tryFind name hostTypes with
                 | Some descriptor when not (Set.contains name safeTypes) ->
@@ -259,16 +274,22 @@ module TaskSharingAnalysis =
             let restore (snapshot: (Resource * (int * Clock * Span) list) list) =
                 histories.Clear()
                 for key, values in snapshot do histories.[key] <- ResizeArray(values)
+            let consumerSnapshot () = consumers |> Seq.map (fun pair -> pair.Key, pair.Value) |> Seq.toList
+            let restoreConsumers values =
+                consumers.Clear()
+                for key, value in values do consumers.[key] <- value
+            let initialConsumers = consumerSnapshot ()
             let initial, initialHistory = clock, snapshot ()
             let results = alternatives |> List.map (fun branch ->
                 clock <- initial
                 restore initialHistory
+                restoreConsumers initialConsumers
                 let value = branch ()
-                value, clock, snapshot ())
+                value, clock, snapshot (), consumerSnapshot ())
             // Mutually exclusive branches must not be compared with each other.
             // Keep all their possible accesses for subsequent task interactions.
             histories.Clear()
-            for _, _, history in results do
+            for _, _, history, _ in results do
                 for key, values in history do
                     match histories.TryGetValue key with
                     | true, previous -> previous.AddRange values
@@ -277,11 +298,15 @@ module TaskSharingAnalysis =
                 let distinct = pair.Value |> Seq.distinct |> Seq.toArray
                 pair.Value.Clear()
                 pair.Value.AddRange distinct
-            clock <- results |> List.map (fun (_, clock, _) -> clock) |> commonClock
+            clock <- results |> List.map (fun (_, clock, _, _) -> clock) |> commonClock
             // A branch join cannot roll back this task's own event sequence.
-            let ownTime = results |> List.map (fun (_, branchClock, _) -> Map.tryFind task branchClock |> Option.defaultValue 0) |> List.fold max 0
+            let ownTime = results |> List.map (fun (_, branchClock, _, _) -> Map.tryFind task branchClock |> Option.defaultValue 0) |> List.fold max 0
             clock <- Map.add task ownTime clock
-            results |> List.map (fun (value, _, _) -> value) |> combine
+            consumers.Clear()
+            results |> List.collect (fun (_, _, _, values) -> values) |> List.groupBy fst |> List.iter (fun (id, values) ->
+                let alternatives = values |> List.map snd
+                consumers.[id] <- { alternatives.Head with State = alternatives |> List.map _.State |> combine; Clock = alternatives |> List.map _.Clock |> commonClock })
+            results |> List.map (fun (value, _, _, _) -> value) |> combine
         and wireRecursive env values =
             for value in values do
                 for callable in value.Callables do
@@ -319,6 +344,50 @@ module TaskSharingAnalysis =
                 | [only] -> invoke only
                 | alternatives -> branches (alternatives |> List.map (fun callable -> fun () -> invoke callable))
         and invokeFunction span resultType name external arguments =
+            let join completions =
+                if not (List.isEmpty completions) then clock <- mergeClock clock (completions |> List.map fst |> List.fold mergeClock Map.empty)
+                tick ()
+            match Map.tryFind name options.ConsumerOperations, arguments with
+            | Some(CreateConsumer(handlerIndex, stateIndex)), _ ->
+                nextTask <- nextTask + 1
+                consumers.[nextTask] <- { Handler = arguments[handlerIndex]; State = arguments[stateIndex]; Clock = clock }
+                { empty with Consumers = Set.singleton nextTask }
+            | Some(SendMessage(receiverIndex, messageIndex)), _ ->
+                let parent = task
+                tick ()
+                let parentClock = clock
+                for id in arguments[receiverIndex].Consumers do
+                    match consumers.TryGetValue id with
+                    | true, consumer ->
+                        task <- id
+                        clock <- mergeClock consumer.Clock parentClock
+                        access span (Set.unionMany [consumer.Handler.Resources; consumer.State.Resources; arguments[messageIndex].Resources])
+                        let rec returnType count typ =
+                            match count, typ with
+                            | 0, _ -> typ
+                            | n, TFun(_, result) -> returnType (n - 1) result
+                            | _ -> typ
+                        let resultType value =
+                            value.Callables |> List.tryPick (function
+                                | Closure(_, _, body, _) -> Some body.Type
+                                | Function(_, _, _, signature, supplied) -> Some(returnType (supplied.Length + 1) signature))
+                            |> Option.defaultValue (TRecord Map.empty)
+                        let next = apply span (resultType consumer.Handler) consumer.Handler consumer.State
+                        let state = apply span (resultType next) next arguments[messageIndex]
+                        consumers.[id] <- { consumer with State = state; Clock = clock }
+                    | _ -> ()
+                task <- parent
+                clock <- parentClock
+                tick ()
+                empty
+            | Some(FinishConsumer receiverIndex), _ ->
+                let completed = arguments[receiverIndex].Consumers |> Seq.choose (fun id ->
+                    match consumers.TryGetValue id with true, value -> Some(value.Clock, value.State) | _ -> None) |> Seq.toList
+                join completed
+                completed |> List.map snd |> combine
+            | _ -> invokeOrdinary span resultType name external arguments
+        and invokeOrdinary span resultType name external arguments =
+            // Task operations use the same clocks as consumer work.
             let completed value = value.Tasks |> Set.toList |> List.choose (fun id -> match tasks.TryGetValue id with true,result -> Some result | _ -> None)
             let join completions =
                 if not (List.isEmpty completions) then clock <- mergeClock clock (completions |> List.map fst |> List.fold mergeClock Map.empty)
@@ -387,8 +456,11 @@ module TaskSharingAnalysis =
                 completed |> List.map snd |> combine
             | _ ->
                 let inputs = combine arguments
-                if external && not (Set.contains name safeFunctions) then
-                    access span (Set.add {Key = "function:" + name; Name = name; IsFunction = true} inputs.Resources)
+                if external then
+                    let resources =
+                        if Set.contains name safeFunctions then inputs.Resources
+                        else Set.add {Key = "function:" + name; Name = name; IsFunction = true} inputs.Resources
+                    access span resources
                 // Only declared callback parameters of known combinators are invoked.
                 // A function stored in a collection or passed to ignore is not a call.
                 let rec parameterTypes = function TFun(argument, result) -> argument :: parameterTypes result | _ -> []
@@ -456,9 +528,11 @@ module TaskSharingAnalysis =
             | ResolvedExpressionStatement expression -> evaluate environment expression |> ignore
             | _ -> ()
         // Analyze callable entry points without assuming unrelated host invocations overlap.
+        let entryConsumers = consumers |> Seq.map (fun pair -> pair.Key, pair.Value) |> Seq.toList
         for value, typ, span in entryFunctions do
-            histories.Clear(); tasks.Clear(); activeCalls.Clear()
+            histories.Clear(); tasks.Clear(); activeCalls.Clear(); consumers.Clear()
             task <- 0; clock <- Map.ofList [0, 0]
+            for id, consumer in entryConsumers do consumers.[id] <- { consumer with Clock = clock }
             let rec enter value typ index =
                 match typ with
                 | TFun(argument, result) ->

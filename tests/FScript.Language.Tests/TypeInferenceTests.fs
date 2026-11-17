@@ -68,6 +68,22 @@ type TypeInferenceTests () =
             | _ -> Assert.Fail("Expected a -> a")
         | _ -> Assert.Fail("Expected let")
 
+    [<Test>]
+    member _.``Opaque host arguments stay fixed in captured closures without mailbox registration`` () =
+        let variable = TVar 0
+        let cell = TApplied("Cell", [variable])
+        let external name argument result =
+            { Name = name; Arity = 1; Scheme = Forall([0], TFun(argument, result))
+              RequiredPermissions = HostPermissions.None
+              Impl = fun _ _ -> failwith "Inference must not execute host code" }
+        let registration =
+            { HostInterop.empty with
+                Types = [{Name = "Cell"; Fields = Map.empty; HostManaged = true; TypeParameters = [0]}]
+                Functions = [external "Cell.create" variable cell; external "Cell.read" cell variable] }
+        let source = "let create () =\n    let value = Cell.create []\n    fun () -> Cell.read value\nlet read = create ()\nlet ints (value: int list) = value\nlet words (value: string list) = value\n(ints (read ()), words (read ()))"
+        Assert.Throws<TypeException>(System.Action(fun () ->
+            Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> ignore)) |> ignore
+
     [<TestCase("let f<'a> (value: 'a) = value + 1", "unconstrained")>]
     [<TestCase("let f<'a, 'b> (value: 'a) : 'b = value", "distinct")>]
     [<TestCase("let f (value: 'a) : 'a = if value then 1 else 0", "Type mismatch")>]

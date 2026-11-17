@@ -173,3 +173,9 @@ Predicates run exactly once per element in source order, including effectful pre
 
 
 Task composition uses typed BCL-only helpers with per-Run scopes. Each scope joins every tracked worker, including recursively created tasks, before returning or throwing. Unobserved tasks are permitted. Independent siblings continue after a background failure; all distinct foreground/background exception instances are reported together after joining (AggregateException for multiple failures). Generic task results may themselves be tasks, collections, or functions. Compiler external-call currying stops at the declared external arity, retained across inlining/specialization; a function-valued result is returned as a value rather than treated as another external argument. SDK task conversion wrappers preserve completed state and alias observation back to their source task.
+
+A polymorphic tuple can contain a concrete effectful element alongside a generic
+callback. Native specialization evaluates concrete observable tuple inputs once,
+in source order, before specializing the pure tuple result. It does not clone
+opaque instances when selecting different callback instantiations. Tuple
+projection does not read an opaque payload or invoke field getters.

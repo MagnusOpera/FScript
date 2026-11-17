@@ -204,3 +204,18 @@ Generated programs include BCL-only RuntimeTasks.cs. Typed generic wrappers pres
 ### Task execution boundaries
 
 The evaluator owns tasks per top-level execution or exported-function invocation. Generated .NET programs own tasks per `Run` scope. Each boundary repeatedly joins its registered workers until no worker can register more tasks; the scope remains active throughout that join. Explicit task observation retrieves results but is not a lifetime requirement. On foreground failure the boundary still joins all workers. Independent siblings continue after background failures, and the boundary collects all distinct failures after joining. Generated scopes flatten aggregate exceptions and deduplicate propagated exception instances; evaluator scopes retain the identity of propagated `EvalError` records. Native exports called outside `Run` retain host-owned CLR lifetimes. The join is not a timeout and does not preempt host code.
+
+## Opaque instance inference and consumer analysis
+
+`OpaqueInference` holds frontend-only allocation information beside type schemes.
+It distinguishes variables belonging to existing generic opaque instances from
+variables instantiated when a factory runs. Inference carries this information
+through aliases, patterns, higher-order calls, and closure captures, then filters
+only instance-associated variables from generalization. Public generic types and
+HIR/LIR representations are unchanged.
+
+Task-sharing options can describe creation, sending, and completion roles for a
+registered consumer API. Runtime attaches those roles to the bundled Mailbox
+implementation by delegate identity. The analyzer retains abstract handlers and
+state, serializes messages on each consumer clock, and joins work at completion.
+This extends the existing static pass without evaluator or scheduler hooks.

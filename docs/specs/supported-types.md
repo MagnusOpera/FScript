@@ -148,7 +148,7 @@ Built-in containers use postfix syntax in source and type displays, including
 ## Type inference model
 - Hindley–Milner style inference.
 - Independent inference calls may run concurrently; fresh type-variable identities remain isolated from races between callers.
-- Let-polymorphism.
+- Let-polymorphism. Variables associated with an existing opaque generic host instance remain fixed through aliases and captured closures. Independent callback variables remain polymorphic even in an aggregate containing that instance, and separate factory calls get fresh instance types.
 - `numeric` is a constrained inference meta-type that can specialize to `int` or `float`; it is not a distinct runtime value type and introduces no implicit conversion.
 - Arithmetic operators (`+`, `-`, `*`, `/`) unify both operand types and preserve that type as the result. Unresolved operands carry a shared numeric constraint: `let add x y = x + y` displays `numeric -> numeric -> numeric`. Each application specializes independently, returning `int` for integer operands or `float` for float operands.
 - Arithmetic rejects mixed `int`/`float` operands and nonnumeric operands during inference, including calls through polymorphic functions, aliases, and higher-order functions. A concrete annotation specializes the whole arithmetic relationship: `let add x (y: int) = x + y` infers `int -> int -> int`.

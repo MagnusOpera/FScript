@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Preserve opaque instance types through captured closures while keeping unrelated callbacks polymorphic.
+- Report concurrent host access from mailbox handlers, state, and messages, respecting completion ordering.
 - Document Mailbox usage, shutdown, and the Threading permission in the standard library reference.
 
 ## [0.93]

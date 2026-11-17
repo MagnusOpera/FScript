@@ -130,7 +130,13 @@ module LirEffects =
                 let scoped=bindings |> List.fold (fun scoped (id,_,_,binding) -> Map.add id binding scoped) environment
                 combine (effect scoped body :: (bindings |> List.map (fun (_,_,_,binding) -> effect scoped binding)))
             | Lir.DecisionTree(target,cases) ->
-                if not (stable Set.empty target.Type && exhaustive target.Type cases) then Observable else
+                let tupleProjection =
+                    match target.Type, cases with
+                    | TTuple items, [case] when case.Guard.IsNone && case.Plan.Maps.IsEmpty ->
+                        (case.Plan.Checks |> List.forall (function Lir.TupleArityCheck([], count) -> count = items.Length | _ -> false))
+                        && (case.Plan.Bindings |> List.forall (fun binding -> match binding.Projection with [Lir.TupleItem index] -> index >= 0 && index < items.Length | _ -> false))
+                    | _ -> false
+                if not (tupleProjection || stable Set.empty target.Type && exhaustive target.Type cases) then Observable else
                 combine (child target :: (cases |> List.collect (fun case -> child case.Body :: (case.Guard |> Option.map child |> Option.toList))))
             | Lir.RecordUpdate(target,fields) -> if stable Set.empty target.Type && not (externalConstruction value.Type) then combine (child target :: (fields |> List.map (snd >> child))) else Observable
             | Lir.Interpolate parts ->
