@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Automatically publish release artifacts, packages, editor extensions, the Homebrew tap, and the website after a release tag passes validation and macOS notarization.
+- Deploy the release website implementation while keeping Next documentation and its interpreter synchronized with main.
+
 ## [0.94]
 
 ### [0.94.3]

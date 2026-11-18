@@ -1,13 +1,17 @@
-name: 🌍 Release
-run-name: Release ${{ github.event.release.tag_name || inputs.release_tag }}
+name: Publish Release Artifacts
+run-name: Release ${{ inputs.release_tag }}
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Existing published release tag whose verified assets will be distributed
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Existing published release tag to retry on NuGet (for example, 0.90.1)'
+        description: 'Existing published release tag to retry across package registries and the tap'
         required: true
         type: string
 
@@ -15,14 +19,35 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-publish-${{ github.event.release.tag_name || inputs.release_tag }}
+  group: release-publish-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
+  validate-published-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require an existing published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Expected an existing release tag X.Y.Z."
+            exit 1
+          fi
+          draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [[ "$draft" != false ]]; then
+            echo "::error::The release must already be published."
+            exit 1
+          fi
+
   release-nuget:
+    needs: validate-published-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,7 +56,7 @@ jobs:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -60,24 +85,29 @@ jobs:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           shopt -s nullglob
-          for pkg in ./*.nupkg; do
+          packages=(./*.nupkg)
+          if [[ "${#packages[@]}" -eq 0 ]]; then
+            echo "::error::Release has no NuGet package assets."
+            exit 1
+          fi
+          for pkg in "${packages[@]}"; do
             dotnet nuget push "$pkg" --skip-duplicate --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
           done
 
   release-npm:
-    if: github.event_name == 'release'
+    needs: validate-published-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     env:
-      RELEASE_VERSION: ${{ github.event.release.tag_name }}
+      RELEASE_VERSION: ${{ inputs.release_tag }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -119,12 +149,14 @@ jobs:
           npm publish "${packages[0]}" --access public --provenance
 
   publish-vscode-marketplace:
-    if: github.event_name == 'release'
+    needs: validate-published-release
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout release
         uses: actions/checkout@v4
+        with:
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -153,12 +185,14 @@ jobs:
         run: ./.github/scripts/publish-vscode-marketplace.sh
 
   publish-open-vsx:
-    if: github.event_name == 'release'
+    needs: validate-published-release
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout release
         uses: actions/checkout@v4
+        with:
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -186,162 +220,23 @@ jobs:
           OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
         run: ./.github/scripts/publish-open-vsx.sh
 
-  sign-and-notarize:
-    if: github.event_name == 'release'
-    runs-on: macos-latest
-    steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name }}
-
-      - name: Read workspace tool versions
-        id: tool-versions
-        uses: ./.github/actions/workspace-versions
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Download unsigned macOS artifacts
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: ${{ env.RELEASE_TAG }}
-          fileName: 'fscript-*-darwin-unsigned.zip'
-
-      - name: Extract binaries
-        run: |
-          mkdir -p .out/darwin
-          unzip -d .out/darwin fscript-${{ env.RELEASE_TAG }}-darwin-unsigned.zip
-          test -f .out/darwin/entitlements.plist
-
-      - name: Add cert to keychain
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.MAC_CERT_BASE64 }}
-          p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
-
-      - name: Sign binaries
-        run: |
-          expected_identifier="io.magnusopera.fscript.arm64"
-          codesign \
-            --force \
-            --timestamp \
-            --options=runtime \
-            --no-strict \
-            --entitlements .out/darwin/entitlements.plist \
-            --identifier "$expected_identifier" \
-            --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" \
-            .out/darwin/arm64/fscript
-          codesign --verify --verbose=4 .out/darwin/arm64/fscript
-          actual_identifier="$(codesign -dv --verbose=4 .out/darwin/arm64/fscript 2>&1 | sed -n 's/^Identifier=//p')"
-          if [ "$actual_identifier" != "$expected_identifier" ]; then
-            echo "Expected codesign identifier '$expected_identifier' but found '$actual_identifier'" >&2
-            exit 1
-          fi
-          codesign --display --entitlements - --xml .out/darwin/arm64/fscript > .out/darwin/signed-entitlements.plist
-          python3 - <<'PYTHON'
-          import plistlib
-          with open('.out/darwin/signed-entitlements.plist', 'rb') as source:
-              entitlements = plistlib.load(source)
-          for key in ('com.apple.security.cs.allow-jit', 'com.apple.security.cs.disable-library-validation'):
-              if entitlements.get(key) is not True:
-                  raise SystemExit(f'Signed CLI is missing required entitlement: {key}')
-          print('Verified signed CLI entitlements for JIT and native providers.')
-          PYTHON
-          (cd .out/darwin/arm64; zip ../fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip ./*)
-
-      - name: Notarize arm64
-        timeout-minutes: 10
-        shell: bash
-        env:
-          MAC_DEV_LOGIN: ${{ secrets.MAC_DEV_LOGIN }}
-          MAC_DEV_PASSWORD: ${{ secrets.MAC_DEV_PASSWORD }}
-          MAC_DEV_TEAM_ID: ${{ secrets.MAC_DEV_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${MAC_DEV_LOGIN:-}" || -z "${MAC_DEV_PASSWORD:-}" || -z "${MAC_DEV_TEAM_ID:-}" ]]; then
-            echo "::error::MAC_DEV_LOGIN, MAC_DEV_PASSWORD, and MAC_DEV_TEAM_ID secrets are required for notarization."
-            exit 1
-          fi
-
-          set +e
-          submit_output="$(xcrun notarytool submit ".out/darwin/fscript-${RELEASE_TAG}-darwin-arm64.zip" \
-            --apple-id "${MAC_DEV_LOGIN}" \
-            --password "${MAC_DEV_PASSWORD}" \
-            --team-id "${MAC_DEV_TEAM_ID}" \
-            --wait \
-            --output-format json 2>&1)"
-          submit_status=$?
-          set -e
-
-          printf '%s\n' "${submit_output}"
-
-          submission_id="$(printf '%s\n' "${submit_output}" | node -e 'const fs = require("node:fs"); const input = fs.readFileSync(0, "utf8"); try { const data = JSON.parse(input); process.stdout.write(data.id || ""); } catch { process.exit(0); }')"
-          notarization_status="$(printf '%s\n' "${submit_output}" | node -e 'const fs = require("node:fs"); const input = fs.readFileSync(0, "utf8"); try { const data = JSON.parse(input); process.stdout.write(data.status || ""); } catch { process.exit(0); }')"
-
-          if [[ -n "${submission_id}" && "${notarization_status}" != "Accepted" ]]; then
-            echo "::group::Apple notarization log"
-            xcrun notarytool log \
-              --apple-id "${MAC_DEV_LOGIN}" \
-              --password "${MAC_DEV_PASSWORD}" \
-              --team-id "${MAC_DEV_TEAM_ID}" \
-              "${submission_id}" \
-              notary-log.json || true
-            if [[ -f notary-log.json ]]; then
-              cat notary-log.json
-            fi
-            echo "::endgroup::"
-          fi
-
-          if [[ "${submit_status}" -ne 0 || "${notarization_status}" != "Accepted" ]]; then
-            echo "::error::Notarization failed with status '${notarization_status:-unknown}'."
-            exit 1
-          fi
-
-      - name: Upload signed macOS artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: |
-            .out/darwin/fscript-${{ env.RELEASE_TAG }}-darwin-arm64.zip
-
-      - name: Remove unsigned macOS artifact
-        continue-on-error: true
-        uses: actions/github-script@v7
-        with:
-          script: |
-            try {
-              const tag = process.env.RELEASE_TAG;
-              const unsignedName = `fscript-${tag}-darwin-unsigned.zip`;
-              const { data: release } = await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag,
-              });
-              const asset = release.assets.find(a => a.name === unsignedName);
-              if (!asset) {
-                core.info(`Unsigned artifact not found: ${unsignedName}`);
-                return;
-              }
-              await github.rest.repos.deleteReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: asset.id,
-              });
-              core.info(`Deleted unsigned artifact: ${unsignedName}`);
-            } catch (error) {
-              core.warning(`Best-effort cleanup failed: ${error?.message ?? error}`);
-            }
-
   update-homebrew-tap:
-    if: github.event_name == 'release'
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
-      - sign-and-notarize
+      - release-nuget
+      - release-npm
+      - publish-vscode-marketplace
+      - publish-open-vsx
     with:
-      ref: ${{ format('refs/tags/{0}', github.event.release.tag_name) }}
-      version: ${{ github.event.release.tag_name }}
+      ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
+      version: ${{ inputs.release_tag }}
       dry-run: false
     secrets: inherit
+
+  publish-website:
+    needs: update-homebrew-tap
+    uses: ./.github/workflows/publish-website.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

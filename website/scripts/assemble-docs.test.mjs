@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
 import {assembleDocs, selectReleases, whatsNew} from './assemble-docs.mjs';
+import {prepareRuntime} from './prepare-runtime.mjs';
 import {watchDocumentation} from './start.mjs';
 import {validateRelease} from '../../.github/scripts/validate-release.mjs';
 
@@ -155,10 +156,57 @@ test('development watches canonical pages and refreshes Next without editing tho
       resolve();
     };
   });
-  const stop = watchDocumentation(f.root, refreshed);
+  // Drive native notifications explicitly: fs.watch has no readiness event,
+  // and macOS can lose a write made immediately after subscribing.
+  const notifications = [];
+  let closed = 0;
+  const stop = watchDocumentation(f.root, refreshed, (directory, options, listener) => {
+    notifications.push(typeof options === 'function' ? options : listener);
+    return {close: () => {closed += 1;}};
+  });
   t.after(stop);
   f.write('website/docs/intro.md', 'live edit');
+  notifications[0]('change', 'intro.md');
   await update;
   assert.equal(f.read('.generated/next/intro.md'), 'live edit');
   assert.equal(f.read('docs/intro.md'), 'live edit');
+  assert.equal(closed, 0);
+});
+
+
+test('release website builds Next interpreter from the same main snapshot as its docs', async (t) => {
+  const f = fixture(t);
+  f.write('.gitignore', readFileSync(path.join(f.root, '.gitignore'), 'utf8') + 'website/src/generated\n');
+  f.write('src/FScript.JavaScript/Library.fs', 'stable runtime');
+  f.content('1.0.0', 'stable docs'); f.git('tag', '1.0.0');
+  f.write('src/FScript.JavaScript/Library.fs', 'next runtime');
+  f.content('1.1.0', 'next docs');
+  const nextCommit = f.git('rev-parse', 'main');
+  f.git('switch', '--detach', '1.0.0');
+  const before = f.git('status', '--porcelain');
+  const manifest = await assembleDocs({root: f.root, releases: [release('1.0.0')], nextRef: 'main'});
+  assert.equal(manifest.next.commit, nextCommit);
+  assert.equal(f.read('.generated/next/intro.md'), 'next docs');
+  assert.equal(f.read('versioned_docs/version-stable/intro.md'), 'stable docs');
+  // Even if main moves after assembly, compile the recorded documentation revision.
+  f.git('branch', '-f', 'main', '1.0.0');
+  const calls = [];
+  prepareRuntime({root: f.root, ref: 'main', run: (command, args, options) => {
+    calls.push({command, args, cwd: options.cwd});
+    assert.equal(readFileSync(path.join(options.cwd, 'src/FScript.JavaScript/Library.fs'), 'utf8'), 'next runtime');
+    if (args[0] === 'fable') assert.equal(args[3], path.join(f.root, 'website/src/generated/fscript'));
+  }});
+  assert.deepEqual(calls.map((call) => call.args[0]), ['tool', 'fable']);
+  assert.equal(f.git('status', '--porcelain'), before);
+  assert.ok(!existsSync(calls[0].cwd), 'Temporary interpreter source must be removed');
+});
+
+test('local interpreter preparation works without Git and propagates compiler failures', (t) => {
+  const f = fixture(t);
+  f.content('1.0.0', 'local');
+  rmSync(path.join(f.root, '.git'), {recursive: true});
+  const calls = [];
+  prepareRuntime({root: f.root, run: (command, args, options) => calls.push(options.cwd)});
+  assert.deepEqual(calls, [f.root, f.root]);
+  assert.throws(() => prepareRuntime({root: f.root, run: () => {throw new Error('Compiler failed');}}), /Compiler failed/);
 });
