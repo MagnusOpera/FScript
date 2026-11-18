@@ -59,19 +59,24 @@ Targeted test suites (when working on specific areas):
 
 Follow this exact sequence for every release:
 
-1. Run `make release-prepare version=X.Y.Z`.
-   - Optional preview mode: `make release-prepare version=X.Y.Z dryrun=true`
-2. Push commit and tag together: `git push origin main --follow-tags`.
-3. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-4. Confirm the draft notes are sourced from `CHANGELOG.md` `### [X.Y.Z]` (including compare link).
-5. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
+1. Commit the intended changes and Unreleased notes on `main` for a new release line, or on `release/vX.Y` for a maintenance release.
+2. Run `make release-prepare version=X.Y.Z`. Use `dryrun=true` to preview without changing files or Git state.
+3. For a new release line prepared on `main`, create `release/vX.Y` at the prepared commit. For maintenance releases, remain on that release branch.
+4. Run `make release-check version=X.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
+5. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
+6. Confirm the draft notes match the tagged `CHANGELOG.md` `### [X.Y.Z]`, including its compare link.
+7. Publish that existing draft release. Website Stable follows the highest published stable version.
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and draft release creation.
 - Do not bypass the draft step.
-- Tag workflow must fail if `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
+- Future release tags must be reachable from `release/vX.Y` matching their major/minor version.
+- Tag workflow must fail if the tagged `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
-- `make release-prepare` supports `X.Y.Z` only.
+- `make release-prepare` requires a clean checkout, moves Unreleased into the release section, adds its compare link, commits only `CHANGELOG.md`, and creates an annotated tag. It never builds or commits website snapshots.
+- `make release-check` validates an existing `X.Y.Z` tag without modifying files, making commits, or creating tags.
+- Website builds dynamically assemble Stable from the published tag and Next from `main`. Never commit generated manual snapshots.
+- Stable displays full released changelog history; Next displays only Unreleased. See [website publication](docs/architecture/website-publication.md).
 
 ## Specification Maintenance (Mandatory)
 

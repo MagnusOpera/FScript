@@ -42,9 +42,16 @@ jobs:
         with:
           fetch-depth: 0
       - name: Enforce changelog updates
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/heads/release/v') }}
         env:
           REQUIRE_CHANGELOG_ALWAYS: ${{ inputs.require-changelog }}
         run: .github/scripts/check-unreleased-changelog.sh
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Verify release formatting
         run: make test-release-changelog
       - name: Setup Tools

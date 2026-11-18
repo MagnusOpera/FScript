@@ -6,3 +6,4 @@ How the repository and assemblies are organized.
 - REPL architecture: [`repl-architecture.md`](./repl-architecture.md)
 - Typed IR and backends: [`typed-ir-and-backends.md`](./typed-ir-and-backends.md)
 - Native AOT size investigation: [`native-aot-size.md`](./native-aot-size.md)
+- Website publication: [`website-publication.md`](./website-publication.md)

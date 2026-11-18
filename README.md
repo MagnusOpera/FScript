@@ -232,8 +232,10 @@ Website development commands:
 make website-install
 make website-build
 make website
-make website-version version=X.Y.Z
+make website-docs
 ```
+
+Stable documentation follows the latest published release; Next follows `main`. See [website development and publication](website/README.md).
 
 ## Changelog
 

@@ -4,22 +4,7 @@ set -euo pipefail
 scripts="$(cd "$(dirname "$0")" && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
-mkdir -p "$fixture/repo/.github/scripts" "$fixture/repo/website" "$fixture/bin"
-cp "$scripts/release.sh" "$scripts/format-changelog.sh" "$scripts/extract-release-notes.sh" "$fixture/repo/.github/scripts/"
-
-first_version=0.2.0
-second_version=0.2.1
-slug=example/changelog
-first_baseline=0.1.0
-
-# Website tooling is unrelated to changelog generation. No package installs,
-# builds, network requests, real-repository commits, or pushes are performed.
-cat > "$fixture/bin/npm" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$fixture/bin/npm"
-export PATH="$fixture/bin:$PATH"
+mkdir -p "$fixture/repo"
 
 cat > "$fixture/repo/CHANGELOG.md" <<'CHANGELOG'
 # Changelog
@@ -79,82 +64,112 @@ printf '* First item.\n* Second item.\n' > "$fixture/stars-expected.md"
 "$scripts/format-changelog.sh" "$fixture/stars.md"
 diff -u "$fixture/stars-expected.md" "$fixture/stars.md"
 
-cd "$fixture/repo"
-touch website/.gitkeep
-git init -q
-git config user.name 'Changelog test'
-git config user.email 'changelog@example.invalid'
-git config commit.gpgSign false
-git config tag.gpgSign false
-git config core.hooksPath /dev/null
-git remote add origin git@github.com:example/changelog.git
-git add .
-git commit -qm fixture
-git tag 0.1.0
-
-# A dry run must leave both content and Git state untouched.
-head_before="$(git rev-parse HEAD)"
-.github/scripts/release.sh "$first_version" true > "$fixture/dryrun.log" 2>&1 || { cat "$fixture/dryrun.log"; exit 1; }
-[[ "$(git rev-parse HEAD)" == "$head_before" ]]
-git diff --exit-code
-if git rev-parse --verify "refs/tags/$first_version" >/dev/null 2>&1; then
-  echo "ERROR: Dry run created a release tag." >&2
-  exit 1
-fi
-
-.github/scripts/release.sh "$first_version" > "$fixture/first-release.log" 2>&1 || { cat "$fixture/first-release.log"; exit 1; }
-"$scripts/format-changelog.sh" --check CHANGELOG.md
-cat > "$fixture/expected-release.md" <<CHANGELOG
+cat > "$fixture/releases.md" <<'CHANGELOG'
 # Changelog
-
-Introductory text.
 
 ## [Unreleased]
 
+- Future feature.
+
 ## [0.2]
 
-### [$first_version]
+### [0.2.1]
 
-- First change.
-- Second change.
+- Patch fix.
 
-**Full Changelog**: https://github.com/$slug/compare/$first_baseline...$first_version
+**Full Changelog**: https://github.com/example/repo/compare/0.2.0...0.2.1
 
-## [0.1]
+### [0.2.0]
 
-### [0.1.0]
+- First release.
 
-- Existing change.
+**Full Changelog**: https://github.com/example/repo/compare/0.1.0...0.2.0
 CHANGELOG
-diff -u "$fixture/expected-release.md" CHANGELOG.md
+printf '%s\n\n%s\n' '- Patch fix.' '**Full Changelog**: https://github.com/example/repo/compare/0.2.0...0.2.1' > "$fixture/expected-notes.md"
+"$scripts/extract-release-notes.sh" 0.2.1 "$fixture/releases.md" > "$fixture/notes.md"
+diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
+cat "$fixture/releases.md" | "$scripts/extract-release-notes.sh" 0.2.1 - > "$fixture/notes.md"
+diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
+sed '/^## \[0.2\]$/d; s/^### \[0.2/## [0.2/' "$fixture/releases.md" > "$fixture/legacy.md"
+"$scripts/extract-release-notes.sh" 0.2.1 "$fixture/legacy.md" > "$fixture/notes.md"
+diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
+for invalid in missing empty no-bullets no-compare; do
+    case "$invalid" in
+        missing) printf '# Changelog\n' > "$fixture/invalid.md" ;;
+        empty) printf '### [0.2.1]\n' > "$fixture/invalid.md" ;;
+        no-bullets) printf '### [0.2.1]\n\nText only.\n' > "$fixture/invalid.md" ;;
+        no-compare) printf '### [0.2.1]\n\n- Change.\n' > "$fixture/invalid.md" ;;
+    esac
+    if "$scripts/extract-release-notes.sh" 0.2.1 "$fixture/invalid.md" >/dev/null 2>&1; then
+        echo "ERROR: Accepted $invalid release notes." >&2
+        exit 1
+    fi
+done
+printf 'Changelog formatting and release-note extraction tests passed.\n'
 
-# A second release must not accumulate blanks around headings or bullet lists.
-awk '{ print; if ($0 == "## [Unreleased]") print "\n\n- Third change.\n\n" }' CHANGELOG.md > "$fixture/next.md"
-cat "$fixture/next.md" > CHANGELOG.md
+# Release preparation runs locally on main and maintenance branches. Website
+# dependencies and generated snapshots must never participate in preparation.
+repo="$fixture/prepare"
+mkdir -p "$repo/.github/scripts" "$repo/website" "$fixture/bin"
+cp "$scripts/release.sh" "$scripts/format-changelog.sh" "$scripts/extract-release-notes.sh" "$repo/.github/scripts/"
+cat > "$fixture/bin/npm" <<'STUB'
+#!/usr/bin/env bash
+echo 'Release preparation must not invoke npm' >&2
+exit 99
+STUB
+chmod +x "$fixture/bin/npm"
+export PATH="$fixture/bin:$PATH"
+printf 'Keep website sources unchanged.\n' > "$repo/website/content.md"
+cp "$fixture/releases.md" "$repo/CHANGELOG.md"
+cd "$repo"
+git init -qb main
+git config user.name 'Release test'
+git config user.email 'release@example.invalid'
+git config commit.gpgSign false
+git config tag.gpgSign false
+git config core.hooksPath /dev/null
+git remote add origin git@github.com:example/repo.git
+git add .
+git commit -qm fixture
+git tag 0.2.1
+head_before="$(git rev-parse HEAD)"
+.github/scripts/release.sh 0.3.0 true > "$fixture/preview.log"
+grep -Fq '### [0.3.0]' "$fixture/preview.log"
+[[ "$(git rev-parse HEAD)" == "$head_before" ]]
+[[ -z "$(git status --porcelain)" ]]
+[[ "$(git tag --list | wc -l | tr -d ' ')" == 1 ]]
+.github/scripts/release.sh 0.3.0 > "$fixture/prepare-main.log"
+[[ "$(git cat-file -t 0.3.0)" == tag ]]
+[[ "$(git log -1 --pretty=%s)" == 'chore(release): 0.3.0' ]]
+[[ "$(git diff-tree --no-commit-id --name-only -r HEAD)" == CHANGELOG.md ]]
+[[ -z "$(git status --porcelain)" ]]
+grep -Fq 'https://github.com/example/repo/compare/0.2.1...0.3.0' CHANGELOG.md
+.github/scripts/extract-release-notes.sh 0.3.0 > "$fixture/main-notes.md"
+grep -Fq -- '- Future feature.' "$fixture/main-notes.md"
+[[ -z "$(awk '/^## \[Unreleased\]/{p=1;next} p && /^## /{exit} p && /^- /{print}' CHANGELOG.md)" ]]
+git switch -qc release/v0.3
+# A maintenance fix uses the same Unreleased -> version transition.
+python3 - <<'PYTHON'
+from pathlib import Path
+p = Path('CHANGELOG.md')
+p.write_text(p.read_text().replace('## [Unreleased]\n', '## [Unreleased]\n\n- Maintenance fix.\n', 1))
+PYTHON
 git add CHANGELOG.md
-git commit -qm 'Add another change'
-.github/scripts/release.sh "$second_version" > "$fixture/second-release.log" 2>&1 || { cat "$fixture/second-release.log"; exit 1; }
-"$scripts/format-changelog.sh" --check CHANGELOG.md
-[[ "$(grep -Fc '## [0.2]' CHANGELOG.md)" == 1 ]]
-cat > "$fixture/expected-notes.md" <<NOTES
-- Third change.
-
-**Full Changelog**: https://github.com/$slug/compare/$first_version...$second_version
-NOTES
-.github/scripts/extract-release-notes.sh "$second_version" > "$fixture/notes.md"
-diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
-cat > "$fixture/expected-notes.md" <<NOTES
-- First change.
-- Second change.
-
-**Full Changelog**: https://github.com/$slug/compare/$first_baseline...$first_version
-NOTES
-.github/scripts/extract-release-notes.sh "$first_version" > "$fixture/notes.md"
-diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
-
-# Older tags still have their original top-level patch headings.
-sed '/^## \[0.2\]$/d; s/^### \[0.2/## [0.2/' CHANGELOG.md > "$fixture/legacy.md"
-.github/scripts/extract-release-notes.sh "$first_version" "$fixture/legacy.md" > "$fixture/notes.md"
-diff -u "$fixture/expected-notes.md" "$fixture/notes.md"
-git diff --exit-code
-printf 'Changelog formatting and consecutive-release tests passed.\n'
+git commit -qm 'Fix a regression'
+.github/scripts/release.sh 0.3.1 > "$fixture/prepare-patch.log"
+[[ "$(git diff-tree --no-commit-id --name-only -r HEAD)" == CHANGELOG.md ]]
+grep -Fq 'https://github.com/example/repo/compare/0.3.0...0.3.1' CHANGELOG.md
+[[ "$(grep -Fc '## [0.3]' CHANGELOG.md)" == 1 ]]
+.github/scripts/extract-release-notes.sh 0.3.1 > "$fixture/patch-notes.md"
+grep -Fq -- '- Maintenance fix.' "$fixture/patch-notes.md"
+if .github/scripts/release.sh 0.3.1 true >/dev/null 2>&1; then
+  echo 'ERROR: Accepted an existing tag.' >&2; exit 1
+fi
+if .github/scripts/release.sh 0.4.0 true >/dev/null 2>&1; then
+  echo 'ERROR: Accepted a mismatched release branch.' >&2; exit 1
+fi
+printf 'Uncommitted change.\n' >> website/content.md
+if .github/scripts/release.sh 0.3.2 >/dev/null 2>&1; then
+  echo 'ERROR: Accepted a dirty checkout.' >&2; exit 1
+fi
+printf 'Local release preparation tests passed.\n'

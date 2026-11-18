@@ -2,6 +2,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import versions from './versions.json';
+import sources from './.generated/static/website-sources.json';
 
 const latestReleasedVersion = versions[0] ?? 'current';
 
@@ -21,6 +22,8 @@ const config: Config = {
   projectName: 'FScript',
 
   onBrokenLinks: 'throw',
+  staticDirectories: ['static', '.generated/static'],
+  customFields: {sources},
 
   i18n: {
     defaultLocale: 'en',
@@ -32,18 +35,22 @@ const config: Config = {
       'classic',
       {
         docs: {
-          sidebarPath: './sidebars.ts',
+          path: './.generated/next',
+          sidebarPath: './.generated/sidebars.json',
           routeBasePath: 'manual',
           lastVersion: latestReleasedVersion,
           versions: {
             current: {
               label: 'Next',
               banner: 'unreleased',
-              path: 'next',
+              path: versions.length > 0 ? 'next' : '',
             },
-            ...(versions.length > 0 ? {[latestReleasedVersion]: {banner: 'none'}} : {}),
+            ...(versions.length > 0 ? {[latestReleasedVersion]: {banner: 'none', label: `Stable (${sources.stable[0].tag})`}} : {}),
           },
-          editUrl: 'https://github.com/MagnusOpera/FScript/tree/main/website/',
+          editUrl: ({version, docPath}) => {
+            const ref = sources.stable.find((release) => release.version === version)?.tag ?? 'main';
+            return `https://github.com/MagnusOpera/FScript/blob/${ref}/website/docs/${docPath}`;
+          },
         },
         blog: false,
         theme: {

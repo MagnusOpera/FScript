@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-version website-typecheck
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-docs website-typecheck
 
 build: tb-build
 
@@ -59,6 +59,9 @@ verify-changelog: check-changelog-format
 release-prepare:
 	./.github/scripts/release.sh "$(version)" "$(dryrun)"
 
+release-check:
+	node .github/scripts/validate-release.mjs "$(version)"
+
 clean:
 	dotnet clean FScript.sln -c Release
 	find . -type d -name bin -o -name obj | xargs rm -rf
@@ -96,8 +99,8 @@ website-build:
 website:
 	cd website && npm run start
 
-website-version:
-	cd website && npm run version-docs -- $(version)
+website-docs:
+	cd website && npm run prepare:docs
 
 website-typecheck:
 	cd website && npm run typecheck
@@ -119,6 +122,7 @@ check-changelog-format:
 
 test-release-changelog:
 	./.github/scripts/test-release-changelog.sh
+	node --test website/scripts/*.test.mjs
 
 # Container-backed whole-repository checks use Terrabuild from PATH.
 .PHONY: tb-build tb-test tb-smoke tb-sdk tb-check test-terrabuild

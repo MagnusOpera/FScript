@@ -17,8 +17,19 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
+if [[ "$dryrun" != "true" && "$dryrun" != "false" ]]; then
+  echo "ERROR: dryrun must be true or false." >&2
+  exit 1
+fi
+
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
+
+branch="$(git branch --show-current)"
+if [[ "$branch" != "main" && "$branch" != "release/v${release_line}" ]]; then
+  echo "ERROR: Prepare ${version} on main or release/v${release_line}, not '${branch:-detached HEAD}'." >&2
+  exit 1
+fi
 
 if [[ ! -f CHANGELOG.md ]]; then
   echo "ERROR: CHANGELOG.md not found."
@@ -61,7 +72,7 @@ if ! grep -Eq '^[[:space:]]*-[[:space:]]+' <<<"$unreleased_body"; then
   exit 1
 fi
 
-candidate_tags="$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vu || true)"
+candidate_tags="$(git tag --merged HEAD --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vu || true)"
 
 previous_tag="$(
   {
@@ -162,30 +173,22 @@ if [[ "$dryrun" == "true" ]]; then
   echo "[DRY RUN] Would update CHANGELOG.md, commit and create annotated tag '${version}'."
   echo "[DRY RUN] Previous tag: ${previous_tag}"
   echo "[DRY RUN] Compare link: ${compare_link}"
+  cat "$updated_changelog"
   exit 0
 fi
 
 cp "$updated_changelog" CHANGELOG.md
 
-if [[ -d website ]]; then
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "ERROR: npm is required to version/build website docs during release."
-    exit 1
-  fi
-
-  echo "Preparing website docs for ${release_line} from ${version}..."
-  (
-    cd website
-    npm ci
-    npm run version-docs -- "${version}"
-    npm run build
-  )
-fi
-
-git add CHANGELOG.md website
+# The website assembles its manuals dynamically from main and published tags.
+# Release preparation owns only the changelog, its commit, and the tag.
+git add CHANGELOG.md
 git commit -m "chore(release): ${version}"
 git tag -a "${version}" -m "Release ${version}"
 
 echo "Release prepared successfully."
 echo "Next steps:"
-echo "  git push origin main --follow-tags"
+if [[ "$branch" == "main" ]]; then
+  echo "  Create release/v${release_line} at this commit before pushing the tag."
+fi
+echo "  make release-check version=${version}"
+echo "  git push origin release/v${release_line} --follow-tags"

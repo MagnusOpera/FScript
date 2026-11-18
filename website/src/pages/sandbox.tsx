@@ -231,7 +231,7 @@ export default function Sandbox() {
               <Heading as="h1" className={styles.title}>
                 FScript sandbox
               </Heading>
-              <p className={styles.subtitle}>Edit an example and run it with the JavaScript build of FScript.</p>
+              <p className={styles.subtitle}>Edit an example and run it with FScript Next, the preview JavaScript build.</p>
             </div>
             <div className={styles.toolbar}>
               <label className={styles.selectLabel}>
