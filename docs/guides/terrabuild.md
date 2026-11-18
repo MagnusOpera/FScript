@@ -3,19 +3,19 @@
 Install the latest stable Terrabuild release, at least 0.207.2 for GitHub report restoration and cached-log rendering, and a working Docker engine. The graph prepares its toolchain image automatically. Trusted GitHub builds publish missing images to GHCR, and test shards pull them. .NET, Node, and Clang are supplied by that image; they need not be installed on the host for these targets.
 
 ```sh
-# Build every .NET project, the JavaScript package, extension bundle, and website.
+# Build every .NET project and the JavaScript package.
 make build TB_FLAGS=--local-only
 
-# Run all .NET, debugger-adapter, JavaScript, extension, and website type checks.
-make tb-test TB_FLAGS=--local-only
+# Run all .NET, debugger-adapter, and JavaScript tests.
+make test TB_FLAGS=--local-only
 
 # Run everything, including sample smoke tests and the independent SDK check.
 make tb-check TB_FLAGS=--local-only
 ```
 
-`make build` always uses `terrabuild` from `PATH` through the same wrapper as `tb-build`; it fails if Terrabuild is unavailable. There is no host `dotnet build` fallback. For an explicit host build, run `dotnet build FScript.sln -c Release`.
+`make build` and `make test` always use `terrabuild` from `PATH` through the same wrapper as `tb-build` and `tb-test`; they fail if Terrabuild is unavailable. There is no host SDK fallback. For an explicit host build or .NET-only test run, use `dotnet build FScript.sln -c Release` or `dotnet test FScript.sln -c Release`.
 
-`tb-test` builds its prerequisites automatically. `tb-smoke` and `tb-sdk` select just those checks and their prerequisites. `config` defaults to Release; Terrabuild defaults to one concurrent task per processor; set `TB_PARALLEL` to override that limit. Existing `test` and release recipes remain available, and targets that depend on `build` now require Terrabuild and Docker. The full test graph currently expects Release because existing CLI integration tests launch Release binaries.
+`make test` (also available as `tb-test`) builds its prerequisites automatically and caches successful test results. `make test` also checks changelog formatting. Release and build-tool regression checks run separately with `make test-release-changelog test-release-workflows test-terrabuild`; ordinary test runs do not reinstall their npm dependencies or rerun these tooling suites. `tb-smoke` and `tb-sdk` select just those checks and their prerequisites. `config` defaults to Release; Terrabuild defaults to one concurrent task per processor; set `TB_PARALLEL` to override that limit. Targets that depend on `build` or `test` require Terrabuild and Docker. The full test graph currently expects Release because existing CLI integration tests launch Release binaries.
 
 The underlying command is:
 
@@ -59,7 +59,7 @@ Cached test success is not a fresh execution. Force a run when investigating a f
 
 ## GitHub test matrix
 
-The GitHub-only `.build/ci-shards.json` lists a static matrix. Each shard lists its direct project/target selections. Core and web use two invocations to avoid also selecting the full FFI test suite or the local website target. The build job validates that the union covers every test project without selecting unrelated tests. Local `make build`, `make test`, and `make tb-check` retain their existing behavior; local full FFI tests still run both Native AOT variants.
+The GitHub-only `.build/ci-shards.json` lists a static matrix. Each shard lists its direct project/target selections. Core and web use two invocations to avoid also selecting the full FFI test suite or the local website target. The build job validates that the union covers every test project without selecting unrelated tests. Local `make test` and `make tb-check` select the full test graph, including both Native AOT variants of the FFI tests.
 
 | Shard | Checks |
 | --- | --- |

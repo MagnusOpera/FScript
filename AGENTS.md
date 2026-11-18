@@ -10,7 +10,7 @@ Use these commands before opening or updating a PR:
 - Full test suite: `make test`
 - Non-regression smoke tests (all samples): `make smoke-tests`
 
-Equivalent direct commands:
+Explicit host SDK commands (without Terrabuild caching; tests cover .NET only):
 
 - `dotnet build FScript.sln -c Release`
 - `dotnet test FScript.sln -c Release`

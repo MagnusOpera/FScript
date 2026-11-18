@@ -8,6 +8,10 @@ make_command=$(command -v make)
 mkdir -p "$fixture/repo/.build" "$fixture/bin"
 cp "$root/Makefile" "$fixture/repo/Makefile"
 cp "$root/.build/run-terrabuild.sh" "$fixture/repo/.build/"
+# Stub changelog validation so make test needs no host Node.js/npm or .NET SDK.
+mkdir -p "$fixture/repo/.github/scripts"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/repo/.github/scripts/format-changelog.sh"
+chmod +x "$fixture/repo/.github/scripts/format-changelog.sh"
 # Isolate PATH so an installed Terrabuild cannot hide the missing-tool case.
 for tool in bash dirname mkdir rm grep tee; do
     ln -s "$(command -v "$tool")" "$fixture/bin/$tool"
@@ -97,9 +101,39 @@ for result in failed-graph failed-process missing-report; do
     fi
     grep -qx 'Terrabuild test output' "$fixture/log"
 done
+# The public test entry point must select the cached graph, forward settings,
+# and fail for graph/process/report errors just like the build entry point.
+run_test() {
+    PATH="$fixture/bin" TB_TEST_RESULT="$1" "$make_command" --no-print-directory -C "$fixture/repo" \
+        test config=Release TB_PARALLEL=3 TB_FLAGS='--local-only --retry' > "$fixture/log" 2>&1
+}
+if ! run_test success; then cat "$fixture/log"; exit 1; fi
+cat > "$fixture/expected-test-args" <<'ARGS'
+run
+test
+--local-only
+--retry
+--variable
+config=Release
+--parallel
+3
+--out
+.terrabuild/result.json
+ARGS
+diff -u "$fixture/expected-test-args" "$fixture/args"
+for result in failed-graph failed-process missing-report; do
+    if run_test "$result"; then
+        echo "ERROR: make test accepted $result." >&2
+        exit 1
+    fi
+done
 rm "$fixture/bin/terrabuild"
 if run_build success; then
     echo "ERROR: make build succeeded without Terrabuild on PATH." >&2
+    exit 1
+fi
+if run_test success; then
+    echo "ERROR: make test succeeded without Terrabuild on PATH." >&2
     exit 1
 fi
 test ! -e "$TB_TEST_DOTNET"

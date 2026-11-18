@@ -86,9 +86,9 @@ Source, extension tests, VSIX packaging, and marketplace publication live in [FS
 
 ## Repository Development
 
-Building from source requires Make, the latest stable [Terrabuild](https://github.com/MagnusOpera/Terrabuild/releases/latest) executable on `PATH`, and a running Docker engine. `make build` uses Terrabuild to prepare a container with the .NET SDK, Node.js, and native build tools. CI uses Terrabuild 0.207.2 or newer to restore cached test reports and render cached operation logs. Shared tool versions are defined in [`WORKSPACE`](WORKSPACE).
+Building from source requires Make, the latest stable [Terrabuild](https://github.com/MagnusOpera/Terrabuild/releases/latest) executable on `PATH`, and a running Docker engine. `make build` and `make test` use Terrabuild to prepare a container with the .NET SDK, Node.js, and native build tools. CI uses Terrabuild 0.207.2 or newer to restore cached test reports and render cached operation logs. Shared tool versions are defined in [`WORKSPACE`](WORKSPACE).
 
-See the [Terrabuild guide](docs/guides/terrabuild.md) for setup, caching, and container-based test commands such as `make tb-test` and `make tb-check`. The `make test` and `dotnet run` commands below use the host .NET SDK; `make test` also requires Node.js and npm on the host.
+See the [Terrabuild guide](docs/guides/terrabuild.md) for setup, caching, and container-based test commands such as `make tb-test` and `make tb-check`. `make test` builds prerequisites and reuses successful unchanged tests through Terrabuild. `dotnet run` uses the host .NET SDK.
 
 ### Build
 ```bash

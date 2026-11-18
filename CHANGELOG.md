@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Speed up repeated local `make test` runs by using Terrabuild to cache builds and successful tests, with tooling checks available separately.
 - Build CI toolchain images without publishing from pull requests or test runners, and explicitly authorize protected environment secrets across reusable workflows.
 - Keep pull-request and feature-branch CI free of stored credentials and restrict publishing and shared-cache credentials to protected environments.
 - Update repository metadata, build images, and future release links for FScriptLang while retaining Magnus Opera package identities.

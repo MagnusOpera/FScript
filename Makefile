@@ -2,9 +2,7 @@
 
 build: tb-build
 
-test: check-changelog-format test-release-changelog test-release-workflows test-terrabuild
-	dotnet test FScript.sln -c Release
-	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
+test: check-changelog-format tb-test
 
 benchmark-interpreters:
 	dotnet run --project benchmarks/FScript.Interpreter.Benchmarks -c Release -- $(or $(iterations),5) $(or $(size),2000)
