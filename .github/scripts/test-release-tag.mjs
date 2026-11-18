@@ -6,7 +6,7 @@ import path from 'node:path';
 import {test} from 'node:test';
 import {fileURLToPath} from 'node:url';
 
-const script = fileURLToPath(new URL('../../.github/scripts/release-tag.mjs', import.meta.url));
+const script = fileURLToPath(new URL('./release-tag.mjs', import.meta.url));
 
 test('tag normalization works through symlinks and returns numeric package versions', (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'release-tag-cli-'));
@@ -34,8 +34,8 @@ for (let i = 0; i < args.length; i++) if (args[i] === '-p') fs.writeFileSync(arg
   stub('envsubst', `const fs = require('node:fs');process.stdout.write(fs.readFileSync(0, 'utf8').replace(/\\$\\{([A-Z_0-9]+)\\}/g, (_, key) => process.env[key] ?? ''));`);
   const log = path.join(root, 'downloads.jsonl');
   const env = {...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, TAG_TEST_LOG: log, FSCRIPT_GH_REPO: 'example/repo'};
-  const generator = fileURLToPath(new URL('../../.github/scripts/generate-homebrew-tap', import.meta.url));
-  const template = fileURLToPath(new URL('../../.github/scripts/fscript-formula-template.rb', import.meta.url));
+  const generator = fileURLToPath(new URL('./generate-homebrew-tap', import.meta.url));
+  const template = fileURLToPath(new URL('./fscript-formula-template.rb', import.meta.url));
   const output = execFileSync('bash', [generator, 'v1.2.3', template], {env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']});
   assert.match(output, /version "1\.2\.3"/);
   assert.match(output, /class Fscript < Formula/);

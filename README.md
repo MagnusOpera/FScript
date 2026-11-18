@@ -191,7 +191,7 @@ Host integration lives in `src/FScript.Runtime`.
 
 ## Extensibility Model
 
-FScript is extended through host-provided externs. Registrations can also expose [host-managed types](docs/specs/host-managed-types.md) with immutable visible fields and opaque host state; scripts can read and transport them but cannot construct or update them. See the [embedding guide](website/docs/embedding/host-managed-types.md) for a complete example.
+FScript is extended through host-provided externs. Registrations can also expose [host-managed types](docs/specs/host-managed-types.md) with immutable visible fields and opaque host state; scripts can read and transport them but cannot construct or update them. See the [embedding guide](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/embedding/host-managed-types.md) for a complete example.
 
 Each extern declares:
 - a public name (for script calls),
@@ -217,25 +217,17 @@ See [`docs/specs/sandbox-and-security.md`](docs/specs/sandbox-and-security.md) f
 
 ## Documentation
 
-- Documentation website: `https://fscript.magnusopera.io/`
+- [Documentation website](https://fscript.magnusopera.io/)
+- [Website repository](https://github.com/FScriptLang/FScriptLang.github.io)
 - Documentation portal: [`docs/README.md`](docs/README.md)
 - Tutorial: [`docs/guides/getting-started-tutorial.md`](docs/guides/getting-started-tutorial.md)
-- [Complete standard-library signature index](website/docs/reference/stdlib-reference.md)
-- [Syntax and operators](website/docs/reference/syntax-reference.md)
+- [Complete standard-library signature index](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/stdlib-reference.md)
+- [Syntax and operators](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/syntax-reference.md)
 - Specifications index: [`docs/specs/README.md`](docs/specs/README.md)
 - Architecture index: [`docs/architecture/README.md`](docs/architecture/README.md)
 - FScript vs F# / OCaml: [`docs/guides/fsharp-ocaml-differences.md`](docs/guides/fsharp-ocaml-differences.md)
 
-Website development commands:
-
-```bash
-make website-install
-make website-build
-make website
-make website-docs
-```
-
-Stable documentation follows the latest published release; Next follows `main`. See [website development and publication](website/README.md).
+Website content and deployment are maintained independently in [FScriptLang/FScriptLang.github.io](https://github.com/FScriptLang/FScriptLang.github.io). See that repository for local development and publication instructions. Language release notes remain in this repository's `CHANGELOG.md`; the website fetches them for Stable history and Next's Unreleased section.
 
 ## Changelog
 

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {createRequire} from 'node:module';
+import {readFileSync, existsSync} from 'node:fs';
+import {load} from 'js-yaml';
 import {test} from 'node:test';
 
-const require = createRequire(new URL('../../website/package.json', import.meta.url));
-const {load} = require('js-yaml');
 const workflow = (name) => load(readFileSync(new URL(`../workflows/${name}.yml`, import.meta.url), 'utf8'));
 const list = (value) => value === undefined ? [] : Array.isArray(value) ? value : [value];
 const stepUsing = (job, action) => job.steps.find((step) => step.uses?.startsWith(action));
@@ -17,7 +15,6 @@ function dependsOn(jobs, job, prerequisite, seen = new Set()) {
 
 const tagged = workflow('on-push-tag');
 const publishing = workflow('on-release-published');
-const website = workflow('publish-website');
 
 test('a tag directly invokes all publication stages without a release event or manual draft', () => {
   assert.deepEqual(tagged.on.push.tags, ['v[0-9]*.[0-9]*.[0-9]*']);
@@ -33,7 +30,7 @@ test('a tag directly invokes all publication stages without a release event or m
   assert.ok(dependsOn(tagged.jobs, 'publish-artifacts', 'create-release'));
   assert.equal(tagged.jobs['publish-artifacts'].uses, './.github/workflows/on-release-published.yml');
   assert.equal(tagged.jobs['publish-artifacts'].permissions['id-token'], 'write');
-  assert.equal(tagged.jobs['publish-artifacts'].permissions.pages, 'write');
+  assert.equal(tagged.jobs['publish-artifacts'].permissions.pages, undefined);
   assert.ok(publishing.on.workflow_call.inputs.release_tag.required);
   assert.ok(publishing.on.workflow_dispatch.inputs.release_tag.required);
   assert.equal(publishing.on.release, undefined, 'Publication must not depend on a recursive release event');
@@ -70,27 +67,17 @@ test('all registries support direct invocation and retries against the explicit 
   assert.equal(jobs['update-homebrew-tap'].with.version, undefined);
 });
 
-test('successful package publication always deploys the website, including retry runs', () => {
-  const job = publishing.jobs['publish-website'];
-  assert.ok(dependsOn(publishing.jobs, 'publish-website', 'update-homebrew-tap'));
-  assert.equal(job.uses, './.github/workflows/publish-website.yml');
-  assert.equal(job.permissions.pages, 'write');
-  assert.equal(job.permissions['id-token'], 'write');
-  assert.ok(Object.hasOwn(website.on, 'workflow_call'));
-  assert.ok(Object.hasOwn(website.on, 'workflow_dispatch'));
-  assert.equal(website.on.release, undefined);
-});
-
-test('release website code follows the invoking ref while Next content follows main', () => {
-  const deploy = website.jobs['deploy-website'];
-  const checkout = stepUsing(deploy, 'actions/checkout');
-  assert.equal(checkout.with.ref, '${{ github.ref }}', 'A release must not rebuild stale website code from main');
-  assert.equal(checkout.with['fetch-depth'], 0);
-  assert.equal(stepUsing(deploy, 'actions/setup-dotnet').with['dotnet-version'], '${{ steps.next-tools.outputs.dotnet_sdk }}');
-  assert.ok(deploy.steps.some((step) => step.id === 'next-tools' && step.run.includes('git show refs/remotes/origin/main:WORKSPACE')));
-  const build = deploy.steps.find((step) => step.run === 'make website-build');
-  assert.equal(build.env.FSCRIPT_WEBSITE_NEXT_REF, 'refs/remotes/origin/main');
-  assert.ok(deploy.steps.some((step) => step.run?.includes('git status --porcelain')));
-  assert.ok(stepUsing(deploy, 'actions/github-script').with.script.includes('isReleaseTag(r.tag_name)'));
-  assert.equal(stepUsing(deploy, 'actions/deploy-pages').if, "steps.releases.outputs.has_stable == 'true'", 'Do not deploy a preview or legacy release before the first prefixed release');
+test('language CI and publication have no website checkout, deployment, or Pages permissions', () => {
+  assert.equal(existsSync(new URL('../workflows/publish-website.yml', import.meta.url)), false);
+  assert.equal(existsSync(new URL('../../website/PROJECT', import.meta.url)), false);
+  for (const name of ['on-push-tag', 'on-release-published', 'ci']) {
+    const parsed = workflow(name);
+    assert.equal(parsed.permissions?.pages, undefined);
+    for (const job of Object.values(parsed.jobs)) {
+      assert.equal(job.permissions?.pages, undefined);
+      assert.doesNotMatch(JSON.stringify(job), /publish-website|deploy-pages|configure-pages|website\/|make website/);
+    }
+  }
+  const shards = JSON.parse(readFileSync(new URL('../../.build/ci-shards.json', import.meta.url), 'utf8'));
+  assert.ok(shards.include.every(shard => shard.runs.every(run => !run.projects.includes('website'))));
 });

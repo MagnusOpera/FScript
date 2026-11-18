@@ -33,12 +33,12 @@ This folder is organized into three layers:
 
 ## User references
 
-The [website manual sources](../website/docs/intro.md) separate a guided learning path from lookup material:
+The [website manual sources](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/intro.md) separate a guided learning path from lookup material:
 
-- [Standard library overview](../website/docs/stdlib/overview.md) and [complete signature index](../website/docs/reference/stdlib-reference.md)
-- [Syntax and operators](../website/docs/reference/syntax-reference.md) and [native types](../website/docs/reference/native-types-reference.md)
-- [CLI](../website/docs/reference/cli-reference.md), [environment configuration](../website/docs/reference/environment-configuration.md), and [editor settings/commands](../website/docs/reference/editor-reference.md)
-- [.NET embedding](../website/docs/embedding/real-world-embedding.md), [JavaScript embedding](../website/docs/embedding/fable-javascript.md), and [host-provided types](../website/docs/embedding/host-managed-types.md)
+- [Standard library overview](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/overview.md) and [complete signature index](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/stdlib-reference.md)
+- [Syntax and operators](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/syntax-reference.md) and [native types](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/native-types-reference.md)
+- [CLI](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/cli-reference.md), [environment configuration](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/environment-configuration.md), and [editor settings/commands](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/editor-reference.md)
+- [.NET embedding](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/embedding/real-world-embedding.md), [JavaScript embedding](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/embedding/fable-javascript.md), and [host-provided types](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/embedding/host-managed-types.md)
 
 ## Deep dives
 

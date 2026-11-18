@@ -240,11 +240,3 @@ jobs:
       release_tag: ${{ inputs.release_tag }}
       dry-run: false
     secrets: inherit
-
-  publish-website:
-    needs: update-homebrew-tap
-    uses: ./.github/workflows/publish-website.yml
-    permissions:
-      contents: read
-      pages: write
-      id-token: write

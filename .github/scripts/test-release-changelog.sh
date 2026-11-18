@@ -107,10 +107,10 @@ for invalid in missing empty no-bullets no-compare; do
 done
 printf 'Changelog formatting and release-note extraction tests passed.\n'
 
-# Release preparation runs locally on main and maintenance branches. Website
-# dependencies and generated snapshots must never participate in preparation.
+# Release preparation runs without website sources or npm dependencies.
+# Only CHANGELOG.md may participate in preparation.
 repo="$fixture/prepare"
-mkdir -p "$repo/.github/scripts" "$repo/website" "$fixture/bin"
+mkdir -p "$repo/.github/scripts" "$fixture/bin"
 cp "$scripts/release.sh" "$scripts/format-changelog.sh" "$scripts/extract-release-notes.sh" "$scripts/release-tag.mjs" "$scripts/check-unreleased-changelog.sh" "$repo/.github/scripts/"
 cat > "$fixture/bin/npm" <<'STUB'
 #!/usr/bin/env bash
@@ -119,7 +119,7 @@ exit 99
 STUB
 chmod +x "$fixture/bin/npm"
 export PATH="$fixture/bin:$PATH"
-printf 'Keep website sources unchanged.\n' > "$repo/website/content.md"
+printf 'Keep language sources unchanged.\n' > "$repo/README.md"
 sed 's/^### \[v/### [/' "$fixture/releases.md" > "$repo/CHANGELOG.md"
 cd "$repo"
 git init -qb main
@@ -174,7 +174,7 @@ fi
 if .github/scripts/release.sh v0.4.0 true >/dev/null 2>&1; then
   echo 'ERROR: Accepted a mismatched release branch.' >&2; exit 1
 fi
-printf 'Uncommitted change.\n' >> website/content.md
+printf 'Uncommitted change.\n' >> README.md
 if .github/scripts/release.sh v0.3.2 >/dev/null 2>&1; then
   echo 'ERROR: Accepted a dirty checkout.' >&2; exit 1
 fi

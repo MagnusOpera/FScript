@@ -1,31 +1,44 @@
 # Website publication
 
-The website uses Docusaurus versioning to expose exactly two editions. Canonical Next documentation remains in `website/docs` beside source code. Stable documentation comes from that same path at a published release tag. Historical manual snapshots are not stored or published.
+The documentation website is maintained and deployed independently in
+[FScriptLang/FScriptLang.github.io](https://github.com/FScriptLang/FScriptLang.github.io),
+under the Magnus Opera umbrella. Its production URL remains
+[fscript.magnusopera.io](https://fscript.magnusopera.io/).
 
-## Source selection
+## Ownership
 
-Production checks out the invoking ref with full history and tags. This selects the website implementation independently of the documentation sources; a release branch can deploy its updated website while main continues development with an older website implementation. The GitHub release API supplies the inventory of published releases. `website/scripts/assemble-docs.mjs` excludes drafts and prereleases, then selects the highest canonical `vX.Y.Z` tag. Publication date does not determine version precedence, so publishing a patch for an older line does not roll Stable back.
+The website repository owns the landing page, tutorials, Stable and Next
+documentation, browser playground, and GitHub Pages deployment. Its initial
+copies preserved the shipped 0.94.3 manual and the unreleased documentation
+from main. Further edits and promotions happen in that repository without
+requiring a language release. FScript no longer contains website sources,
+build targets, CI selections, or Pages publication permissions.
 
-Assembly resolves the selected tag and `refs/remotes/origin/main` to immutable commit IDs before exporting content. Each edition uses its own documentation and sidebar. Stable's complete released changelog comes from the tagged source; Next renders only the Unreleased section of its own source. Both old top-level patch headings and grouped release-line headings are supported.
+The playground consumes the latest public `@magnusopera/fscript` npm package.
+Both documentation editions use that published interpreter. The website does
+not compile an interpreter from FScript main or require this repository's
+.NET toolchain.
 
-Generated Docusaurus inputs live in ignored `website/.generated`, `website/versioned_docs`, `website/versioned_sidebars`, and `website/versions.json`. Canonical pages, changelogs, branches, tags, and commits remain unchanged. All source inputs are validated before generated directories are replaced. `/website-sources.json` publishes the selected source identities.
+## Changelog and release boundary
 
-## Build modes
+Language release notes remain in this repository's `CHANGELOG.md`. Keep the
+top Unreleased section, version sections, and their original comparison links.
+The website fetches this public file from main: Stable displays history through
+its configured documentation release, and Next displays only Unreleased.
+Archived notes are not moved or rewritten as part of the website migration.
 
-A deployment always supplies the published release inventory and an explicit Next revision. A missing tag or an inventory without a stable release fails the build. A development or Terrabuild preview without an inventory renders only the working-tree Next edition at `/manual`, without Git or network access. This mode preserves live editing and makes normal repository builds independent of GitHub availability.
+`make release-prepare version=vX.Y.Z` continues to move Unreleased notes into
+a version section, commit only the changelog, and create the annotated tag.
+Release validation and artifact publication are unchanged. Only canonical
+`vX.Y.Z` tags are accepted; package versions and archive names remain numeric.
+No existing Git tags, GitHub releases, or Homebrew formulas are migrated.
 
-The website shell uses the deployment checkout. The JavaScript playground is compiled from a temporary export of the exact main commit recorded for Next documentation. The .NET SDK is selected from main's WORKSPACE so Next can advance its toolchain independently of a maintenance release. Tool restoration and Fable compilation run against that export, write output only to the ignored generated directory, and remove the temporary source afterwards. Local previews compile their working-tree source without requiring Git. The playground is labelled Next.
+The tag workflow still waits for CI, macOS verification, signing, and
+notarization before publishing the release. It then distributes NuGet, npm,
+editor extensions, and the Homebrew tap. It does not deploy or dispatch the
+website. Website pushes, manual runs, and scheduled builds refresh the site
+independently, including new npm packages and upstream changelog changes.
 
-## Release boundary
-
-Future tags must be reachable from `release/vX.Y`, matching the tag's major and minor version. The tag workflow validates ancestry and the tagged changelog before building artifacts. The validator is read-only. Maintainers use local `make release-prepare` to move Unreleased notes into a version section, add the compare link, commit only the changelog, and create an annotated tag. Its dry run previews the exact changelog without mutations. Preparation runs on main before creating an initial release branch, or directly on a matching maintenance branch. It does not install website dependencies, build the site, or commit generated manuals. Maintainers validate and push the prepared tag. CI verifies all build outputs and macOS signing/notarization before automatically publishing the GitHub Release and explicitly invoking package, extension, tap, and website distribution. No manual draft step or chained release event is needed.
-
-Website deployment runs on main pushes, manual dispatch, and explicit calls from the release distribution workflow after all package registries and the tap succeed. Reusable workflows keep every stage visible in the tag run and avoid relying on GitHub events generated by workflow tokens. The existing NuGet publisher workflow filename is retained for trusted publishing identity. CI runs workflow dependency tests after restoring frontend dependencies, so cached website builds cannot hide changes to release orchestration. It resolves sources when the serialized deployment job runs, builds both editions, verifies their rendered changelog headings and provenance, and checks repository cleanliness. It never promotes an unpublished tag. Unprefixed published tags are excluded from release selection; no historical Git tags, GitHub releases, or tap entries are migrated. A first published prefixed tag is required before the new Stable site can deploy; otherwise the workflow logs a notice and skips deployment without selecting a legacy tag or publishing a preview.
-
-See [website commands and release procedure](../../website/README.md).
-
-## Release identity
-
-`.github/scripts/release-tag.mjs` validates the single accepted release identity, `vX.Y.Z`, and returns the numeric package version and release line. No unprefixed, suffixed, whitespace-padded, or zero-padded tags are accepted. Release preparation, validation, publication, CLI verification, website selection, and tap generation share this contract.
-
-GitHub refs and download URLs retain `v`; .NET, npm, VS Code, CLI version comparisons, Homebrew versions, and archive filenames use the numeric version. CI exports the normalized version from its validation job before any packaging job can run. New changelog sections use the prefixed tag, while historical source records remain archival data rather than supported release inputs. The first prefixed release's compare link starts at the initial commit; subsequent links use prefixed ancestors.
+See the [website development and publication instructions](https://github.com/FScriptLang/FScriptLang.github.io#readme)
+for site maintenance. GitHub Pages and Cloudflare configuration belong to that
+site's maintainers.

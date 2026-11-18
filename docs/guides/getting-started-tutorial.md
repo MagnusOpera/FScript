@@ -405,7 +405,7 @@ Tasks use the native type form `'a task`. Spawned thunks run concurrently, `Task
 The core library (`List`, `Option`, `Map`, `String`, scalar helpers, and `ignore`) is always available. `Console`, `Task`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, and `Guid` require runtime registration and are enabled by default in the CLI. JavaScript hosts supply their own runtime capabilities.
 
 Full reference:
-- [Standard library signature index](../../website/docs/reference/stdlib-reference.md)
+- [Standard library signature index](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/stdlib-reference.md)
 - [`docs/specs/stdlib-functions.md`](../specs/stdlib-functions.md)
 
 ## 10. Imports and file modules

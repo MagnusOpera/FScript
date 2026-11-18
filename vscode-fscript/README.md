@@ -23,7 +23,7 @@ let addInt x (y: int) = x + y
 
 Each `add` call accepts either two integers or two floats. Mixed numeric types and nonnumeric operands produce diagnostics; no implicit conversion is performed. `numeric` is also supported in explicit annotations and syntax highlighting. Remainder (`%`) accepts integers only.
 
-See the [type-system guide](../website/docs/language/type-system.md) for the type hierarchy.
+See the [type-system guide](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/language/type-system.md) for the type hierarchy.
 
 ## Development
 
@@ -69,7 +69,7 @@ Follow the repository [release process](../AGENTS.md#release-process-tags-and-gi
 - `FScript: View Inferred AST`: renders inferred AST JSON from the active file.
 - `FScript: Select Configuration`: choose automatic discovery, a manifest, or no configuration for a workspace folder.
 
-See the complete [settings and commands reference](../website/docs/reference/editor-reference.md) for defaults and trust behavior.
+See the complete [settings and commands reference](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/editor-reference.md) for defaults and trust behavior.
 
 ## Logs and Status
 

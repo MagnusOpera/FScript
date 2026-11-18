@@ -72,7 +72,7 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
         fs.rmSync(fixture, { recursive: true, force: true });
     }
 });
-test('workflow and changelog edits preserve VS Code cache keys while website tracks release notes', () => {
+test('workflow and changelog edits preserve VS Code cache keys and packaging includes current release notes', () => {
     const root = fileURLToPath(new URL('../../', import.meta.url));
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-frontend-inputs-'));
     try {
@@ -82,6 +82,7 @@ test('workflow and changelog edits preserve VS Code cache keys while website tra
             const source = path.join(root, file);
             const destination = path.join(fixture, file);
             fs.mkdirSync(path.dirname(destination), { recursive: true });
+            if (!fs.existsSync(source)) continue;
             if (fs.lstatSync(source).isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(source), destination);
             else fs.copyFileSync(source, destination);
         }
@@ -94,10 +95,10 @@ test('workflow and changelog edits preserve VS Code cache keys while website tra
         execFileSync('git', ['add', '.'], { cwd: fixture });
         execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--quiet', '-m', 'fixture'], { cwd: fixture });
         const keys = () => {
-            execFileSync('terrabuild', ['run', 'build', '--project', 'vscode', 'website', '--dry-run', '--local-only', '--debug'],
+            execFileSync('terrabuild', ['run', 'build', '--project', 'vscode', '--dry-run', '--local-only', '--debug'],
                 { cwd: fixture, stdio: 'pipe', timeout: 30000 });
             const graph = JSON.parse(fs.readFileSync(path.join(fixture, 'terrabuild-debug.json'), 'utf8'));
-            return Object.fromEntries(graph.nodes.filter(node => ['vscode', 'website'].includes(node.projectName) && node.target === 'build')
+            return Object.fromEntries(graph.nodes.filter(node => node.projectName === 'vscode' && node.target === 'build')
                 .map(node => [node.projectName, node.fingerprint.cacheKey]));
         };
         const original = keys();
@@ -106,7 +107,6 @@ test('workflow and changelog edits preserve VS Code cache keys while website tra
         fs.appendFileSync(path.join(fixture, 'CHANGELOG.md'), '\n- Release-note-only change.\n');
         const releaseNotes = keys();
         assert.equal(releaseNotes.vscode, original.vscode, 'Release notes are not a compilation input.');
-        assert.notEqual(releaseNotes.website, original.website, 'The website must still track the changelog.');
         execFileSync('npm', ['run', 'vscode:prepublish'], { cwd: path.join(fixture, 'vscode-fscript'), stdio: 'pipe' });
         assert.equal(fs.readFileSync(path.join(fixture, 'vscode-fscript/CHANGELOG.md'), 'utf8'),
             fs.readFileSync(path.join(fixture, 'CHANGELOG.md'), 'utf8'), 'Packaging must include current release notes.');

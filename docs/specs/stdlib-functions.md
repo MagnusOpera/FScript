@@ -242,16 +242,16 @@ The following functions extend the standard library. All core additions are rese
 
 The website module references are the detailed behavioral contracts, including examples and failure behavior:
 
-- [scalars](../../website/docs/stdlib/scalars.md)
-- [string](../../website/docs/stdlib/string.md)
-- [list](../../website/docs/stdlib/list.md)
-- [map](../../website/docs/stdlib/map.md)
-- [option](../../website/docs/stdlib/option.md)
-- [hash](../../website/docs/stdlib/hash.md)
-- [path](../../website/docs/stdlib/path.md)
-- [glob](../../website/docs/stdlib/glob.md)
-- [semver](../../website/docs/stdlib/semver.md)
-- [encoding](../../website/docs/stdlib/encoding.md)
+- [scalars](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/scalars.md)
+- [string](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/string.md)
+- [list](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/list.md)
+- [map](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/map.md)
+- [option](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/option.md)
+- [hash](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/hash.md)
+- [path](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/path.md)
+- [glob](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/glob.md)
+- [semver](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/semver.md)
+- [encoding](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/encoding.md)
 
 ### Added signatures
 
@@ -367,7 +367,7 @@ Paths always use portable slash-only lexical rules. Glob patterns never enumerat
 
 ## Task composition
 
-The full optional runtime Task API is specified in the [Task reference](../../website/docs/stdlib/task.md). Additions:
+The full optional runtime Task API is specified in the [Task reference](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/task.md). Additions:
 
 - `Task.delay : int -> unit task`
 - `Task.fromResult : 'a -> 'a task`
@@ -409,12 +409,12 @@ deterministic scheduling, shrinking, and replay.
 
 ## Hosted interpreter capability requirements
 
-All core functions and values and pure runtime transformations require no permissions. `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Console.writeLine`, and `Guid.new` require `IO`. `Console.readLine` requires `IO | Interactive`. All eight Task functions require `Threading`. Lexical `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, and `Fs.fileNameWithoutExtension` require none. Provider-owned SDK externs require `Native`; callback operations retain their individual requirements. Hosted interpreter grants default to none; CLI and compiled execution remain unrestricted by this policy. The [signature index](../../website/docs/reference/stdlib-reference.md) lists the required grants on every function row.
+All core functions and values and pure runtime transformations require no permissions. `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Console.writeLine`, and `Guid.new` require `IO`. `Console.readLine` requires `IO | Interactive`. All eight Task functions require `Threading`. Lexical `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, and `Fs.fileNameWithoutExtension` require none. Provider-owned SDK externs require `Native`; callback operations retain their individual requirements. Hosted interpreter grants default to none; CLI and compiled execution remain unrestricted by this policy. The [signature index](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/stdlib-reference.md) lists the required grants on every function row.
 
 ## Process runtime module
 
-`Process.exec : string -> string list -> ProcessOptions -> ProcessResult task` requires `Native | Threading` in hosted interpretation. `Process.defaults` and its record/union types require none. Both native backends and CLI implement the same API; JavaScript and standalone LIR execution do not supply it. See the [Process module contract](../../website/docs/stdlib/process.md) for options, union payloads, defaults, failure prefixes, encoding, path resolution, and lifecycle behavior. Process execution is observable and must not be eliminated or combined by compiler optimizations.
+`Process.exec : string -> string list -> ProcessOptions -> ProcessResult task` requires `Native | Threading` in hosted interpretation. `Process.defaults` and its record/union types require none. Both native backends and CLI implement the same API; JavaScript and standalone LIR execution do not supply it. See the [Process module contract](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/process.md) for options, union payloads, defaults, failure prefixes, encoding, path resolution, and lifecycle behavior. Process execution is observable and must not be eliminated or combined by compiler optimizations.
 
 ## Nested FScript execution
 
-`FScript.exec : string -> string list -> FScriptOptions -> FScriptResult task` requires Threading, without IO for source loading. `FScript.defaults` and its data types require none. The [FScript module contract](../../website/docs/stdlib/fscript.md) defines exact options, result/diagnostic shapes, argument injection, root and permission inheritance, provider exclusion, cancellation, depth 32, console behavior, and compiled-caller defaults. Execution is an ordinary observable Runtime FFI call with no compiler intrinsic or LIR operation.
+`FScript.exec : string -> string list -> FScriptOptions -> FScriptResult task` requires Threading, without IO for source loading. `FScript.defaults` and its data types require none. The [FScript module contract](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/fscript.md) defines exact options, result/diagnostic shapes, argument injection, root and permission inheritance, provider exclusion, cancellation, depth 32, console behavior, and compiled-caller defaults. Execution is an ordinary observable Runtime FFI call with no compiler intrinsic or LIR operation.

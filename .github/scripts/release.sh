@@ -179,7 +179,7 @@ fi
 
 cp "$updated_changelog" CHANGELOG.md
 
-# The website assembles its manuals dynamically from main and published tags.
+# Website content and deployment are maintained independently in FScriptLang/FScriptLang.github.io.
 # Release preparation owns only the changelog, its commit, and the tag.
 git add CHANGELOG.md
 git commit -m "chore(release): ${tag}"

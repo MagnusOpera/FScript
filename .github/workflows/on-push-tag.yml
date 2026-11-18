@@ -360,6 +360,5 @@ jobs:
       release_tag: ${{ github.ref_name }}
     permissions:
       contents: write
-      pages: write
       id-token: write
     secrets: inherit
