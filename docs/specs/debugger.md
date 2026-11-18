@@ -4,6 +4,10 @@ FScript provides a .NET debugger through the CLI and VS Code extension. The runt
 session API is independent of the Debug Adapter Protocol (DAP). Fable execution
 does not expose debugging APIs.
 
+The VS Code client and real editor smoke test are maintained in
+[FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension).
+The CLI adapter, debugger runtime, and protocol tests remain in FScript.
+
 ## Launch
 
 The extension starts the CLI selected by the resource-scoped `fscript.cli.path`

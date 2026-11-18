@@ -27,7 +27,7 @@ function visit(directory, inResults = false) {
     }
 }
 
-for (const directory of ['src', 'tests', 'samples', 'vscode-fscript']) {
+for (const directory of ['src', 'tests', 'samples']) {
     visit(path.join(root, directory));
 }
 reports.push(...Array.from(latestTrx.values(), result => result.file));

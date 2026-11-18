@@ -82,7 +82,7 @@ FScript has a first-party VS Code extension with syntax highlighting and Languag
 - Open VSX: `https://open-vsx.org/extension/MagnusOpera/fscript`
 
 The extension uses automatic .NET runtime acquisition via `.NET Install Tool` and falls back to `dotnet` from `PATH` when needed.
-Source lives in [`vscode-fscript/`](vscode-fscript/).
+Source, extension tests, VSIX packaging, and marketplace publication live in [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). The language server and CLI debugger remain in this repository.
 
 ## Repository Development
 

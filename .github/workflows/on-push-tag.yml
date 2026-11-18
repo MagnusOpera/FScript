@@ -73,38 +73,6 @@ jobs:
         with:
           node-version: ${{ steps.tool-versions.outputs.node }}
 
-      - name: Install extension dependencies
-        working-directory: vscode-fscript
-        run: npm ci
-
-      - name: Sync extension version to tag
-        shell: bash
-        working-directory: vscode-fscript
-        run: |
-          TAG_VERSION="${BUILD_VERSION}"
-          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Build and stage language server
-        shell: bash
-        run: |
-          rm -rf vscode-fscript/server
-          dotnet publish src/FScript.LanguageServer/FScript.LanguageServer.csproj -c Release -p:PublishAot=false -p:Version=${{ env.BUILD_VERSION }} -o vscode-fscript/server
-
-      - name: Verify staged server assembly versions and SDK providers
-        env:
-          FSCRIPT_RELEASE_SERVER_DIR: ${{ github.workspace }}/vscode-fscript/server
-          FSCRIPT_RELEASE_VERSION: ${{ env.BUILD_VERSION }}
-        run: dotnet test tests/FScript.LanguageServer.Tests/FScript.LanguageServer.Tests.csproj -c Release --filter "FullyQualifiedName~ReleasePackagingTests|FullyQualifiedName~EnvironmentTests"
-
-      - name: Install extension packaging tool
-        env:
-          VSCE_VERSION: ${{ steps.tool-versions.outputs.vsce }}
-        run: npm install -g "@vscode/vsce@$VSCE_VERSION"
-
-      - name: Package extension
-        working-directory: vscode-fscript
-        run: vsce package
-
       - name: Publish platform binaries and pack NuGet packages
         run: make publish publish-darwin publish-linux publish-windows pack-nuget config=Release version="$BUILD_VERSION"
 
@@ -131,7 +99,7 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p "${RUNNER_TEMP}/release-assets"
-          cp .out/*.zip .out/*.nupkg .out/*.tgz vscode-fscript/*.vsix "${RUNNER_TEMP}/release-assets/"
+          cp .out/*.zip .out/*.nupkg .out/*.tgz "${RUNNER_TEMP}/release-assets/"
 
       - name: Upload release packages
         uses: actions/upload-artifact@v4
@@ -351,7 +319,6 @@ jobs:
             ${{ runner.temp }}/release-assets/*.zip
             ${{ runner.temp }}/release-assets/*.nupkg
             ${{ runner.temp }}/release-assets/*.tgz
-            ${{ runner.temp }}/release-assets/*.vsix
 
   publish-artifacts:
     needs: create-release

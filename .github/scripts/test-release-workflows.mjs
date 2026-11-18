@@ -49,7 +49,7 @@ test('only signed and notarized macOS output can reach the public release', () =
 
 test('all registries support direct invocation and retries against the explicit published tag', () => {
   const jobs = publishing.jobs;
-  for (const name of ['release-nuget', 'release-npm', 'publish-vscode-marketplace', 'publish-open-vsx']) {
+  for (const name of ['release-nuget', 'release-npm']) {
     const job = jobs[name];
     assert.equal(job.if, undefined, `${name} must also run for workflow_call and workflow_dispatch`);
     assert.ok(dependsOn(jobs, name, 'validate-published-release'));
@@ -80,4 +80,14 @@ test('language CI and publication have no website checkout, deployment, or Pages
   }
   const shards = JSON.parse(readFileSync(new URL('../../.build/ci-shards.json', import.meta.url), 'utf8'));
   assert.ok(shards.include.every(shard => shard.runs.every(run => !run.projects.includes('website'))));
+});
+
+test('extension packaging and registry credentials belong to the standalone extension repository', () => {
+  assert.equal(existsSync(new URL('../../vscode-fscript/PROJECT', import.meta.url)), false);
+  for (const name of ['on-push-tag', 'on-release-published', 'ci']) {
+    assert.doesNotMatch(JSON.stringify(workflow(name)), /vscode-fscript|\.vsix|VSCE_TOKEN|OPEN_VSX_TOKEN|publish-vscode-marketplace|publish-open-vsx/);
+  }
+  assert.deepEqual(list(publishing.jobs['update-homebrew-tap'].needs), ['release-nuget', 'release-npm']);
+  const shards = JSON.parse(readFileSync(new URL('../../.build/ci-shards.json', import.meta.url), 'utf8'));
+  assert.ok(shards.include.every(shard => shard.runs.every(run => !run.projects.includes('vscode'))));
 });

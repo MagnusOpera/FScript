@@ -114,7 +114,7 @@ In VS Code Restricted Mode, discovery and TOML parsing are available but package
 
 ## Editor startup
 
-Development and extension-test hosts build the local server asynchronously, once per extension activation; multiple folder clients share that build. Packaged extensions use their bundled server. Resource-scoped server settings apply to every environment client owned by that folder. Run Current Script and debugger launches resolve the same document-specific selection; CLI discovery itself remains beside-only. Default editor completion and hover expose the visible fields of the built-in `Env` value from its built-in type definition.
+The client is maintained in [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). Development and extension-test hosts can build that checkout's pinned `.build/fscript` server asynchronously, once per extension activation; multiple folder clients share that build. Use `fscript.server.path` to test other local server builds. Packaged extensions use their bundled server. Resource-scoped server settings apply to every environment client owned by that folder. Run Current Script and debugger launches resolve the same document-specific selection; CLI discovery itself remains beside-only. Default editor completion and hover expose the visible fields of the built-in `Env` value from its built-in type definition.
 
 ## Run a script with its selected environment
 

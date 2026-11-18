@@ -12,8 +12,6 @@ const source = `locals {
         dotnet_sdk: "10.0.999" # SDK used by Docker and Actions
         node: "99"
         terrabuild: "latest"
-        vsce: "9.8.7"
-        ovsx: "9.6"
     }
 }`;
 
@@ -23,7 +21,7 @@ test('workflow outputs follow the checked-out WORKSPACE without version fallback
         fs.writeFileSync(path.join(fixture, 'WORKSPACE'), source);
         const script = fileURLToPath(new URL('../../.build/read-tool-versions.mjs', import.meta.url));
         const output = execFileSync(process.execPath, [script], { cwd: fixture, encoding: 'utf8' });
-        assert.equal(output, 'dotnet_sdk=10.0.999\nnode=99\nterrabuild=latest\nvsce=9.8.7\novsx=9.6\n');
+        assert.equal(output, 'dotnet_sdk=10.0.999\nnode=99\nterrabuild=latest\n');
     } finally {
         fs.rmSync(fixture, { recursive: true, force: true });
     }
@@ -68,51 +66,6 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
         const dockerfile = path.join(fixture, '.build/toolchain/Dockerfile');
         fs.appendFileSync(dockerfile, '\nENV TOOLCHAIN_IDENTITY_REGRESSION=1\n');
         assert.notEqual(image(), original);
-    } finally {
-        fs.rmSync(fixture, { recursive: true, force: true });
-    }
-});
-test('workflow and changelog edits preserve VS Code cache keys and packaging includes current release notes', () => {
-    const root = fileURLToPath(new URL('../../', import.meta.url));
-    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-frontend-inputs-'));
-    try {
-        // Copy tracked inputs only; generated packaging files must stay untracked.
-        const files = execFileSync('git', ['ls-files', '-z'], { cwd: root }).toString().split('\0').filter(Boolean);
-        for (const file of files) {
-            const source = path.join(root, file);
-            const destination = path.join(fixture, file);
-            fs.mkdirSync(path.dirname(destination), { recursive: true });
-            if (!fs.existsSync(source)) continue;
-            if (fs.lstatSync(source).isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(source), destination);
-            else fs.copyFileSync(source, destination);
-        }
-        const packageFile = path.join(fixture, 'vscode-fscript/package.json');
-        const manifest = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
-        // Exercise the real packaging hook without installing the compiler in this fixture.
-        manifest.scripts.compile = 'node -e ""';
-        fs.writeFileSync(packageFile, JSON.stringify(manifest));
-        execFileSync('git', ['init', '--quiet'], { cwd: fixture });
-        execFileSync('git', ['add', '.'], { cwd: fixture });
-        execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--quiet', '-m', 'fixture'], { cwd: fixture });
-        const keys = () => {
-            execFileSync('terrabuild', ['run', 'build', '--project', 'vscode', '--dry-run', '--local-only', '--debug'],
-                { cwd: fixture, stdio: 'pipe', timeout: 30000 });
-            const graph = JSON.parse(fs.readFileSync(path.join(fixture, 'terrabuild-debug.json'), 'utf8'));
-            return Object.fromEntries(graph.nodes.filter(node => node.projectName === 'vscode' && node.target === 'build')
-                .map(node => [node.projectName, node.fingerprint.cacheKey]));
-        };
-        const original = keys();
-        fs.appendFileSync(path.join(fixture, '.github/workflows/ci.yml'), '\n# Workflow-only change\n');
-        assert.deepEqual(keys(), original, 'Workflow changes must not invalidate frontend builds.');
-        fs.appendFileSync(path.join(fixture, 'CHANGELOG.md'), '\n- Release-note-only change.\n');
-        const releaseNotes = keys();
-        assert.equal(releaseNotes.vscode, original.vscode, 'Release notes are not a compilation input.');
-        execFileSync('npm', ['run', 'vscode:prepublish'], { cwd: path.join(fixture, 'vscode-fscript'), stdio: 'pipe' });
-        assert.equal(fs.readFileSync(path.join(fixture, 'vscode-fscript/CHANGELOG.md'), 'utf8'),
-            fs.readFileSync(path.join(fixture, 'CHANGELOG.md'), 'utf8'), 'Packaging must include current release notes.');
-        assert.deepEqual(keys(), releaseNotes, 'Generated packaging notes must not invalidate builds.');
-        fs.appendFileSync(path.join(fixture, 'vscode-fscript/extension.js'), '\n// Source change\n');
-        assert.notEqual(keys().vscode, original.vscode, 'Extension source changes must still invalidate its build.');
     } finally {
         fs.rmSync(fixture, { recursive: true, force: true });
     }

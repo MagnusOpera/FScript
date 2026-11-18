@@ -38,7 +38,6 @@ if git diff --quiet "$DIFF_RANGE" -- CHANGELOG.md; then
     TRIGGERS=(
       '^src/'
       '^tests/'
-      '^vscode-fscript/'
       '^docs/'
       '^samples/'
     )

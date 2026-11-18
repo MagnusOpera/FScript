@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
 
 build: tb-build
 
@@ -96,10 +96,6 @@ publish-all: build test publish publish-darwin publish-linux publish-windows pac
 
 verify-sdk-provider:
 	.github/scripts/verify-sdk-provider.sh
-
-vscode-debug-smoke: build
-	npm run compile --prefix vscode-fscript
-	.github/scripts/test-vscode-debugger.sh
 
 .PHONY: format-changelog check-changelog-format test-release-changelog test-release-workflows
 

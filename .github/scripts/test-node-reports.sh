@@ -4,11 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
-mkdir -p "$fixture/.build" "$fixture/vscode-fscript" "$fixture/src/FScript.JavaScript/test" \
-    "$fixture/tests/FScript.DebugAdapter.Tests" "$fixture/tests/FScript.LanguageServer.Tests"
+mkdir -p "$fixture/.build" "$fixture/src/FScript.JavaScript/test" \
+    "$fixture/tests/FScript.DebugAdapter.Tests"
 cp "$root/.build/checks.sh" "$fixture/.build/"
 
-for suite in debugger javascript vscode; do
+for suite in debugger javascript; do
     case "$suite" in
         debugger)
             test_file=tests/FScript.DebugAdapter.Tests/FixtureTests.js
@@ -18,10 +18,6 @@ for suite in debugger javascript vscode; do
             test_file=src/FScript.JavaScript/test/fixture.test.mjs
             report=src/FScript.JavaScript/TestResults/javascript.xml
             import="import test from 'node:test';" ;;
-        vscode)
-            test_file=tests/FScript.LanguageServer.Tests/FixtureTests.js
-            report=vscode-fscript/TestResults/vscode.xml
-            import="const test = require('node:test');" ;;
     esac
     printf '%s\ntest("passing report fixture", () => {});\n' "$import" > "$fixture/$test_file"
     bash "$fixture/.build/checks.sh" "$suite" > "$fixture/console.log" 2>&1

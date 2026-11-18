@@ -64,7 +64,7 @@ Follow this exact sequence for every release:
 3. For a new release line prepared on `main`, create `release/vX.Y` at the prepared commit. For maintenance releases, remain on that release branch.
 4. Run `make release-check version=vX.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
 5. The tag workflow validates and tests the source, packages binaries, signs and notarizes macOS, and publishes the GitHub Release automatically.
-6. The same run explicitly publishes NuGet, npm, editor extensions, and the Homebrew tap. Confirm all publication jobs pass; no manual draft publication is required.
+6. The same run explicitly publishes NuGet, npm, and the Homebrew tap. Confirm all publication jobs pass; no manual draft publication is required.
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and publication.
@@ -77,6 +77,7 @@ Rules:
 - `make release-check` validates an existing `vX.Y.Z` tag without modifying files, making commits, or creating tags.
 - Failed distribution can be retried with **Publish Release Artifacts**, supplying the existing published release tag. Do not move published tags or change package versions to retry distribution.
 - Keep `on-release-published.yml` as the NuGet publisher workflow identity used by the trusted publishing policy, even though it is now called directly by the tag workflow.
+- VS Code extension sources, client/grammar tests, packaging, and marketplace publication belong to [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). Keep language-server and CLI/DAP tests here. See [extension publication](docs/architecture/extension-publication.md).
 - Website content and deployment belong to [FScriptLang/FScriptLang.github.io](https://github.com/FScriptLang/FScriptLang.github.io), independently of language releases. Do not reintroduce website sources or deployment into this repository.
 - Keep language release notes in `CHANGELOG.md`; the website fetches them from main for Stable history and Next Unreleased. See [website publication](docs/architecture/website-publication.md).
 

@@ -48,12 +48,9 @@ The [website manual sources](https://github.com/FScriptLang/FScriptLang.github.i
 ## Debugger development
 
 `make test` includes CLI/DAP integration tests and headless native callbacks.
-`make vscode-debug-smoke` launches an isolated real VS Code Extension Development
-Host and checks a breakpoint, locals, a safe watch, and resumption. Set
-`VSCODE_EXECUTABLE` when VS Code is not at the standard macOS location or on PATH.
-Linux needs a graphical session or Xvfb. The smoke test creates a temporary
-workspace and user-data directory, with `fscript.cli.path` pointing to the
-repository build.
+The real VS Code Extension Development Host smoke test and client/grammar tests
+are maintained in [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension).
+That repository documents testing the extension against a local CLI/server build.
 
 See the [debugger specification](specs/debugger.md) for the runtime API and
 execution model.

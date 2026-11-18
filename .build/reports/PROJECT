@@ -3,7 +3,7 @@ project test_reports {
                    project.fscript_compiler_tests project.fscript_conformance_tests
                    project.fscript_interpreter_lir_tests project.fscript_backend_dotnet_tests
                    project.fscript_cli_tests project.fscript_languageserver_tests
-                   project.ffisample_tests project.javascript project.vscode project.checks ]
+                   project.ffisample_tests project.javascript project.checks ]
     includes = [ "../checks.sh" ]
 }
 

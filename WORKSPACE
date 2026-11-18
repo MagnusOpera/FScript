@@ -15,8 +15,6 @@ locals {
         dotnet_sdk: "11.0.100"
         node: "22"
         terrabuild: "latest"
-        vsce: "4.0.0"
-        ovsx: "0.9"
     }
 }
 

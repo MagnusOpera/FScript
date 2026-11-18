@@ -25,7 +25,7 @@ const expected = {
   cli: ['tests/fscript.cli.tests:test'],
   'ffi-default': ['samples/ffi/tests:test_ffi_default'],
   'ffi-size': ['samples/ffi/tests:test_ffi_size'],
-  web: ['src/fscript.javascript:test', 'vscode-fscript:test'],
+  web: ['src/fscript.javascript:test'],
   integration: ['tests/fscript.debugadapter.tests:test', 'tests/fscript.debugadapter.tests:smoke',
     'tests/fscript.debugadapter.tests:sdk']
 };

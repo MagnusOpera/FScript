@@ -1,7 +1,0 @@
-.vscode/**
-.vscode-test/**
-**/*.ts
-**/*.map
-node_modules/**
-extension.js
-**/TestResults/**

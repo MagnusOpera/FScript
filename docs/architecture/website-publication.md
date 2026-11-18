@@ -35,7 +35,7 @@ No existing Git tags, GitHub releases, or Homebrew formulas are migrated.
 
 The tag workflow still waits for CI, macOS verification, signing, and
 notarization before publishing the release. It then distributes NuGet, npm,
-editor extensions, and the Homebrew tap. It does not deploy or dispatch the
+and the Homebrew tap. The VS Code extension is packaged and published separately in [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). It does not deploy or dispatch the
 website. Website pushes, manual runs, and scheduled builds refresh the site
 independently, including new npm packages and upstream changelog changes.
 

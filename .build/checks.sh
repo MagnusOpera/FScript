@@ -10,7 +10,7 @@ run_node_tests() {
     node --test --test-reporter=spec --test-reporter-destination=stdout \
         --test-reporter=junit --test-reporter-destination="$report" "$@"
 }
-case "${1:?Expected debugger, javascript, vscode, reports, or smoke}" in
+case "${1:?Expected debugger, javascript, reports, or smoke}" in
     debugger)
         run_node_tests tests/FScript.DebugAdapter.Tests/TestResults/debugger.xml tests/FScript.DebugAdapter.Tests/*Tests.js
         ;;
@@ -18,12 +18,8 @@ case "${1:?Expected debugger, javascript, vscode, reports, or smoke}" in
         cd src/FScript.JavaScript
         run_node_tests TestResults/javascript.xml test/*.test.mjs
         ;;
-    vscode)
-        cd vscode-fscript
-        run_node_tests TestResults/vscode.xml ../tests/FScript.LanguageServer.Tests/*Tests.js
-        ;;
     reports)
-        find src tests samples vscode-fscript \
+        find src tests samples \
             -type d \( -name bin -o -name obj -o -name node_modules \) -prune -o \
             -type f -path '*/TestResults/*' \( -name '*.trx' -o -name '*.xml' \) -print
         ;;

@@ -157,85 +157,11 @@ jobs:
 
           npm publish "${packages[0]}" --access public --provenance
 
-  publish-vscode-marketplace:
-    needs: validate-published-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-
-      - name: Read workspace tool versions
-        id: tool-versions
-        uses: ./.github/actions/workspace-versions
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Download VSIX artifact
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: ${{ env.RELEASE_TAG }}
-          fileName: '*.vsix'
-
-      - name: Install VS Code publishing tool
-        env:
-          VSCE_VERSION: ${{ steps.tool-versions.outputs.vsce }}
-        run: npm install -g "@vscode/vsce@$VSCE_VERSION"
-
-      - name: Publish to VS Code Marketplace
-        shell: bash
-        env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
-        run: ./.github/scripts/publish-vscode-marketplace.sh
-
-  publish-open-vsx:
-    needs: validate-published-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-
-      - name: Read workspace tool versions
-        id: tool-versions
-        uses: ./.github/actions/workspace-versions
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Download VSIX artifact
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: ${{ env.RELEASE_TAG }}
-          fileName: '*.vsix'
-
-      - name: Install Open VSX publishing tool
-        env:
-          OVSX_VERSION: ${{ steps.tool-versions.outputs.ovsx }}
-        run: npm install -g "ovsx@$OVSX_VERSION"
-
-      - name: Publish to Open VSX
-        shell: bash
-        env:
-          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
-        run: ./.github/scripts/publish-open-vsx.sh
-
   update-homebrew-tap:
     uses: ./.github/workflows/release-homebrew-tap.yml
     needs:
       - release-nuget
       - release-npm
-      - publish-vscode-marketplace
-      - publish-open-vsx
     with:
       release_tag: ${{ inputs.release_tag }}
       dry-run: false
