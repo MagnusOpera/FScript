@@ -48,6 +48,14 @@ stored credentials and build with Terrabuild's local-only mode. Their test
 results remain available as artifacts; only trusted CI publishes combined check
 reports. No workflow inherits secrets.
 
+Trusted reusable-workflow calls name only their required secrets in explicit
+allowlists. [GitHub requires this declaration even for environment-only secrets](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow);
+the job's environment supplies the values. Trusted CI fails immediately if its
+cache credentials are missing, instead of silently rebuilding without the cache.
+Only the trusted build job enables toolchain image publication. Test runners
+and PRs can build that same image locally without attempting a registry push;
+the publication flag does not change its hash.
+
 Main, release branches, and release tags use `ci-trusted.yml`. Its jobs obtain
 the Terrabuild token and cache key from the `trusted-ci` environment. Apple
 signing/notarization, npm, and tap credentials live in the separate `release`

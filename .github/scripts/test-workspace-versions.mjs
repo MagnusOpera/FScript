@@ -40,7 +40,7 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-toolchain-identity-'));
     try {
         fs.mkdirSync(path.join(fixture, '.build/toolchain'), { recursive: true });
-        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile']) {
+        for (const file of ['WORKSPACE', '.build/toolchain/PROJECT', '.build/toolchain/Dockerfile', '.build/workflow.fss', '.build/build-toolchain.sh']) {
             fs.copyFileSync(path.join(root, file), path.join(fixture, file));
         }
         fs.mkdirSync(path.join(fixture, 'app'));
@@ -56,6 +56,12 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
             return match[1];
         };
         const original = image();
+        process.env.FSCRIPT_PUBLISH_TOOLCHAIN = 'true';
+        try {
+            assert.equal(image(), original, 'Publishing permission must not change the image hash used by test runners.');
+        } finally {
+            delete process.env.FSCRIPT_PUBLISH_TOOLCHAIN;
+        }
         const workspace = path.join(fixture, 'WORKSPACE');
         const contents = fs.readFileSync(workspace, 'utf8');
         fs.writeFileSync(workspace, fs.readFileSync(workspace, 'utf8').replace(/dotnet_sdk: "[^"]+"/, 'dotnet_sdk: "10.0.999"'));
@@ -68,5 +74,33 @@ test('native toolchain tags follow workspace tool versions and Dockerfile inputs
         assert.notEqual(image(), original);
     } finally {
         fs.rmSync(fixture, { recursive: true, force: true });
+    }
+});
+
+test('toolchain builds stay local unless explicitly published, and propagate Docker failures', () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-toolchain-publish-'));
+    const script = fileURLToPath(new URL('../../.build/build-toolchain.sh', import.meta.url));
+    try {
+        const docker = path.join(fixture, 'docker');
+        const log = path.join(fixture, 'docker.log');
+        fs.writeFileSync(docker, '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$DOCKER_TEST_LOG"\nif [[ "$1" == "${DOCKER_TEST_FAILURE:-}" ]]; then exit 19; fi\n', {mode: 0o755});
+        const run = (publish, failure = '') => {
+            fs.writeFileSync(log, '');
+            return execFileSync('bash', [script, 'ghcr.io/example/toolchain:hash', '11.0.100', '22', 'linux/amd64'], {
+                cwd: fixture,
+                env: {...process.env, PATH: `${fixture}:${process.env.PATH}`, DOCKER_TEST_LOG: log,
+                    FSCRIPT_PUBLISH_TOOLCHAIN: publish, DOCKER_TEST_FAILURE: failure},
+            });
+        };
+        run('false');
+        assert.match(fs.readFileSync(log, 'utf8'), /^build .*--build-arg DOTNET_SDK_VERSION=11.0.100 .*--platform linux\/amd64/);
+        assert.doesNotMatch(fs.readFileSync(log, 'utf8'), /^push /m);
+        run('true');
+        assert.match(fs.readFileSync(log, 'utf8'), /^push ghcr.io\/example\/toolchain:hash$/m);
+        assert.throws(() => run('true', 'build'), error => error.status === 19);
+        assert.doesNotMatch(fs.readFileSync(log, 'utf8'), /^push /m);
+        assert.throws(() => run('true', 'push'), error => error.status === 19);
+    } finally {
+        fs.rmSync(fixture, {recursive: true, force: true});
     }
 });

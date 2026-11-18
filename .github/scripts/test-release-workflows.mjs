@@ -113,7 +113,7 @@ test('transferred source and build images keep package and tap identities under 
   assert.equal(stepUsing(publishing.jobs['release-nuget'], 'NuGet/login').with.user, 'pct-magnusopera');
 });
 
-test('PR and feature-branch validation cannot inherit credentials or acquire privileged job permissions', () => {
+test('PR and feature-branch validation requests only read permissions and no stored credentials', () => {
   const pr = workflow('ci-pr');
   const ci = workflow('ci');
   assert.ok(Object.hasOwn(pr.on, 'pull_request'));
@@ -150,4 +150,22 @@ test('stored credentials and publishing identities are used only by restricted e
   assert.equal(tagged.jobs['sign-and-notarize'].environment, 'release');
   for (const name of ['release-nuget', 'release-npm']) assert.equal(publishing.jobs[name].environment, 'release');
   for (const job of Object.values(workflow('release-homebrew-tap').jobs)) assert.equal(job.environment, 'release');
+  const cacheNames = ['TERRABUILD_MASTER_KEY', 'TERRABUILD_TOKEN'];
+  assert.deepEqual(Object.keys(trusted.on.workflow_call.secrets).sort(), cacheNames);
+  for (const job of [workflow('ci-main').jobs.ci, tagged.jobs['release-ci']]) {
+    assert.deepEqual(Object.keys(job.secrets).sort(), cacheNames);
+  }
+  const distributionNames = ['NPM_KEY', 'PAT_HOMEBREW_TAP'];
+  assert.deepEqual(Object.keys(publishing.on.workflow_call.secrets).sort(), distributionNames);
+  assert.deepEqual(Object.keys(tagged.jobs['publish-artifacts'].secrets).sort(), distributionNames);
+  assert.deepEqual(Object.keys(publishing.jobs['update-homebrew-tap'].secrets), ['PAT_HOMEBREW_TAP']);
+  assert.deepEqual(Object.keys(workflow('release-homebrew-tap').on.workflow_call.secrets), ['PAT_HOMEBREW_TAP']);
+  for (const name of ['build', 'tests']) {
+    assert.ok(trusted.jobs[name].steps.some(step => step.name === 'Require trusted cache credentials'));
+  }
+  const build = trusted.jobs.build.steps.find(step => step.name === 'Build and populate the Terrabuild cache');
+  assert.equal(build.env.FSCRIPT_PUBLISH_TOOLCHAIN, 'true');
+  for (const job of Object.values(workflow('ci').jobs)) {
+    assert.ok(!JSON.stringify(job).includes('FSCRIPT_PUBLISH_TOOLCHAIN'));
+  }
 });

@@ -1,17 +1,14 @@
 project toolchain {
     labels = [ "toolchain" ]
-    includes = [ "**/*" "../../WORKSPACE" ]
+    includes = [ "**/*" "../../WORKSPACE" "../build-toolchain.sh" "../workflow.fss" ]
     @docker { }
 }
 
 target dist {
     phase = phase.toolchains
-    @docker build {
-        # GHCR returned missing child manifests for the attested index.
-        args = "--provenance=false"
-        build_args = {
-            DOTNET_SDK_VERSION: local.versions.dotnet_sdk
-            NODE_VERSION: local.versions.node
-        }
+    toolchain build {
+        dotnet_sdk = local.versions.dotnet_sdk
+        node = local.versions.node
+        platform = "linux/${terrabuild.arch}"
     }
 }

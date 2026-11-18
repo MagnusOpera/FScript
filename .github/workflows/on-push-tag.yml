@@ -41,6 +41,9 @@ jobs:
   release-ci:
     needs: validate-release
     uses: ./.github/workflows/ci-trusted.yml
+    secrets:
+      TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+      TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
     with:
       suffix: release
       require-changelog: false
@@ -331,6 +334,9 @@ jobs:
   publish-artifacts:
     needs: create-release
     uses: ./.github/workflows/on-release-published.yml
+    secrets:
+      NPM_KEY: ${{ secrets.NPM_KEY }}
+      PAT_HOMEBREW_TAP: ${{ secrets.PAT_HOMEBREW_TAP }}
     with:
       release_tag: ${{ github.ref_name }}
     permissions:

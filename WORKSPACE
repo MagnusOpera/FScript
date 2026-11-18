@@ -106,6 +106,11 @@ extension workflow {
     env { FSCRIPT_BUILD_CONFIG = var.config }
 }
 
+extension toolchain {
+    script = ".build/workflow.fss"
+    defaults { image = "ghcr.io/fscriptlang/fscript/toolchain" }
+}
+
 extension @docker {
     defaults {
         image = "ghcr.io/fscriptlang/fscript/${terrabuild.project}"

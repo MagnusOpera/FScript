@@ -2,6 +2,11 @@ name: Trusted Terrabuild CI
 
 on:
   workflow_call:
+    secrets:
+      TERRABUILD_TOKEN:
+        required: true
+      TERRABUILD_MASTER_KEY:
+        required: true
     inputs:
       suffix:
         type: string
@@ -52,6 +57,11 @@ jobs:
           node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Verify release formatting
         run: make test-release-changelog
+      - name: Require trusted cache credentials
+        env:
+          TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+        run: test -n "$TOKEN" && test -n "$KEY"
       - name: Setup Tools
         id: setup-tools
         uses: ./.github/actions/setup-tools
@@ -64,6 +74,8 @@ jobs:
         id: shards
         run: node -e 'console.log("matrix=" + JSON.stringify(require("./.build/ci-shards.json")))' >> "$GITHUB_OUTPUT"
       - name: Build and populate the Terrabuild cache
+        env:
+          FSCRIPT_PUBLISH_TOOLCHAIN: 'true'
         run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
       - name: Test release workflow orchestration
         run: make test-release-workflows
@@ -91,6 +103,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Require trusted cache credentials
+        env:
+          TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+        run: test -n "$TOKEN" && test -n "$KEY"
       - name: Setup Tools
         id: setup-tools
         uses: ./.github/actions/setup-tools

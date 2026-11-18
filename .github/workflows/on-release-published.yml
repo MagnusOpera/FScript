@@ -3,6 +3,11 @@ run-name: Release ${{ inputs.release_tag }}
 
 on:
   workflow_call:
+    secrets:
+      NPM_KEY:
+        required: true
+      PAT_HOMEBREW_TAP:
+        required: true
     inputs:
       release_tag:
         description: Existing published release tag whose verified assets will be distributed
@@ -164,6 +169,8 @@ jobs:
 
   update-homebrew-tap:
     uses: ./.github/workflows/release-homebrew-tap.yml
+    secrets:
+      PAT_HOMEBREW_TAP: ${{ secrets.PAT_HOMEBREW_TAP }}
     needs:
       - release-nuget
       - release-npm

@@ -5,6 +5,9 @@ permissions:
 
 on:
   workflow_call:
+    secrets:
+      PAT_HOMEBREW_TAP:
+        required: true
     inputs:
       release_tag:
         required: true

@@ -13,6 +13,9 @@ jobs:
   ci:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/v')
     uses: ./.github/workflows/ci-trusted.yml
+    secrets:
+      TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+      TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
     permissions:
       contents: read
       checks: write
