@@ -4,10 +4,14 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.94]
+
+### [0.94.3]
+
 - Publish one Stable manual with full release history and a separate Next manual with unreleased changes, without committing website snapshots.
 - Restore local changelog preparation and validate release tags against their release branch and release notes.
 
-## [0.94]
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.94.2...0.94.3
 
 ### [0.94.2]
 
