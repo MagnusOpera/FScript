@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Require v-prefixed release tags and display them on the website while retaining numeric package versions.
 - Automatically publish release artifacts, packages, editor extensions, the Homebrew tap, and the website after a release tag passes validation and macOS notarization.
 - Deploy the release website implementation while keeping Next documentation and its interpreter synchronized with main.
 - Use Native permission for process execution, removing the separate Process permission.

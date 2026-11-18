@@ -28,18 +28,27 @@ env:
 jobs:
   validate-published-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Require an existing published release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Expected an existing release tag X.Y.Z."
-            exit 1
-          fi
+          node .github/scripts/release-tag.mjs "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
           draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
           if [[ "$draft" != false ]]; then
             echo "::error::The release must already be published."
@@ -101,7 +110,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      RELEASE_VERSION: ${{ inputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.validate-published-release.outputs.version }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
       - name: Checkout release
@@ -228,8 +237,7 @@ jobs:
       - publish-vscode-marketplace
       - publish-open-vsx
     with:
-      ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-      version: ${{ inputs.release_tag }}
+      release_tag: ${{ inputs.release_tag }}
       dry-run: false
     secrets: inherit
 

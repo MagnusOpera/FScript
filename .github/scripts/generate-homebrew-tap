@@ -2,27 +2,20 @@
 
 set -euo pipefail
 
-FSCRIPT_VERSION="${1}"
+FSCRIPT_TAG="${1}"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+FSCRIPT_VERSION="$(node "$scripts/release-tag.mjs" "$FSCRIPT_TAG")"
 TAP_TEMPLATE_FILE="$(realpath "${2}")"
 FSCRIPT_GH_REPO="${FSCRIPT_GH_REPO:-magnusopera/fscript}"
-
-pat="([^-]*)-?([^-]*)"
-[[ $FSCRIPT_VERSION =~ $pat ]]
-FSCRIPT_SUFFIX_RAW="${BASH_REMATCH[2]}"
-if [[ -n "$FSCRIPT_SUFFIX_RAW" ]]; then
-  FSCRIPT_SUFFIX="$(echo "$FSCRIPT_SUFFIX_RAW" | sed -E 's/[^a-zA-Z0-9]+/ /g' | awk '{ for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2); gsub(" ", ""); print }')"
-else
-  FSCRIPT_SUFFIX=""
-fi
-
 export FSCRIPT_VERSION
-export FSCRIPT_SUFFIX
 
-cd "$(mktemp -d)"
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
+cd "$temporary"
 
 >&2 echo "::info Generating Homebrew formula for FScript ${FSCRIPT_VERSION}"
 >&2 echo "::group::Download release assets"
->&2 gh release download --repo "${FSCRIPT_GH_REPO}" "${FSCRIPT_VERSION}" \
+>&2 gh release download --repo "${FSCRIPT_GH_REPO}" "${FSCRIPT_TAG}" \
   -p "fscript-${FSCRIPT_VERSION}-darwin-arm64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-linux-x64.zip" \
   -p "fscript-${FSCRIPT_VERSION}-linux-arm64.zip" \
@@ -45,7 +38,7 @@ for i in \
   SHA256_VAR="${ENV_VAR}_SHA256"
   URL_VAR="${ENV_VAR}_URL"
   printf -v "${SHA256_VAR}" "%s" "${SHA256}"
-  printf -v "${URL_VAR}" "%s" "https://github.com/${FSCRIPT_GH_REPO}/releases/download/${FSCRIPT_VERSION}/${ASSET}"
+  printf -v "${URL_VAR}" "%s" "https://github.com/${FSCRIPT_GH_REPO}/releases/download/${FSCRIPT_TAG}/${ASSET}"
 
   export "${SHA256_VAR?}"
   export "${URL_VAR?}"
@@ -54,4 +47,4 @@ for i in \
 done
 
 # shellcheck disable=SC2016
-envsubst '$FSCRIPT_VERSION,$FSCRIPT_SUFFIX,$FSCRIPT_DARWIN_ARM64_URL,$FSCRIPT_DARWIN_ARM64_SHA256,$FSCRIPT_LINUX_X64_URL,$FSCRIPT_LINUX_X64_SHA256,$FSCRIPT_LINUX_ARM64_URL,$FSCRIPT_LINUX_ARM64_SHA256' < "${TAP_TEMPLATE_FILE}"
+envsubst '$FSCRIPT_VERSION,$FSCRIPT_DARWIN_ARM64_URL,$FSCRIPT_DARWIN_ARM64_SHA256,$FSCRIPT_LINUX_X64_URL,$FSCRIPT_LINUX_X64_SHA256,$FSCRIPT_LINUX_ARM64_URL,$FSCRIPT_LINUX_ARM64_SHA256' < "${TAP_TEMPLATE_FILE}"

@@ -20,7 +20,11 @@ const publishing = workflow('on-release-published');
 const website = workflow('publish-website');
 
 test('a tag directly invokes all publication stages without a release event or manual draft', () => {
-  assert.ok(tagged.on.push.tags.length > 0);
+  assert.deepEqual(tagged.on.push.tags, ['v[0-9]*.[0-9]*.[0-9]*']);
+  assert.equal(tagged.env.RELEASE_TAG, '${{ github.ref_name }}');
+  for (const job of ['package-release', 'verify-macos-artifact', 'sign-and-notarize']) {
+    assert.equal(tagged.jobs[job].env.BUILD_VERSION, '${{ needs.validate-release.outputs.version }}');
+  }
   const release = tagged.jobs['create-release'];
   for (const gate of ['validate-release', 'release-ci', 'verify-macos-artifact', 'sign-and-notarize']) {
     assert.ok(dependsOn(tagged.jobs, 'create-release', gate), `Public release must wait for ${gate}`);
@@ -61,7 +65,9 @@ test('all registries support direct invocation and retries against the explicit 
   assert.ok(jobs['validate-published-release'].steps.some((step) => step.run?.includes('--json isDraft')));
   assert.equal(stepUsing(jobs['release-nuget'], 'NuGet/login').with.user, 'pct-magnusopera');
   assert.equal(jobs['release-nuget'].permissions['id-token'], 'write');
-  assert.match(jobs['update-homebrew-tap'].with.ref, /inputs.release_tag/);
+  assert.equal(jobs['release-npm'].env.RELEASE_VERSION, '${{ needs.validate-published-release.outputs.version }}');
+  assert.match(jobs['update-homebrew-tap'].with.release_tag, /inputs.release_tag/);
+  assert.equal(jobs['update-homebrew-tap'].with.version, undefined);
 });
 
 test('successful package publication always deploys the website, including retry runs', () => {
@@ -85,4 +91,6 @@ test('release website code follows the invoking ref while Next content follows m
   const build = deploy.steps.find((step) => step.run === 'make website-build');
   assert.equal(build.env.FSCRIPT_WEBSITE_NEXT_REF, 'refs/remotes/origin/main');
   assert.ok(deploy.steps.some((step) => step.run?.includes('git status --porcelain')));
+  assert.ok(stepUsing(deploy, 'actions/github-script').with.script.includes('isReleaseTag(r.tag_name)'));
+  assert.equal(stepUsing(deploy, 'actions/deploy-pages').if, "steps.releases.outputs.has_stable == 'true'", 'Do not deploy a preview or legacy release before the first prefixed release');
 });

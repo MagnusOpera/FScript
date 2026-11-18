@@ -4,14 +4,15 @@ import {stripTypeScriptTypes} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isReleaseTag, parseReleaseTag} from '../../.github/scripts/release-tag.mjs';
 
-export const stableTag = /^\d+\.\d+\.\d+$/;
+
 export const releaseLine = (tag) => tag.slice(0, tag.lastIndexOf('.'));
 export const compareVersions = (a, b) => a.localeCompare(b, 'en', {numeric: true});
 
 // The caller supplies published GitHub releases, never an unfiltered tag list.
 export function selectReleases(releases) {
-  return [...releases].filter((r) => !r.draft && !r.prerelease && r.published_at && stableTag.test(r.tag_name))
+  return [...releases].filter((r) => !r.draft && !r.prerelease && r.published_at && isReleaseTag(r.tag_name))
     .sort((a, b) => compareVersions(b.tag_name, a.tag_name)).slice(0, 1).map((r) => r.tag_name);
 }
 
@@ -27,17 +28,18 @@ export function changelogSection(changelog, heading) {
 export function whatsNew(changelog, tag) {
   let body;
   if (tag) {
-    const entries = [...changelog.replaceAll('\r\n', '\n').matchAll(/^#{2,3} \[([0-9]+\.[0-9]+\.[0-9]+)\]\n([\s\S]*?)(?=^#{2,3} |$(?![\s\S]))/gm)]
+    parseReleaseTag(tag);
+    const entries = [...changelog.replaceAll('\r\n', '\n').matchAll(/^### \[(v[0-9]+\.[0-9]+\.[0-9]+)\]\n([\s\S]*?)(?=^#{2,3} |$(?![\s\S]))/gm)]
       .filter((entry) => releaseLine(entry[1]) === releaseLine(tag) && compareVersions(entry[1], tag) <= 0);
     const tagged = entries.find((entry) => entry[1] === tag);
     if (!tagged || !/^\s*-\s+/m.test(tagged[2])) throw new Error(`Missing release notes for ${tag}`);
     if (!tagged[2].includes('**Full Changelog**:')) throw new Error(`Missing compare link for ${tag}`);
     const normalized = changelog.replaceAll('\r\n', '\n');
-    const released = normalized.search(/^## \[[0-9]+\.[0-9]+(?:\.[0-9]+)?\]$/m);
+    const released = normalized.search(/^## \[(?:[0-9]+\.[0-9]+|v[0-9]+\.[0-9]+\.[0-9]+)\]$/m);
     if (released < 0) throw new Error('Missing released changelog history.');
     body = normalized.slice(released).trim()
       .replace(/^## \[([0-9]+\.[0-9]+)\]$/gm, '## $1')
-      .replace(/^#{2,3} \[([0-9]+\.[0-9]+\.[0-9]+)\]$/gm, '### $1');
+      .replace(/^#{2,3} \[(v?[0-9]+\.[0-9]+\.[0-9]+)\]$/gm, (_, version) => `### v${version.replace(/^v/, '')}`);
   } else {
     body = changelogSection(changelog, '## [Unreleased]') || 'No unreleased changes.';
   }

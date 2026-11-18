@@ -4,7 +4,7 @@ run-name: Release ${{ github.ref_name }}
 on:
   push:
     tags:
-      - '**'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
 
 permissions:
   contents: read
@@ -14,11 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUILD_VERSION: ${{ github.ref_name }}
+  RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
   validate-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +32,10 @@ jobs:
         with:
           node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Validate release branch and tagged changelog
-        run: node .github/scripts/validate-release.mjs "$BUILD_VERSION"
+        id: release
+        run: |
+          node .github/scripts/validate-release.mjs "$RELEASE_TAG"
+          node .github/scripts/release-tag.mjs "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
 
   release-ci:
     needs: validate-release
@@ -47,6 +52,8 @@ jobs:
   package-release:
     needs: validate-release
     runs-on: ubuntu-latest
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
 
     steps:
       - name: Checkout
@@ -74,7 +81,7 @@ jobs:
         shell: bash
         working-directory: vscode-fscript
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME}"
+          TAG_VERSION="${BUILD_VERSION}"
           npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
 
       - name: Build and stage language server
@@ -147,8 +154,10 @@ jobs:
           overwrite: true
 
   verify-macos-artifact:
-    needs: package-release
+    needs: [validate-release, package-release]
     runs-on: macos-15
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -173,16 +182,18 @@ jobs:
         shell: bash
         run: |
           test "$(uname -m)" = arm64
-          unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" \
+          unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${BUILD_VERSION}-darwin-unsigned.zip" \
             -d "${RUNNER_TEMP}/fscript-release/unpacked"
 
       - name: Verify released CLI compilation and automatic FFI configuration
         shell: bash
-        run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${GITHUB_REF_NAME}"
+        run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${RELEASE_TAG}"
 
   sign-and-notarize:
-    needs: [release-ci, verify-macos-artifact]
+    needs: [validate-release, release-ci, verify-macos-artifact]
     runs-on: macos-latest
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
     steps:
       - name: Checkout release
         uses: actions/checkout@v4
@@ -330,6 +341,7 @@ jobs:
       - name: Publish verified GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

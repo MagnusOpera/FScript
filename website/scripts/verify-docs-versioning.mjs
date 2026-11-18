@@ -16,7 +16,7 @@ const nextHtml = readFileSync(path.join(manual, next, 'index.html'), 'utf8');
 assert.ok(nextHtml.includes('This is unreleased documentation'), 'Next is missing its unreleased banner');
 const nextNotes = readFileSync(path.join(manual, next, 'whats-new/index.html'), 'utf8');
 assert.ok(nextNotes.includes('Unreleased'), 'Next is missing Unreleased notes');
-assert.ok(!/<h3 [^>]*>[\d.]+</.test(nextNotes), 'Released patch headings leaked into Next');
+assert.ok(!/<h3 [^>]*>v[\d.]+</.test(nextNotes), 'Released patch headings leaked into Next');
 if (versions.length > 0) {
   const stableHtml = readFileSync(path.join(manual, 'index.html'), 'utf8');
   assert.ok(!stableHtml.includes('no longer actively maintained'));
@@ -27,10 +27,10 @@ if (versions.length > 0) {
 for (const [index, release] of sources.stable.entries()) {
   const markdown = readFileSync(path.join(root, `versioned_docs/version-${release.version}/whats-new.md`), 'utf8');
   assert.ok(!markdown.includes('## Unreleased'));
-  const patches = [...markdown.matchAll(/^### ([\d.]+)$/gm)].map((match) => match[1]);
+  const patches = [...markdown.matchAll(/^### (v[\d.]+)$/gm)].map((match) => match[1]);
   assert.ok(patches.includes(release.tag));
   const html = readFileSync(path.join(manual, index === 0 ? '' : release.version, 'whats-new/index.html'), 'utf8');
-  assert.deepEqual([...html.matchAll(/<h3 [^>]*>([\d.]+)</g)].map((match) => match[1]), patches);
+  assert.deepEqual([...html.matchAll(/<h3 [^>]*>(v[\d.]+)</g)].map((match) => match[1]), patches);
 }
 assert.deepEqual(JSON.parse(readFileSync(path.join(root, 'build/website-sources.json'), 'utf8')), sources);
 console.log(`Verified Next and ${versions.length} stable manuals against their recorded sources.`);

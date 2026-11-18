@@ -1,6 +1,6 @@
 project website {
     depends_on = [ project.javascript ]
-    includes = [ "**/*" "../.config/dotnet-tools.json" "../CHANGELOG.md" ]
+    includes = [ "**/*" "../.config/dotnet-tools.json" "../CHANGELOG.md" "../.github/scripts/release-tag.mjs" ]
     ignores = [ "node_modules/**" "build/**" ".docusaurus/**" "src/generated/**" ".generated/**" "versioned_docs/**" "versioned_sidebars/**" "versions.json" ]
     @npm { }
 }

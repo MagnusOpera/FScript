@@ -26,7 +26,7 @@ node -e 'const fs = require("node:fs"); fs.writeFileSync("../.out/website-releas
 FSCRIPT_WEBSITE_RELEASES="$PWD/../.out/website-releases.json" FSCRIPT_WEBSITE_NEXT_REF=main npm run build
 ```
 
-`FSCRIPT_WEBSITE_RELEASES` must contain the GitHub release objects, including `tag_name`, `published_at`, `draft`, and `prerelease`. Assembly selects the greatest published `X.Y.Z` stable version, excluding drafts and prereleases. An explicitly supplied inventory with no stable release fails rather than publishing a preview. The tag must exist locally. Production sets `FSCRIPT_WEBSITE_NEXT_REF=refs/remotes/origin/main` after checking out the invoking ref; local builds can omit it to include working-tree edits.
+`FSCRIPT_WEBSITE_RELEASES` must contain the GitHub release objects, including `tag_name`, `published_at`, `draft`, and `prerelease`. Assembly selects the greatest published `vX.Y.Z` stable tag, excluding drafts and prereleases. An explicitly supplied inventory with no stable release fails rather than publishing a preview. The tag must exist locally. Production sets `FSCRIPT_WEBSITE_NEXT_REF=refs/remotes/origin/main` after checking out the invoking ref; local builds can omit it to include working-tree edits.
 
 ## Publishing
 
@@ -49,16 +49,16 @@ Prepare a new release line locally from a clean `main` checkout. Commit the inte
 
 ```bash
 git switch main
-make release-prepare version=X.Y.Z dryrun=true
-make release-prepare version=X.Y.Z
+make release-prepare version=vX.Y.Z dryrun=true
+make release-prepare version=vX.Y.Z
 git branch release/vX.Y
-make release-check version=X.Y.Z
+make release-check version=vX.Y.Z
 git push origin main release/vX.Y --follow-tags
 ```
 
 For a maintenance release, switch to the existing `release/vX.Y`, commit its fixes and Unreleased notes, then run the same preparation and validation commands. Push that release branch and tag together.
 
-Preparation moves Unreleased notes into `### [X.Y.Z]`, adds the compare link, commits only `CHANGELOG.md`, and creates an annotated tag. The dry run prints the proposed changelog without modifying files, commits, or tags. No npm installation or website build is needed. Versions remain unprefixed `X.Y.Z` for now.
+Preparation moves Unreleased notes into `### [vX.Y.Z]`, adds the compare link, commits only `CHANGELOG.md`, and creates an annotated tag. The dry run prints the proposed changelog without modifying files, commits, or tags. No npm installation or website build is needed. Release tags must be canonical `vX.Y.Z`; bare tags, leading zeroes, and suffixes are rejected. Package versions, CLI versions, and archive filenames retain numeric `X.Y.Z`.
 
 The tag workflow validates branch ancestry and tagged notes, runs CI, builds artifacts, and signs/notarizes macOS before automatically publishing the GitHub Release. It then explicitly calls package, editor-extension, tap, and website publication. There is no manual draft-publish step and no dependency on a second GitHub release event. The website promotes only published stable releases. Existing releases created before the release-branch policy remain eligible as documentation sources.
 
@@ -69,3 +69,9 @@ The tag workflow validates branch ancestry and tagged notes, runs CI, builds art
 For a failed distribution, run **Publish Release Artifacts** from an updated workflow ref and supply the existing published release tag. Registry publication skips already published versions; the tap updates only when its formula changes. Website deployment runs after package and tap publication succeed.
 
 To repair only an outdated website, manually dispatch **Publish Website** from the branch containing the current website build code. It still takes Stable content from the published tag and Next content/interpreter from `main`. This does not alter an existing release or republish packages.
+
+## Tag convention
+
+Only published `vX.Y.Z` tags are eligible for Stable, and the selector displays that exact tag. Historical unprefixed Git tags and GitHub releases are ignored, not renamed or aliased. Stable deployment requires the first published prefixed release; it never falls back to an old bare tag. Until then, the workflow logs a notice and skips deployment, keeping the existing site in place.
+
+New changelog release sections use `[vX.Y.Z]` under numeric `[X.Y]` release-line headings. Historical records and their existing compare links remain unchanged; website history formats release labels with `v`. The first prefixed release compares against the repository's initial commit, and later releases compare prefixed tags only. The tap generator downloads GitHub release `vX.Y.Z`, uses numeric archive filenames, and writes numeric Homebrew versions. Existing published formulas are not rewritten.

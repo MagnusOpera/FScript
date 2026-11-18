@@ -39,7 +39,7 @@ Targeted test suites (when working on specific areas):
 - Write entries in user-facing terms (what changed), not implementation detail.
 - Keep one-line bullet entries adjacent with no blank lines between them; use exactly one blank line around headings and compare links.
 - After editing `CHANGELOG.md`, run `make format-changelog`; `make check-changelog-format` checks spacing without changing files.
-- At release time, move unreleased entries to a `### [X.Y.Z]` section under `## [X.Y]` and reset `Unreleased`.
+- At release time, move unreleased entries to a `### [vX.Y.Z]` section under `## [X.Y]` and reset `Unreleased`.
 - Each released version section should end with a compare link:
   - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
 - When publishing the GitHub release, include that same compare link in the release notes body.
@@ -50,7 +50,7 @@ Targeted test suites (when working on specific areas):
 - Required format for regular commits:
   - add at least one short, single-line bullet under `## [Unreleased]`.
 - Scope is strict (no exceptions for docs/process/policy/chore/dependency-only commits).
-- Exception: release commits (`chore(release): X.Y.Z`) may leave `## [Unreleased]` empty.
+- Exception: release commits (`chore(release): vX.Y.Z`) may leave `## [Unreleased]` empty.
 - Local preflight command:
   - `make verify-changelog`
 - CI enforces this on both PRs and direct pushes to `main`.
@@ -60,20 +60,21 @@ Targeted test suites (when working on specific areas):
 Follow this exact sequence for every release:
 
 1. Commit the intended changes and Unreleased notes on `main` for a new release line, or on `release/vX.Y` for a maintenance release.
-2. Run `make release-prepare version=X.Y.Z`. Use `dryrun=true` to preview without changing files or Git state.
+2. Run `make release-prepare version=vX.Y.Z`. Use `dryrun=true` to preview without changing files or Git state.
 3. For a new release line prepared on `main`, create `release/vX.Y` at the prepared commit. For maintenance releases, remain on that release branch.
-4. Run `make release-check version=X.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
+4. Run `make release-check version=vX.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
 5. The tag workflow validates and tests the source, packages binaries, signs and notarizes macOS, and publishes the GitHub Release automatically.
 6. The same run explicitly publishes NuGet, npm, editor extensions, the Homebrew tap, and the website. Confirm all publication jobs pass; no manual draft publication is required.
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and publication.
 - Publish only after CI and macOS verification/notarization pass. Unsigned staging artifacts must not be included in the public release.
+- Only canonical `vX.Y.Z` release tags are accepted, with no leading zeroes, suffixes, or unprefixed compatibility. Package versions and archive filenames use numeric `X.Y.Z`. Existing Git tags, GitHub releases, and published tap formulas are not migrated.
 - Future release tags must be reachable from `release/vX.Y` matching their major/minor version.
-- Tag workflow must fail if the tagged `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
+- Tag workflow must fail if the tagged `CHANGELOG.md` has no non-empty `### [vX.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
-- `make release-prepare` requires a clean checkout, moves Unreleased into the release section, adds its compare link, commits only `CHANGELOG.md`, and creates an annotated tag. It never builds or commits website snapshots.
-- `make release-check` validates an existing `X.Y.Z` tag without modifying files, making commits, or creating tags.
+- `make release-prepare` requires a clean checkout, moves Unreleased into the release section, adds its compare link, commits only `CHANGELOG.md`, and creates an annotated prefixed tag. New changelog patch headings use `[vX.Y.Z]`; archived historical entries are left intact. If no earlier prefixed tag exists, the first compare link uses the initial repository commit. It never builds or commits website snapshots.
+- `make release-check` validates an existing `vX.Y.Z` tag without modifying files, making commits, or creating tags.
 - Failed distribution can be retried with **Publish Release Artifacts**, supplying the existing published release tag. Do not move published tags or change package versions to retry distribution.
 - Keep `on-release-published.yml` as the NuGet publisher workflow identity used by the trusted publishing policy, even though it is now called directly by the tag workflow.
 - Website build code follows the invoking ref. Stable content comes from the highest published stable tag; Next documentation and interpreter come from the same pinned `main` commit. Never commit generated manual snapshots.
