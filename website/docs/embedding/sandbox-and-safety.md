@@ -6,7 +6,7 @@ slug: /embedding/sandbox-and-safety
 
 FScript security is capability-based.
 
-Scripts can only perform actions that your host exposes and permits. See [Host Permissions](./host-permissions) for the default-deny `Interactive`, `Threading`, `IO`, `Native`, and `Process` policy.
+Scripts can only perform actions that your host exposes and permits. See [Host Permissions](./host-permissions) for the default-deny `Interactive`, `Threading`, `IO` and `Native` policy.
 
 ## Practical safety model
 
@@ -28,4 +28,4 @@ Loading a configured provider in an embedding host requires `Native`. A configur
 
 [Host-managed values](./host-managed-types) prevent scripts from constructing or updating opaque host resources and expose only registered visible fields. They preserve private payloads through calls and containers, but do not supply a disposal protocol or resource isolation. The host owns lifetime, synchronization, cloning, and the capabilities available through registered functions.
 
-`Process.exec` requires `Process | Threading` and runs child programs with host OS access. Filesystem root and deny rules do not contain these children; use OS isolation if containment is needed.
+`Process.exec` requires `Native | Threading` and runs child programs with host OS access. Filesystem root and deny rules do not contain these children; use OS isolation if containment is needed.

@@ -32,6 +32,7 @@ type ProcessFixture private () =
                 0
             | "delay" -> Thread.Sleep(Int32.Parse args.[1]); 0
             | "write" -> Thread.Sleep 100; File.WriteAllText(args.[1],"done"); 0
+            | "pid-file" -> File.WriteAllText(args.[1], string Environment.ProcessId); Thread.Sleep 30000; 0
             | "pid" -> Console.WriteLine Environment.ProcessId; Console.Out.Flush(); Thread.Sleep 30000; 0
             | "invalid-utf8" ->
                 let bytes = [|0xffuy; byte '\n'|]

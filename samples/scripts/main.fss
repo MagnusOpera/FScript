@@ -1,0 +1,8 @@
+let options = { FScript.defaults with permissions = Some []; timeoutMilliseconds = Some 2000 }
+match FScript.exec "child.fss" ["world"] options |> Task.await with
+| FScriptResult.Completed result ->
+    Console.writeLine result.value
+    Env.setExitCode result.exitCode
+| FScriptResult.Failed error ->
+    Console.writeLine error.message
+    Env.setExitCode 1

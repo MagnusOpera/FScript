@@ -74,7 +74,7 @@ module ProviderFixture =
               Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name="Json.serialize") |> List.map (fun fn -> {fn with Name="SdkJson.serialize"}) }
 
 
-module private Harness =
+module internal Harness =
     let legacy source =
         let registration=FScript.Runtime.Registry.registration { Permissions = FScript.Language.HostPermissions.All; RootDirectory = Directory.GetCurrentDirectory(); DeniedPathGlobs = [] }
         Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration |> Eval.evalProgramWithRegistration registration |> Pretty.valueToString

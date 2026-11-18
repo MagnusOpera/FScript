@@ -162,3 +162,18 @@ module internal HostCommon =
         match el.TryGetInt64() with
         | true, v -> Some v
         | _ -> None
+
+/// Each ancestor keeps its original root-relative denied-path patterns.
+type internal FileSystemPolicy =
+    { Context: HostContext
+      Ancestors: HostContext list }
+
+module internal FileSystemPolicy =
+    let create context = {Context=context; Ancestors=[]}
+    let narrow context parent = {Context=context; Ancestors=parent.Context::parent.Ancestors}
+    let private contexts policy = policy.Context::policy.Ancestors
+    let isSafePath policy path = contexts policy |> List.forall (fun context -> HostCommon.isSafePath context path)
+    let isDeniedPath policy path = contexts policy |> List.exists (fun context -> HostCommon.isDeniedPath context path)
+    let normalizeRoot policy = HostCommon.normalizeRoot policy.Context
+    let tryResolvePath policy candidate =
+        HostCommon.tryResolvePath policy.Context candidate |> Option.filter (isSafePath policy)

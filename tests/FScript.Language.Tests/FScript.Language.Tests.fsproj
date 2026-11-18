@@ -11,6 +11,7 @@
     <Compile Include="../SupportLibraryCases.fs" Link="SupportLibraryCases.fs" />
     <Compile Include="../TaskLibraryCases.fs" Link="TaskLibraryCases.fs" />
     <Compile Include="Helpers.fs" />
+    <Compile Include="HostInvocationTests.fs" />
     <Compile Include="TaskLibraryTests.fs" />
     <Compile Include="SupportLibraryTests.fs" />
     <Compile Include="LexerTests.fs" />

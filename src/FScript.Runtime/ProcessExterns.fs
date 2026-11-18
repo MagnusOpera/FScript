@@ -23,7 +23,7 @@ module ProcessExterns =
         VUnionCase("ProcessResult", case, Some(VRecord(Map.ofList fields)))
 
     let exec (host: HostContext) : ExternalFunction =
-        let required = HostPermissions.Process ||| HostPermissions.Threading
+        let required = HostPermissions.Native ||| HostPermissions.Threading
         { Name = "Process.exec"; Scheme = ProcessSignatures.execScheme; Arity = 3; RequiredPermissions = required
           Impl = fun context arguments ->
               context.CheckPermissions required

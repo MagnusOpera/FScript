@@ -41,7 +41,7 @@ From a checkout, replace `fscript` with `dotnet run --project src/FScript --` in
 
 Records, unions, tuples, lists, options, maps, closures, patterns, and recursive functions retain their FScript semantics. Equality remains structural, collections remain immutable, Boolean operators short-circuit, and top-level effects execute once in source order. An exported binding uses `export let`.
 
-Script imports are resolved at compile time. An application needs its managed dependencies and any files it reads as input, but does not need the original `.fss` files to execute.
+Script imports are resolved at compile time, so imported `.fss` source files do not need to be deployed. Files executed through `FScript.exec` are loaded and interpreted at runtime: deploy those child scripts and their imports within the configured root, alongside the application's managed dependencies and other input files.
 
 Standalone applications use the process working directory and operating-system permissions. Interpreter sandbox restrictions and execution budgets are not carried into compiled binaries.
 

@@ -37,6 +37,10 @@
     <Compile Include="Processes/CompiledProcess.fs" />
     <Compile Include="Processes/ProcessSignatures.fs" />
     <Compile Include="ProcessExterns.fs" />
+    <Compile Include="StandardLibrary.fs" />
+    <Compile Include="Scripts/FScriptSignatures.fs" />
+    <Compile Include="Scripts/ScriptRunner.fs" />
+    <Compile Include="Scripts/FScriptLibrary.fs" />
     <Compile Include="Registry.fs" />
     <Compile Include="EnvironmentConfiguration.fs" />
     <Compile Include="NuGetEnvironment.fs" />

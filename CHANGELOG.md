@@ -4,8 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Use Native permission for process execution, removing the separate Process permission.
+- Add asynchronous `FScript.exec` with isolated child interpreters, restricted permissions and roots, cooperative timeouts, and string results.
 - Keep script union constructors from being shadowed by registered host unions.
-- Add asynchronous `Process.exec` with explicit process permissions, bounded output, timeouts, and matching interpreter and compiled .NET behavior.
+- Add asynchronous `Process.exec` requiring Native and Threading permissions, bounded output, timeouts, and matching interpreter and compiled .NET behavior.
 
 ## [0.94]
 

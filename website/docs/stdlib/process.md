@@ -4,7 +4,7 @@ title: Process Module
 slug: /stdlib/process
 ---
 
-`Process.exec` launches a program directly and returns a `ProcessResult task`. Hosted interpretation requires both **Process** and **Threading**. CLI execution and compiled programs support it without interpreter permission checks. JavaScript/Fable and the standalone LIR interpreter have no built-in process implementation.
+`Process.exec` launches a program directly and returns a `ProcessResult task`. Hosted interpretation requires both **Native** and **Threading**. CLI execution and compiled programs support it without interpreter permission checks. JavaScript/Fable and the standalone LIR interpreter have no built-in process implementation.
 
 Child programs have the host's operating-system privileges, including filesystem, network, and environment access. `RootDirectory` and denied paths do not sandbox child code. Granting `IO`, `Threading`, or `Native` alone does not expose `Process.exec`.
 

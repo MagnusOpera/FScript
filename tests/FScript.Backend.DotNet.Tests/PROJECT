@@ -1,5 +1,5 @@
 project fscript_backend_dotnet_tests {
-    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" "../../samples/**/*.fss" "../../samples/**/*.toml" "../../samples/**/*.bas" "../../tests/FScript.Runtime.Tests/SdkTestHost.fs" "../FScript.Runtime.Tests/Processes/ProcessFixture.fs" ]
+    includes = [ "**/*" "../../Directory.Build.props" "../../.config/dotnet-tools.json" "../../samples/**/*.fss" "../../samples/**/*.toml" "../../samples/**/*.bas" "../../tests/FScript.Runtime.Tests/SdkTestHost.fs" "../FScript.Runtime.Tests/Processes/ProcessFixture.fs" "../FScript.Runtime.Tests/Scripts/ScriptFixture.fs" ]
     ignores = [ "../../samples/**/bin/**" "../../samples/**/obj/**" "../../samples/**/TestResults/**" "../../samples/**/.fscript/**" "**/bin/**" "**/obj/**" "**/TestResults/**" "**/node_modules/**" "**/.fscript/**" ]
     @dotnet { }
 }

@@ -13,8 +13,7 @@ type HostPermissions =
     | Threading = 2
     | IO = 4
     | Native = 8
-    | Process = 16
-    | All = 31
+    | All = 15
 
 type MapKey =
     | MKString of string

@@ -413,4 +413,8 @@ All core functions and values and pure runtime transformations require no permis
 
 ## Process runtime module
 
-`Process.exec : string -> string list -> ProcessOptions -> ProcessResult task` requires `Process | Threading` in hosted interpretation. `Process.defaults` and its record/union types require none. Both native backends and CLI implement the same API; JavaScript and standalone LIR execution do not supply it. See the [Process module contract](../../website/docs/stdlib/process.md) for options, union payloads, defaults, failure prefixes, encoding, path resolution, and lifecycle behavior. Process execution is observable and must not be eliminated or combined by compiler optimizations.
+`Process.exec : string -> string list -> ProcessOptions -> ProcessResult task` requires `Native | Threading` in hosted interpretation. `Process.defaults` and its record/union types require none. Both native backends and CLI implement the same API; JavaScript and standalone LIR execution do not supply it. See the [Process module contract](../../website/docs/stdlib/process.md) for options, union payloads, defaults, failure prefixes, encoding, path resolution, and lifecycle behavior. Process execution is observable and must not be eliminated or combined by compiler optimizations.
+
+## Nested FScript execution
+
+`FScript.exec : string -> string list -> FScriptOptions -> FScriptResult task` requires Threading, without IO for source loading. `FScript.defaults` and its data types require none. The [FScript module contract](../../website/docs/stdlib/fscript.md) defines exact options, result/diagnostic shapes, argument injection, root and permission inheritance, provider exclusion, cancellation, depth 32, console behavior, and compiled-caller defaults. Execution is an ordinary observable Runtime FFI call with no compiler intrinsic or LIR operation.

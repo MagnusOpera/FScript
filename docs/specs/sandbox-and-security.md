@@ -12,7 +12,7 @@ This document defines the security model for running FScript programs with host 
 
 ## Hosted interpreter permissions
 
-Language `HostPermissions` is a flags enum: `None=0`, `Interactive=1`, `Threading=2`, `IO=4`, `Native=8`, `Process=16`, and `All=31`. Host contexts and native registrations carry explicit grants; `HostInterop.empty`, extern-list APIs, SDK adaptation, and default `EnvironmentLoader` loading grant none. CLI execution, compilation, generated programs, and static analysis retain their existing unrestricted behavior. Source reads and resolver callbacks are trusted host plumbing, not script IO grants.
+Language `HostPermissions` is a flags enum: `None=0`, `Interactive=1`, `Threading=2`, `IO=4`, `Native=8`, and `All=15`. Host contexts and native registrations carry explicit grants; `HostInterop.empty`, extern-list APIs, SDK adaptation, and default `EnvironmentLoader` loading grant none. CLI execution, compilation, generated programs, and static analysis retain their existing unrestricted behavior. Source reads and resolver callbacks are trusted host plumbing, not script IO grants.
 
 Native `ExternalFunction.RequiredPermissions` declares required bits. `ScriptHost` removes unavailable functions before inference; evaluator dispatch and `HostInterop.invoke` check requirements again, including arity-zero values, returned callable values, canonical tasks, and callback execution. The active execution context, retained REPL state, and `LoadedScript` retain host grants for exported invocations. SDK task contexts cannot spawn or await without `Threading`. Host callbacks can inspect their own trusted context but cannot grant capabilities through script values.
 
@@ -114,8 +114,16 @@ A .NET host can register only `FScript.Runtime.PureExterns.functions` to expose 
 
 ## Child process execution
 
-`Process.exec` requires `Process | Threading`. Registry filtering and invocation checks apply, including forwarded standard implementations. `Process.defaults`, `ProcessOptions`, and `ProcessResult` require no capabilities. `Native` alone does not authorize the standard function, although trusted native provider code can itself start processes.
+`Process.exec` requires `Native | Threading`. Registry filtering and invocation checks apply, including forwarded standard implementations. `Process.defaults`, `ProcessOptions`, and `ProcessResult` require no capabilities. `Native` grants trust in code with host OS access; `Threading` additionally authorizes this asynchronous standard function.
 
 Children run with host OS privileges and are outside root, denied-path, and symlink restrictions. The host root is only the default working directory; overrides may be outside it. No implicit shell is launched. The environment is inherited with per-child overrides. The exact contract, limits, result prefixes, cleanup behavior, and compiler parity are defined in the [Process module](../../website/docs/stdlib/process.md).
 
 Process tasks are tracked and joined on both successful and failed evaluation. Timeout, capture overflow, and cancellation terminate the direct child and close pipes, attempting tree termination where available. Descendant containment requires OS isolation. Evaluator cancellation remains fatal; normal process failures are union values. No default timeout is imposed.
+
+## Nested script sandboxes
+
+`FScript.exec` authorizes source and import reads without IO, but requires Threading. Child entry/imports must remain within an equal or narrower root, with all original ancestor denials and symlink restrictions enforced on source reads and standard filesystem functions. Root overrides and entry paths resolve from the parent root. Omitted grants inherit the active invocation's permissions; explicit subsets may remove Threading from the child, and requests for unavailable permissions fail before loading source.
+
+Each child has fresh interpreter state, Env arguments, exit code, and task scope. Only a final string and result metadata return to the parent. The child registry contains only standard Runtime functions, with no parent closures/custom externs, automatic manifests, or package/provider loading. Console operations retain their individual grants and share normal console streams. Child failure does not roll back effects; Native remains an OS-access grant.
+
+All tracked child and descendant tasks are joined on success, failure, and cooperative cancellation. Positive optional timeouts cover source loading through task draining, cannot be extended by descendants, and may wait for uninterruptible host operations. Nesting is capped at 32 child executions before source loading. Compiled callers start from current-directory/all-permissions defaults, then execute interpreted children through the same Runtime policy. See the [complete FScript contract](../../website/docs/stdlib/fscript.md).

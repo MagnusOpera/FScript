@@ -269,9 +269,10 @@ test('host permissions default to none and guard declared effects', () => {
   assert.throws(() => run('42', {permissions: ['Unknown']}), /Unknown host permission/);
 });
 
-test('Process grants are recognized without adding browser process execution', () => {
-  assert.equal(run('42', {permissions: ['Process']}).value, 42n);
-  assert.throws(() => run('Process.exec "program" [] ()', {permissions: ['Process', 'Threading']}), /Unbound variable 'Process'/);
+test('Native grants do not add browser process execution', () => {
+  assert.equal(run('42', {permissions: ['Native']}).value, 42n);
+  assert.throws(() => run('42', {permissions: ['Process']}), /permission/i);
+  assert.throws(() => run('Process.exec "program" [] ()', {permissions: ['Native', 'Threading']}), /Unbound variable 'Process'/);
 });
 
 

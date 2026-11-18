@@ -5,13 +5,38 @@ module HostInterop =
     let private span = Span.mk (Span.pos 0 0) (Span.pos 0 0)
     let private fail message = raise (EvalException { Message = message; Span = span })
 
+#if !FABLE_COMPILER
+    type private InvocationMetadata(permissions: HostPermissions, startTask: (System.Threading.CancellationToken -> System.Threading.Tasks.Task<Value>) -> Value) =
+        member _.Permissions = permissions
+        member _.StartTask = startTask
+    let private invocations = System.Runtime.CompilerServices.ConditionalWeakTable<ExternalCallContext, InvocationMetadata>()
+
+    let internal registerInvocation context permissions startTask =
+        invocations.Add(context, InvocationMetadata(permissions, startTask))
+
+    let private invocation (context: ExternalCallContext) =
+        context.CheckPermissions HostPermissions.None
+        if not (context.IsActive()) then fail "The host invocation has expired."
+        match invocations.TryGetValue context with
+        | true, metadata -> metadata
+        | _ -> fail "No active evaluator policy exists for this invocation."
+
+    /// Read the active evaluator's grants, rather than a captured registration's policy.
+    let currentPermissions context = (invocation context).Permissions
+
+    /// Start asynchronous FFI work in the evaluator's tracked task scope.
+    let startTask (context: ExternalCallContext) start =
+        context.CheckPermissions HostPermissions.Threading
+        (invocation context).StartTask start
+#endif
+
     let empty : ExtensionRegistration = { Permissions = HostPermissions.None; Types = []; Unions = []; Functions = [] }
     let ofExterns functions = { empty with Functions = functions }
 
     let allows granted required = (granted &&& required) = required
     let permissionNames permissions =
         [ HostPermissions.Interactive, "Interactive"; HostPermissions.Threading, "Threading"
-          HostPermissions.IO, "IO"; HostPermissions.Native, "Native"; HostPermissions.Process, "Process" ]
+          HostPermissions.IO, "IO"; HostPermissions.Native, "Native" ]
         |> List.choose (fun (permission,name) -> if allows permissions permission then Some name else None)
         |> String.concat ", "
 

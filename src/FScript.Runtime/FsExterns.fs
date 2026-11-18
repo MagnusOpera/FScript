@@ -27,23 +27,23 @@ module FsExterns =
         with _ ->
             []
 
-    let private enumerateReachableFiles (ctx: HostContext) (startDirectory: string) =
+    let private enumerateReachableFiles (ctx: FileSystemPolicy) (startDirectory: string) =
         let rec loop directory =
             seq {
                 for file in tryEnumerateFiles directory do
                     let full = HostCommon.normalizeFullPath file
-                    if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                    if FileSystemPolicy.isSafePath ctx full && not (FileSystemPolicy.isDeniedPath ctx full) then
                         yield full
 
                 for childDirectory in tryEnumerateDirectories directory do
                     let full = HostCommon.normalizeFullPath childDirectory
-                    if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                    if FileSystemPolicy.isSafePath ctx full && not (FileSystemPolicy.isDeniedPath ctx full) then
                         yield! loop full
             }
 
         loop startDirectory
 
-    let private enumerateCandidateFiles (ctx: HostContext) (startDirectory: string) (pattern: string) =
+    let private enumerateCandidateFiles (ctx: FileSystemPolicy) (startDirectory: string) (pattern: string) =
         let normalizedPattern = normalizeSeparators pattern
         if normalizedPattern.Contains("/") then
             enumerateReachableFiles ctx startDirectory
@@ -51,46 +51,46 @@ module FsExterns =
             tryEnumerateFiles startDirectory
             |> Seq.choose (fun file ->
                 let full = HostCommon.normalizeFullPath file
-                if HostCommon.isSafePath ctx full && not (HostCommon.isDeniedPath ctx full) then
+                if FileSystemPolicy.isSafePath ctx full && not (FileSystemPolicy.isDeniedPath ctx full) then
                     Some full
                 else
                     None)
 
-    let read_text (ctx: HostContext) : ExternalFunction =
+    let internal read_textWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.readText"
           Scheme = Forall([], TFun(TString, TOption TString))
           Arity = 1
           Impl = fun _ -> function
               | [ VString path ] ->
-                  match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.readText" full
+                  match FileSystemPolicy.tryResolvePath ctx path with
+                  | Some full when FileSystemPolicy.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.readText" full
                   | Some full when File.Exists(full) -> HostCommon.some (VString (File.ReadAllText(full)))
                   | _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.readText expects (string)") }
 
-    let exists (ctx: HostContext) : ExternalFunction =
+    let internal existsWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.exists"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
           Impl = fun _ -> function
               | [ VString path ] ->
-                  match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isDeniedPath ctx full -> VBool false
+                  match FileSystemPolicy.tryResolvePath ctx path with
+                  | Some full when FileSystemPolicy.isDeniedPath ctx full -> VBool false
                   | Some full -> VBool (File.Exists(full) || Directory.Exists(full))
                   | None -> VBool false
               | _ -> raise (HostCommon.evalError "Fs.exists expects (string)") }
 
-    let entry_kind (ctx: HostContext) : ExternalFunction =
+    let internal entry_kindWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.kind"
           Scheme = Forall([], TFun(TString, TNamed "FsKind"))
           Arity = 1
           Impl = fun _ -> function
               | [ VString path ] ->
-                  match HostCommon.tryResolvePath ctx path with
+                  match FileSystemPolicy.tryResolvePath ctx path with
                   | Some full ->
-                      let root = HostCommon.normalizeRoot ctx
+                      let root = FileSystemPolicy.normalizeRoot ctx
                       let relative = Path.GetRelativePath(root, full) |> normalizeSeparators
-                      if HostCommon.isDeniedPath ctx full then
+                      if FileSystemPolicy.isDeniedPath ctx full then
                           VUnionCase("FsKind", "Missing", None)
                       elif File.Exists(full) then
                           VUnionCase("FsKind", "File", Some (VString relative))
@@ -101,14 +101,14 @@ module FsExterns =
                   | None -> VUnionCase("FsKind", "Missing", None)
               | _ -> raise (HostCommon.evalError "Fs.kind expects (string)") }
 
-    let create_directory (ctx: HostContext) : ExternalFunction =
+    let internal create_directoryWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.createDirectory"
           Scheme = Forall([], TFun(TString, TBool))
           Arity = 1
           Impl = fun _ -> function
               | [ VString path ] ->
-                  match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.createDirectory" full
+                  match FileSystemPolicy.tryResolvePath ctx path with
+                  | Some full when FileSystemPolicy.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.createDirectory" full
                   | Some full ->
                       try
                           Directory.CreateDirectory(full) |> ignore
@@ -117,14 +117,14 @@ module FsExterns =
                   | None -> VBool false
               | _ -> raise (HostCommon.evalError "Fs.createDirectory expects (string)") }
 
-    let write_text (ctx: HostContext) : ExternalFunction =
+    let internal write_textWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.writeText"
           Scheme = Forall([], TFun(TString, TFun(TString, TBool)))
           Arity = 2
           Impl = fun _ -> function
               | [ VString path; VString content ] ->
-                  match HostCommon.tryResolvePath ctx path with
-                  | Some full when HostCommon.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.writeText" full
+                  match FileSystemPolicy.tryResolvePath ctx path with
+                  | Some full when FileSystemPolicy.isDeniedPath ctx full -> throwBlockedPathAccess "Fs.writeText" full
                   | Some full ->
                       try
                           match Path.GetDirectoryName(full) with
@@ -183,16 +183,16 @@ module FsExterns =
                   | value -> VString value
               | _ -> raise (HostCommon.evalError "Fs.fileNameWithoutExtension expects (string)") }
 
-    let glob (ctx: HostContext) : ExternalFunction =
+    let internal globWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.glob"
           Scheme = Forall([], TFun(TString, TOption (TList TString)))
           Arity = 1
           Impl = fun _ -> function
               | [ VString pattern ] ->
-                  let root = HostCommon.normalizeRoot ctx
+                  let root = FileSystemPolicy.normalizeRoot ctx
                   let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                   try
-                      if not (Directory.Exists(root)) || not (HostCommon.isSafePath ctx root) || HostCommon.isDeniedPath ctx root then
+                      if not (Directory.Exists(root)) || not (FileSystemPolicy.isSafePath ctx root) || FileSystemPolicy.isDeniedPath ctx root then
                           HostCommon.none
                       else
                           enumerateReachableFiles ctx root
@@ -205,15 +205,15 @@ module FsExterns =
                   with _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.glob expects (string)") }
 
-    let enumerate_files (ctx: HostContext) : ExternalFunction =
+    let internal enumerate_filesWithPolicy (ctx: FileSystemPolicy) : ExternalFunction =
         { RequiredPermissions = HostPermissions.IO; Name = "Fs.enumerateFiles"
           Scheme = Forall([], TFun(TString, TFun(TString, TOption (TList TString))))
           Arity = 2
           Impl = fun _ -> function
               | [ VString directory; VString pattern ] ->
-                  match HostCommon.tryResolvePath ctx directory with
-                  | Some fullDirectory when Directory.Exists(fullDirectory) && not (HostCommon.isDeniedPath ctx fullDirectory) ->
-                      let root = HostCommon.normalizeRoot ctx
+                  match FileSystemPolicy.tryResolvePath ctx directory with
+                  | Some fullDirectory when Directory.Exists(fullDirectory) && not (FileSystemPolicy.isDeniedPath ctx fullDirectory) ->
+                      let root = FileSystemPolicy.normalizeRoot ctx
                       let regex = Regex(HostCommon.globToRegex pattern, RegexOptions.Compiled)
                       try
                           enumerateCandidateFiles ctx fullDirectory pattern
@@ -227,3 +227,17 @@ module FsExterns =
                       with _ -> HostCommon.none
                   | _ -> HostCommon.none
               | _ -> raise (HostCommon.evalError "Fs.enumerateFiles expects (string, string)") }
+
+    let read_text context = read_textWithPolicy (FileSystemPolicy.create context)
+
+    let exists context = existsWithPolicy (FileSystemPolicy.create context)
+
+    let entry_kind context = entry_kindWithPolicy (FileSystemPolicy.create context)
+
+    let create_directory context = create_directoryWithPolicy (FileSystemPolicy.create context)
+
+    let write_text context = write_textWithPolicy (FileSystemPolicy.create context)
+
+    let glob context = globWithPolicy (FileSystemPolicy.create context)
+
+    let enumerate_files context = enumerate_filesWithPolicy (FileSystemPolicy.create context)

@@ -433,7 +433,6 @@ let private permissionsFromJs value =
                 | "Threading" -> HostPermissions.Threading
                 | "IO" -> HostPermissions.IO
                 | "Native" -> HostPermissions.Native
-                | "Process" -> HostPermissions.Process
                 | _ -> failwith $"Unknown host permission: {name}"
             permissions ||| permission) HostPermissions.None
 

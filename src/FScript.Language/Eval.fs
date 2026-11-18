@@ -24,6 +24,7 @@ module Eval =
           Active: bool ref
           PendingTasks: ResizeArray<TaskHandle>
 #if !FABLE_COMPILER
+          Cancellation: System.Threading.CancellationToken
           Debug: IDebugObserver option
           TaskId: int
 #endif
@@ -44,6 +45,7 @@ module Eval =
 
     let private checkRuntime (runtime: RuntimeState) =
 #if !FABLE_COMPILER
+        runtime.Cancellation.ThrowIfCancellationRequested()
         match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
 #endif
         withRuntimeLock runtime (fun () ->
@@ -488,23 +490,30 @@ module Eval =
 #endif
 
     let rec private createExternContext (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) : ExternalCallContext =
-        { Session = runtime.SyncRoot
-          IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active.Value)
-          Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
-          SpawnTask = fun thunk -> checkPermissions runtime HostPermissions.Threading; spawnTaskValue runtime typeDefs thunk
-          AwaitTask = fun task -> checkPermissions runtime HostPermissions.Threading; awaitTaskValue runtime task
+        let context =
+            { Session = runtime.SyncRoot
+              IsActive = fun () -> withRuntimeLock runtime (fun () -> runtime.Active.Value)
+              Apply = fun f a -> applyFunctionValue runtime typeDefs span f a |> Execution.run
+              SpawnTask = fun thunk -> checkPermissions runtime HostPermissions.Threading; spawnTaskValue runtime typeDefs thunk
+              AwaitTask = fun task -> checkPermissions runtime HostPermissions.Threading; awaitTaskValue runtime task
 #if FABLE_COMPILER
-          SetExitCode = ignore
+              SetExitCode = ignore
 #else
-          SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
+              SetExitCode = fun code -> withRuntimeLock runtime (fun () -> runtime.ExitCode.Value <- code)
 #endif
-          CheckPermissions = checkPermissions runtime
-          CheckRuntime = fun () ->
-              checkRuntime runtime
+              CheckPermissions = checkPermissions runtime
+              CheckRuntime = fun () ->
+                  checkRuntime runtime
 #if !FABLE_COMPILER
-              match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
+                  match runtime.Debug with Some observer -> observer.CheckCancellation() | None -> ()
 #endif
-        }
+            }
+#if !FABLE_COMPILER
+        HostInterop.registerInvocation context runtime.Permissions (fun start ->
+            let cancellation = if runtime.Cancellation.CanBeCanceled then runtime.Cancellation else (match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None)
+            startTaskValue runtime (fun _ -> Execution.awaitTask (start cancellation)))
+#endif
+        context
 
     and private spawnTaskValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (thunk: Value) : Value =
 #if FABLE_COMPILER
@@ -591,7 +600,7 @@ module Eval =
         | "Task.delay",[VInt milliseconds] when milliseconds >= 0L && milliseconds <= int64 System.Int32.MaxValue ->
             if milliseconds=0L then return trackTaskValue runtime None (Task.FromResult(TaskSucceeded VUnit))
             else
-                let cancellation = match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None
+                let cancellation = if runtime.Cancellation.CanBeCanceled then runtime.Cancellation else (match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None)
                 let timer=Task.Delay(int milliseconds,cancellation)
                 return startTaskValue runtime (fun _ -> execution {
                     do! Execution.awaitUnit timer
@@ -984,6 +993,7 @@ module Eval =
               Active = ref true
               PendingTasks = ResizeArray()
 #if !FABLE_COMPILER
+              Cancellation = System.Threading.CancellationToken.None
               Debug = None
               TaskId = 1
 #endif
@@ -1119,6 +1129,7 @@ module Eval =
               Active = ref true
               PendingTasks = ResizeArray()
 #if !FABLE_COMPILER
+              Cancellation = System.Threading.CancellationToken.None
               Debug = None
               TaskId = 1
 #endif
@@ -1129,7 +1140,7 @@ module Eval =
 
     let private evaluateRegistered
 #if !FABLE_COMPILER
-        (debugger: IDebugObserver option)
+        (debugger: IDebugObserver option) (cancellation: System.Threading.CancellationToken)
 #endif
         (registration: ExtensionRegistration) (program: TypeInfer.TypedProgram) : ProgramState =
         let registration = HostInterop.permitted registration
@@ -1142,6 +1153,7 @@ module Eval =
               Active = ref true
               PendingTasks = ResizeArray()
 #if !FABLE_COMPILER
+              Cancellation = cancellation
               Debug = debugger
               TaskId = (match debugger with Some observer -> observer.TaskStarted None | None -> 1)
 #endif
@@ -1218,12 +1230,15 @@ module Eval =
     let evalProgramWithRegistrationState registration program =
         evaluateRegistered
 #if !FABLE_COMPILER
-            None
+            None System.Threading.CancellationToken.None
 #endif
             registration program
 
 #if !FABLE_COMPILER
-    let internal evalProgramWithDebugger debugger registration program = evaluateRegistered (Some debugger) registration program
+    /// Evaluate in a fresh task scope with cooperative cancellation and normal task joining.
+    let evalProgramWithCancellation cancellation registration program = evaluateRegistered None cancellation registration program
+
+    let internal evalProgramWithDebugger debugger registration program = evaluateRegistered (Some debugger) System.Threading.CancellationToken.None registration program
 #endif
 
     let evalProgramWithExterns (externs: ExternalFunction list) (program: TypeInfer.TypedProgram) : Value =

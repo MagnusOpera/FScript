@@ -13,7 +13,7 @@ type ProcessTests() =
     let fixture = typeof<FScript.Runtime.Tests.ProcessFixture>.Assembly.Location
     let quote (text: string) = System.Text.Json.JsonSerializer.Serialize(text)
     let root = Directory.GetCurrentDirectory()
-    let grants = HostPermissions.Process ||| HostPermissions.Threading
+    let grants = HostPermissions.Native ||| HostPermissions.Threading
     let run permissions source =
         let registration = Registry.registration { HostContext.create root with Permissions = permissions }
         ScriptHost.loadSourceWithRegistration registration source |> _.LastValue
@@ -24,7 +24,7 @@ type ProcessTests() =
 
     [<Test>]
     member _.``Defaults and data types are pure while execution requires both permissions`` () =
-        for permissions in [HostPermissions.None; HostPermissions.IO; HostPermissions.Native; HostPermissions.Threading; HostPermissions.Process; HostPermissions.IO ||| HostPermissions.Threading] do
+        for permissions in [HostPermissions.None; HostPermissions.IO; HostPermissions.Native; HostPermissions.Threading; HostPermissions.Native ||| HostPermissions.IO; HostPermissions.IO ||| HostPermissions.Threading] do
             let registration = Registry.registration { HostContext.create root with Permissions = permissions }
             Assert.That(registration.Types |> List.map _.Name, Does.Contain("ProcessOptions"))
             Assert.That(registration.Unions |> List.map _.Name, Does.Contain("ProcessResult"))
@@ -38,6 +38,8 @@ type ProcessTests() =
     member _.``Direct and renamed descriptors cannot bypass permission checks`` () =
         let original = ProcessExterns.exec (HostContext.create root)
         let forwarded = { original with Name="Host.process"; RequiredPermissions=HostPermissions.None }
+        for permissions in [HostPermissions.Native; HostPermissions.Threading; HostPermissions.IO ||| HostPermissions.Threading] do
+            Assert.Throws<EvalException>(Action(fun () -> Eval.invokeValueWithPermissionsAndExitCode permissions Map.empty (VExternal(forwarded, [])) [VString "dotnet";VList [];VUnit] |> ignore)) |> ignore
         Assert.Throws<EvalException>(Action(fun () -> Eval.invokeValueWithExitCode Map.empty (VExternal(original, [])) [VString "dotnet";VList [];VUnit] |> ignore)) |> ignore
         Assert.Throws<EvalException>(Action(fun () -> ScriptHost.loadSource [forwarded;ProcessExterns.defaults] "Host.process \"dotnet\" [] Process.defaults" |> ignore)) |> ignore
         let sdk = ExtensionBridge.toExtensionFunctions [original] |> List.head
@@ -45,7 +47,7 @@ type ProcessTests() =
         Assert.That(registration.Functions.Head.RequiredPermissions, Is.EqualTo(grants))
         let wrapped = { sdk with Name="Host.wrapped"; Impl=fun context args -> sdk.Impl context args }
         let adapted = ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[wrapped]}
-        let baseline = Registry.registration {HostContext.create root with Permissions=HostPermissions.Native ||| HostPermissions.Threading}
+        let baseline = Registry.registration {HostContext.create root with Permissions=HostPermissions.Native}
         let denied = {baseline with Functions=baseline.Functions @ adapted.Functions}
         Assert.Throws<EvalException>(Action(fun () -> ScriptHost.loadSourceWithRegistration denied "Host.wrapped \"dotnet\" [] Process.defaults" |> ignore)) |> ignore
 

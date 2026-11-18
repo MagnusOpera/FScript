@@ -353,6 +353,15 @@ Path, Glob, SemVer, scalar, and collection additions are core builtins. Encoding
 | Name | Type | Availability | Host permissions |
 | --- | --- | --- | --- |
 | [`Process.defaults`](../stdlib/process) | `ProcessOptions` | Runtime value | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none">None</a> |
-| [`Process.exec`](../stdlib/process) | `string -> string list -> ProcessOptions -> ProcessResult task` | Runtime function | <a className="permission-tag permission-tag--process" href="../embedding/host-permissions#process">Process</a>, <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading">Threading</a> |
+| [`Process.exec`](../stdlib/process) | `string -> string list -> ProcessOptions -> ProcessResult task` | Runtime function | <a className="permission-tag permission-tag--native" href="../embedding/host-permissions#native">Native</a>, <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading">Threading</a> |
 | [`ProcessOptions`](../stdlib/process) | Process configuration record | Runtime type | None |
 | [`ProcessResult`](../stdlib/process) | `Exited of { exitCode: int; stdout: string; stderr: string }` / `Failed of { message: string; stdout: string; stderr: string }` | Runtime union | None |
+
+### FScript
+
+| Name | Type | Availability | Host permissions |
+| --- | --- | --- | --- |
+| [`FScript.defaults`](../stdlib/fscript) | `FScriptOptions` | Runtime value | <a className="permission-tag permission-tag--none" href="../embedding/host-permissions#none">None</a> |
+| [`FScript.exec`](../stdlib/fscript) | `string -> string list -> FScriptOptions -> FScriptResult task` | Runtime function | <a className="permission-tag permission-tag--threading" href="../embedding/host-permissions#threading">Threading</a> |
+| [`FScriptOptions`](../stdlib/fscript) | Root, permission, and timeout options | Runtime record | None |
+| [`FScriptResult`](../stdlib/fscript) | `Completed of { value: string; exitCode: int }` / `Failed of { message: string }` | Runtime union | None |

@@ -38,6 +38,8 @@ smoke-tests:
 	done; \
 	echo "Running samples/basic/basic.fss -- helloworld.bas"; \
 	dotnet run --project src/FScript -- samples/basic/basic.fss -- helloworld.bas > /dev/null; \
+	echo "Running samples/scripts/main.fss"; \
+	dotnet run --project src/FScript -- samples/scripts/main.fss > /dev/null; \
 	echo "Running samples/process/main.fss"; \
 	dotnet run --project src/FScript -- samples/process/main.fss > /dev/null; \
 	echo "Running samples/debugging/main.fss"; \

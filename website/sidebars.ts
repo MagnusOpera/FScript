@@ -44,6 +44,7 @@ const sidebars: SidebarsConfig = {
         'stdlib/stdlib-console',
         'stdlib/stdlib-task',
         'stdlib/stdlib-process',
+        'stdlib/stdlib-fscript',
         'stdlib/stdlib-mailbox',
         'stdlib/stdlib-list',
         'stdlib/stdlib-option',

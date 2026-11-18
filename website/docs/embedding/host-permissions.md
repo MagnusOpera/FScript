@@ -11,11 +11,10 @@ Hosted interpreter execution starts with **no permissions**. The host selects a 
 | <span id="none" className="permission-definition"><code>None</code></span> | Pure built-ins and registered functions declaring no capabilities. |
 | <span id="io" className="permission-definition"><code>IO</code></span> | Built-in filesystem operations, console output, and host entropy through `Guid.new`. |
 | <span id="interactive" className="permission-definition"><code>Interactive</code></span> | Terminal input; `Console.readLine` additionally requires `IO`. |
-| <span id="threading" className="permission-definition"><code>Threading</code></span> | Every `Task.*` and `Mailbox.*` operation. |
-| <span id="native" className="permission-definition"><code>Native</code></span> | External provider loading and calls to SDK/FFI functions. This grants trust in arbitrary .NET/native code. |
-| <span id="process" className="permission-definition"><code>Process</code></span> | Launch child programs with host OS privileges. `Process.exec` also requires `Threading`; child programs are outside the script filesystem sandbox. |
+| <span id="threading" className="permission-definition"><code>Threading</code></span> | Every `Task.*` and `Mailbox.*` operation, plus `FScript.exec`. |
+| <span id="native" className="permission-definition"><code>Native</code></span> | External provider loading, calls to SDK/FFI functions, and launching child programs through `Process.exec` (also requires `Threading`). This grants trust in code with host OS access. |
 
-`Native` is a trust boundary: arbitrary provider code can access the host directly, so it is not confined by the interpreter's filesystem, IO, or threading checks. Tasks started directly by provider code remain the provider/host's responsibility; the runtime joins tasks started through its own Task API. Built-in implementation details such as `Math` calling the BCL do not require `Native`.
+`Native` is a trust boundary: arbitrary provider code and child programs can access the host directly, so they are not confined by the interpreter's filesystem, IO, or threading checks. Tasks started directly by provider code remain the provider/host's responsibility; the runtime joins tasks started through its own Task API. Built-in implementation details such as `Math` calling the BCL do not require `Native`.
 
 ## Configure the runtime host
 
@@ -56,4 +55,4 @@ Permissions govern script operations. Host-controlled source loading and import 
 
 The Language/Runtime host API now requires permission declarations on native function descriptors, a policy on native registrations and runtime contexts, and `CheckPermissions` on custom native call contexts. Existing extern-list loading APIs remain default-deny. Use `ScriptHost.loadSourceWithPermissions` or `loadFileWithPermissions` for explicit grants, or switch to registration-based loading for includes and custom types. The independently versioned Extensibility SDK requires no ABI change. New permissions are never granted by a manifest or a provider.
 
-`HostPermissions.Process = 16`; `All = 31` now includes it. Existing individual flags keep their values. The native call-context and independently versioned Extensibility SDK ABIs are unchanged.
+`FScript.exec` loads child source and imports without IO inside the inherited/narrowed root. Child grants are selected from the active invocation, and requests for additional capabilities fail. Children rebuild standard functions for their sandbox and inherit no custom providers; see the [FScript module](../stdlib/fscript).

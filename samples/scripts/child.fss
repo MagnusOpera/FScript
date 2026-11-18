@@ -1,0 +1,2 @@
+let name = Env.Arguments |> List.tryHead |> Option.defaultValue "script"
+$"Hello {name} from an isolated script"
