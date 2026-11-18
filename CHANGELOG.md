@@ -4,14 +4,21 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Publish one Stable manual with full release history and a separate Next manual with unreleased changes, without committing website snapshots.
-- Validate releases from matching release branches without a release-preparation commit.
+- Automatically publish release artifacts, packages, editor extensions, the Homebrew tap, and the website after a release tag passes validation and macOS notarization.
+- Deploy the release website implementation while keeping Next documentation and its interpreter synchronized with main.
 - Use Native permission for process execution, removing the separate Process permission.
 - Add asynchronous `FScript.exec` with isolated child interpreters, restricted permissions and roots, cooperative timeouts, and string results.
 - Keep script union constructors from being shadowed by registered host unions.
 - Add asynchronous `Process.exec` requiring Native and Threading permissions, bounded output, timeouts, and matching interpreter and compiled .NET behavior.
 
 ## [0.94]
+
+### [0.94.3]
+
+- Publish one Stable manual with full release history and a separate Next manual with unreleased changes, without committing website snapshots.
+- Restore local changelog preparation and validate release tags against their release branch and release notes.
+
+**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/0.94.2...0.94.3
 
 ### [0.94.2]
 

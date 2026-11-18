@@ -1,5 +1,5 @@
-name: 📦 Prepare Release
-run-name: Prepare release ${{ github.ref_name }}
+name: 📦 Release from Tag
+run-name: Release ${{ github.ref_name }}
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: tag-release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   BUILD_VERSION: ${{ github.ref_name }}
@@ -176,8 +180,130 @@ jobs:
         shell: bash
         run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${GITHUB_REF_NAME}"
 
-  create-draft:
+  sign-and-notarize:
     needs: [release-ci, verify-macos-artifact]
+    runs-on: macos-latest
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
+
+      - name: Download verified macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-macos
+
+      - name: Extract binaries
+        run: |
+          mkdir -p .out/darwin
+          unzip -d .out/darwin fscript-${{ env.BUILD_VERSION }}-darwin-unsigned.zip
+          test -f .out/darwin/entitlements.plist
+
+      - name: Add cert to keychain
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MAC_CERT_BASE64 }}
+          p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      - name: Sign binaries
+        run: |
+          expected_identifier="io.magnusopera.fscript.arm64"
+          codesign \
+            --force \
+            --timestamp \
+            --options=runtime \
+            --no-strict \
+            --entitlements .out/darwin/entitlements.plist \
+            --identifier "$expected_identifier" \
+            --sign "Developer ID Application: Magnus Opera (${{ secrets.MAC_DEV_TEAM_ID }})" \
+            .out/darwin/arm64/fscript
+          codesign --verify --verbose=4 .out/darwin/arm64/fscript
+          actual_identifier="$(codesign -dv --verbose=4 .out/darwin/arm64/fscript 2>&1 | sed -n 's/^Identifier=//p')"
+          if [ "$actual_identifier" != "$expected_identifier" ]; then
+            echo "Expected codesign identifier '$expected_identifier' but found '$actual_identifier'" >&2
+            exit 1
+          fi
+          codesign --display --entitlements - --xml .out/darwin/arm64/fscript > .out/darwin/signed-entitlements.plist
+          python3 - <<'PYTHON'
+          import plistlib
+          with open('.out/darwin/signed-entitlements.plist', 'rb') as source:
+              entitlements = plistlib.load(source)
+          for key in ('com.apple.security.cs.allow-jit', 'com.apple.security.cs.disable-library-validation'):
+              if entitlements.get(key) is not True:
+                  raise SystemExit(f'Signed CLI is missing required entitlement: {key}')
+          print('Verified signed CLI entitlements for JIT and native providers.')
+          PYTHON
+          (cd .out/darwin/arm64; zip ../fscript-${{ env.BUILD_VERSION }}-darwin-arm64.zip ./*)
+
+      - name: Notarize arm64
+        timeout-minutes: 10
+        shell: bash
+        env:
+          MAC_DEV_LOGIN: ${{ secrets.MAC_DEV_LOGIN }}
+          MAC_DEV_PASSWORD: ${{ secrets.MAC_DEV_PASSWORD }}
+          MAC_DEV_TEAM_ID: ${{ secrets.MAC_DEV_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAC_DEV_LOGIN:-}" || -z "${MAC_DEV_PASSWORD:-}" || -z "${MAC_DEV_TEAM_ID:-}" ]]; then
+            echo "::error::MAC_DEV_LOGIN, MAC_DEV_PASSWORD, and MAC_DEV_TEAM_ID secrets are required for notarization."
+            exit 1
+          fi
+
+          set +e
+          submit_output="$(xcrun notarytool submit ".out/darwin/fscript-${BUILD_VERSION}-darwin-arm64.zip" \
+            --apple-id "${MAC_DEV_LOGIN}" \
+            --password "${MAC_DEV_PASSWORD}" \
+            --team-id "${MAC_DEV_TEAM_ID}" \
+            --wait \
+            --output-format json 2>&1)"
+          submit_status=$?
+          set -e
+
+          printf '%s\n' "${submit_output}"
+
+          submission_id="$(printf '%s\n' "${submit_output}" | node -e 'const fs = require("node:fs"); const input = fs.readFileSync(0, "utf8"); try { const data = JSON.parse(input); process.stdout.write(data.id || ""); } catch { process.exit(0); }')"
+          notarization_status="$(printf '%s\n' "${submit_output}" | node -e 'const fs = require("node:fs"); const input = fs.readFileSync(0, "utf8"); try { const data = JSON.parse(input); process.stdout.write(data.status || ""); } catch { process.exit(0); }')"
+
+          if [[ -n "${submission_id}" && "${notarization_status}" != "Accepted" ]]; then
+            echo "::group::Apple notarization log"
+            xcrun notarytool log \
+              --apple-id "${MAC_DEV_LOGIN}" \
+              --password "${MAC_DEV_PASSWORD}" \
+              --team-id "${MAC_DEV_TEAM_ID}" \
+              "${submission_id}" \
+              notary-log.json || true
+            if [[ -f notary-log.json ]]; then
+              cat notary-log.json
+            fi
+            echo "::endgroup::"
+          fi
+
+          if [[ "${submit_status}" -ne 0 || "${notarization_status}" != "Accepted" ]]; then
+            echo "::error::Notarization failed with status '${notarization_status:-unknown}'."
+            exit 1
+          fi
+
+      - name: Upload signed and notarized macOS archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-signed-macos
+          path: .out/darwin/fscript-${{ env.BUILD_VERSION }}-darwin-arm64.zip
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+  create-release:
+    needs: [release-ci, sign-and-notarize]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -189,18 +315,23 @@ jobs:
         shell: bash
         run: ./.github/scripts/extract-release-notes.sh "$GITHUB_REF_NAME" > "${RUNNER_TEMP}/release-notes.md"
 
-      - name: Download verified release assets
+      - name: Download verified package and platform archives
         uses: actions/download-artifact@v4
         with:
-          pattern: release-assets-*
+          name: release-assets-packages
           path: ${{ runner.temp }}/release-assets
-          merge-multiple: true
 
-      - name: Create draft GitHub release
+      - name: Download signed and notarized macOS archive
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-signed-macos
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Publish verified GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          draft: true
+          draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           body_path: ${{ runner.temp }}/release-notes.md
           fail_on_unmatched_files: true
@@ -209,3 +340,14 @@ jobs:
             ${{ runner.temp }}/release-assets/*.nupkg
             ${{ runner.temp }}/release-assets/*.tgz
             ${{ runner.temp }}/release-assets/*.vsix
+
+  publish-artifacts:
+    needs: create-release
+    uses: ./.github/workflows/on-release-published.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    secrets: inherit

@@ -106,3 +106,70 @@ for invalid in missing empty no-bullets no-compare; do
     fi
 done
 printf 'Changelog formatting and release-note extraction tests passed.\n'
+
+# Release preparation runs locally on main and maintenance branches. Website
+# dependencies and generated snapshots must never participate in preparation.
+repo="$fixture/prepare"
+mkdir -p "$repo/.github/scripts" "$repo/website" "$fixture/bin"
+cp "$scripts/release.sh" "$scripts/format-changelog.sh" "$scripts/extract-release-notes.sh" "$repo/.github/scripts/"
+cat > "$fixture/bin/npm" <<'STUB'
+#!/usr/bin/env bash
+echo 'Release preparation must not invoke npm' >&2
+exit 99
+STUB
+chmod +x "$fixture/bin/npm"
+export PATH="$fixture/bin:$PATH"
+printf 'Keep website sources unchanged.\n' > "$repo/website/content.md"
+cp "$fixture/releases.md" "$repo/CHANGELOG.md"
+cd "$repo"
+git init -qb main
+git config user.name 'Release test'
+git config user.email 'release@example.invalid'
+git config commit.gpgSign false
+git config tag.gpgSign false
+git config core.hooksPath /dev/null
+git remote add origin git@github.com:example/repo.git
+git add .
+git commit -qm fixture
+git tag 0.2.1
+head_before="$(git rev-parse HEAD)"
+.github/scripts/release.sh 0.3.0 true > "$fixture/preview.log"
+grep -Fq '### [0.3.0]' "$fixture/preview.log"
+[[ "$(git rev-parse HEAD)" == "$head_before" ]]
+[[ -z "$(git status --porcelain)" ]]
+[[ "$(git tag --list | wc -l | tr -d ' ')" == 1 ]]
+.github/scripts/release.sh 0.3.0 > "$fixture/prepare-main.log"
+[[ "$(git cat-file -t 0.3.0)" == tag ]]
+[[ "$(git log -1 --pretty=%s)" == 'chore(release): 0.3.0' ]]
+[[ "$(git diff-tree --no-commit-id --name-only -r HEAD)" == CHANGELOG.md ]]
+[[ -z "$(git status --porcelain)" ]]
+grep -Fq 'https://github.com/example/repo/compare/0.2.1...0.3.0' CHANGELOG.md
+.github/scripts/extract-release-notes.sh 0.3.0 > "$fixture/main-notes.md"
+grep -Fq -- '- Future feature.' "$fixture/main-notes.md"
+[[ -z "$(awk '/^## \[Unreleased\]/{p=1;next} p && /^## /{exit} p && /^- /{print}' CHANGELOG.md)" ]]
+git switch -qc release/v0.3
+# A maintenance fix uses the same Unreleased -> version transition.
+python3 - <<'PYTHON'
+from pathlib import Path
+p = Path('CHANGELOG.md')
+p.write_text(p.read_text().replace('## [Unreleased]\n', '## [Unreleased]\n\n- Maintenance fix.\n', 1))
+PYTHON
+git add CHANGELOG.md
+git commit -qm 'Fix a regression'
+.github/scripts/release.sh 0.3.1 > "$fixture/prepare-patch.log"
+[[ "$(git diff-tree --no-commit-id --name-only -r HEAD)" == CHANGELOG.md ]]
+grep -Fq 'https://github.com/example/repo/compare/0.3.0...0.3.1' CHANGELOG.md
+[[ "$(grep -Fc '## [0.3]' CHANGELOG.md)" == 1 ]]
+.github/scripts/extract-release-notes.sh 0.3.1 > "$fixture/patch-notes.md"
+grep -Fq -- '- Maintenance fix.' "$fixture/patch-notes.md"
+if .github/scripts/release.sh 0.3.1 true >/dev/null 2>&1; then
+  echo 'ERROR: Accepted an existing tag.' >&2; exit 1
+fi
+if .github/scripts/release.sh 0.4.0 true >/dev/null 2>&1; then
+  echo 'ERROR: Accepted a mismatched release branch.' >&2; exit 1
+fi
+printf 'Uncommitted change.\n' >> website/content.md
+if .github/scripts/release.sh 0.3.2 >/dev/null 2>&1; then
+  echo 'ERROR: Accepted a dirty checkout.' >&2; exit 1
+fi
+printf 'Local release preparation tests passed.\n'

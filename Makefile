@@ -1,4 +1,4 @@
-.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-docs website-typecheck
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-docs website-typecheck
 
 build: tb-build
 
@@ -59,6 +59,9 @@ smoke-tests:
 
 verify-changelog: check-changelog-format
 	REQUIRE_CHANGELOG_ALWAYS=true .github/scripts/check-unreleased-changelog.sh
+
+release-prepare:
+	./.github/scripts/release.sh "$(version)" "$(dryrun)"
 
 release-check:
 	node .github/scripts/validate-release.mjs "$(version)"

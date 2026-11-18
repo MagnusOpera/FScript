@@ -55,25 +55,28 @@ Targeted test suites (when working on specific areas):
   - `make verify-changelog`
 - CI enforces this on both PRs and direct pushes to `main`.
 
-## Release Process (Tags and GitHub Draft)
+## Release Process (Automatic Tag Publication)
 
 Follow this exact sequence for every release:
 
-1. Prepare source and author-maintained release notes on `release/vX.Y`.
-2. Create an annotated `X.Y.Z` tag on that branch and run `make release-check version=X.Y.Z`.
-3. Push the branch and tag together: `git push origin release/vX.Y --follow-tags`.
-4. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-5. Confirm the draft notes are sourced from the tagged `CHANGELOG.md` `### [X.Y.Z]`, including its compare link.
-6. Publish that existing draft release. Website Stable follows the highest published stable version.
+1. Commit the intended changes and Unreleased notes on `main` for a new release line, or on `release/vX.Y` for a maintenance release.
+2. Run `make release-prepare version=X.Y.Z`. Use `dryrun=true` to preview without changing files or Git state.
+3. For a new release line prepared on `main`, create `release/vX.Y` at the prepared commit. For maintenance releases, remain on that release branch.
+4. Run `make release-check version=X.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
+5. The tag workflow validates and tests the source, packages binaries, signs and notarizes macOS, and publishes the GitHub Release automatically.
+6. The same run explicitly publishes NuGet, npm, editor extensions, the Homebrew tap, and the website. Confirm all publication jobs pass; no manual draft publication is required.
 
 Rules:
-- Tag-triggered CI is the source of truth for release artifacts and draft release creation.
-- Do not bypass the draft step.
+- Tag-triggered CI is the source of truth for release artifacts and publication.
+- Publish only after CI and macOS verification/notarization pass. Unsigned staging artifacts must not be included in the public release.
 - Future release tags must be reachable from `release/vX.Y` matching their major/minor version.
 - Tag workflow must fail if the tagged `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
+- `make release-prepare` requires a clean checkout, moves Unreleased into the release section, adds its compare link, commits only `CHANGELOG.md`, and creates an annotated tag. It never builds or commits website snapshots.
 - `make release-check` validates an existing `X.Y.Z` tag without modifying files, making commits, or creating tags.
-- Website builds dynamically assemble Stable from the published tag and Next from `main`. Never commit generated manual snapshots.
+- Failed distribution can be retried with **Publish Release Artifacts**, supplying the existing published release tag. Do not move published tags or change package versions to retry distribution.
+- Keep `on-release-published.yml` as the NuGet publisher workflow identity used by the trusted publishing policy, even though it is now called directly by the tag workflow.
+- Website build code follows the invoking ref. Stable content comes from the highest published stable tag; Next documentation and interpreter come from the same pinned `main` commit. Never commit generated manual snapshots.
 - Stable displays full released changelog history; Next displays only Unreleased. See [website publication](docs/architecture/website-publication.md).
 
 ## Specification Maintenance (Mandatory)

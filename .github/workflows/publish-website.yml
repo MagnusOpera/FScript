@@ -4,8 +4,7 @@ run-name: Publish Stable and Next documentation
 on:
   push:
     branches: [main]
-  release:
-    types: [published, unpublished, deleted]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -24,10 +23,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout main
+      - name: Checkout website build source
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -35,10 +34,20 @@ jobs:
         id: tool-versions
         uses: ./.github/actions/workspace-versions
 
+      - name: Read Next interpreter tool versions
+        id: next-tools
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/website-next-tools"
+          git show refs/remotes/origin/main:WORKSPACE > "$RUNNER_TEMP/website-next-tools/WORKSPACE"
+          script="$PWD/.build/read-tool-versions.mjs"
+          cd "$RUNNER_TEMP/website-next-tools"
+          node "$script" >> "$GITHUB_OUTPUT"
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ steps.tool-versions.outputs.dotnet_sdk }}
+          dotnet-version: ${{ steps.next-tools.outputs.dotnet_sdk }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,12 +72,12 @@ jobs:
             fs.writeFileSync(`${process.env.RUNNER_TEMP}/website-releases.json`, JSON.stringify(releases));
 
       - name: Test website source assembly
-        run: make test-release-changelog
+        run: npm test --prefix website
 
       - name: Generate documentation and build website
         env:
           FSCRIPT_WEBSITE_RELEASES: ${{ runner.temp }}/website-releases.json
-          FSCRIPT_WEBSITE_NEXT_REF: HEAD
+          FSCRIPT_WEBSITE_NEXT_REF: refs/remotes/origin/main
         run: make website-build
 
       - name: Verify build did not modify repository sources

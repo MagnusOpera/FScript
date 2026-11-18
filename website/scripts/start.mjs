@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {assembleDocs} from './assemble-docs.mjs';
 
-export function watchDocumentation(root, refresh) {
+export function watchDocumentation(root, refresh, watchSource = watch) {
   let timer;
   let pending = Promise.resolve();
   const schedule = () => {
@@ -14,9 +14,9 @@ export function watchDocumentation(root, refresh) {
     }, 100);
   };
   const watchers = [
-    watch(path.join(root, 'website/docs'), {recursive: true}, schedule),
-    watch(path.join(root, 'website'), (_, name) => {if (String(name) === 'sidebars.ts') schedule();}),
-    watch(root, (_, name) => {if (String(name) === 'CHANGELOG.md') schedule();}),
+    watchSource(path.join(root, 'website/docs'), {recursive: true}, schedule),
+    watchSource(path.join(root, 'website'), (_, name) => {if (String(name) === 'sidebars.ts') schedule();}),
+    watchSource(root, (_, name) => {if (String(name) === 'CHANGELOG.md') schedule();}),
   ];
   return () => {
     clearTimeout(timer);
