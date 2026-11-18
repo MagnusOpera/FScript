@@ -6,7 +6,7 @@ FSCRIPT_TAG="${1}"
 scripts="$(cd "$(dirname "$0")" && pwd)"
 FSCRIPT_VERSION="$(node "$scripts/release-tag.mjs" "$FSCRIPT_TAG")"
 TAP_TEMPLATE_FILE="$(realpath "${2}")"
-FSCRIPT_GH_REPO="${FSCRIPT_GH_REPO:-magnusopera/fscript}"
+FSCRIPT_GH_REPO="${FSCRIPT_GH_REPO:-FScriptLang/FScript}"
 export FSCRIPT_VERSION
 
 temporary="$(mktemp -d)"

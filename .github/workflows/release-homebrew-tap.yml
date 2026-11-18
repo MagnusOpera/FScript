@@ -33,6 +33,7 @@ env:
 
 jobs:
   update-homebrew-tap:
+    environment: release
     name: Update Homebrew Tap
     runs-on: ubuntu-latest
     steps:
@@ -46,12 +47,14 @@ jobs:
       - name: Checkout FScript repo
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
           path: fscript
 
       - name: Checkout tap repo
         uses: actions/checkout@v4
         with:
+          persist-credentials: true
           repository: magnusopera/homebrew-tap
           path: homebrew-tap
           token: ${{ secrets.PAT_HOMEBREW_TAP }}

@@ -19,8 +19,8 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>FScriptIcon.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/MagnusOpera/FScript</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/MagnusOpera/FScript.git</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/FScriptLang/FScript</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/FScriptLang/FScript.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 

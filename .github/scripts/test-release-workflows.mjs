@@ -91,3 +91,63 @@ test('extension packaging and registry credentials belong to the standalone exte
   const shards = JSON.parse(readFileSync(new URL('../../.build/ci-shards.json', import.meta.url), 'utf8'));
   assert.ok(shards.include.every(shard => shard.runs.every(run => !run.projects.includes('vscode'))));
 });
+
+test('transferred source and build images keep package and tap identities under Magnus Opera', () => {
+  const read = (file) => readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+  const repository = 'https://github.com/FScriptLang/FScript';
+  const npm = JSON.parse(read('src/FScript.JavaScript/package.json'));
+  assert.equal(npm.repository.url, `git+${repository}.git`, 'npm provenance must match the workflow repository');
+  assert.equal(npm.name, '@magnusopera/fscript');
+  for (const project of ['FScript', 'FScript.Language', 'FScript.Runtime']) {
+    const metadata = read(`src/${project}/${project}.fsproj`);
+    assert.ok(metadata.includes(`<RepositoryUrl>${repository}.git</RepositoryUrl>`));
+    assert.ok(metadata.includes(`<PackageProjectUrl>${repository}</PackageProjectUrl>`));
+  }
+  const workspace = read('WORKSPACE');
+  assert.ok(workspace.includes('ghcr.io/fscriptlang/fscript/toolchain:'));
+  assert.ok(!workspace.includes('ghcr.io/magnusopera/'));
+  assert.ok(read('.build/toolchain/Dockerfile').includes(`org.opencontainers.image.source="${repository}"`));
+  const tap = workflow('release-homebrew-tap');
+  assert.ok(Object.values(tap.jobs).some(job => job.steps?.some(step => step.with?.repository === 'magnusopera/homebrew-tap')));
+  assert.equal(publishing.jobs['release-npm'].env.PACKAGE_NAME, '@magnusopera/fscript');
+  assert.equal(stepUsing(publishing.jobs['release-nuget'], 'NuGet/login').with.user, 'pct-magnusopera');
+});
+
+test('PR and feature-branch validation cannot inherit credentials or acquire privileged job permissions', () => {
+  const pr = workflow('ci-pr');
+  const ci = workflow('ci');
+  assert.ok(Object.hasOwn(pr.on, 'pull_request'));
+  assert.equal(pr.jobs.ci.uses, './.github/workflows/ci.yml');
+  assert.deepEqual(pr.permissions, {contents: 'read', packages: 'read'});
+  assert.equal(ci.on.workflow_call.secrets, undefined);
+  for (const parsed of [pr, ci]) {
+    assert.doesNotMatch(JSON.stringify(parsed), /secrets\.|"secrets"|"environment"|id-token|pull_request_target/);
+    for (const permission of Object.values(parsed.permissions ?? {})) assert.equal(permission, 'read');
+    for (const job of Object.values(parsed.jobs)) {
+      for (const permission of Object.values(job.permissions ?? {})) assert.equal(permission, 'read');
+      for (const step of job.steps ?? []) {
+        if (step.uses?.startsWith('actions/checkout@')) assert.equal(step.with['persist-credentials'], false);
+        assert.equal(step.with?.TERRABUILD_TOKEN, undefined);
+        assert.equal(step.with?.TERRABUILD_MASTER_KEY, undefined);
+      }
+    }
+  }
+  const branches = workflow('ci-main');
+  assert.equal(branches.jobs['ci-untrusted'].uses, './.github/workflows/ci.yml');
+  assert.match(branches.jobs.ci.if, /refs\/heads\/main/);
+  assert.match(branches.jobs.ci.if, /refs\/heads\/release\/v/);
+  assert.equal(branches.jobs.ci.uses, './.github/workflows/ci-trusted.yml');
+  for (const name of ['ci-pr', 'ci', 'ci-main', 'ci-trusted', 'on-push-tag', 'on-release-published', 'release-homebrew-tap']) {
+    assert.doesNotMatch(JSON.stringify(workflow(name)), /"secrets":"inherit"/);
+  }
+});
+
+test('stored credentials and publishing identities are used only by restricted environment jobs', () => {
+  const trusted = workflow('ci-trusted');
+  for (const job of Object.values(trusted.jobs)) assert.equal(job.environment, 'trusted-ci');
+  assert.match(trusted.jobs.build.if, /github.event_name != 'pull_request'/);
+  assert.equal(tagged.jobs['release-ci'].uses, './.github/workflows/ci-trusted.yml');
+  assert.equal(tagged.jobs['sign-and-notarize'].environment, 'release');
+  for (const name of ['release-nuget', 'release-npm']) assert.equal(publishing.jobs[name].environment, 'release');
+  for (const job of Object.values(workflow('release-homebrew-tap').jobs)) assert.equal(job.environment, 'release');
+});

@@ -41,7 +41,7 @@ Targeted test suites (when working on specific areas):
 - After editing `CHANGELOG.md`, run `make format-changelog`; `make check-changelog-format` checks spacing without changing files.
 - At release time, move unreleased entries to a `### [vX.Y.Z]` section under `## [X.Y]` and reset `Unreleased`.
 - Each released version section should end with a compare link:
-  - `**Full Changelog**: https://github.com/MagnusOpera/FScript/compare/<previous-tag>...<new-tag>`
+  - `**Full Changelog**: https://github.com/FScriptLang/FScript/compare/<previous-tag>...<new-tag>`
 - When publishing the GitHub release, include that same compare link in the release notes body.
 
 ## Commit Gate (Hard Requirement)
@@ -77,6 +77,7 @@ Rules:
 - `make release-check` validates an existing `vX.Y.Z` tag without modifying files, making commits, or creating tags.
 - Failed distribution can be retried with **Publish Release Artifacts**, supplying the existing published release tag. Do not move published tags or change package versions to retry distribution.
 - Keep `on-release-published.yml` as the NuGet publisher workflow identity used by the trusted publishing policy, even though it is now called directly by the tag workflow.
+- Repositories and CI images are hosted under FScriptLang, while Magnus Opera package and publisher identities remain unchanged. See [organization ownership](docs/architecture/organization-ownership.md).
 - VS Code extension sources, client/grammar tests, packaging, and marketplace publication belong to [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). Keep language-server and CLI/DAP tests here. See [extension publication](docs/architecture/extension-publication.md).
 - Website content and deployment belong to [FScriptLang/FScriptLang.github.io](https://github.com/FScriptLang/FScriptLang.github.io), independently of language releases. Do not reintroduce website sources or deployment into this repository.
 - Keep language release notes in `CHANGELOG.md`; the website fetches them from main for Stable history and Next Unreleased. See [website publication](docs/architecture/website-publication.md).
@@ -104,3 +105,4 @@ Rules:
 - All checklist items above still apply (build/test/spec/docs/changelog).
 - Documentation and release notes must be updated in the same change set.
 - Direct-to-main commits are blocked by the changelog gate if `CHANGELOG.md` is not updated.
+- Pull-request and feature-branch CI must use the credential-free `ci.yml`, never `secrets: inherit`. Trusted main/release CI uses `ci-trusted.yml` and the `trusted-ci` environment. Publishing uses the restricted `release` environment; stored credentials must not be available at repository or organization scope to PR repositories.

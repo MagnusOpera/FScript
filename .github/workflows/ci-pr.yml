@@ -12,8 +12,7 @@ on:
 
 permissions:
   contents: read
-  checks: write
-  packages: write
+  packages: read
 
 jobs:
   ci:
@@ -21,4 +20,3 @@ jobs:
     with:
       suffix: pr
       require-changelog: true
-    secrets: inherit

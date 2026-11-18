@@ -47,4 +47,9 @@ for (let i = 0; i < args.length; i++) if (args[i] === '-p') fs.writeFileSync(arg
   assert.ok(!downloads.includes('1.2.3'));
   assert.throws(() => execFileSync('bash', [generator, '1.2.3', template], {env, stdio: 'pipe'}));
   assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'Invalid tags must fail before downloading or publishing');
+  const defaultEnv = {...env};
+  delete defaultEnv.FSCRIPT_GH_REPO;
+  const transferred = execFileSync('bash', [generator, 'v1.2.3', template], {env: defaultEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']});
+  assert.ok(transferred.includes('https://github.com/FScriptLang/FScript/releases/download/v1.2.3/'));
+  assert.ok(transferred.includes('homepage "https://github.com/FScriptLang/FScript"'));
 });

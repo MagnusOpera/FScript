@@ -1,4 +1,4 @@
-![FScript logo](https://raw.githubusercontent.com/MagnusOpera/FScript/refs/heads/main/FScript.png)
+![FScript logo](https://raw.githubusercontent.com/FScriptLang/FScript/refs/heads/main/FScript.png)
 
 # FScript
 

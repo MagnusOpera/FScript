@@ -45,7 +45,7 @@ fscript
 
 ### Build from source
 ```bash
-git clone https://github.com/MagnusOpera/FScript.git
+git clone https://github.com/FScriptLang/FScript.git
 cd FScript
 make build
 ```

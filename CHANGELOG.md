@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep pull-request and feature-branch CI free of stored credentials and restrict publishing and shared-cache credentials to protected environments.
+- Update repository metadata, build images, and future release links for FScriptLang while retaining Magnus Opera package identities.
 - Move the VS Code extension and marketplace publication to FScriptLang/vscode-extension while retaining the language server and debugger here.
 - Move website documentation and deployment to FScriptLang/FScriptLang.github.io while keeping language release notes in this repository.
 - Require v-prefixed release tags and display them on the website while retaining numeric package versions.

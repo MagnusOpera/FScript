@@ -24,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Read workspace tool versions
         id: tool-versions
@@ -39,7 +40,7 @@ jobs:
 
   release-ci:
     needs: validate-release
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-trusted.yml
     with:
       suffix: release
       require-changelog: false
@@ -47,7 +48,6 @@ jobs:
       contents: read
       checks: write
       packages: write
-    secrets: inherit
 
   package-release:
     needs: validate-release
@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -130,6 +132,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -158,6 +162,7 @@ jobs:
         run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${RELEASE_TAG}"
 
   sign-and-notarize:
+    environment: release
     needs: [validate-release, release-ci, verify-macos-artifact]
     runs-on: macos-latest
     env:
@@ -166,6 +171,7 @@ jobs:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ github.ref_name }}
 
       - name: Read workspace tool versions
@@ -289,6 +295,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Extract release notes from changelog
         shell: bash
@@ -328,4 +336,3 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    secrets: inherit
