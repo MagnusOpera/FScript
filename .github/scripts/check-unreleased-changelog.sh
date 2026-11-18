@@ -38,7 +38,6 @@ if git diff --quiet "$DIFF_RANGE" -- CHANGELOG.md; then
     TRIGGERS=(
       '^src/'
       '^tests/'
-      '^vscode-fscript/'
       '^docs/'
       '^samples/'
     )
@@ -103,7 +102,7 @@ UNRELEASED_BLOCK=$(awk '
 
 if [[ -z "${UNRELEASED_BLOCK//$'\n'/}" ]]; then
   HEAD_SUBJECT="$(git log -1 --pretty=%s)"
-  if [[ "$HEAD_SUBJECT" =~ ^chore\(release\):\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  if [[ "$HEAD_SUBJECT" =~ ^chore\(release\):\ v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "Changelog gate passed (release commit allows empty ## [Unreleased])."
     exit 0
   fi

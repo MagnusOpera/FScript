@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Publish maintenance releases through FScriptLang using protected CI and release credentials, v-prefixed tags, and independent website and editor repositories.
 - Automatically publish release artifacts, packages, editor extensions, the Homebrew tap, and the website after a release tag passes validation and macOS notarization.
 - Deploy the release website implementation while keeping Next documentation and its interpreter synchronized with main.
 

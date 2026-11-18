@@ -1,7 +1,7 @@
 ![FScript logo](https://raw.githubusercontent.com/MagnusOpera/FScript/refs/heads/main/FScript.png)
 
 # FScript
-[![Build (main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/MagnusOpera/FScript/actions/workflows/ci-main.yml)
+[![Build (main)](https://github.com/FScriptLang/FScript/actions/workflows/ci-main.yml/badge.svg?branch=main)](https://github.com/FScriptLang/FScript/actions/workflows/ci-main.yml)
 [![NuGet Language](https://img.shields.io/nuget/v/MagnusOpera.FScript.Language?label=NuGet%20Language)](https://www.nuget.org/packages/MagnusOpera.FScript.Language)
 [![NuGet Runtime](https://img.shields.io/nuget/v/MagnusOpera.FScript.Runtime?label=NuGet%20Runtime)](https://www.nuget.org/packages/MagnusOpera.FScript.Runtime)
 

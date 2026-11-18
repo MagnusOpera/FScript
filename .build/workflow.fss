@@ -1,5 +1,5 @@
 // Build/test scripts share a pinned container and can cache successful results.
-// @shell is reserved for the host-side Docker image bootstrap.
+// The toolchain extension bootstraps Docker on the host.
 export let run (context: Protocol.ActionContext) (script: string) (args: string option) =
     let arguments = Option.defaultValue "" args
     { PreserveProvenance = Broken
@@ -9,4 +9,15 @@ export let run (context: Protocol.ActionContext) (script: string) (args: string 
             Arguments = $"{script} {arguments}"
             ErrorLevel = 0 } ] }
 
-{ [nameof run] = [Cache Remote] }
+// This extension runs on the host. Registry publication is explicitly enabled
+// only by the trusted build job, never by PRs or read-only test shards.
+export let build (context: Protocol.ActionContext) (image: string) (dotnet_sdk: string) (node: string) (platform: string) =
+    { PreserveProvenance = Broken
+      Batchable = false
+      Operations =
+        [ { Command = "bash"
+            Arguments = $"../build-toolchain.sh {image}:{context.Hash} {dotnet_sdk} {node} {platform}"
+            ErrorLevel = 0 } ] }
+
+{ [nameof run] = [Cache Remote]
+  [nameof build] = [Cache External] }

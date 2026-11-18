@@ -28,7 +28,7 @@ test('reports must contain executed tests, including when restored from cache', 
     assert.throws(() => verifyTestReports([xml]), /contains failures/);
     fs.writeFileSync(xml, '<testsuites><testcase name="passed"/></testsuites>');
     assert.doesNotThrow(() => verifyTestReports([xml]));
-    assert.doesNotThrow(() => verifyTestReports([]), 'Website typechecking has no test-report artifact.');
+    assert.doesNotThrow(() => verifyTestReports([]), 'Selections without report-producing checks can declare an empty report list.');
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }

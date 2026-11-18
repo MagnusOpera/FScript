@@ -9,11 +9,6 @@ on:
       require-changelog:
         type: boolean
         default: false
-    secrets:
-      TERRABUILD_TOKEN:
-        required: false
-      TERRABUILD_MASTER_KEY:
-        required: false
 
 concurrency:
   group: fscript-ci-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
@@ -21,7 +16,6 @@ concurrency:
 
 permissions:
   contents: read
-  checks: write
   packages: read
 
 env:
@@ -31,8 +25,7 @@ jobs:
   build:
     permissions:
       contents: read
-      checks: write
-      packages: write
+      packages: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -40,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Enforce changelog updates
         if: ${{ !startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/heads/release/v') }}
@@ -59,8 +53,6 @@ jobs:
         uses: ./.github/actions/setup-tools
         with:
           terrabuild_workspace: "6ae115ba87040d459b6ccf40"
-          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
-          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
       - name: Read static test matrix
         id: shards
@@ -68,7 +60,7 @@ jobs:
       - name: Build and populate the Terrabuild cache
         run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
       - name: Test release workflow orchestration
-        run: node --test .github/scripts/test-release-workflows.mjs
+        run: make test-release-workflows
       - name: Logout from Terrabuild
         if: always() && steps.setup-tools.outputs.connected == 'true'
         run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
@@ -90,14 +82,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Setup Tools
         id: setup-tools
         uses: ./.github/actions/setup-tools
         with:
           terrabuild_workspace: "6ae115ba87040d459b6ccf40"
-          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
-          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
       - name: Run selected tests and restore their reports
         env:
@@ -120,6 +111,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Gather shard test results
         if: needs.tests.result != 'skipped'
         uses: actions/download-artifact@v4
@@ -127,12 +120,6 @@ jobs:
           pattern: test-results-${{ inputs.suffix }}-*
           path: .out/ci-results
           merge-multiple: false
-      - name: Publish combined test reports
-        if: always() && needs.tests.result != 'skipped'
-        uses: ./.github/actions/publish-test-results
-        with:
-          suffix: ${{ inputs.suffix }}
-          path: .out/ci-results
       - name: Require the build and every shard to pass
         if: always()
         env:

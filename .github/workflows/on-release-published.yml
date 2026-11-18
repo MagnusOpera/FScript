@@ -3,6 +3,11 @@ run-name: Release ${{ inputs.release_tag }}
 
 on:
   workflow_call:
+    secrets:
+      NPM_KEY:
+        required: true
+      PAT_HOMEBREW_TAP:
+        required: true
     inputs:
       release_tag:
         description: Existing published release tag whose verified assets will be distributed
@@ -28,18 +33,28 @@ env:
 jobs:
   validate-published-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.ref }}
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Require an existing published release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Expected an existing release tag X.Y.Z."
-            exit 1
-          fi
+          node .github/scripts/release-tag.mjs "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
           draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
           if [[ "$draft" != false ]]; then
             echo "::error::The release must already be published."
@@ -47,6 +62,7 @@ jobs:
           fi
 
   release-nuget:
+    environment: release
     needs: validate-published-release
     runs-on: ubuntu-latest
     permissions:
@@ -56,6 +72,7 @@ jobs:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
@@ -95,18 +112,20 @@ jobs:
           done
 
   release-npm:
+    environment: release
     needs: validate-published-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     env:
-      RELEASE_VERSION: ${{ inputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.validate-published-release.outputs.version }}
       PACKAGE_NAME: '@magnusopera/fscript'
     steps:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
 
       - name: Read workspace tool versions
@@ -148,95 +167,13 @@ jobs:
 
           npm publish "${packages[0]}" --access public --provenance
 
-  publish-vscode-marketplace:
-    needs: validate-published-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-
-      - name: Read workspace tool versions
-        id: tool-versions
-        uses: ./.github/actions/workspace-versions
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Download VSIX artifact
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: ${{ env.RELEASE_TAG }}
-          fileName: '*.vsix'
-
-      - name: Install VS Code publishing tool
-        env:
-          VSCE_VERSION: ${{ steps.tool-versions.outputs.vsce }}
-        run: npm install -g "@vscode/vsce@$VSCE_VERSION"
-
-      - name: Publish to VS Code Marketplace
-        shell: bash
-        env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
-        run: ./.github/scripts/publish-vscode-marketplace.sh
-
-  publish-open-vsx:
-    needs: validate-published-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-
-      - name: Read workspace tool versions
-        id: tool-versions
-        uses: ./.github/actions/workspace-versions
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Download VSIX artifact
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: ${{ env.RELEASE_TAG }}
-          fileName: '*.vsix'
-
-      - name: Install Open VSX publishing tool
-        env:
-          OVSX_VERSION: ${{ steps.tool-versions.outputs.ovsx }}
-        run: npm install -g "ovsx@$OVSX_VERSION"
-
-      - name: Publish to Open VSX
-        shell: bash
-        env:
-          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
-        run: ./.github/scripts/publish-open-vsx.sh
-
   update-homebrew-tap:
     uses: ./.github/workflows/release-homebrew-tap.yml
+    secrets:
+      PAT_HOMEBREW_TAP: ${{ secrets.PAT_HOMEBREW_TAP }}
     needs:
       - release-nuget
       - release-npm
-      - publish-vscode-marketplace
-      - publish-open-vsx
     with:
-      ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
-      version: ${{ inputs.release_tag }}
+      release_tag: ${{ inputs.release_tag }}
       dry-run: false
-    secrets: inherit
-
-  publish-website:
-    needs: update-homebrew-tap
-    uses: ./.github/workflows/publish-website.yml
-    permissions:
-      contents: read
-      pages: write
-      id-token: write

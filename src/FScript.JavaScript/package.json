@@ -24,11 +24,11 @@
   "license": "MIT",
   "homepage": "https://fscript.magnusopera.io/manual/embedding/fable-javascript",
   "bugs": {
-    "url": "https://github.com/MagnusOpera/FScript/issues"
+    "url": "https://github.com/FScriptLang/FScript/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MagnusOpera/FScript.git",
+    "url": "git+https://github.com/FScriptLang/FScript.git",
     "directory": "src/FScript.JavaScript"
   },
   "publishConfig": {

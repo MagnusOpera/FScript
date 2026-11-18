@@ -5,14 +5,13 @@ permissions:
 
 on:
   workflow_call:
+    secrets:
+      PAT_HOMEBREW_TAP:
+        required: true
     inputs:
-      ref:
+      release_tag:
         required: true
-        description: GitHub ref to use
-        type: string
-      version:
-        required: true
-        description: Version to produce
+        description: Canonical release tag vX.Y.Z
         type: string
       dry-run:
         required: false
@@ -21,13 +20,9 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
-      ref:
+      release_tag:
         required: true
-        description: GitHub ref to use
-        type: string
-      version:
-        required: true
-        description: Version to produce
+        description: Canonical release tag vX.Y.Z
         type: string
       dry-run:
         required: false
@@ -36,37 +31,33 @@ on:
         type: boolean
 
 env:
-  FSCRIPT_VERSION: ${{ inputs.version }}
+  FSCRIPT_TAG: ${{ inputs.release_tag }}
+  FSCRIPT_FORMULA_FILE: fscript
 
 jobs:
   update-homebrew-tap:
+    environment: release
     name: Update Homebrew Tap
     runs-on: ubuntu-latest
     steps:
+      - name: Require a prefixed stable release tag
+        shell: bash
+        run: |
+          if [[ ! "$FSCRIPT_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Expected a canonical release tag vX.Y.Z."
+            exit 1
+          fi
       - name: Checkout FScript repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          ref: ${{ format('refs/tags/{0}', inputs.release_tag) }}
           path: fscript
-
-      - name: Prepare formula name
-        run: |
-          version=${{ inputs.version }}
-          pat="([^-]*)-?([^-]*)"
-          [[ $version =~ $pat ]]
-          suffix=${BASH_REMATCH[2]}
-
-          if [[ -z "$suffix" ]]; then
-            FORMULA_FILE="fscript"
-          else
-            FORMULA_FILE="fscript-${suffix}"
-          fi
-
-          echo "FSCRIPT_FORMULA_FILE=$FORMULA_FILE" >> $GITHUB_ENV
 
       - name: Checkout tap repo
         uses: actions/checkout@v4
         with:
+          persist-credentials: true
           repository: magnusopera/homebrew-tap
           path: homebrew-tap
           token: ${{ secrets.PAT_HOMEBREW_TAP }}
@@ -79,9 +70,9 @@ jobs:
         run: |
           set -euo pipefail
           ./fscript/.github/scripts/generate-homebrew-tap \
-            "${FSCRIPT_VERSION}" \
+            "${FSCRIPT_TAG}" \
             ./fscript/.github/scripts/fscript-formula-template.rb \
-            > ./homebrew-tap/Formula/${FSCRIPT_FORMULA_FILE}.rb
+            > "./homebrew-tap/Formula/${FSCRIPT_FORMULA_FILE}.rb"
 
       - name: Commit updated tap
         working-directory: homebrew-tap
@@ -90,14 +81,14 @@ jobs:
 
           git config user.name magnusopera-bot
           git config user.email bot@magnusopera.io
-          git add Formula/${FSCRIPT_FORMULA_FILE}.rb
+          git add "Formula/${FSCRIPT_FORMULA_FILE}.rb"
 
           if git diff --cached --quiet; then
             echo "No tap changes to commit"
             exit 0
           fi
 
-          git commit -m "Brew formula update for fscript version ${FSCRIPT_VERSION}"
+          git commit -m "Brew formula update for fscript version ${FSCRIPT_TAG}"
 
       - name: Push tap
         working-directory: homebrew-tap

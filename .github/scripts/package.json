@@ -1,0 +1,8 @@
+{
+  "name": "fscript-workflow-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "js-yaml": "4.3.2"
+  }
+}

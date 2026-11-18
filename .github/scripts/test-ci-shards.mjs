@@ -25,19 +25,10 @@ const expected = {
   cli: ['tests/fscript.cli.tests:test'],
   'ffi-default': ['samples/ffi/tests:test_ffi_default'],
   'ffi-size': ['samples/ffi/tests:test_ffi_size'],
-  web: ['src/fscript.javascript:test', 'vscode-fscript:test', 'website:test_ci'],
+  web: ['src/fscript.javascript:test'],
   integration: ['tests/fscript.debugadapter.tests:test', 'tests/fscript.debugadapter.tests:smoke',
     'tests/fscript.debugadapter.tests:sdk']
 };
-
-test('release drafts wait for the shared CI and the packaged macOS CLI check', () => {
-  const workflow = fs.readFileSync('.github/workflows/on-push-tag.yml', 'utf8');
-  assert.match(workflow, /^  release-ci:\n    uses: \.\/\.github\/workflows\/ci\.yml$/m);
-  assert.doesNotMatch(workflow, /make publish-all\b/);
-  assert.match(workflow, /^  verify-macos-artifact:\n    needs: package-release$/m);
-  assert.match(workflow, /^  create-draft:\n    needs: \[release-ci, verify-macos-artifact\]$/m);
-  assert.match(workflow, /^          draft: true$/m);
-});
 
 test('CI runner forwards the exact project selection and propagates failures', () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fscript-ci-shard-'));
@@ -206,12 +197,6 @@ test('static CI shards select exactly their checks, restore reports, and cover e
       if (['ffisample_tests', 'fscript_cli_tests'].includes(check.projectName)) {
         assert.ok(direct.some(node => node?.projectName === 'fscript' && node.target === 'build'),
           `${check.target} must directly restore the CLI even when its own build is cached.`);
-      }
-      if (check.projectName === 'website') {
-        assert.equal(check.target, 'test_ci');
-        assert.deepEqual(check.resolvedOperations.map(operation => operation.metaCommand), ['@npm install', '@npm run'],
-          'The CI website target must recreate npm launchers before typechecking.');
-        assert.ok(direct.some(node => node?.projectName === 'javascript' && node.target === 'build'));
       }
     }
     covered.push(...checks.filter(node => node.target.startsWith('test')).map(node =>

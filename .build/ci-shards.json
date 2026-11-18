@@ -60,13 +60,8 @@
       "runs": [
         {
           "targets": ["test"],
-          "projects": ["javascript", "vscode"],
-          "reports": ["src/FScript.JavaScript/TestResults/javascript.xml", "vscode-fscript/TestResults/vscode.xml"]
-        },
-        {
-          "targets": ["test_ci"],
-          "projects": ["website"],
-          "reports": []
+          "projects": ["javascript"],
+          "reports": ["src/FScript.JavaScript/TestResults/javascript.xml"]
         }
       ]
     },

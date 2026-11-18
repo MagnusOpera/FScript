@@ -15,8 +15,6 @@ locals {
         dotnet_sdk: "11.0.100"
         node: "22"
         terrabuild: "latest"
-        vsce: "4.0.0"
-        ovsx: "0.9"
     }
 }
 
@@ -90,27 +88,32 @@ target test_ci {
 }
 
 extension @dotnet {
-    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
+    image = "ghcr.io/fscriptlang/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     defaults { configuration = var.config }
 }
 
 extension @npm {
-    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
+    image = "ghcr.io/fscriptlang/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { CI = "true" }
 }
 
 extension workflow {
     script = ".build/workflow.fss"
-    image = "ghcr.io/magnusopera/fscript/toolchain:${project.toolchain.version}"
+    image = "ghcr.io/fscriptlang/fscript/toolchain:${project.toolchain.version}"
     platform = "linux/${terrabuild.arch}"
     env { FSCRIPT_BUILD_CONFIG = var.config }
 }
 
+extension toolchain {
+    script = ".build/workflow.fss"
+    defaults { image = "ghcr.io/fscriptlang/fscript/toolchain" }
+}
+
 extension @docker {
     defaults {
-        image = "ghcr.io/magnusopera/fscript/${terrabuild.project}"
+        image = "ghcr.io/fscriptlang/fscript/${terrabuild.project}"
         platforms = [ "linux/${terrabuild.arch}" ]
     }
 }

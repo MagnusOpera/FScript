@@ -2,11 +2,14 @@
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <version> [changelog]"
+  echo "Usage: $0 <vX.Y.Z> [changelog]"
   exit 2
 fi
 
-version="$1"
+tag="$1"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+node "$scripts/release-tag.mjs" "$tag" >/dev/null
+version="$tag"
 changelog="${2:-CHANGELOG.md}"
 
 if [[ "$changelog" != "-" && ! -f "$changelog" ]]; then
@@ -16,8 +19,8 @@ fi
 
 section_body="$(
   awk -v version="[$version]" '
-    $0 == "### " version || $0 == "## " version { in_section = 1; next }
-    in_section && (/^## / || /^### \[[0-9]+\.[0-9]+\.[0-9]+(-next)?\]$/) { exit }
+    $0 == "### " version { in_section = 1; next }
+    in_section && (/^## / || /^### /) { exit }
     in_section && NF {
       if (seen) printf "%s", blank
       print

@@ -5,7 +5,7 @@ ARG DOTNET_SDK_VERSION
 FROM node:${NODE_VERSION}-bookworm-slim AS node
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_VERSION}
 
-LABEL org.opencontainers.image.source="https://github.com/MagnusOpera/FScript"
+LABEL org.opencontainers.image.source="https://github.com/FScriptLang/FScript"
 
 # AOT integration tests invoke the native compiler. Node is also needed by the
 # debugger tests, Fable package, VS Code extension, and documentation build.

@@ -13,7 +13,7 @@ export function readToolVersions(source) {
         if (Object.hasOwn(versions, name)) throw new Error(`Duplicate tool version: ${name}`);
         versions[name] = value;
     }
-    for (const name of ['dotnet_sdk', 'node', 'terrabuild', 'vsce', 'ovsx']) {
+    for (const name of ['dotnet_sdk', 'node', 'terrabuild']) {
         if (!versions[name]) throw new Error(`Missing tool version: ${name}`);
     }
     return versions;

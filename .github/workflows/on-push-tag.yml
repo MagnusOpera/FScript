@@ -4,7 +4,7 @@ run-name: Release ${{ github.ref_name }}
 on:
   push:
     tags:
-      - '**'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
 
 permissions:
   contents: read
@@ -14,14 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUILD_VERSION: ${{ github.ref_name }}
+  RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
   validate-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Read workspace tool versions
         id: tool-versions
@@ -30,11 +33,17 @@ jobs:
         with:
           node-version: ${{ steps.tool-versions.outputs.node }}
       - name: Validate release branch and tagged changelog
-        run: node .github/scripts/validate-release.mjs "$BUILD_VERSION"
+        id: release
+        run: |
+          node .github/scripts/validate-release.mjs "$RELEASE_TAG"
+          node .github/scripts/release-tag.mjs "$RELEASE_TAG" --github-output >> "$GITHUB_OUTPUT"
 
   release-ci:
     needs: validate-release
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-trusted.yml
+    secrets:
+      TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+      TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
     with:
       suffix: release
       require-changelog: false
@@ -42,15 +51,18 @@ jobs:
       contents: read
       checks: write
       packages: write
-    secrets: inherit
 
   package-release:
     needs: validate-release
     runs-on: ubuntu-latest
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -65,38 +77,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.tool-versions.outputs.node }}
-
-      - name: Install extension dependencies
-        working-directory: vscode-fscript
-        run: npm ci
-
-      - name: Sync extension version to tag
-        shell: bash
-        working-directory: vscode-fscript
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME}"
-          npm version "$TAG_VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Build and stage language server
-        shell: bash
-        run: |
-          rm -rf vscode-fscript/server
-          dotnet publish src/FScript.LanguageServer/FScript.LanguageServer.csproj -c Release -p:PublishAot=false -p:Version=${{ env.BUILD_VERSION }} -o vscode-fscript/server
-
-      - name: Verify staged server assembly versions and SDK providers
-        env:
-          FSCRIPT_RELEASE_SERVER_DIR: ${{ github.workspace }}/vscode-fscript/server
-          FSCRIPT_RELEASE_VERSION: ${{ env.BUILD_VERSION }}
-        run: dotnet test tests/FScript.LanguageServer.Tests/FScript.LanguageServer.Tests.csproj -c Release --filter "FullyQualifiedName~ReleasePackagingTests|FullyQualifiedName~EnvironmentTests"
-
-      - name: Install extension packaging tool
-        env:
-          VSCE_VERSION: ${{ steps.tool-versions.outputs.vsce }}
-        run: npm install -g "@vscode/vsce@$VSCE_VERSION"
-
-      - name: Package extension
-        working-directory: vscode-fscript
-        run: vsce package
 
       - name: Publish platform binaries and pack NuGet packages
         run: make publish publish-darwin publish-linux publish-windows pack-nuget config=Release version="$BUILD_VERSION"
@@ -124,7 +104,7 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p "${RUNNER_TEMP}/release-assets"
-          cp .out/*.zip .out/*.nupkg .out/*.tgz vscode-fscript/*.vsix "${RUNNER_TEMP}/release-assets/"
+          cp .out/*.zip .out/*.nupkg .out/*.tgz "${RUNNER_TEMP}/release-assets/"
 
       - name: Upload release packages
         uses: actions/upload-artifact@v4
@@ -147,12 +127,16 @@ jobs:
           overwrite: true
 
   verify-macos-artifact:
-    needs: package-release
+    needs: [validate-release, package-release]
     runs-on: macos-15
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -173,20 +157,24 @@ jobs:
         shell: bash
         run: |
           test "$(uname -m)" = arm64
-          unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${GITHUB_REF_NAME}-darwin-unsigned.zip" \
+          unzip -q "${RUNNER_TEMP}/fscript-release/fscript-${BUILD_VERSION}-darwin-unsigned.zip" \
             -d "${RUNNER_TEMP}/fscript-release/unpacked"
 
       - name: Verify released CLI compilation and automatic FFI configuration
         shell: bash
-        run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${GITHUB_REF_NAME}"
+        run: ./.github/scripts/verify-release-cli.sh "${RUNNER_TEMP}/fscript-release/unpacked/arm64/fscript" "${RELEASE_TAG}"
 
   sign-and-notarize:
-    needs: [release-ci, verify-macos-artifact]
+    environment: release
+    needs: [validate-release, release-ci, verify-macos-artifact]
     runs-on: macos-latest
+    env:
+      BUILD_VERSION: ${{ needs.validate-release.outputs.version }}
     steps:
       - name: Checkout release
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: ${{ github.ref_name }}
 
       - name: Read workspace tool versions
@@ -310,6 +298,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Extract release notes from changelog
         shell: bash
@@ -330,6 +320,7 @@ jobs:
       - name: Publish verified GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -339,15 +330,15 @@ jobs:
             ${{ runner.temp }}/release-assets/*.zip
             ${{ runner.temp }}/release-assets/*.nupkg
             ${{ runner.temp }}/release-assets/*.tgz
-            ${{ runner.temp }}/release-assets/*.vsix
 
   publish-artifacts:
     needs: create-release
     uses: ./.github/workflows/on-release-published.yml
+    secrets:
+      NPM_KEY: ${{ secrets.NPM_KEY }}
+      PAT_HOMEBREW_TAP: ${{ secrets.PAT_HOMEBREW_TAP }}
     with:
       release_tag: ${{ github.ref_name }}
     permissions:
       contents: write
-      pages: write
       id-token: write
-    secrets: inherit

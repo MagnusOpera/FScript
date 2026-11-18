@@ -1,0 +1,163 @@
+name: Trusted Terrabuild CI
+
+on:
+  workflow_call:
+    secrets:
+      TERRABUILD_TOKEN:
+        required: true
+      TERRABUILD_MASTER_KEY:
+        required: true
+    inputs:
+      suffix:
+        type: string
+        required: true
+      require-changelog:
+        type: boolean
+        default: false
+
+concurrency:
+  group: fscript-ci-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+  packages: read
+
+env:
+  TERRABUILD_GROUP: ${{ github.repository }}:${{ github.run_id }}:${{ github.run_attempt }}
+
+jobs:
+  build:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/v') || startsWith(github.ref, 'refs/tags/v'))
+    environment: trusted-ci
+    permissions:
+      contents: read
+      checks: write
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Enforce changelog updates
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/heads/release/v') }}
+        env:
+          REQUIRE_CHANGELOG_ALWAYS: ${{ inputs.require-changelog }}
+        run: .github/scripts/check-unreleased-changelog.sh
+      - name: Read workspace tool versions
+        id: tool-versions
+        uses: ./.github/actions/workspace-versions
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
+      - name: Verify release formatting
+        run: make test-release-changelog
+      - name: Require trusted cache credentials
+        env:
+          TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+        run: test -n "$TOKEN" && test -n "$KEY"
+      - name: Setup Tools
+        id: setup-tools
+        uses: ./.github/actions/setup-tools
+        with:
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Read static test matrix
+        id: shards
+        run: node -e 'console.log("matrix=" + JSON.stringify(require("./.build/ci-shards.json")))' >> "$GITHUB_OUTPUT"
+      - name: Build and populate the Terrabuild cache
+        env:
+          FSCRIPT_PUBLISH_TOOLCHAIN: 'true'
+        run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
+      - name: Test release workflow orchestration
+        run: make test-release-workflows
+      - name: Logout from Terrabuild
+        if: always() && steps.setup-tools.outputs.connected == 'true'
+        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
+      - name: Collect build diagnostics
+        if: always()
+        uses: ./.github/actions/collect-build-results
+        with:
+          suffix: ${{ inputs.suffix }}-build
+          publish: 'false'
+
+  tests:
+    environment: trusted-ci
+    needs: build
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require trusted cache credentials
+        env:
+          TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+        run: test -n "$TOKEN" && test -n "$KEY"
+      - name: Setup Tools
+        id: setup-tools
+        uses: ./.github/actions/setup-tools
+        with:
+          terrabuild_workspace: "6ae115ba87040d459b6ccf40"
+          TERRABUILD_TOKEN: ${{ secrets.TERRABUILD_TOKEN }}
+          TERRABUILD_MASTER_KEY: ${{ secrets.TERRABUILD_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Run selected tests and restore their reports
+        env:
+          CI_SHARD: ${{ matrix.name }}
+        run: node .github/scripts/run-ci-shard.mjs "$CI_SHARD"
+      - name: Logout from Terrabuild
+        if: always() && steps.setup-tools.outputs.connected == 'true'
+        run: terrabuild logout --space "6ae115ba87040d459b6ccf40"
+      - name: Collect shard results and diagnostics
+        if: always()
+        uses: ./.github/actions/collect-build-results
+        with:
+          suffix: ${{ inputs.suffix }}-${{ matrix.name }}
+          publish: 'false'
+
+  build-and-test:
+    environment: trusted-ci
+    name: Build and test
+    needs: [build, tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Gather shard test results
+        if: needs.tests.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-${{ inputs.suffix }}-*
+          path: .out/ci-results
+          merge-multiple: false
+      - name: Publish combined test reports
+        if: always() && needs.tests.result != 'skipped'
+        uses: ./.github/actions/publish-test-results
+        with:
+          suffix: ${{ inputs.suffix }}
+          path: .out/ci-results
+      - name: Require the build and every shard to pass
+        if: always()
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.tests.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$TEST_RESULT" = success

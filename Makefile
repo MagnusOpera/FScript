@@ -1,8 +1,8 @@
-.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison vscode-debug-smoke fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all website website-install website-build website-docs website-typecheck
+.PHONY: build test benchmark-interpreters benchmark-front-end benchmark-inference benchmark-evaluation benchmark-dotnet-comparison fable-build fable-test smoke-tests verify-changelog release-prepare release-check clean publish publish-darwin publish-linux publish-windows pack-nuget publish-all
 
 build: tb-build
 
-test: check-changelog-format test-release-changelog test-terrabuild
+test: check-changelog-format test-release-changelog test-release-workflows test-terrabuild
 	dotnet test FScript.sln -c Release
 	node --test tests/FScript.DebugAdapter.Tests/*Tests.js
 
@@ -90,29 +90,10 @@ pack-nuget:
 
 publish-all: build test publish publish-darwin publish-linux publish-windows pack-nuget
 
-website-install:
-	cd website && npm ci
-
-website-build:
-	cd website && npm run build
-
-website:
-	cd website && npm run start
-
-website-docs:
-	cd website && npm run prepare:docs
-
-website-typecheck:
-	cd website && npm run typecheck
-
 verify-sdk-provider:
 	.github/scripts/verify-sdk-provider.sh
 
-vscode-debug-smoke: build
-	npm run compile --prefix vscode-fscript
-	.github/scripts/test-vscode-debugger.sh
-
-.PHONY: format-changelog check-changelog-format test-release-changelog
+.PHONY: format-changelog check-changelog-format test-release-changelog test-release-workflows
 
 format-changelog:
 	./.github/scripts/format-changelog.sh
@@ -122,7 +103,11 @@ check-changelog-format:
 
 test-release-changelog:
 	./.github/scripts/test-release-changelog.sh
-	node --test website/scripts/*.test.mjs
+	node --test .github/scripts/test-release-tag.mjs .github/scripts/test-validate-release.mjs
+
+test-release-workflows:
+	npm ci --prefix .github/scripts --ignore-scripts --no-audit --no-fund
+	node --test .github/scripts/test-release-workflows.mjs
 
 # Container-backed whole-repository checks use Terrabuild from PATH.
 .PHONY: tb-build tb-test tb-smoke tb-sdk tb-check test-terrabuild

@@ -2,12 +2,13 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 <released-cli> <version>" >&2
+  echo "Usage: $0 <released-cli> <vX.Y.Z>" >&2
   exit 2
 fi
 
 cli="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-version="$2"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+version="$(node "$scripts/release-tag.mjs" "$2")"
 repo_root="$(git rev-parse --show-toplevel)"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
