@@ -1,7 +1,7 @@
 project website {
     depends_on = [ project.javascript ]
     includes = [ "**/*" "../.config/dotnet-tools.json" "../CHANGELOG.md" ]
-    ignores = [ "node_modules/**" "build/**" ".docusaurus/**" "src/generated/**" ]
+    ignores = [ "node_modules/**" "build/**" ".docusaurus/**" "src/generated/**" ".generated/**" "versioned_docs/**" "versioned_sidebars/**" "versions.json" ]
     @npm { }
 }
 
@@ -17,6 +17,7 @@ target build {
 
 target test {
     outputs = []
+    @npm run { target = "test" }
     @npm run { target = "typecheck" }
 }
 
@@ -25,5 +26,6 @@ target test {
 target test_ci {
     outputs = []
     @npm install { }
+    @npm run { target = "test" }
     @npm run { target = "typecheck" }
 }

@@ -59,19 +59,22 @@ Targeted test suites (when working on specific areas):
 
 Follow this exact sequence for every release:
 
-1. Run `make release-prepare version=X.Y.Z`.
-   - Optional preview mode: `make release-prepare version=X.Y.Z dryrun=true`
-2. Push commit and tag together: `git push origin main --follow-tags`.
-3. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
-4. Confirm the draft notes are sourced from `CHANGELOG.md` `### [X.Y.Z]` (including compare link).
-5. Publish that existing draft release (do not create/publish a release manually before CI draft creation).
+1. Prepare source and author-maintained release notes on `release/vX.Y`.
+2. Create an annotated `X.Y.Z` tag on that branch and run `make release-check version=X.Y.Z`.
+3. Push the branch and tag together: `git push origin release/vX.Y --follow-tags`.
+4. Wait for CI to create the GitHub Release **as draft** from the tag workflow.
+5. Confirm the draft notes are sourced from the tagged `CHANGELOG.md` `### [X.Y.Z]`, including its compare link.
+6. Publish that existing draft release. Website Stable follows the highest published stable version.
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and draft release creation.
 - Do not bypass the draft step.
-- Tag workflow must fail if `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
+- Future release tags must be reachable from `release/vX.Y` matching their major/minor version.
+- Tag workflow must fail if the tagged `CHANGELOG.md` has no non-empty `### [X.Y.Z]` section with bullets and compare link.
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
-- `make release-prepare` supports `X.Y.Z` only.
+- `make release-check` validates an existing `X.Y.Z` tag without modifying files, making commits, or creating tags.
+- Website builds dynamically assemble Stable from the published tag and Next from `main`. Never commit generated manual snapshots.
+- Stable displays full released changelog history; Next displays only Unreleased. See [website publication](docs/architecture/website-publication.md).
 
 ## Specification Maintenance (Mandatory)
 

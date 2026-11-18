@@ -4,6 +4,8 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Publish one Stable manual with full release history and a separate Next manual with unreleased changes, without committing website snapshots.
+- Validate releases from matching release branches without a release-preparation commit.
 - Use Native permission for process execution, removing the separate Process permission.
 - Add asynchronous `FScript.exec` with isolated child interpreters, restricted permissions and roots, cooperative timeouts, and string results.
 - Keep script union constructors from being shadowed by registered host unions.

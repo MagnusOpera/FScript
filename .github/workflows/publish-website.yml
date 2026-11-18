@@ -1,7 +1,11 @@
 name: 🌍 Publish Website
-run-name: Publish website from main
+run-name: Publish Stable and Next documentation
 
 on:
+  push:
+    branches: [main]
+  release:
+    types: [published, unpublished, deleted]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +29,7 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Read workspace tool versions
         id: tool-versions
@@ -45,8 +50,29 @@ jobs:
       - name: Install website dependencies
         run: make website-install
 
+      - name: Read published stable releases
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/website-releases.json`, JSON.stringify(releases));
+
+      - name: Test website source assembly
+        run: make test-release-changelog
+
       - name: Generate documentation and build website
+        env:
+          FSCRIPT_WEBSITE_RELEASES: ${{ runner.temp }}/website-releases.json
+          FSCRIPT_WEBSITE_NEXT_REF: HEAD
         run: make website-build
+
+      - name: Verify build did not modify repository sources
+        run: test -z "$(git status --porcelain)"
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

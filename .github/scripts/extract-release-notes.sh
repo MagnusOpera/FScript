@@ -9,7 +9,7 @@ fi
 version="$1"
 changelog="${2:-CHANGELOG.md}"
 
-if [[ ! -f "$changelog" ]]; then
+if [[ "$changelog" != "-" && ! -f "$changelog" ]]; then
   echo "ERROR: Changelog not found: $changelog" >&2
   exit 1
 fi
