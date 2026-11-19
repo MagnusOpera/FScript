@@ -6,7 +6,23 @@ This document lists core standard-library functions and the optional default .NE
 ## Modules
 
 - Core: `Env.setExitCode`, `List`, `Option`, `Map`, `Int`, `Float`, `Bool`, `String`.
-- Default .NET runtime: `Console`, `Task`, `Mailbox`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
+- Default .NET runtime: `Console`, `Task`, `Mailbox`, `Ref`, `Fs`, `Json`, `Regex`, `Xml`, `Hash`, `Guid`.
+
+## Ref
+
+- `Ref.create : 't -> Ref<'t>` allocates a fresh mutable reference containing the given value.
+- `Ref.get : Ref<'t> -> 't` returns its current value.
+- `Ref.set : 't -> Ref<'t> -> unit` replaces its value, with the value first for piping.
+
+Refs are opaque generic host-managed values supplied by `FScript.Runtime.Registry.registration`, with typed bindings for both .NET compilation backends. They require no permissions. Aliases, collections, and closures retain the same storage; each allocation has a distinct identity. A reference retains one element type across all uses, including an initially empty list or `None`. Factories may create independent references with different element types. Contents have no visible field and must be read or written through the functions above. Refs use the generic opaque handle equality, display, and decoding rules in [host-managed types](./host-managed-types.md).
+
+Creation, reads, and writes are observable runtime calls, not pure functions. Access is not synchronized; sharing a reference across concurrent tasks requires host coordination. Refs have no thread-safe contract in static task-sharing analysis. They are not supplied by the core language or JavaScript runtime.
+
+```fsharp
+let count = Ref.create 0
+count |> Ref.set (Ref.get count + 1)
+Ref.get count // 1
+```
 
 ## Top-level surface
 - `ignore : 'a -> unit` is an always-available core function.

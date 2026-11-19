@@ -23,6 +23,7 @@
     <Compile Include="Scripts/ScriptTests.fs" />
     <Compile Include="FsExternsTests.fs" />
     <Compile Include="MailboxTests.fs" />
+    <Compile Include="RefTests.fs" />
     <Compile Include="MailboxProperties.fs" />
     <Compile Include="MailboxPropertyTests.fs" />
     <Compile Include="RegexExternsTests.fs" />

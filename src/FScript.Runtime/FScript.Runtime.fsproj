@@ -33,6 +33,7 @@
     <Compile Include="XmlExterns.fs" />
     <Compile Include="PureExterns.fs" />
     <Compile Include="Mailbox.fs" />
+    <Compile Include="Ref.fs" />
     <Compile Include="Processes/ProcessRunner.fs" />
     <Compile Include="Processes/CompiledProcess.fs" />
     <Compile Include="Processes/ProcessSignatures.fs" />

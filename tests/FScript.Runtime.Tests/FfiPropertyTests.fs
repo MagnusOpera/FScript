@@ -112,10 +112,28 @@ type FfiPropertyTests() =
                 for _ in 1 .. 2 do value (VOption None) (invoke ConsoleExterns.read_line [VUnit])
             finally Console.SetIn originalInput; Console.SetOut originalOutput)
 
+    [<TestCase(104729UL)>]
+    [<TestCase(130363UL)>]
+    member _.ReferencesRetainTheLatestValueAcrossAliases(seed: uint64) =
+        let functions = Registry.all (HostContext.create ".") |> List.map (fun fn -> fn.Name, fn) |> Map.ofList
+        let call name args = invoke functions.["Ref." + name] args
+        verify "FfiPropertyTests.ReferencesRetainTheLatestValueAcrossAliases" 100 inputs seed (fun input ->
+            let initial = VInt(int64 input.Number)
+            let cell = call "create" [initial]
+            let alias = cell
+            let independent = call "create" [initial]
+            value initial (call "get" [cell])
+            for number in input.Numbers do
+                let next = VInt(int64 number)
+                value VUnit (call "set" [next; alias])
+                value next (call "get" [cell])
+                value initial (call "get" [independent]))
+
     static member ExpectedCatalog =
         let io, threading, read = HostPermissions.IO, HostPermissions.Threading, HostPermissions.IO ||| HostPermissions.Interactive
         [ for name in ["Fs.readText"; "Fs.exists"; "Fs.kind"; "Fs.createDirectory"; "Fs.writeText"; "Fs.glob"; "Fs.enumerateFiles"; "Guid.new"; "Console.writeLine"] -> name, io ]
         @ ["Console.readLine", read; "Process.exec", HostPermissions.Native ||| threading; "Process.defaults", HostPermissions.None; "FScript.defaults", HostPermissions.None; "FScript.exec", threading]
+        @ [for name in ["Ref.create"; "Ref.get"; "Ref.set"] -> name, HostPermissions.None]
         @ [for name in ["Task.spawn"; "Task.await"; "Task.delay"; "Task.fromResult"; "Task.continueWith"; "Task.whenAll"; "Task.whenAny"; "Task.awaitAll"; "Mailbox.start"; "Mailbox.post"; "Mailbox.finish"] -> name, threading]
         @ [for name in ["Fs.combinePath"; "Fs.parentDirectory"; "Fs.extension"; "Fs.fileNameWithoutExtension"; "Json.serialize"; "Json.deserialize"; "Xml.queryValues"; "Regex.matchGroups"; "Hash.md5"; "Hash.sha256"; "Hash.sha256Bytes"; "Encoding.utf8Encode"; "Encoding.utf8Decode"; "Encoding.base64Encode"; "Encoding.base64Decode"; "Encoding.hexEncode"; "Encoding.hexDecode"; "Encoding.uriEncode"; "Encoding.uriDecode"] -> name, HostPermissions.None]
 
@@ -130,6 +148,7 @@ type FfiPropertyTests() =
             equal expected (actual.Functions |> List.map _.Name |> Set.ofList)
             equal actual.Functions.Length expected.Count
             equal permissions actual.Permissions
+            equal true (actual.Types |> List.exists (fun t -> t.Name = "Ref"))
             equal ((permissions &&& HostPermissions.Threading) <> HostPermissions.None) (actual.Types |> List.exists (fun t -> t.Name = "Mailbox"))
             equal ((permissions &&& HostPermissions.IO) <> HostPermissions.None) (actual.Unions |> List.exists (fun t -> t.Name = "FsKind")))
 

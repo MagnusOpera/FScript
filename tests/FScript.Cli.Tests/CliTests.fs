@@ -70,6 +70,45 @@ type CliTests() =
     let basicSampleDirectory (repoRoot: string) =
         Path.Combine(repoRoot, "samples", "basic")
 
+    [<TestCase("dotnet")>]
+    [<TestCase("csharp")>]
+    member _.``Refs compile and preserve mutation through aliases and closures``(target: string) =
+        let root = findRepoRoot ()
+        let folder = Directory.CreateTempSubdirectory("fscript-ref-")
+        try
+            let script = Path.Combine(folder.FullName, "ref.fss")
+            File.WriteAllText(script, """
+type State = { Value: Ref<int list> }
+let state = { Value = Ref.create [] }
+let alias = state.Value
+let read () = Ref.get alias
+let before = read ()
+alias |> Ref.set [21; 42]
+let words = Ref.create "hello"
+Ref.set "world" words
+(before, read (), Ref.get words)
+            """.Trim())
+            let output = Path.Combine(folder.FullName, "out")
+            let code, _, error = runCli root folder.FullName ["compile"; script; "--target"; target; "--output"; output] None
+            Assert.That(code, Is.Zero, error)
+            let start = ProcessStartInfo("dotnet", WorkingDirectory = folder.FullName,
+                                         RedirectStandardOutput = true, RedirectStandardError = true)
+            let args =
+                if target = "dotnet" then [Path.Combine(output, "ref.dll")]
+                else ["run"; "--project"; Path.Combine(output, "Program.csproj")]
+            for arg in args do start.ArgumentList.Add(arg)
+            use proc = new Process(StartInfo = start)
+            proc.Start() |> ignore
+            let stdout = proc.StandardOutput.ReadToEndAsync()
+            let stderr = proc.StandardError.ReadToEndAsync()
+            if not (proc.WaitForExit(60000)) then
+                proc.Kill(true)
+                Assert.Fail("Compiled reference did not finish.")
+            Assert.That(proc.ExitCode, Is.Zero, stderr.GetAwaiter().GetResult())
+            Assert.That(stdout.GetAwaiter().GetResult().Trim(), Is.EqualTo("([], [21;42], \"world\")"))
+        finally
+            try folder.Delete(true) with _ -> ()
+
     [<TestCase("dotnet", "success")>]
     [<TestCase("csharp", "success")>]
     [<TestCase("dotnet", "worker failure")>]

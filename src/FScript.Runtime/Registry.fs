@@ -8,6 +8,7 @@ module Registry =
     /// Default providers that also supply typed compiled linkage.
     let compiledProviders () =
         [mailbox.Functions |> List.map _.Name, typeof<CompiledMailbox>.GetMethod("Start") |> nonNull
+         StandardLibrary.reference.Functions |> List.map _.Name, typeof<CompiledRef>.GetMethod("Create") |> nonNull
          ["Process.defaults";"Process.exec"], typeof<CompiledProcess>.GetMethod("Exec") |> nonNull
          ["FScript.defaults";"FScript.exec"], typeof<CompiledFScript>.GetMethod("Exec") |> nonNull]
 
