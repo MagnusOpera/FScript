@@ -114,7 +114,6 @@ module internal MailboxProperties =
     /// Real provider calls and workers. Only the handler and worker scheduler
     /// belong to the test; the mailbox's queue/admission/shutdown code is real.
     type private Session(sample: Sample, scenario: Scenario) =
-        let functions = (MailboxProvider.register ()).Functions |> List.map (fun fn -> fn.Name, fn.Impl) |> Map.ofList
         let workers = ConcurrentBag<Task>()
         let failures = ConcurrentQueue<exn>()
         let attempts = ConcurrentQueue<int>()
@@ -138,17 +137,17 @@ module internal MailboxProperties =
                         // Deliberately separate from the model transition.
                         VTuple [VInt(total + total + message); VList(List.append seen [VInt message])]
                     | _ -> failwithf "Unexpected mailbox handler application: %A %A" fn argument),
-                (fun _ -> failwith "Unexpected script task"),
-                (fun _ -> failwith "Unexpected task await"),
-                (fun () -> deadline.Token.ThrowIfCancellationRequested(); waiting ()),
-                (fun run ->
-                    let task = Task.Run(Action(fun () ->
-                        try
-                            release.Wait(deadline.Token)
-                            run (context ignore)
-                        with error -> failures.Enqueue error))
-                    workers.Add task
-                    VUnit))
+                (fun _ -> failwith "Unexpected async I/O"),
+                (fun () -> deadline.Token.ThrowIfCancellationRequested(); waiting ()))
+
+        let schedule _ run =
+            let task = Task.Run(Action(fun () ->
+                try
+                    release.Wait(deadline.Token)
+                    run (context ignore)
+                with error -> failures.Enqueue error))
+            workers.Add task
+        let functions = (MailboxProvider.registerWithWorker schedule).Functions |> List.map (fun fn -> fn.Name, fn.Impl) |> Map.ofList
 
         let invoke name waiting arguments = functions["Mailbox." + name] (context waiting) arguments
         let inbox = invoke "start" ignore [VInt(int64 sample.Capacity); VUnit; VTuple [VInt(int64 sample.Initial); VList []]]

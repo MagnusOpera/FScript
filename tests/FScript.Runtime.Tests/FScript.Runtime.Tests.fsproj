@@ -19,6 +19,7 @@
     <Compile Include="RegistryTests.fs" />
     <Compile Include="HostPermissionsTests.fs" />
     <Compile Include="Processes/ProcessTests.fs" />
+    <Compile Include="Processes/ProcessRegistrationTests.fs" />
     <Compile Include="Scripts/ScriptFixture.fs" />
     <Compile Include="Scripts/ScriptTests.fs" />
     <Compile Include="FsExternsTests.fs" />

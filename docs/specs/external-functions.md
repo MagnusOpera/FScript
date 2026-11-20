@@ -206,4 +206,10 @@ purity contracts, or runtime behavior. See
 
 ## Provider workers
 
-In the .NET source interpreter, an SDK 2 provider can call `ExternalCallContext.SpawnWorker` to run work with a fresh callback context inside the current evaluation. The host checks the Threading grant and tracks the worker through script completion. Callable handles can be used by other invocations in the same evaluation. Each invocation context expires when its own call returns.
+SDK 3 providers expose asynchronous I/O with `ExternalCallContext.ExposeAsync`.
+The factory receives a host cancellation token and returns Task<ScriptValue>; the
+host wraps it in an opaque script Task without worker scheduling or blocking.
+Providers cannot spawn or await script tasks. Scripts compose and await the
+result, and task handles may pass through SDK functions in the same active
+session. Invocation contexts expire when the function returns; only the
+cancellation token should be retained for asynchronous I/O continuations.

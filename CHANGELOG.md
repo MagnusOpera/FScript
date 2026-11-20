@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Expose SDK 3 async I/O while keeping Process execution in Runtime and task spawning and awaiting in scripts.
 - Add generic mutable references with `Ref.create`, `Ref.get`, and value-first `Ref.set` in the .NET runtime.
 - Speed up repeated local `make test` runs by using Terrabuild to cache builds and successful tests, with tooling checks available separately.
 - Build CI toolchain images without publishing from pull requests or test runners, and explicitly authorize protected environment secrets across reusable workflows.

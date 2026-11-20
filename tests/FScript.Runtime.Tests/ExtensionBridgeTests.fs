@@ -36,10 +36,13 @@ type ExtensionBridgeTests() =
         Assert.That(error.Data0.Message, Does.Contain("Foreign or expired"))
 
     [<Test>]
-    member _.``Tasks cross the SDK boundary without exposing workers`` () =
-        let execute = functionOf "Host.execute" (FScript.Extensibility.TFun(FScript.Extensibility.TFun(FScript.Extensibility.TUnit, FScript.Extensibility.TInt), FScript.Extensibility.TInt))
-                          (fun context args -> context.SpawnTask (List.head args) |> context.AwaitTask)
-        let result = run [execute] "Host.execute (fun () -> 42)"
+    member _.``Scripts await tasks exposed by libraries`` () =
+        let ready = functionOf "Host.ready" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TTask FScript.Extensibility.TInt))
+                        (fun context _ -> context.ExposeAsync(fun _ -> System.Threading.Tasks.Task.FromResult(FScript.Extensibility.VInt 42L)))
+        let sdk = {FScript.Extensibility.HostInterop.empty with Functions=[ready]}
+        let library = sdk |> ExtensionBridge.toLanguageRegistration
+        let registration = {library with Permissions=HostPermissions.All; Functions=library.Functions @ TaskFunctions.all}
+        let result = ScriptHost.loadSourceWithRegistration registration "Host.ready () |> Task.await"
         Assert.That(Pretty.valueToString result.LastValue, Is.EqualTo("42"))
 
     [<Test>]
@@ -61,12 +64,14 @@ type ExtensionBridgeTests() =
         Assert.That(error.Data0.Span.Start.Line, Is.GreaterThan(0))
 
     [<Test>]
-    member _.``Task results can pass through script before another SDK call awaits them`` () =
-        let spawn = functionOf "Host.spawn" (FScript.Extensibility.TFun(FScript.Extensibility.TFun(FScript.Extensibility.TUnit, FScript.Extensibility.TInt), FScript.Extensibility.TTask FScript.Extensibility.TInt))
-                        (fun context args -> context.SpawnTask (List.head args))
-        let await = functionOf "Host.await" (FScript.Extensibility.TFun(FScript.Extensibility.TTask FScript.Extensibility.TInt, FScript.Extensibility.TInt))
-                        (fun context args -> context.AwaitTask (List.head args))
-        let result = run [spawn; await] "let task = Host.spawn (fun () -> 42)\nHost.await task"
+    member _.``Async task handles pass through libraries without library awaiting`` () =
+        let ready = functionOf "Host.ready" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TTask FScript.Extensibility.TInt))
+                        (fun context _ -> context.ExposeAsync(fun _ -> System.Threading.Tasks.Task.FromResult(FScript.Extensibility.VInt 42L)))
+        let pass = functionOf "Host.pass" (FScript.Extensibility.TFun(FScript.Extensibility.TTask FScript.Extensibility.TInt,FScript.Extensibility.TTask FScript.Extensibility.TInt))
+                        (fun _ args -> args.Head)
+        let library = ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[ready;pass]}
+        let registration = {library with Permissions=HostPermissions.All; Functions=library.Functions @ TaskFunctions.all}
+        let result = ScriptHost.loadSourceWithRegistration registration "Host.ready () |> Host.pass |> Task.await"
         Assert.That(Pretty.valueToString result.LastValue, Is.EqualTo("42"))
 
     [<Test>]
@@ -83,3 +88,36 @@ type ExtensionBridgeTests() =
               CheckRuntime = fun () -> raise (OperationCanceledException "host limit") }
         let error = Assert.Throws<OperationCanceledException>(Action(fun () -> registration.Functions.Head.Impl context [VUnit] |> ignore)) |> nonNull
         Assert.That(error.Message, Is.EqualTo("host limit"))
+
+    [<Test>]
+    member _.``Async I/O registration neither spawns a worker nor requires Threading`` () =
+        use cancellation = new System.Threading.CancellationTokenSource(2000)
+        let completion = System.Threading.Tasks.TaskCompletionSource<FScript.Extensibility.ScriptValue>()
+        use cancel = cancellation.Token.Register(fun () -> completion.TrySetCanceled() |> ignore)
+        let callerThread = Environment.CurrentManagedThreadId
+        let mutable factoryThread = 0
+        let read = functionOf "Host.read" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TTask FScript.Extensibility.TInt))
+                       (fun context _ -> context.ExposeAsync(fun _ -> factoryThread <- Environment.CurrentManagedThreadId; completion.Task))
+        let complete = functionOf "Host.complete" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TUnit))
+                           (fun _ _ -> completion.SetResult(FScript.Extensibility.VInt 7L); FScript.Extensibility.VUnit)
+        let registration = ExtensionBridge.toLanguageRegistrationWithPermissions HostPermissions.Native {FScript.Extensibility.HostInterop.empty with Functions=[read;complete]}
+        let program = Parser.parseProgram "let pending = Host.read ()\nHost.complete ()\n42" |> TypeInfer.inferProgramWithRegistration registration
+        let result = Eval.evalProgramWithCancellation cancellation.Token registration program
+        Assert.That(Pretty.valueToString result.LastValue, Is.EqualTo("42"))
+        Assert.That(factoryThread, Is.EqualTo(callerThread))
+
+    [<Test>]
+    member _.``Async I/O is canceled and joined when the caller is canceled`` () =
+        let mutable cleanedUp = false
+        let read = functionOf "Host.read" (FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TTask FScript.Extensibility.TInt))
+                       (fun context _ -> context.ExposeAsync(fun token -> task {
+                           try
+                               do! System.Threading.Tasks.Task.Delay(30000,token)
+                               return FScript.Extensibility.VInt 42L
+                           finally cleanedUp <- true
+                       }))
+        let registration = ExtensionBridge.toLanguageRegistrationWithPermissions HostPermissions.Native {FScript.Extensibility.HostInterop.empty with Functions=[read]}
+        let program = Parser.parseProgram "let pending = Host.read ()\n42" |> TypeInfer.inferProgramWithRegistration registration
+        use cancellation = new System.Threading.CancellationTokenSource(100)
+        Assert.Catch<Exception>(Action(fun () -> Eval.evalProgramWithCancellation cancellation.Token registration program |> ignore)) |> ignore
+        Assert.That(cleanedUp, Is.True)

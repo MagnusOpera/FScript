@@ -13,7 +13,7 @@ module SdkTestHost =
           SetExitCode = ignore
           CheckRuntime = ignore }
     let invokeExternal (fn: FScript.Extensibility.ExternalFunction) args =
-        fn.Impl (FScript.Extensibility.ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)) args
+        fn.Impl (FScript.Extensibility.ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)) args
     let toSdk native =
         let mutable captured = FScript.Extensibility.VUnit
         let fn: FScript.Extensibility.ExternalFunction =

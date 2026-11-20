@@ -243,9 +243,9 @@ The tag workflow publishes the VS Code language server with the release `Version
 
 ## Independent extension SDK
 
-`FScript.Extensibility.dll` belongs to its own sibling repository and NuGet release lifecycle. Extension assemblies reference `MagnusOpera.FScript.Extensibility` without Language or Runtime. Attributes, CLR projection helpers, SDK descriptors, type schemes, values, and opaque callable/task interfaces live there. Public record and union shapes are frozen within 2.x; its unsigned assembly version stays `2.0.0.0`.
+`FScript.Extensibility.dll` belongs to its own sibling repository and NuGet release lifecycle. Extension assemblies reference `MagnusOpera.FScript.Extensibility` without Language or Runtime. Attributes, CLR projection helpers, SDK descriptors, type schemes, values, and opaque callable/task interfaces live there. Public record and union shapes are frozen within 3.x; its unsigned assembly version stays `3.0.0.0`.
 
-Runtime depends on the SDK and translates registrations through `ExtensionBridge.toLanguageRegistration`. The bridge transports generic opaque type metadata and schedules provider workers through the existing interpreter task boundary. Language retains its native inference types and values and has no SDK dependency, including in Fable builds. Providers receive SDK `HostContext` with adapted default functions. Configured loading still merges registrations atomically and performs native validation before analysis or evaluation.
+Runtime depends on the SDK and translates registrations through `ExtensionBridge.toLanguageRegistration`. The bridge transports generic opaque metadata and exposes library asynchronous I/O without worker scheduling. Task spawning and awaiting remain script operations; Mailbox workers stay private to Runtime. Language retains its native inference types and values and has no SDK dependency, including in Fable builds. Providers receive SDK `HostContext` with adapted default functions. Configured loading still merges registrations atomically and performs native validation before analysis or evaluation.
 
 Runtime implements and registers the default library operations. It owns the filesystem root and denied-glob checks, and it injects `FsKind` and `Mailbox<'message, 'state>` through the normal registration path. The compiler receives the bundled mailbox's typed CLR bindings from the CLI host. Source and compiled mailboxes share the queue implementation.
 
@@ -292,12 +292,20 @@ Build outputs and test reports are declared per target. Tests depend on their bu
 
 ## Process execution
 
-Process execution is a Runtime FFI library, with no process intrinsic, compiler catalog entry, or LIR change. Runtime owns data-only signatures, permission-guarded registration, and interpreter Value conversion. Execution requires the existing `Native | Threading` permissions. The library uses the existing `ExternalCallContext.SpawnTask` FFI bridge to join interpreter tasks and checks worker cancellation while waiting for the asynchronous runner.
+Runtime supplies Process functions and data types in its default registration.
+`Process.exec` requires Native; immutable `Process.defaults`, ProcessOptions, and
+ProcessResult require no grants. No external provider import is needed.
 
-The F# helpers under `FScript.Runtime/Processes` own direct process execution, concurrent bounded byte capture, stdin, timeouts, cleanup, and typed compiled FFI companions. `Registry.compiledProviders` exposes ordinary CLR bindings to those Runtime methods. Compiled programs reference Runtime as a library through existing FFI linkage; generic SDK-value and CLR-task adapters handle data conversion and tracked task joining in both backends. No process-specific code is generated and neither the native call-context nor the stable Extensibility SDK ABI changes.
+Helpers under Runtime's Processes folder implement cancellable process I/O,
+SDK signatures, and typed CLR companions. `ProcessExterns` adapts the internal
+SDK functions through ExtensionBridge using SDK 3 `ExposeAsync`. The host calls
+the I/O factory inline and tracks its platform task without queuing a worker or
+blocking on completion. Script task operations retain Threading checks.
+The ordinary compiled-provider registry binds the CLR companions; no process
+intrinsic is added. See [process execution](./process-execution.md).
 
 ## Nested script execution
 
 Runtime's `StandardLibrary` builds ordinary default registrations; the public Registry composes the FScript library through recursive registration factories. Helpers under `Runtime/Scripts` parse and infer source with Language APIs directly, avoiding a ScriptHost/Registry dependency cycle. Every child is interpreted, including calls from compiled programs through CompiledFScript's CLR FFI companions. No new projects, compiler catalog entries, or LIR operations are involved.
 
-Internal FileSystemPolicy values preserve original ancestor HostContexts. Public filesystem factory APIs wrap a root policy; child registrations use policy-aware implementations for reads/writes, metadata, and enumeration pruning. HostContext's public layout is unchanged. Language invocation metadata exposes active grants and an asynchronous FFI bridge without changing native or SDK context records. The generic evaluator cancellation token reaches expression checks, task workers, delays, and descendant script/process operations. Dedicated child evaluation threads allow synchronous interpreter entry points to await nested work while tracked task drivers remain asynchronous. Execution scopes carry depth and inherited cancellation; only string results leave child state. Matching Scripts test folders cover interpreted and compiled entry points.
+Internal FileSystemPolicy values preserve original ancestor HostContexts. Public filesystem factory APIs wrap a root policy; child registrations use policy-aware implementations for reads/writes, metadata, and enumeration pruning. HostContext's public layout is unchanged. Language invocation metadata exposes active grants and an asynchronous FFI bridge without changing native or SDK context records. The generic evaluator cancellation token reaches expression checks, task workers, delays, and descendant script operations and exposed asynchronous I/O. Dedicated child evaluation threads allow synchronous interpreter entry points to await nested work while tracked task drivers remain asynchronous. Execution scopes carry depth and inherited cancellation; only string results leave child state. Matching Scripts test folders cover interpreted and compiled entry points.

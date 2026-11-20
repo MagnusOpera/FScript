@@ -27,7 +27,7 @@ type GraphicsTests() =
           Indices = [|0L; 1L; 2L|] }
     let call name args =
         let fn = Graphics.registration.Functions |> List.find (fun f -> f.Name = name)
-        let context = ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)
+        let context = ExternalCallContext((fun _ _ -> failwith "unused"), (fun _ -> failwith "unused"), ignore)
         fn.Impl context args
 
     [<Test>]

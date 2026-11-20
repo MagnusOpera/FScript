@@ -83,8 +83,14 @@ module ExtensionBridge =
     type private Frame =
         { Native: ExternalCallContext
           Encode: Value -> SV
-          Decode: SV -> Value }
+          Decode: SV -> Value
+          StartWorker: (FScript.Extensibility.ExternalCallContext -> unit) -> unit }
     let private frames = ConditionalWeakTable<FScript.Extensibility.ExternalCallContext, Frame>()
+
+    let internal spawnWorker context work =
+        match frames.TryGetValue context with
+        | true, frame -> frame.StartWorker work
+        | _ -> raise (SE "Runtime workers require an active interpreter invocation.")
 
     let private keyToLanguage = function
         | SK.MKString v -> MKString v | SK.MKInt v -> MKInt v
@@ -162,17 +168,29 @@ module ExtensionBridge =
                 check()
                 try action()
                 with EvalException error -> raise (SE(error.Message, EvalException error))
-            let context = FScript.Extensibility.ExternalCallContext(
-                (fun f x -> callback (fun () -> native.Apply (decode f) (decode x) |> encode)),
-                (fun f -> callback (fun () -> native.SpawnTask (decode f) |> encode)),
-                (fun t -> callback (fun () -> native.AwaitTask (decode t) |> encode)), check,
-                (fun work -> callback (fun () ->
+            let startWorker work =
+                callback (fun () ->
+                    native.CheckPermissions HostPermissions.Threading
                     let worker =
-                        { Name = "<provider worker>"; Scheme = Forall([], TFun(TUnit, TUnit)); Arity = 1
+                        { Name = "<runtime worker>"; Scheme = Forall([], TFun(TUnit,TUnit)); Arity = 1
                           RequiredPermissions = HostPermissions.Threading
                           Impl = fun child _ -> invokeExternal child (fun context _ -> work context; SV.VUnit) }
-                    native.SpawnTask (VExternal(worker, [])) |> encode)))
-            frames.Add(context, { Native = native; Encode = encode; Decode = decode })
+                    native.SpawnTask (VExternal(worker, [])) |> ignore)
+            let exposeAsync (operation: System.Threading.CancellationToken -> System.Threading.Tasks.Task<SV>) =
+                callback (fun () ->
+                    HostInterop.exposeAsync native (fun cancellation -> task {
+                        try
+                            let! value = (operation cancellation).ConfigureAwait(false)
+                            return decode value
+                        with :? SE as error ->
+                            match error.InnerException with
+                            | :? EvalException as original -> return raise original
+                            | _ -> return raise (HostCommon.evalError error.Message)
+                    }) |> encode)
+            let context = FScript.Extensibility.ExternalCallContext(
+                (fun f x -> callback (fun () -> native.Apply (decode f) (decode x) |> encode)),
+                exposeAsync, check)
+            frames.Add(context, { Native = native; Encode = encode; Decode = decode; StartWorker = startWorker })
             try
                 try invoke context encode |> decode
                 with :? SE as error ->

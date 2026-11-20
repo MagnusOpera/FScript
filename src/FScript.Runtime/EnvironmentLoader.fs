@@ -45,7 +45,7 @@ module EnvironmentLoader =
                 |> List.filter seen.Add
 
             let externListType = typeof<FScript.Extensibility.ExternalFunction list>
-            let providerContext = FScript.Extensibility.HostContext(context.RootDirectory, context.DeniedPathGlobs, ExtensionBridge.toExtensionFunctions (Registry.all context))
+            let providerContext = FScript.Extensibility.HostContext(context.RootDirectory, context.DeniedPathGlobs, ExtensionBridge.toExtensionFunctions (Registry.all context |> List.filter (fun fn -> not (HostInterop.allows fn.RequiredPermissions HostPermissions.Threading))))
 
             let tryGetTypes (assembly: Assembly) : Result<System.Type list, string> =
                 try

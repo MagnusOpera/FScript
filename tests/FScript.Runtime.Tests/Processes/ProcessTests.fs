@@ -15,42 +15,40 @@ type ProcessTests() =
     let root = Directory.GetCurrentDirectory()
     let grants = HostPermissions.Native ||| HostPermissions.Threading
     let run permissions source =
-        let registration = Registry.registration { HostContext.create root with Permissions = permissions }
-        ScriptHost.loadSourceWithRegistration registration source |> _.LastValue
+        let context = {HostContext.create root with Permissions=permissions}
+        ScriptHost.loadSourceWithRegistration (Registry.registration context) source |> _.LastValue
     let call args options = $"Process.exec \"dotnet\" [{quote fixture}; \"--process-fixture\"; {args}] {options}"
     let runner args timeout limit stdin directory environment cancellation =
         ProcessRunner.Run(root, "dotnet", Array.ofList(fixture::"--process-fixture"::args), directory, environment, stdin, timeout, limit, cancellation)
     let outcome args = runner args (Nullable()) 1048576L null null [||] CancellationToken.None |> _.GetAwaiter().GetResult()
 
     [<Test>]
-    member _.``Defaults and data types are pure while execution requires both permissions`` () =
-        for permissions in [HostPermissions.None; HostPermissions.IO; HostPermissions.Native; HostPermissions.Threading; HostPermissions.Native ||| HostPermissions.IO; HostPermissions.IO ||| HostPermissions.Threading] do
-            let registration = Registry.registration { HostContext.create root with Permissions = permissions }
-            Assert.That(registration.Types |> List.map _.Name, Does.Contain("ProcessOptions"))
-            Assert.That(registration.Unions |> List.map _.Name, Does.Contain("ProcessResult"))
-            Assert.That(registration.Functions |> List.map _.Name, Does.Not.Contain("Process.exec"))
-            Assert.That(run permissions "Process.defaults.maxOutputBytes" |> Pretty.valueToString, Is.EqualTo("1048576"))
-            Assert.Throws<TypeException>(Action(fun () -> run permissions (call "\"echo\"" "Process.defaults") |> ignore)) |> ignore
-        let registration = Registry.registration { HostContext.create root with Permissions = grants }
-        Assert.That(registration.Functions |> List.find (fun fn -> fn.Name="Process.exec") |> _.RequiredPermissions, Is.EqualTo(grants))
+    member _.``Runtime registers process metadata and defaults without granting native execution`` () =
+        let registration = Registry.registration (HostContext.create root)
+        Assert.That(registration.Types |> List.map _.Name, Does.Contain("ProcessOptions"))
+        Assert.That(registration.Unions |> List.map _.Name, Does.Contain("ProcessResult"))
+        Assert.That(registration.Functions |> List.map _.Name, Does.Contain("Process.defaults").And.Not.Contain("Process.exec"))
+        Assert.That(run HostPermissions.None "Process.defaults.maxOutputBytes" |> Pretty.valueToString, Is.EqualTo("1048576"))
 
     [<Test>]
-    member _.``Direct and renamed descriptors cannot bypass permission checks`` () =
-        let original = ProcessExterns.exec (HostContext.create root)
-        let forwarded = { original with Name="Host.process"; RequiredPermissions=HostPermissions.None }
-        for permissions in [HostPermissions.Native; HostPermissions.Threading; HostPermissions.IO ||| HostPermissions.Threading] do
-            Assert.Throws<EvalException>(Action(fun () -> Eval.invokeValueWithPermissionsAndExitCode permissions Map.empty (VExternal(forwarded, [])) [VString "dotnet";VList [];VUnit] |> ignore)) |> ignore
-        Assert.Throws<EvalException>(Action(fun () -> Eval.invokeValueWithExitCode Map.empty (VExternal(original, [])) [VString "dotnet";VList [];VUnit] |> ignore)) |> ignore
-        Assert.Throws<EvalException>(Action(fun () -> ScriptHost.loadSource [forwarded;ProcessExterns.defaults] "Host.process \"dotnet\" [] Process.defaults" |> ignore)) |> ignore
-        let sdk = ExtensionBridge.toExtensionFunctions [original] |> List.head
-        let registration = ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[{sdk with Name="Host.forwarded"}]}
-        Assert.That(registration.Functions.Head.RequiredPermissions, Is.EqualTo(grants))
-        let wrapped = { sdk with Name="Host.wrapped"; Impl=fun context args -> sdk.Impl context args }
-        let adapted = ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[wrapped]}
-        let baseline = Registry.registration {HostContext.create root with Permissions=HostPermissions.Native}
-        let denied = {baseline with Functions=baseline.Functions @ adapted.Functions}
-        Assert.Throws<EvalException>(Action(fun () -> ScriptHost.loadSourceWithRegistration denied "Host.wrapped \"dotnet\" [] Process.defaults" |> ignore)) |> ignore
+    member _.``Explicit process registration requires Native while script awaiting requires Threading`` () =
+        let registration = Registry.registration {HostContext.create root with Permissions=HostPermissions.Native}
+        Assert.That(registration.Functions |> List.find (fun fn -> fn.Name="Process.exec") |> _.RequiredPermissions, Is.EqualTo(HostPermissions.Native))
+        for permissions in [HostPermissions.None; HostPermissions.IO; HostPermissions.Threading; HostPermissions.IO ||| HostPermissions.Threading] do
+            Assert.Throws<TypeException>(Action(fun () -> run permissions (call "\"echo\"" "Process.defaults") |> ignore)) |> ignore
+        run HostPermissions.Native "Process.exec \"\" [] Process.defaults |> ignore" |> ignore
 
+    [<Test>]
+    member _.``Renamed native descriptors cannot bypass process permission checks`` () =
+        let original = ProcessExterns.exec (HostContext.create root)
+        let forwarded = {original with Name="Host.process"; RequiredPermissions=HostPermissions.None}
+        for permissions in [HostPermissions.None;HostPermissions.IO;HostPermissions.Threading;HostPermissions.IO ||| HostPermissions.Threading] do
+            let baseline = Registry.registration {HostContext.create root with Permissions=permissions}
+            let registration = {baseline with Functions=forwarded::baseline.Functions}
+            Assert.Throws<EvalException>(Action(fun () -> ScriptHost.loadSourceWithRegistration registration "Host.process \"\" [] Process.defaults" |> ignore)) |> ignore
+        let sdk = ExtensionBridge.toExtensionFunctions [original] |> List.head
+        let forwardedSdk = ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[{sdk with Name="Host.forwarded"}]}
+        Assert.That(forwardedSdk.Functions.Head.RequiredPermissions, Is.EqualTo(HostPermissions.Native))
 
     [<Test>]
     member _.``Interpreter returns union results and preserves argument boundaries`` () =
@@ -153,3 +151,21 @@ let foreignMatched = match foreign with | ProcessResult.Failed _ -> true | _ -> 
 (localMessage, foreignMatched)
 """
         Assert.That(run grants source |> Pretty.valueToString, Is.EqualTo("(\"local\", true)"))
+
+    [<Test>]
+    member _.``Interpreter cancellation terminates the provider-started child`` () =
+        HostTestHelpers.withTempRoot "provider-process-cancel" (fun directory ->
+            let pidFile = Path.Combine(directory,"pid.txt")
+            let context = {HostContext.create root with Permissions=grants}
+            let registration = Registry.registration context
+            let source = call ("\"pid-file\"; " + quote pidFile) "Process.defaults" + " |> Task.await"
+            let program = Parser.parseProgram source |> TypeInfer.inferProgramWithRegistration registration
+            use cancellation = new CancellationTokenSource(2000)
+            let error = Assert.Throws<EvalException>(Action(fun () -> Eval.evalProgramWithCancellation cancellation.Token registration program |> ignore)) |> nonNull
+            Assert.That(error.Data0.Message, Does.Contain("canceled"))
+            Assert.That(File.Exists pidFile, Is.True, "The process must start before cancellation.")
+            let pid = Int32.Parse(File.ReadAllText pidFile)
+            try
+                use child = Diagnostics.Process.GetProcessById(pid)
+                Assert.That(child.HasExited, Is.True)
+            with :? ArgumentException -> ())

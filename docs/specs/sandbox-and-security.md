@@ -14,7 +14,7 @@ This document defines the security model for running FScript programs with host 
 
 Language `HostPermissions` is a flags enum: `None=0`, `Interactive=1`, `Threading=2`, `IO=4`, `Native=8`, and `All=15`. Host contexts and native registrations carry explicit grants; `HostInterop.empty`, extern-list APIs, SDK adaptation, and default `EnvironmentLoader` loading grant none. CLI execution, compilation, generated programs, and static analysis retain their existing unrestricted behavior. Source reads and resolver callbacks are trusted host plumbing, not script IO grants.
 
-Native `ExternalFunction.RequiredPermissions` declares required bits. `ScriptHost` removes unavailable functions before inference; evaluator dispatch and `HostInterop.invoke` check requirements again, including arity-zero values, returned callable values, canonical tasks, and callback execution. The active execution context, retained REPL state, and `LoadedScript` retain host grants for exported invocations. SDK task contexts cannot spawn or await without `Threading`. Host callbacks can inspect their own trusted context but cannot grant capabilities through script values.
+Native `ExternalFunction.RequiredPermissions` declares required bits. `ScriptHost` removes unavailable functions before inference; evaluator dispatch and `HostInterop.invoke` check requirements again, including arity-zero values, returned callable values, canonical tasks, and callback execution. The active execution context, retained REPL state, and `LoadedScript` retain host grants for exported invocations. SDK 3 contexts cannot spawn or await; script Task operations require `Threading`. Host callbacks can inspect their own trusted context but cannot grant capabilities through script values.
 
 `IO` gates `Fs.readText`, `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Console.writeLine`, and `Guid.new` (host entropy). `Console.readLine` needs both `IO` and `Interactive`. Every `Task.*` and `Mailbox.*` function needs `Threading`. All core helpers, lexical `Fs` helpers, text/regex/JSON/XML/encoding/hash transformations require none; higher-order helpers preserve callback requirements. The [complete website signature index](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/reference/stdlib-reference.md) records requirements per function.
 
@@ -114,7 +114,7 @@ A .NET host can register only `FScript.Runtime.PureExterns.functions` to expose 
 
 ## Child process execution
 
-`Process.exec` requires `Native | Threading`. Registry filtering and invocation checks apply, including forwarded standard implementations. `Process.defaults`, `ProcessOptions`, and `ProcessResult` require no capabilities. `Native` grants trust in code with host OS access; `Threading` additionally authorizes this asynchronous standard function.
+Runtime supplies Process functions and data types through default externs. Process.exec requires Native and returns an asynchronous I/O task without requesting Threading; script Task operations retain Threading checks. Process.defaults, ProcessOptions, and ProcessResult require no grants. The SDK has no worker scheduling or awaiting API. `Native` grants trust in code with host OS access; `Threading` authorizes script task operations, not the underlying library I/O.
 
 Children run with host OS privileges and are outside root, denied-path, and symlink restrictions. The host root is only the default working directory; overrides may be outside it. No implicit shell is launched. The environment is inherited with per-child overrides. The exact contract, limits, result prefixes, cleanup behavior, and compiler parity are defined in the [Process module](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/process.md).
 
@@ -127,3 +127,19 @@ Process tasks are tracked and joined on both successful and failed evaluation. T
 Each child has fresh interpreter state, Env arguments, exit code, and task scope. Only a final string and result metadata return to the parent. The child registry contains only standard Runtime functions, with no parent closures/custom externs, automatic manifests, or package/provider loading. Console operations retain their individual grants and share normal console streams. Child failure does not roll back effects; Native remains an OS-access grant.
 
 All tracked child and descendant tasks are joined on success, failure, and cooperative cancellation. Positive optional timeouts cover source loading through task draining, cannot be extended by descendants, and may wait for uninterruptible host operations. Nesting is capped at 32 child executions before source loading. Compiled callers start from current-directory/all-permissions defaults, then execute interpreted children through the same Runtime policy. See the [complete FScript contract](https://github.com/FScriptLang/FScriptLang.github.io/blob/main/docs/next/stdlib/fscript.md).
+
+## Asynchronous provider I/O
+
+SDK 3 ExposeAsync invokes a cancellable asynchronous I/O factory inline and wraps
+its returned platform task in an authenticated script Task. It does not request
+Threading, queue a worker, or block on completion. Provider code still requires
+Native; scripts choose task spawning, composition, and explicit awaiting, subject
+to Threading checks. The host tracks I/O completion and joins pending operations
+at scope exit, including failures/cancellation. Libraries receive a host-owned
+cancellation token and must propagate it into their I/O. Invocation contexts
+expire when the provider call returns; they cannot be retained for continuations.
+
+Runtime services retain private worker scheduling. Automatic SDK HostContext
+catalogs exclude functions requiring Threading, including Task, Mailbox, and
+child-script execution. No provider declaration grants
+permissions. Safe Runtime helpers remain built in.

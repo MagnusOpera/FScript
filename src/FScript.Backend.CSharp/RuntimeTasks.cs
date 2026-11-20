@@ -86,6 +86,15 @@ internal static class FsTasks
         finally { scope.Close(); Current.Value=previous; }
     }
 
+    public static Task<T> ExposeAsync<T>(Func<CancellationToken,Task<T>> operation)
+    {
+        Check();
+        Task<T> pending;
+        try { pending=operation(CancellationToken.None) ?? throw new InvalidOperationException("Async provider returned no task."); }
+        catch(Exception error) { pending=Task.FromException<T>(error); }
+        return Track(pending);
+    }
+
     public static Task<T> Spawn<T>(Func<Unit,T> callback)
     {
         Check();

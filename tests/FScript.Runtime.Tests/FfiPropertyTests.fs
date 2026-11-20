@@ -132,7 +132,7 @@ type FfiPropertyTests() =
     static member ExpectedCatalog =
         let io, threading, read = HostPermissions.IO, HostPermissions.Threading, HostPermissions.IO ||| HostPermissions.Interactive
         [ for name in ["Fs.readText"; "Fs.exists"; "Fs.kind"; "Fs.createDirectory"; "Fs.writeText"; "Fs.glob"; "Fs.enumerateFiles"; "Guid.new"; "Console.writeLine"] -> name, io ]
-        @ ["Console.readLine", read; "Process.exec", HostPermissions.Native ||| threading; "Process.defaults", HostPermissions.None; "FScript.defaults", HostPermissions.None; "FScript.exec", threading]
+        @ ["Console.readLine", read; "Process.exec", HostPermissions.Native; "Process.defaults", HostPermissions.None; "FScript.defaults", HostPermissions.None; "FScript.exec", threading]
         @ [for name in ["Ref.create"; "Ref.get"; "Ref.set"] -> name, HostPermissions.None]
         @ [for name in ["Task.spawn"; "Task.await"; "Task.delay"; "Task.fromResult"; "Task.continueWith"; "Task.whenAll"; "Task.whenAny"; "Task.awaitAll"; "Mailbox.start"; "Mailbox.post"; "Mailbox.finish"] -> name, threading]
         @ [for name in ["Fs.combinePath"; "Fs.parentDirectory"; "Fs.extension"; "Fs.fileNameWithoutExtension"; "Json.serialize"; "Json.deserialize"; "Xml.queryValues"; "Regex.matchGroups"; "Hash.md5"; "Hash.sha256"; "Hash.sha256Bytes"; "Encoding.utf8Encode"; "Encoding.utf8Decode"; "Encoding.base64Encode"; "Encoding.base64Decode"; "Encoding.hexEncode"; "Encoding.hexDecode"; "Encoding.uriEncode"; "Encoding.uriDecode"] -> name, HostPermissions.None]

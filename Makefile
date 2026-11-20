@@ -28,6 +28,13 @@ fable-build:
 fable-test: fable-build
 	cd src/FScript.JavaScript && npm test
 
+# Validate SDK 3 and Runtime together without publishing the SDK first.
+.PHONY: sdk-test
+sdk-test:
+	$(MAKE) -C ../FScript.Extensibility test verify-api
+	UseLocalFScriptExtensibility=true dotnet test FScript.sln -c Release
+	UseLocalFScriptExtensibility=true $(MAKE) smoke-tests
+
 smoke-tests:
 	@set -e; \
 	for script in samples/*.fss; do \

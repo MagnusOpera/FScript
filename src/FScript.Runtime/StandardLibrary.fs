@@ -38,7 +38,8 @@ module internal StandardLibrary =
 
     /// Create an interpreter registration with exactly the host's grants.
     let registration (context: HostContext) policy =
+        let processRegistration = ProcessExterns.registration context
         let registration = HostInterop.ofExternsWithPermissions context.Permissions (all context policy)
         { registration with
-            Unions = ProcessSignatures.resultDescriptor :: (if HostInterop.allows context.Permissions HostPermissions.IO then [FsExterns.kindType] else [])
-            Types = ProcessSignatures.optionsDescriptor :: reference.Types @ (if HostInterop.allows context.Permissions HostPermissions.Threading then mailbox.Types else []) }
+            Unions = processRegistration.Unions @ (if HostInterop.allows context.Permissions HostPermissions.IO then [FsExterns.kindType] else [])
+            Types = processRegistration.Types @ reference.Types @ (if HostInterop.allows context.Permissions HostPermissions.Threading then mailbox.Types else []) }

@@ -6,13 +6,13 @@ module HostInterop =
     let private fail message = raise (EvalException { Message = message; Span = span })
 
 #if !FABLE_COMPILER
-    type private InvocationMetadata(permissions: HostPermissions, startTask: (System.Threading.CancellationToken -> System.Threading.Tasks.Task<Value>) -> Value) =
+    type private InvocationMetadata(permissions: HostPermissions, exposeAsync: (System.Threading.CancellationToken -> System.Threading.Tasks.Task<Value>) -> Value) =
         member _.Permissions = permissions
-        member _.StartTask = startTask
+        member _.ExposeAsync = exposeAsync
     let private invocations = System.Runtime.CompilerServices.ConditionalWeakTable<ExternalCallContext, InvocationMetadata>()
 
-    let internal registerInvocation context permissions startTask =
-        invocations.Add(context, InvocationMetadata(permissions, startTask))
+    let internal registerInvocation context permissions exposeAsync =
+        invocations.Add(context, InvocationMetadata(permissions, exposeAsync))
 
     let private invocation (context: ExternalCallContext) =
         context.CheckPermissions HostPermissions.None
@@ -24,10 +24,14 @@ module HostInterop =
     /// Read the active evaluator's grants, rather than a captured registration's policy.
     let currentPermissions context = (invocation context).Permissions
 
+    /// Expose asynchronous I/O in the evaluator's task scope without spawning work.
+    let exposeAsync (context: ExternalCallContext) start =
+        (invocation context).ExposeAsync start
+
     /// Start asynchronous FFI work in the evaluator's tracked task scope.
     let startTask (context: ExternalCallContext) start =
         context.CheckPermissions HostPermissions.Threading
-        (invocation context).StartTask start
+        (invocation context).ExposeAsync start
 #endif
 
     let empty : ExtensionRegistration = { Permissions = HostPermissions.None; Types = []; Unions = []; Functions = [] }

@@ -1,6 +1,6 @@
 namespace FScript.Runtime
 
-open FScript.Language
+open FScript.Extensibility
 
 /// Data-only process contracts for the process FFI library.
 module internal ProcessSignatures =

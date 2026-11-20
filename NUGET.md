@@ -13,7 +13,15 @@ FScript is a lightweight, embeddable interpreter with an F#/ML-style language.
 
 ## Extension authoring
 
-Reference the independently versioned `MagnusOpera.FScript.Extensibility` SDK to author providers without interpreter dependencies. Embedding applications use Language/Runtime and adapt SDK registrations through `ExtensionBridge.toLanguageRegistration`. FScript 0.93 requires SDK 2.x. Compatible SDK 2.x releases retain unsigned assembly identity 2.0.0.0 independently of FScript product versions.
+Reference the independently versioned `MagnusOpera.FScript.Extensibility` SDK to author providers without interpreter dependencies. Embedding applications use Language/Runtime and adapt SDK registrations through `ExtensionBridge.toLanguageRegistration`. Runtime requires SDK 3.x with unsigned assembly identity 3.0.0.0. SDK 2 hosts/providers must rebuild for the new async-only invocation context.
+
+## Process functions
+
+Runtime supplies `Process.exec`, gated by `Native`, and permission-free
+`Process.defaults` and data types. No external package import is required.
+Process execution uses SDK 3 async I/O; script task operations such as
+`Task.await` separately require `Threading`.
+See [process execution and local testing](docs/architecture/process-execution.md).
 
 ## License
 

@@ -511,7 +511,7 @@ module Eval =
 #if !FABLE_COMPILER
         HostInterop.registerInvocation context runtime.Permissions (fun start ->
             let cancellation = if runtime.Cancellation.CanBeCanceled then runtime.Cancellation else (match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None)
-            startTaskValue runtime (fun _ -> Execution.awaitTask (start cancellation)))
+            exposeAsyncValue runtime (fun () -> start cancellation))
 #endif
         context
 
@@ -527,6 +527,30 @@ module Eval =
         let handle = { Worker=worker; DebugTaskId=debugTaskId; Awaited=false }
         withRuntimeLock runtime (fun () -> runtime.PendingTasks.Add handle)
         VTask handle
+
+    and private exposeAsyncValue (runtime: RuntimeState) start : Value =
+        checkRuntime runtime
+        let debugId = runtime.Debug |> Option.map (fun observer -> observer.TaskStarted(Some runtime.TaskId))
+        // Call the I/O factory here: registration never queues a worker or blocks on completion.
+        let operation = try start () with error -> Task.FromException<Value>(error)
+        let outcome = task {
+            let mutable failure = None
+            try
+                try
+                    let! value = operation.ConfigureAwait(false)
+                    return TaskSucceeded value
+                with error ->
+                    failure <- Some error
+                    match runtime.Debug, debugId with
+                    | Some observer, Some id -> do! observer.Fault(id,error)
+                    | _ -> ()
+                    return TaskFailed(match error with EvalException e -> e | _ -> wrapUnexpectedTaskFailure error)
+            finally
+                match runtime.Debug, debugId with
+                | Some observer, Some id -> observer.TaskExited(id,failure)
+                | _ -> ()
+        }
+        trackTaskValue runtime debugId outcome
 
     and private startTaskValue (runtime: RuntimeState) body : Value =
         checkRuntime runtime

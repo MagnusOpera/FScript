@@ -134,7 +134,7 @@ module MailboxProvider =
         | :? InterpreterMailbox as value -> value
         | _ -> raise (ExtensionException("Expected a mailbox handle."))
 
-    let register () : ExtensionRegistration =
+    let internal registerWithWorker (schedule: ExternalCallContext -> (ExternalCallContext -> unit) -> unit) : ExtensionRegistration =
         let functions =
               [ operation "start" [TInt; TFun(state, TFun(message, state)); state] handle (fun _ -> function
                   | [VInt capacity; handler; initial] ->
@@ -145,12 +145,14 @@ module MailboxProvider =
                   | [message; handle] ->
                       let mailbox = inbox handle
                       mailbox.Queue.Post(message, (fun run ->
-                          context.SpawnWorker(fun worker ->
+                          schedule context (fun worker ->
                               run (fun state message -> worker.Apply (worker.Apply mailbox.Handler state) message))
-                          |> ignore), context.CheckRuntime)
+                          ), context.CheckRuntime)
                       VUnit
                   | _ -> raise (ExtensionException("Mailbox.post expects a message and a mailbox.")))
                 operation "finish" [handle] state (fun context -> function
                   | [handle] -> (inbox handle).Queue.Finish(context.CheckRuntime)
                   | _ -> raise (ExtensionException("Mailbox.finish expects a mailbox."))) ]
         { types with Functions = functions }
+
+    let register () = registerWithWorker ExtensionBridge.spawnWorker

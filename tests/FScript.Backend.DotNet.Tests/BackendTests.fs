@@ -57,22 +57,38 @@ module ProviderFixture =
                   {Name="Sdk.apply"; Scheme=Forall([],TFun(TFun(TInt,TInt),TFun(TInt,TInt))); Arity=2
                    Impl=fun context arguments -> context.Apply arguments.[0] arguments.[1]}
                   {Name="Sdk.identity"; Scheme=Forall([0],TFun(TVar 0,TVar 0)); Arity=1; Impl=fun _ arguments -> arguments.[0]}
-                  {Name="Sdk.await"; Scheme=Forall([],TFun(TTask TInt,TInt)); Arity=1; Impl=fun context arguments -> context.AwaitTask arguments.[0]} ] }
+                  {Name="Sdk.passTask"; Scheme=Forall([],TFun(TTask TInt,TTask TInt)); Arity=1; Impl=fun _ arguments -> arguments.[0]} ] }
     type ContextProvider =
         static member Provide(context: HostContext) : ExtensionRegistration =
             let fn=context.DefaultFunctions |> List.find (fun fn -> fn.Name="Guid.new")
             {Types=[]; Unions=[]; Functions=[{fn with Name="Sdk.guid"}]}
-
-    type TaskContextProvider =
-        static member Provide(context: HostContext) : ExtensionRegistration =
-            {Types=[]; Unions=[]
-             Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name.StartsWith("Task.",StringComparison.Ordinal)) |> List.map (fun fn -> {fn with Name="SdkTask."+fn.Name.Substring(5)})}
 
     type JsonContextProvider =
         static member Provide(context: HostContext) : ExtensionRegistration =
             { Types=[]; Unions=[]
               Functions=context.DefaultFunctions |> List.filter (fun fn -> fn.Name="Json.serialize") |> List.map (fun fn -> {fn with Name="SdkJson.serialize"}) }
 
+
+    type ResultTaskProvider =
+        static let mutable completed = 0
+        static let mutable factoryThread = 0
+        static member Reset() = completed <- 0; factoryThread <- 0
+        static member Completed = completed
+        static member FactoryThread = factoryThread
+        static member Provide() : ExtensionRegistration =
+            { HostInterop.empty with
+                Functions =
+                    [ { Name="SdkResult.start"; Scheme=Forall([],TFun(TUnit,TTask TInt)); Arity=1
+                        Impl=fun context _ ->
+                            context.ExposeAsync(fun token ->
+                                factoryThread <- Environment.CurrentManagedThreadId
+                                task {
+                                    do! System.Threading.Tasks.Task.Delay(5,token)
+                                    System.Threading.Interlocked.Increment(&completed) |> ignore
+                                    return VInt 42L
+                                }) }
+                      { Name="SdkResult.pass"; Scheme=Forall([],TFun(TTask TInt,TTask TInt)); Arity=1
+                        Impl=fun _ arguments -> arguments.Head } ] }
 
 module internal Harness =
     let legacy source =
@@ -194,20 +210,17 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
             match error.InnerException with null -> error | inner -> cause inner
         Assert.That(cause error, Is.TypeOf(exceptionType))
 
-    [<TestCase("SdkTask.await (SdkTask.fromResult (fun value -> value+2)) 40", "42")>]
-    [<TestCase("SdkTask.await (SdkTask.continueWith (fun value -> value+1) (SdkTask.fromResult 41))", "42")>]
-    [<TestCase("SdkTask.await (SdkTask.whenAll (List.fold (fun total value -> total+value) 0) [SdkTask.fromResult 20;SdkTask.fromResult 22])", "42")>]
-    [<TestCase("let tasks=[SdkTask.fromResult 41;SdkTask.fromResult 1]\nlet result=SdkTask.await (SdkTask.whenAny (fun value -> value+1) tasks)\nSdkTask.awaitAll tasks |> ignore\nresult", "42")>]
-    [<TestCase("SdkTask.await (SdkTask.delay 0)", "()")>]
-    member _.``SDK default task functions retain native task lifetimes`` (source: string,expected: string) =
-        let defaultFunctions=FScript.Runtime.Registry.all { Permissions = FScript.Language.HostPermissions.All;RootDirectory=Directory.GetCurrentDirectory(); DeniedPathGlobs=[]} |> FScript.Runtime.ExtensionBridge.toExtensionFunctions
-        let context=FScript.Extensibility.HostContext(Directory.GetCurrentDirectory(),[],defaultFunctions)
-        let registration=ProviderFixture.TaskContextProvider.Provide(context) |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
-        let compiled=match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (String.concat "; " (errors |> List.map _.Message))
-        let provider=typeof<ProviderFixture.TaskContextProvider>.GetMethod("Provide") |> nonNull
-        let program=ClrBindings.bindProvider (registration.Functions |> List.map _.Name) provider compiled.Lir
-        let references=[typeof<ProviderFixture.TaskContextProvider>.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
-        Assert.That(Harness.executeWith {Harness.options with References=references} program,Is.EqualTo(expected))
+    [<TestCase("SdkResult.start () |> Task.await", "42")>]
+    [<TestCase("SdkResult.start () |> Task.continueWith (fun value -> value+1) |> Task.await", "43")>]
+    [<TestCase("[SdkResult.start (); SdkResult.start ()] |> Task.awaitAll |> List.fold (fun total value -> total+value) 0", "84")>]
+    member _.``Libraries expose async I/O while scripts compose and await tasks`` (source: string,expected: string) =
+        let sdk = ProviderFixture.ResultTaskProvider.Provide()
+        let registration = sdk |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
+        let compiled = match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with Ok p -> p | Error errors -> failwith (string errors)
+        let provider = typeof<ProviderFixture.ResultTaskProvider>.GetMethod("Provide") |> nonNull
+        let program = ClrBindings.bindProvider (sdk.Functions |> List.map _.Name) provider compiled.Lir
+        let references = [provider.Module.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+        Assert.That(Harness.executeWith {Harness.options with References=references} program, Is.EqualTo(expected))
 
     [<TestCase(false)>]
     [<TestCase(true)>]
@@ -399,7 +412,7 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
     [<TestCase("let value = Sdk.create \"hello\"\nvalue.Name", "\"hello\"")>]
     [<TestCase("Sdk.apply (fun value -> value+2) 40", "42")>]
     [<TestCase("Sdk.identity (Some [1;2])", "Some [1;2]")>]
-    [<TestCase("Sdk.await (Task.spawn (fun () -> 42))", "42")>]
+    [<TestCase("Task.spawn (fun () -> 42) |> Sdk.passTask |> Task.await", "42")>]
     [<TestCase("type Choice = Number of int | Text of string\nSdk.identity (Text \"hello\")", "Text \"hello\"")>]
     [<TestCase("Sdk.identity (ForeignState.Count 42)", "Count 42")>]
     [<TestCase("let secret=Sdk.create \"hello\"\nmatch secret with | { Name = name } -> name", "\"hello\"")>]
@@ -1073,7 +1086,8 @@ type ProcessBackendTests() =
     let fixture = typeof<FScript.Runtime.Tests.ProcessFixture>.Assembly.Location
     let call arguments options = $"Process.exec \"dotnet\" [{quote fixture}; \"--process-fixture\"; {arguments}] {options}"
     let execute assemblyTarget source =
-        let registration = FScript.Runtime.Registry.registration { FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions = FScript.Language.HostPermissions.All }
+        let context = {FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions=FScript.Language.HostPermissions.All}
+        let registration = FScript.Runtime.Registry.registration context
         let compiled =
             match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source;Externs=[]} with
             | Ok compiled -> compiled.Lir
@@ -1133,7 +1147,8 @@ type ProcessBackendTests() =
     [<TestCase(true)>]
     [<TestCase(false)>]
     member _.``Process library compiles under arbitrary FFI names`` (assemblyTarget: bool) =
-        let registration = FScript.Runtime.Registry.registration { FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions = FScript.Language.HostPermissions.All }
+        let context = {FScript.Runtime.HostContext.create (Directory.GetCurrentDirectory()) with Permissions=FScript.Language.HostPermissions.All}
+        let registration = FScript.Runtime.Registry.registration context
         let registration =
             { registration with
                 Functions =
@@ -1173,3 +1188,42 @@ let foreignMatched = match foreign with | ProcessResult.Failed _ -> true | _ -> 
 (localMessage, foreignMatched)
 """
         Assert.That(execute assemblyTarget source, Is.EqualTo("(\"local\", true)"))
+
+[<TestFixture>]
+type ResultTaskBackendTests() =
+    let execute assemblyTarget source =
+        let sdk = ProviderFixture.ResultTaskProvider.Provide()
+        let registration = sdk |> FScript.Runtime.ExtensionBridge.toLanguageRegistrationWithPermissions FScript.Language.HostPermissions.All
+        let compiled =
+            match Compiler.compileWithRegistration registration {Program=Parser.parseProgram source; Externs=[]} with
+            | Ok value -> value.Lir
+            | Error errors -> failwith (string errors)
+        let provider = typeof<ProviderFixture.ResultTaskProvider>.GetMethod("Provide") |> nonNull
+        let program = ClrBindings.bindProvider (sdk.Functions |> List.map _.Name) provider compiled
+        let references = [provider.Module.Assembly.Location; typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
+        if assemblyTarget then Harness.executeWith {Harness.options with References=references} program
+        else
+            let assembly = Harness.csharpAssembly references program
+            let typ = assembly.GetType("Generated.Program") |> nonNull
+            let value = (typ.GetMethod("Run") |> nonNull).Invoke(null,[||])
+            ((typ.GetMethod("FormatResult") |> nonNull).Invoke(null,[|value|]) |> nonNull) :?> string
+
+    [<TestCase(false)>]
+    [<TestCase(true)>]
+    member _.``SDK async I/O is exposed inline and awaited by the script`` assemblyTarget =
+        ProviderFixture.ResultTaskProvider.Reset()
+        let caller = Environment.CurrentManagedThreadId
+        Assert.That(execute assemblyTarget "SdkResult.start () |> SdkResult.pass |> Task.await", Is.EqualTo("42"))
+        Assert.That(ProviderFixture.ResultTaskProvider.FactoryThread, Is.EqualTo(caller))
+        Assert.That(ProviderFixture.ResultTaskProvider.Completed, Is.EqualTo(1))
+
+    [<TestCase(false,false)>]
+    [<TestCase(true,false)>]
+    [<TestCase(false,true)>]
+    [<TestCase(true,true)>]
+    member _.``Unawaited SDK I/O remains observable and is joined on foreground failure`` (assemblyTarget, fail) =
+        ProviderFixture.ResultTaskProvider.Reset()
+        let source = "let pending = SdkResult.start ()\n" + (if fail then "1 / 0" else "42")
+        if fail then Assert.Catch(fun () -> execute assemblyTarget source |> ignore) |> ignore
+        else Assert.That(execute assemblyTarget source, Is.EqualTo("42"))
+        Assert.That(ProviderFixture.ResultTaskProvider.Completed, Is.EqualTo(1))

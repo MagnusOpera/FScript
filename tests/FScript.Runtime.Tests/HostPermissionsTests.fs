@@ -84,17 +84,17 @@ type HostPermissionsTests() =
         Assert.That(calls, Is.Zero)
 
     [<Test>]
-    member _.``SDK providers need Native and cannot use task context without Threading`` () =
+    member _.``Async providers require Native but script task operations still require Threading`` () =
         let functionFromProvider : FScript.Extensibility.ExternalFunction =
-            { Name = "Host.spawn"; Scheme = FScript.Extensibility.Forall([], FScript.Extensibility.TFun(FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TInt),FScript.Extensibility.TTask FScript.Extensibility.TInt)); Arity = 1
-              Impl = fun ctx arguments -> ctx.SpawnTask arguments.Head }
-        let sdk = { FScript.Extensibility.HostInterop.empty with Functions = [functionFromProvider] }
+            { Name="Host.read"; Scheme=FScript.Extensibility.Forall([],FScript.Extensibility.TFun(FScript.Extensibility.TUnit,FScript.Extensibility.TTask FScript.Extensibility.TInt)); Arity=1
+              Impl=fun context _ -> context.ExposeAsync(fun _ -> System.Threading.Tasks.Task.FromResult(FScript.Extensibility.VInt 42L)) }
+        let sdk = {FScript.Extensibility.HostInterop.empty with Functions=[functionFromProvider]}
         let adapted = ExtensionBridge.toLanguageRegistration sdk
-        Assert.Throws<TypeException>(Action(fun () -> ScriptHost.loadSourceWithRegistration adapted "Host.spawn (fun () -> 42)" |> ignore)) |> ignore
+        Assert.Throws<TypeException>(Action(fun () -> ScriptHost.loadSourceWithRegistration adapted "Host.read ()" |> ignore)) |> ignore
         let nativeOnly = adapted |> HostInterop.withPermissions HostPermissions.Native
-        denied (fun () -> ScriptHost.loadSourceWithRegistration nativeOnly "Host.spawn (fun () -> 42)" |> ignore)
-        let allowed = adapted |> HostInterop.withPermissions (HostPermissions.Native ||| HostPermissions.Threading)
-        ScriptHost.loadSourceWithRegistration allowed "Host.spawn (fun () -> 42) |> ignore" |> ignore
+        ScriptHost.loadSourceWithRegistration nativeOnly "Host.read () |> ignore" |> ignore
+        let registration = {nativeOnly with Functions=nativeOnly.Functions @ TaskFunctions.all}
+        Assert.Throws<TypeException>(Action(fun () -> ScriptHost.loadSourceWithRegistration registration "Host.read () |> Task.await" |> ignore)) |> ignore
 
     [<Test>]
     member _.``Forwarded SDK defaults preserve declarations and runtime guards`` () =

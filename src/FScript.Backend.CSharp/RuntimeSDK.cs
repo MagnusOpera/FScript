@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -25,8 +26,7 @@ internal static class SdkInterop
     public static SV Await(SV value) => FsTasks.Await(PendingTask(value));
     private static readonly ExternalCallContext Context = new(
         FuncConvert.FromFunc<SV,FSharpFunc<SV,SV>>(fn => FuncConvert.FromFunc<SV,SV>(argument => Apply(fn,argument))),
-        FuncConvert.FromFunc<SV,SV>(fn => TaskValue(FsTasks.Spawn(_ => Apply(fn,SV.VUnit)))),
-        FuncConvert.FromFunc<SV,SV>(value => Await(value)),
+        FuncConvert.FromFunc<FSharpFunc<CancellationToken,Task<SV>>,SV>(operation => TaskValue(FsTasks.ExposeAsync<SV>(token => operation.Invoke(token)))),
         FuncConvert.FromAction(() => { }));
     public static SV Invoke(ExternalFunction fn, SV[] arguments) => fn.Impl.Invoke(Context).Invoke(ListModule.OfArray(arguments));
     public static ExternalFunction Find(ExtensionRegistration registration, string name) => registration.Functions.First(fn => fn.Name == name);
@@ -74,8 +74,8 @@ internal static class SdkInterop
             case "Json.serialize": return Optional(() => SV.NewVString(EncodeJson(args[0])));
             case "Json.deserialize": return Optional(() => { using var document=JsonDocument.Parse(Text(args[1])); return DecodeJson(((SV.VTypeToken)args[0]).Item,document.RootElement); });
             case "Xml.queryValues": var values=FsRuntime.QueryXml(Text(args[0]),Text(args[1])); return SV.NewVOption(values.HasValue ? Some(Strings(values.Value)) : null);
-            case "Task.spawn": return context.SpawnTask.Invoke(args[0]);
-            case "Task.await": return context.AwaitTask.Invoke(args[0]);
+            case "Task.spawn": return TaskValue(FsTasks.Spawn(_ => Apply(args[0],SV.VUnit)));
+            case "Task.await": return Await(args[0]);
             case "Task.delay": return TaskValue(FsTasks.Convert(FsTasks.Delay(((SV.VInt)args[0]).Item), _ => SV.VUnit));
             case "Task.fromResult": return TaskValue(FsTasks.FromResult(args[0]));
             case "Task.continueWith": return TaskValue(FsTasks.Continue(PendingTask(args[1]), value => Apply(args[0],value)));

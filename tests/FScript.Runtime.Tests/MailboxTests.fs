@@ -146,7 +146,6 @@ Mailbox.finish inbox
 
     [<Test>]
     member _.FinishDrainsPendingPostsAndRejectsNewOnes() =
-        let functions = (MailboxProvider.register ()).Functions |> List.map (fun fn -> fn.Name, fn.Impl) |> Map.ofList
         use releaseWorker = new ManualResetEventSlim(false)
         use postWaiting = new ManualResetEventSlim(false)
         use finishWaiting = new ManualResetEventSlim(false)
@@ -157,13 +156,12 @@ Mailbox.finish inbox
                     | FScript.Extensibility.VInt state, FScript.Extensibility.VInt message ->
                         FScript.Extensibility.VInt(state + message)
                     | _ -> value),
-                (fun _ -> failwith "Unexpected script task"),
-                (fun _ -> failwith "Unexpected task await"), signal,
-                (fun run ->
-                    Task.Run(Action(fun () ->
-                        if not (releaseWorker.Wait(TimeSpan.FromSeconds 5.0)) then failwith "Worker was not released"
-                        run (context ignore))) |> ignore
-                    FScript.Extensibility.VUnit))
+                (fun _ -> failwith "Unexpected async I/O"), signal)
+        let schedule _ run =
+            Task.Run(Action(fun () ->
+                if not (releaseWorker.Wait(TimeSpan.FromSeconds 5.0)) then failwith "Worker was not released"
+                run (context ignore))) |> ignore
+        let functions = (MailboxProvider.registerWithWorker schedule).Functions |> List.map (fun fn -> fn.Name, fn.Impl) |> Map.ofList
         let invoke name ctx args = functions.["Mailbox." + name] ctx args
         let integer = FScript.Extensibility.VInt
         let initial = context ignore

@@ -1,20 +1,18 @@
 namespace FScript.Runtime
 
 open System.Collections.Generic
-open System.Threading
-open FScript.Language
+open FScript.Extensibility
 
-module ProcessExterns =
+module internal ProcessSdk =
     let defaults : ExternalFunction =
         { Name = "Process.defaults"; Scheme = ProcessSignatures.defaultsScheme; Arity = 0
-          RequiredPermissions = HostPermissions.None
           Impl = fun _ _ -> VRecord(Map.ofList [ "workingDirectory", VOption None; "environment", VMap Map.empty;
                                                 "stdin", VOption None; "timeoutMilliseconds", VOption None;
                                                 "maxOutputBytes", VInt 1048576L ]) }
 
-    let private text = function VString value -> value | _ -> raise (HostCommon.evalError "Expected a string.")
-    let private optional project = function VOption value -> Option.map project value | _ -> raise (HostCommon.evalError "Expected an option.")
-    let private integer = function VInt value -> value | _ -> raise (HostCommon.evalError "Expected an integer.")
+    let private text = function VString value -> value | _ -> raise (ExtensionException "Expected a string.")
+    let private optional project = function VOption value -> Option.map project value | _ -> raise (ExtensionException "Expected an option.")
+    let private integer = function VInt value -> value | _ -> raise (ExtensionException "Expected an integer.")
     let private encode (outcome: ProcessOutcome) =
         let fields = ["stdout", VString outcome.Stdout; "stderr", VString outcome.Stderr]
         let case, fields =
@@ -22,11 +20,9 @@ module ProcessExterns =
             else "Failed", ("message", VString (nonNull outcome.Message))::fields
         VUnionCase("ProcessResult", case, Some(VRecord(Map.ofList fields)))
 
-    let exec (host: HostContext) : ExternalFunction =
-        let required = HostPermissions.Native ||| HostPermissions.Threading
-        { Name = "Process.exec"; Scheme = ProcessSignatures.execScheme; Arity = 3; RequiredPermissions = required
+    let exec (host: FScript.Extensibility.HostContext) : ExternalFunction =
+        { Name = "Process.exec"; Scheme = ProcessSignatures.execScheme; Arity = 3
           Impl = fun context arguments ->
-              context.CheckPermissions required
               match arguments with
               | [VString executable; VList arguments; VRecord options] ->
                   let directory = optional text options.["workingDirectory"] |> Option.toObj
@@ -35,23 +31,40 @@ module ProcessExterns =
                   let limit = integer options.["maxOutputBytes"]
                   let environment =
                       match options.["environment"] with
-                      | VMap entries -> entries |> Map.toArray |> Array.map (function MKString key, value -> KeyValuePair(key,text value) | _ -> raise (HostCommon.evalError "Expected string environment keys."))
-                      | _ -> raise (HostCommon.evalError "Expected an environment map.")
+                      | VMap entries -> entries |> Map.toArray |> Array.map (function MKString key, value -> KeyValuePair(key,text value) | _ -> raise (ExtensionException "Expected string environment keys."))
+                      | _ -> raise (ExtensionException "Expected an environment map.")
                   let args = arguments |> List.map text |> List.toArray
-                  let worker : ExternalFunction =
-                      { Name = "<process worker>"; Scheme = Forall([], TFun(TUnit,TNamed "ProcessResult")); Arity = 1
-                        RequiredPermissions = required
-                        Impl = fun worker _ ->
-                            use cancellation = new CancellationTokenSource()
-                            let running = ProcessRunner.Run(host.RootDirectory, executable, args, directory, environment, stdin, timeout, limit, cancellation.Token)
-                            try
-                                while not running.IsCompleted do
-                                    worker.CheckRuntime()
-                                    Thread.Sleep(25)
-                                running.GetAwaiter().GetResult() |> encode
-                            with _ ->
-                                cancellation.Cancel()
-                                try running.GetAwaiter().GetResult() |> ignore with _ -> ()
-                                reraise () }
-                  context.SpawnTask(VExternal(worker,[]))
-              | _ -> raise (HostCommon.evalError "Process.exec expects executable, arguments, and options.") }
+                  context.ExposeAsync(fun cancellation -> task {
+                      let! outcome = ProcessRunner.Run(host.RootDirectory, executable, args, directory, environment, stdin, timeout, limit, cancellation)
+                      return encode outcome
+                  })
+              | _ -> raise (ExtensionException "Process.exec expects executable, arguments, and options.") }
+
+/// Runtime process entry points; async I/O is adapted through the SDK 3 boundary.
+module ProcessExterns =
+    open FScript.Language
+
+    let private adapt fn =
+        ExtensionBridge.toLanguageRegistration {FScript.Extensibility.HostInterop.empty with Functions=[fn]}
+        |> fun registration -> registration.Functions.Head
+
+    /// Immutable default options are available without native execution privileges.
+    let defaults : ExternalFunction =
+        {adapt ProcessSdk.defaults with RequiredPermissions=HostPermissions.None}
+
+    let exec (host: FScript.Runtime.HostContext) : ExternalFunction =
+        let sdkHost = FScript.Extensibility.HostContext(host.RootDirectory,host.DeniedPathGlobs,[])
+        let fn = adapt (ProcessSdk.exec sdkHost)
+        {fn with
+            RequiredPermissions=HostPermissions.Native
+            Impl=fun context arguments ->
+                context.CheckPermissions HostPermissions.Native
+                fn.Impl context arguments}
+
+    let internal registration host =
+        let metadata : FScript.Extensibility.ExtensionRegistration =
+            {FScript.Extensibility.HostInterop.empty with
+                Types=[ProcessSignatures.optionsDescriptor]
+                Unions=[ProcessSignatures.resultDescriptor]}
+        let registration = ExtensionBridge.toLanguageRegistration metadata
+        {registration with Functions=[defaults;exec host]}

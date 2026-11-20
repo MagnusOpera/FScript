@@ -129,3 +129,11 @@ Packaged editor servers must carry the release assembly version used by the matc
 Assembly providers use `FScript.Extensibility` attributes and return SDK `ExternalFunction list` or `ExtensionRegistration`, with no arguments or one sealed SDK `HostContext`. Existing provider assemblies must rebuild. SDK helpers and values do not depend on interpreter assemblies. Runtime adapts registrations using `ExtensionBridge.toLanguageRegistration`; native embedding APIs retain their Language representations. Authoring helpers live in the SDK, not Runtime.
 
 Provider trust, atomic loading, configuration selection, and reload rules are unchanged. SDK callback/task handles are valid only in their originating active evaluation; handler contexts expire on return. Runtime enforces limits and rejects foreign/expired handles. An SDK `ExtensionException` carries a message and optional inner cause; callback errors preserve script locations.
+
+## Process functions
+
+Default externs include Process functions and ProcessOptions/ProcessResult.
+No provider import is required. Disabling default externs removes the module.
+Process.exec requires Native; defaults and data types require no grants.
+Script Task operations such as Task.await separately require Threading.
+Configuration cannot grant permissions. See [process execution](../architecture/process-execution.md).
