@@ -11,6 +11,7 @@ type CliArgs =
     | No_Result
     | No_Config
     | No_Default_Externs
+    | [<Unique>] Permissions of names: string
     | Extern_Assembly of path: string
     interface IArgParserTemplate with
         member this.Usage =
@@ -23,6 +24,7 @@ type CliArgs =
             | No_Result -> "Do not display the final program value; explicit output and evaluation are preserved."
             | No_Config -> "Disable automatic fscript.toml loading (script directory, or cwd for stdin/REPL)."
             | No_Default_Externs -> "Disable default runtime externs from FScript.Runtime.Registry."
+            | Permissions _ -> "Grant a comma-separated permission list (Interactive, Threading, IO, Native, All, None); overrides configuration, defaults to None."
             | Extern_Assembly _ -> "Load external-function providers from an assembly path (repeatable)."
 
 [<RequireQualifiedAccess>]
@@ -32,6 +34,7 @@ type AnalyzeArgs =
     | [<AltCommandLine("-c")>] Config of path: string
     | No_Config
     | No_Default_Externs
+    | [<Unique>] Permissions of names: string
     | Extern_Assembly of path: string
     interface IArgParserTemplate with
         member this.Usage =
@@ -41,4 +44,5 @@ type AnalyzeArgs =
             | AnalyzeArgs.Config _ -> "Select an explicit fscript.toml environment."
             | AnalyzeArgs.No_Config -> "Disable automatic fscript.toml loading."
             | AnalyzeArgs.No_Default_Externs -> "Disable default runtime externs."
+            | AnalyzeArgs.Permissions _ -> "Select permissions as a comma-separated list; overrides configuration, defaults to None."
             | AnalyzeArgs.Extern_Assembly _ -> "Load an external-function provider assembly (repeatable)."

@@ -27,6 +27,7 @@ type EnvironmentConfiguration =
     { Path: string
       Root: string option
       DefaultExterns: bool option
+      Permissions: HostPermissions option
       ExternAssemblies: string list option
       Packages: ExtensionPackage list option
       Compilation: CompileConfiguration }
@@ -37,9 +38,39 @@ type EnvironmentSettings =
       BaseDirectory: string
       RootDirectory: string
       DefaultExterns: bool
+      Permissions: HostPermissions option
       ExternAssemblies: string list
       Packages: ExtensionPackage list
       Compilation: CompileConfiguration }
+
+/// Shared permission syntax and CLI selection; host ceilings are enforced by the loader.
+module PermissionPolicy =
+    let parseNames (names: string list) : Result<HostPermissions, string> =
+        let normalized = names |> List.map (fun name -> name.Trim().ToLowerInvariant())
+        let parse = function
+            | "none" -> HostPermissions.None
+            | "all" -> HostPermissions.All
+            | "interactive" -> HostPermissions.Interactive
+            | "threading" -> HostPermissions.Threading
+            | "io" -> HostPermissions.IO
+            | "native" -> HostPermissions.Native
+            | name -> invalidArg "permissions" $"Unknown permission '{name}'. Expected Interactive, Threading, IO, Native, All, or None."
+        try
+            if normalized.Length > 1 && (normalized |> List.exists (fun name -> name = "all" || name = "none")) then
+                invalidArg "permissions" "All and None must stand alone."
+            normalized |> List.fold (fun permissions name -> permissions ||| parse name) HostPermissions.None |> Ok
+        with :? ArgumentException as error -> Error error.Message
+
+    /// Explicit CLI selections replace the manifest; omitted selections default to None.
+    let forCli (selection: string option) (settings: EnvironmentSettings) =
+        let permissions =
+            match selection with
+            | Some names -> names.Split(',') |> Array.toList |> parseNames
+            | None -> Ok (defaultArg settings.Permissions HostPermissions.None)
+        permissions |> Result.map (fun value -> {settings with Permissions = Some value})
+
+    let effective ceiling (settings: EnvironmentSettings) =
+        ceiling &&& defaultArg settings.Permissions ceiling
 
 module EnvironmentConfiguration =
     let normalizePath (baseDirectory: string) (path: string) =
@@ -67,7 +98,7 @@ module EnvironmentConfiguration =
                 | true, (:? TomlTable as table) -> table
                 | _ -> invalid document "runtime" "runtime" "Expected a table."
             for key in runtime.Keys do
-                if not (["root"; "default-externs"; "extern-assemblies"; "packages"] |> List.contains key) then
+                if not (["root"; "default-externs"; "extern-assemblies"; "packages"; "permissions"] |> List.contains key) then
                     invalid runtime key $"runtime.{key}" "Unknown configuration property."
             let root =
                 match runtime.TryGetValue "root" with
@@ -79,6 +110,17 @@ module EnvironmentConfiguration =
                 | false, _ -> None
                 | true, (:? bool as value) -> Some value
                 | _ -> invalid runtime "default-externs" "runtime.default-externs" "Expected a boolean."
+            let permissions =
+                match runtime.TryGetValue "permissions" with
+                | false, _ -> None
+                | true, (:? TomlArray as values) ->
+                    let names = values |> Seq.map (function
+                        | :? string as name -> name
+                        | _ -> invalid runtime "permissions" "runtime.permissions" "Expected an array of permission names.") |> Seq.toList
+                    match PermissionPolicy.parseNames names with
+                    | Ok permissions -> Some permissions
+                    | Error message -> invalid runtime "permissions" "runtime.permissions" message
+                | _ -> invalid runtime "permissions" "runtime.permissions" "Expected an array of permission names."
             let assemblies =
                 match runtime.TryGetValue "extern-assemblies" with
                 | false, _ -> None
@@ -136,7 +178,7 @@ module EnvironmentConfiguration =
             let fullPath = Path.GetFullPath path
             let directory = Path.GetDirectoryName fullPath
             Ok { Path = fullPath; Root = root |> Option.map (normalizePath directory)
-                 DefaultExterns = defaults; Packages = packages
+                 DefaultExterns = defaults; Permissions = permissions; Packages = packages
                  Compilation =
                     { Backend=backend; AheadOfTime=boolOption "aot"; MinimizeSize=boolOption "size-optimized"
                       SingleFile=boolOption "single-file"; RuntimeIdentifier=textOption "runtime"
@@ -157,6 +199,7 @@ module EnvironmentConfiguration =
             |> Option.orElse (configuration |> Option.bind (fun c -> c.Root))
             |> Option.defaultValue defaultRoot |> Path.GetFullPath
           DefaultExterns = not disableDefaults && (configuration |> Option.bind (fun c -> c.DefaultExterns) |> Option.defaultValue true)
+          Permissions = configuration |> Option.bind (fun c -> c.Permissions)
           Packages = configuration |> Option.bind (fun c -> c.Packages) |> Option.defaultValue []
           Compilation = configuration |> Option.map (fun c -> c.Compilation) |> Option.defaultValue CompileConfiguration.empty
           ExternAssemblies =

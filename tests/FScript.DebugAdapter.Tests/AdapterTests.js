@@ -194,3 +194,18 @@ test('unsupported conditional breakpoints are rejected rather than silently beco
   assert.match(result.message,/Conditional breakpoints/);
   await client.request('disconnect');
 });
+
+
+test('debugger defaults deny effects and selected manifest grants apply', async t => {
+  const denied = await fixture(t, 'Console.writeLine "blocked"');
+  await denied.client.request('initialize', {supportsRunInTerminalRequest:true});
+  const result = await denied.client.request('launch', {program:denied.program});
+  assert.equal(result.success, false);
+  assert.match(result.message, /Console/);
+  const allowed = await fixture(t, 'Task.fromResult 42 |> Task.await');
+  const config = path.join(allowed.dir, 'fscript.toml');
+  fs.writeFileSync(config, '[runtime]\npermissions = ["Threading"]\n');
+  await allowed.client.launch(allowed.program, {configurationPath:config});
+  await allowed.client.request('configurationDone');
+  await allowed.client.wait(message => message.event === 'terminated');
+});

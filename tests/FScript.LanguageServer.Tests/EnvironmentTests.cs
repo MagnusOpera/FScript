@@ -17,7 +17,7 @@ public sealed class EnvironmentTests
         _directory = Path.Combine(Path.GetTempPath(), "fscript-lsp-environment-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_directory);
         var assembly = typeof(ValidExternProvider).Assembly.Location.Replace("\\", "/");
-        File.WriteAllText(Config, $"[runtime]\nextern-assemblies = ['{assembly}']\n");
+        File.WriteAllText(Config, $"[runtime]\npermissions = ['All']\nextern-assemblies = ['{assembly}']\n");
     }
 
     [TearDown]
@@ -119,16 +119,16 @@ public sealed class EnvironmentTests
     }
 
     [Test]
-    public void Failed_environment_reports_error_and_keeps_defaults_available()
+    public void Failed_environment_reports_error_without_restoring_effectful_defaults()
     {
-        File.WriteAllText(Config, "[runtime]\nextern-assemblies = ['missing.dll']");
+        File.WriteAllText(Config, "[runtime]\npermissions = ['All']\nextern-assemblies = ['missing.dll']");
         var client = Start();
         try
         {
             var info = Request(client, "fscript/environmentInfo");
             Assert.That(info?["failed"]?.GetValue<bool>(), Is.True);
             Assert.That(info?["error"]?.GetValue<string>(), Does.Contain(Config).And.Contain("missing.dll"));
-            Assert.That(Open(client, "Console.writeLine \"ok\"")["params"]?["diagnostics"]?.AsArray(), Is.Empty);
+            Assert.That(Open(client, "Console.writeLine \"ok\"")["params"]?["diagnostics"]?.AsArray(), Is.Not.Empty);
         }
         finally { LspClient.Stop(client); }
     }
@@ -137,7 +137,7 @@ public sealed class EnvironmentTests
     public void Independent_processes_and_restarts_do_not_reuse_registrations_for_shared_source()
     {
         var first = Start();
-        File.WriteAllText(Config, "[runtime]\ndefault-externs = false");
+        File.WriteAllText(Config, "[runtime]\npermissions = ['All']\ndefault-externs = false");
         var second = Start();
         try
         {
@@ -153,7 +153,7 @@ public sealed class EnvironmentTests
     {
         var provider = Path.Combine(_directory, "provider.dll");
         File.Copy(typeof(ValidExternProvider).Assembly.Location, provider);
-        File.WriteAllText(Config, "[runtime]\ndefault-externs = false\nextern-assemblies = ['./provider.dll']");
+        File.WriteAllText(Config, "[runtime]\npermissions = ['All']\ndefault-externs = false\nextern-assemblies = ['./provider.dll']");
         var first = Start();
         try { Assert.That(Open(first, "Ext.answer")["params"]?["diagnostics"]?.AsArray(), Is.Empty); }
         finally { LspClient.Stop(first); }
@@ -173,7 +173,7 @@ public sealed class EnvironmentTests
     {
         File.WriteAllText(Path.Combine(_directory, "shared.fss"), "let value = Ext.answer\n");
         var first = Start();
-        File.WriteAllText(Config, "[runtime]\ndefault-externs = false");
+        File.WriteAllText(Config, "[runtime]\npermissions = ['All']\ndefault-externs = false");
         var second = Start();
         try
         {

@@ -40,7 +40,7 @@ module LspRuntimeExterns =
                     match o["workspaceTrusted"] with
                     | :? JsonValue as v -> try v.GetValue<bool>() with _ -> false
                     | _ -> false
-                match EnvironmentConfiguration.resolve (Some path) folder folder None false [] with
+                match EnvironmentConfiguration.resolve (Some path) folder folder None false [] |> Result.bind (PermissionPolicy.forCli None) with
                 | Error message -> error <- Some message
                 | Ok effective ->
                     settings <- Some effective
@@ -61,7 +61,14 @@ module LspRuntimeExterns =
         | None -> ()
 
     let forSourcePath (sourcePath: string) : ExtensionRegistration =
-        registration |> Option.defaultWith (fun () -> InteropServices.runtimeRegistrationForSourcePath sourcePath)
+        registration |> Option.defaultWith (fun () ->
+            let root = Path.GetDirectoryName(Path.GetFullPath sourcePath) |> Option.ofObj |> Option.defaultWith Directory.GetCurrentDirectory
+            match settings with
+            | Some effective when error.IsNone ->
+                let permissions = defaultArg effective.Permissions HostPermissions.None
+                if effective.DefaultExterns then Registry.registration {HostContext.create root with Permissions=permissions}
+                else {HostInterop.empty with Permissions=permissions}
+            | _ -> Registry.registration (HostContext.create root))
 
     let descriptors sourcePath = (forSourcePath sourcePath).Types
 

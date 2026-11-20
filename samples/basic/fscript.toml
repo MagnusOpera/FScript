@@ -1,0 +1,3 @@
+# Explicit grants for the examples in this directory.
+[runtime]
+permissions = ["IO", "Interactive"]

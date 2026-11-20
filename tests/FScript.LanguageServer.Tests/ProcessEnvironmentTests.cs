@@ -12,7 +12,7 @@ public class ProcessEnvironmentTests
     public void Process_follows_default_externs_configuration(bool defaults, bool trusted)
     {
         using var fixture = new NuGetFixture();
-        File.WriteAllText(fixture.ConfigPath, $"[runtime]\ndefault-externs = {defaults.ToString().ToLowerInvariant()}\n");
+        File.WriteAllText(fixture.ConfigPath, $"[runtime]\npermissions = ['Native']\ndefault-externs = {defaults.ToString().ToLowerInvariant()}\n");
         var client = LspClient.Start();
         try
         {

@@ -13,6 +13,7 @@ public class NuGetEnvironmentTests
         using var fixture = new NuGetFixture();
         fixture.AddProvider("1.0.0");
         fixture.WriteManifest("");
+        File.AppendAllText(fixture.ConfigPath, "\n[runtime]\npermissions = ['Native']\n");
         File.WriteAllText(Path.Combine(fixture.Directory,"provider-registration.requested"),"");
         var client = LspClient.Start();
         try

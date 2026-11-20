@@ -101,6 +101,14 @@ make test
 ```
 
 ### Run a script
+
+Interpreted execution defaults to no permissions. Use
+`fscript --permissions IO,Threading script.fss`, or add
+`permissions = ["IO", "Threading"]` under `[runtime]` in the script's
+`fscript.toml`. CLI selections replace manifest selections. `--permissions All`
+retains previous CLI behavior. Compilation remains unrestricted.
+See [environment configuration](docs/specs/environment-configuration.md).
+
 ```bash
 dotnet run --project src/FScript -- samples/types-showcase.fss
 ```
@@ -136,17 +144,17 @@ The CLI loads `fscript.toml` beside the script automatically; explicit `--config
 
 Load user extern providers from an assembly (repeatable):
 ```bash
-dotnet run --project src/FScript -- --extern-assembly ./MyExterns.dll samples/types-showcase.fss
+dotnet run --project src/FScript -- --permissions IO,Threading,Native --extern-assembly ./MyExterns.dll samples/types-showcase.fss
 ```
 
 Run a script from stdin:
 ```bash
-cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r .
+cat samples/types-showcase.fss | dotnet run --project src/FScript -- --permissions IO -r .
 ```
 
 Run stdin mode with script arguments:
 ```bash
-cat samples/types-showcase.fss | dotnet run --project src/FScript -- -r . -- foo bar
+cat samples/types-showcase.fss | dotnet run --project src/FScript -- --permissions IO -r . -- foo bar
 ```
 
 Show CLI version:

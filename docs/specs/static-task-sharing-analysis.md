@@ -18,7 +18,7 @@ initializers or invokes registered FFI implementations. Loading a configured
 provider can still execute its registration factory and metadata methods, exactly
 as other environment-loading commands do; this is not a sandbox for untrusted
 providers. `--config`, `--no-config`, `--root`, `--no-default-externs`, and repeated
-`--extern-assembly` flags use the ordinary CLI environment rules.
+`--extern-assembly` flags use the ordinary CLI environment rules. `--permissions` replaces the manifest permission selection; omitted selections default to None. Analysis only sees permitted functions, and provider loading requires Native. Compilation remains unrestricted regardless of `runtime.permissions`.
 
 Without an explicit override, `analyze` loads `fscript.toml` only from the entry script's directory, even when the working directory is elsewhere. It does not search parent directories or fall back to a working-directory manifest. The selected local assembly and NuGet providers are available without repeated assembly flags, and imported scripts share that environment. With no manifest, defaults apply. Manifest assembly paths resolve relative to the manifest directory; explicit `--config` and `--extern-assembly` paths resolve from the working directory. `--no-config` disables manifest loading and is mutually exclusive with `--config`. Local provider DLLs must already be built. `compile` follows the same selection rules. See [environment configuration](environment-configuration.md#cli).
 

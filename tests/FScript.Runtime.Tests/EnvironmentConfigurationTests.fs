@@ -103,3 +103,41 @@ type EnvironmentConfigurationTests() =
         Assert.That(parsed.Compilation.OutputDirectory, Is.EqualTo(Some(Path.Combine(directory, "artifacts"))))
         let settings = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
         Assert.That(settings.Compilation, Is.EqualTo(parsed.Compilation))
+
+
+    [<TestCase("[]", 0)>]
+    [<TestCase("['io','THREADING']", 6)>]
+    [<TestCase("['All']", 15)>]
+    [<TestCase("['None']", 0)>]
+    member _.``Permission configuration parses explicit selections`` (names: string, expected: int) =
+        let parsed = EnvironmentConfiguration.parse configPath ("[runtime]\npermissions = " + names) |> get
+        Assert.That(parsed.Permissions, Is.EqualTo(Some(enum<HostPermissions> expected)))
+        let settings = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
+        Assert.That(settings.Permissions, Is.EqualTo(parsed.Permissions))
+
+    [<TestCase("['All','IO']")>]
+    [<TestCase("['None','IO']")>]
+    [<TestCase("['Unknown']")>]
+    [<TestCase("['']")>]
+    [<TestCase("[1]")>]
+    [<TestCase("'All'")>]
+    member _.``Malformed permission configuration is rejected before providers load`` (names: string) =
+        let parsed = EnvironmentConfiguration.parse configPath ("[runtime]\npermissions = " + names)
+        match parsed with
+        | Ok _ -> Assert.Fail("Invalid permissions accepted")
+        | Error message -> Assert.That(message, Does.Contain("runtime.permissions"))
+
+    [<Test>]
+    member _.``Manifest permissions narrow host grants and CLI selections replace manifests`` () =
+        let parsed = EnvironmentConfiguration.parse configPath "[runtime]\npermissions = ['All']" |> get
+        let settings = EnvironmentConfiguration.merge directory directory (Some parsed) None false []
+        let host = EnvironmentLoader.loadWithPermissions HostPermissions.IO settings |> get
+        Assert.That(host.Permissions, Is.EqualTo(HostPermissions.IO))
+        let safe = EnvironmentLoader.load settings |> get
+        Assert.That(safe.Permissions, Is.EqualTo(HostPermissions.None))
+        let narrowed = PermissionPolicy.forCli (Some "None") settings |> get
+        Assert.That((EnvironmentLoader.loadWithPermissions HostPermissions.All narrowed |> get).Permissions, Is.EqualTo(HostPermissions.None))
+        let omitted = EnvironmentConfiguration.merge directory directory None None false []
+        Assert.That(omitted.Permissions, Is.EqualTo(None))
+        Assert.That((EnvironmentLoader.loadWithPermissions HostPermissions.IO omitted |> get).Permissions, Is.EqualTo(HostPermissions.IO))
+        Assert.That((PermissionPolicy.forCli None omitted |> get).Permissions, Is.EqualTo(Some HostPermissions.None))

@@ -1,6 +1,6 @@
 # Environment configuration
 
-`fscript.toml` describes external-function providers and optional compile defaults. It supports local assemblies and NuGet extension packages, with no script entry point or import declarations.
+`fscript.toml` describes external-function providers, interpreter permissions, and optional compile defaults. It supports local assemblies and NuGet extension packages, with no script entry point or import declarations.
 
 ```toml
 [runtime]
@@ -26,6 +26,53 @@ Manifest root and assembly paths resolve relative to the manifest directory. Exp
 Compilation automatically references its provider assemblies and their managed dependencies. An explicit `--reference` is only needed for additional assemblies outside that dependency closure. Single-file CLI distributions extract their bundled managed assemblies so the compiler can read their metadata; runtime-pack framework assemblies remain runtime dependencies rather than generated application assets. Manifest discovery does not make a provider Native AOT compatible. Providers using SDK callback dispatch require static compiled FFI bindings before `--aot` is supported.
 
 Configuration, missing-file, loading, provider-signature and registration-conflict errors stop execution with a nonzero exit. The same legacy and registration-returning `[<FScriptExternProvider>]` methods work through flags and configuration.
+
+## Interpreter permission selection
+
+Interpreted file execution, stdin, REPL, debugging, and static analysis default
+to no permissions. Select an exact set on the command line:
+
+```sh
+fscript --permissions IO,Threading script.fss
+fscript --permissions All script.fss
+fscript analyze --permissions IO,Threading script.fss
+```
+
+Or declare the permissions in the selected manifest:
+
+```toml
+[runtime]
+permissions = ["IO", "Threading"]
+```
+
+Explicit CLI permissions replace the manifest list; otherwise the manifest list
+applies, falling back to `None`. `--no-config` ignores the manifest. Names are
+case-insensitive: `Interactive`, `Threading`, `IO`, `Native`, `All`, and `None`.
+`All` and `None` must stand alone. TOML `[]` explicitly grants nothing. Unknown
+names, wrong value types, and empty comma-separated CLI entries are errors,
+validated before package restoration or provider initialization.
+
+An automatically discovered manifest is trusted CLI configuration. A manifest
+containing `Native` can authorize arbitrary provider code and child programs;
+review configuration alongside scripts before running an unfamiliar repository.
+Provider loading requires Native even when selected with `--extern-assembly`.
+
+For embedding hosts, `EnvironmentLoader.loadWithPermissions` and
+`loadWithInfoAndPermissions` intersect manifest permissions with explicit host
+grants. Omitted manifest permissions preserve those grants; default loader APIs
+still grant nothing. A manifest cannot elevate a host's permission ceiling.
+Direct registrations continue using their explicit host context.
+
+Editor diagnostics use the selected script policy. Workspace trust is an
+additional prerequisite for loading providers. Invalid or failed environments
+do not restore an unrestricted catalog. Debugger launches use selected manifest
+grants, defaulting to None; embedded launches retain their explicit host ceiling.
+
+Compilation ignores valid `runtime.permissions`: its catalog, provider loading,
+and generated code remain unrestricted. `--permissions` is an execution/analysis
+option and is rejected by `compile`. Malformed configuration remains an error.
+For migration, `--permissions All` retains previous CLI execution behavior;
+prefer declaring the permissions a script actually needs.
 
 ## Compile defaults
 
@@ -136,4 +183,4 @@ Default externs include Process functions and ProcessOptions/ProcessResult.
 No provider import is required. Disabling default externs removes the module.
 Process.exec requires Native; defaults and data types require no grants.
 Script Task operations such as Task.await separately require Threading.
-Configuration cannot grant permissions. See [process execution](../architecture/process-execution.md).
+CLI manifests select permissions; embedded manifests can only narrow explicit host grants. See [process execution](../architecture/process-execution.md).

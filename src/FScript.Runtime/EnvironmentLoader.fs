@@ -208,6 +208,7 @@ module EnvironmentLoader =
 
     /// Initialize providers atomically; callers never receive a partial registration.
     let loadWithInfoAndPermissions permissions (settings: EnvironmentSettings) =
+        let permissions = PermissionPolicy.effective permissions settings
         try
             if (not settings.Packages.IsEmpty || not settings.ExternAssemblies.IsEmpty) && not (HostInterop.allows permissions HostPermissions.Native) then
                 Error "Host permissions denied: Native is required to execute external providers."

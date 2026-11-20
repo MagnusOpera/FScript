@@ -10,6 +10,12 @@ open FScript.Cli.Tests.Fixtures.Conflict
 open FScript.Cli.Tests.Fixtures.Invalid
 open NUnit.Framework
 
+type private PermissionDirectory(prefix: string) =
+    let directory = Directory.CreateTempSubdirectory(prefix)
+    member _.FullName = directory.FullName
+    interface IDisposable with
+        member _.Dispose() = directory.Delete(true)
+
 [<TestFixture>]
 type CliTests() =
     let findRepoRoot () =
@@ -24,7 +30,7 @@ type CliTests() =
 
         loop TestContext.CurrentContext.TestDirectory
 
-    let runCli (repoRoot: string) (workingDir: string) (args: string list) (stdinText: string option) =
+    let runCliRaw (repoRoot: string) (workingDir: string) (args: string list) (stdinText: string option) =
         let projectPath = Path.Combine(repoRoot, "src", "FScript")
         let allArgs = [ "run"; "--project"; projectPath; "-c"; "Release"; "--no-build"; "--" ] @ args
 
@@ -54,6 +60,16 @@ type CliTests() =
         proc.WaitForExit()
 
         proc.ExitCode, stdout, stderr
+
+    // Existing broad integration checks explicitly opt into their historical grants.
+    let runCli repo workingDir args stdin =
+        let granted =
+            match args with
+            | ["--debug-capabilities"] | ["version"] -> args
+            | "compile" :: _ -> args
+            | "analyze" :: rest -> "analyze" :: "--permissions" :: "All" :: rest
+            | _ -> "--permissions" :: "All" :: args
+        runCliRaw repo workingDir granted stdin
 
     let validProviderAssemblyPath () =
         typeof<ValidExternProvider>.Assembly.Location
@@ -816,7 +832,7 @@ Ref.set "world" words
         try
             let providerFile = Path.GetFileName(validProviderAssemblyPath ())
             File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
-            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
+            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\npermissions = ['Native']\nextern-assemblies = ['{providerFile}']")
             let script = Path.Combine(directory, "main.fss")
             File.WriteAllText(script, "Ext.answer")
             let args = if command = "analyze" then [command; script] else ["compile"; script; "--target"; command; "--output"; Path.Combine(directory, "out")]
@@ -857,7 +873,7 @@ Ref.set "world" words
             let script = Path.Combine(directory, "answer.fss")
             let providerFile = Path.GetFileName(validProviderAssemblyPath ())
             File.Copy(validProviderAssemblyPath (), Path.Combine(directory, providerFile))
-            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\nextern-assemblies = ['{providerFile}']")
+            File.WriteAllText(Path.Combine(directory, "fscript.toml"), $"[runtime]\npermissions = ['Native']\nextern-assemblies = ['{providerFile}']")
             File.WriteAllText(script, "Ext.answer")
             let code, _, error = run executable ["analyze"; script]
             Assert.That(code, Is.Zero, error)
@@ -1100,3 +1116,93 @@ Ref.set "world" words
         Assert.That(error, Is.Empty)
         if name = "ordered.fss" then Assert.That(output.Trim(), Is.EqualTo("(1, 2)"))
         else Assert.That((output.Trim() = "(1, 2)" || output.Trim() = "(2, 1)"), Is.True, output)
+
+
+    [<TestCase("Console.writeLine \"blocked\"", "Console")>]
+    [<TestCase("Task.fromResult 42", "Task")>]
+    [<TestCase("Process.exec \"missing\" [] Process.defaults", "Process")>]
+    member _.``CLI permission defaults deny effects`` (source: string, name: string) =
+        let repo = findRepoRoot ()
+        let code, _, error = runCliRaw repo repo ["--no-config"] (Some source)
+        Assert.That(code, Is.EqualTo(2), error)
+        Assert.That(error, Does.Contain(name))
+
+    [<TestCase("IO", "Console.writeLine \"allowed\"", 0)>]
+    [<TestCase("threading", "Task.fromResult 42 |> Task.await", 0)>]
+    [<TestCase("io, THREADING", "Console.writeLine (Int.toString (Task.fromResult 42 |> Task.await))", 0)>]
+    [<TestCase("IO", "Console.readLine ()", 2)>]
+    [<TestCase("Interactive", "Console.readLine ()", 2)>]
+    [<TestCase("IO,Interactive", "Console.readLine ()", 0)>]
+    [<TestCase("None", "42", 0)>]
+    [<TestCase("IO", "Task.fromResult 42", 2)>]
+    [<TestCase("IO,", "42", 1)>]
+    [<TestCase("None,IO", "42", 1)>]
+    [<TestCase("Unknown", "42", 1)>]
+    member _.``CLI selects and validates explicit permissions`` (permissions: string, source: string, expected: int) =
+        let repo = findRepoRoot ()
+        let code, _, error = runCliRaw repo repo ["--no-config"; "--permissions"; permissions] (Some source)
+        Assert.That(code, Is.EqualTo(expected), error)
+
+    [<Test>]
+    member _.``Manifest grants CLI effects and explicit CLI selection replaces them`` () =
+        let repo = findRepoRoot ()
+        use folder = new PermissionDirectory("fscript-permissions-")
+        let manifest = Path.Combine(folder.FullName, "fscript.toml")
+        let script = Path.Combine(folder.FullName, "main.fss")
+        File.WriteAllText(manifest, "[runtime]\npermissions = ['IO']")
+        File.WriteAllText(script, "Console.writeLine \"allowed\"")
+        for arguments in [[script]; []] do
+            let stdin = if arguments.IsEmpty then Some "Console.writeLine \"allowed\"" else None
+            let code, output, error = runCliRaw repo folder.FullName arguments stdin
+            Assert.That(code, Is.Zero, error)
+            Assert.That(output, Does.Contain("allowed"))
+        for arguments in [["--permissions"; "None"; script]; ["--no-config"; script]] do
+            let code, _, error = runCliRaw repo folder.FullName arguments None
+            Assert.That(code, Is.EqualTo(2), error)
+        File.WriteAllText(manifest, "[runtime]\npermissions = []")
+        let code, _, error = runCliRaw repo folder.FullName ["--permissions"; "IO"; script] None
+        Assert.That(code, Is.Zero, error)
+        let code, _, error = runCliRaw repo folder.FullName ["analyze"; script] None
+        Assert.That(code, Is.Not.Zero, error)
+        let code, _, error = runCliRaw repo folder.FullName ["analyze"; "--permissions"; "IO"; script] None
+        Assert.That(code, Is.Zero, error)
+
+    [<Test>]
+    member _.``Denied Native prevents provider registration before execution`` () =
+        let repo = findRepoRoot ()
+        use folder = new PermissionDirectory("fscript-native-permission-")
+        File.WriteAllText(Path.Combine(folder.FullName, "provider-registration.requested"), "")
+        let code, _, error = runCliRaw repo folder.FullName ["--no-config"; "--extern-assembly"; validProviderAssemblyPath ()] (Some "42")
+        Assert.That(code, Is.Not.Zero)
+        Assert.That(error, Does.Contain("Native"))
+        Assert.That(File.Exists(Path.Combine(folder.FullName, "provider-registration.executed")), Is.False)
+        let code, _, error = runCliRaw repo folder.FullName ["--no-config"; "--permissions"; "Unknown"; "--extern-assembly"; validProviderAssemblyPath ()] (Some "42")
+        Assert.That(code, Is.Not.Zero)
+        Assert.That(error, Does.Contain("Unknown permission"))
+        Assert.That(File.Exists(Path.Combine(folder.FullName, "provider-registration.executed")), Is.False)
+        let code, _, error = runCliRaw repo folder.FullName ["--no-config"; "--permissions"; "Native"; "--extern-assembly"; validProviderAssemblyPath ()] (Some "42")
+        Assert.That(code, Is.Zero, error)
+        Assert.That(File.Exists(Path.Combine(folder.FullName, "provider-registration.executed")), Is.True)
+
+    [<Test>]
+    member _.``Compilation ignores manifest permissions and rejects execution permission flags`` () =
+        let repo = findRepoRoot ()
+        use folder = new PermissionDirectory("fscript-compiled-permissions-")
+        let script = Path.Combine(folder.FullName, "main.fss")
+        File.WriteAllText(script, "Console.writeLine \"compiled\"\nTask.fromResult 42 |> Task.await")
+        File.WriteAllText(Path.Combine(folder.FullName, "fscript.toml"), "[runtime]\npermissions = []")
+        let output = Path.Combine(folder.FullName, "output")
+        let code, _, error = runCliRaw repo repo ["compile"; script; "--output"; output] None
+        Assert.That(code, Is.Zero, error)
+        let psi = ProcessStartInfo("dotnet", RedirectStandardOutput=true, RedirectStandardError=true, UseShellExecute=false)
+        psi.ArgumentList.Add(Path.Combine(output, "main.dll"))
+        use processHandle = new Process(StartInfo=psi)
+        processHandle.Start() |> ignore
+        let stdout = processHandle.StandardOutput.ReadToEnd()
+        let stderr = processHandle.StandardError.ReadToEnd()
+        processHandle.WaitForExit()
+        Assert.That(processHandle.ExitCode, Is.Zero, stderr)
+        Assert.That(stdout, Does.Contain("compiled").And.Contain("42"))
+        let code, _, error = runCliRaw repo repo ["compile"; script; "--permissions"; "All"] None
+        Assert.That(code, Is.Not.Zero)
+        Assert.That(error, Does.Contain("not compilation"))

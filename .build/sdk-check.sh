@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
+# Keep NuGet project identities consistent across macOS /var symlinks.
+work=$(cd "$work" && pwd -P)
 trap 'rm -rf "$work"' EXIT
 node - "$work" <<'JS'
 const fs = require('node:fs');

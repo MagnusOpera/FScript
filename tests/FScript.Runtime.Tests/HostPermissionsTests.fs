@@ -123,3 +123,17 @@ type HostPermissionsTests() =
         match EnvironmentLoader.load settings with
         | Error message -> Assert.That(message, Does.Contain("Native"))
         | Ok _ -> Assert.Fail("Provider loading must require Native")
+
+
+    [<Test>]
+    member _.``CLI-selected permissions persist across REPL submissions`` () =
+        let settings =
+            EnvironmentConfiguration.resolve None (Directory.GetCurrentDirectory()) (Directory.GetCurrentDirectory()) None false []
+            |> Result.bind (PermissionPolicy.forCli (Some "Threading")) |> Result.defaultWith failwith
+        let registration = EnvironmentLoader.loadWithPermissions HostPermissions.All settings |> Result.defaultWith failwith
+        let session = Interactive.createWithRegistration registration
+        let first = Interactive.submit session (FScript.parse "let ready = Task.fromResult 41")
+        let second = Interactive.submit first.Session (FScript.parse "ready |> Task.continueWith (fun value -> value+1) |> Task.await")
+        Assert.That(second.State.Permissions, Is.EqualTo(HostPermissions.Threading))
+        Assert.That(Pretty.valueToString second.State.LastValue, Is.EqualTo("42"))
+        Assert.Throws<TypeException>(Action(fun () -> Interactive.submit second.Session (FScript.parse "Console.writeLine \"denied\"") |> ignore)) |> ignore

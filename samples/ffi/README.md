@@ -145,3 +145,6 @@ That command runs the entry script, which opens the window through the provider.
 The provider references only `MagnusOpera.FScript.Extensibility` 2.0.0 and its renderer project. SDK attributes, descriptors, typed handlers, and opaque callback handles define its entire FScript dependency. Runtime is used only by the test harness. Compatible SDK 2.x releases keep unsigned assembly identity 2.0.0.0 independently of CLI/editor product versions.
 
 For sibling source development, add `/p:UseLocalFScriptExtensibility=true` when building the provider. Normal builds use NuGet. Execution still starts in `main.fss` through the CLI or VS Code and its existing `fscript.toml`.
+
+The adjacent `fscript.toml` explicitly grants IO for console output, Threading for script tasks, and Native for the graphics provider.
+Interpreted execution otherwise defaults to no permissions.

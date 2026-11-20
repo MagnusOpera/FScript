@@ -24,7 +24,18 @@ internal static class LspTestFixture
         LspClient.SendNotification(client, "initialized", null);
     }
 
-    public static void Initialize(LspClient.Client client) => InitializeWith(client, null);
+    // Broad editor feature tests explicitly request their historical full catalog.
+    private static readonly Lazy<string> FullCatalogConfig = new(() => {
+        var path = Path.Combine(Path.GetTempPath(), "fscript-lsp-catalog-" + Guid.NewGuid().ToString("N") + ".toml");
+        File.WriteAllText(path, "[runtime]\npermissions = ['All']\n");
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(path);
+        return path;
+    });
+
+    public static void Initialize(LspClient.Client client) => InitializeWith(client, new JsonObject {
+        ["configurationPath"] = FullCatalogConfig.Value,
+        ["workspaceTrusted"] = true
+    });
 
     public static void Shutdown(LspClient.Client client)
     {

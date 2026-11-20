@@ -12,7 +12,7 @@ Ext.acceptNode (Ext.node (Ext.acceptPoint { X = 42 }))
 SCRIPT
 for version in 0.82.0 0.82.1; do
     dotnet publish src/FScript -c Release --no-self-contained -p:Version="$version" -o "$work/$version" -nologo
-    result=$(dotnet "$work/$version/fscript.dll" --no-default-externs --extern-assembly "$work/provider/FScript.Cli.Tests.Fixtures.Valid.dll" "$work/main.fss")
+    result=$(dotnet "$work/$version/fscript.dll" --permissions Native --no-default-externs --extern-assembly "$work/provider/FScript.Cli.Tests.Fixtures.Valid.dll" "$work/main.fss")
     test "$result" = '42'
 done
 echo 'One SDK-only provider loaded into both product assembly versions.'

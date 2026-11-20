@@ -127,3 +127,11 @@ loading until a debugger mode is selected.
 parsing and inference outside the timing. The benchmark README describes how to
 compare the same runner against a published engine. CLI startup should be measured
 separately with matching managed or native executables.
+
+## Launch permissions
+
+CLI/editor launches use `runtime.permissions` from the selected manifest and
+default to None. Embedded `DebugLaunch.create` grants none; `createWithPermissions`
+uses explicit host grants as a ceiling on manifest selections. Provider loading
+requires Native before registration executes. Debugger stepping, task execution,
+and resumed callbacks retain the resulting interpreter policy.

@@ -1,3 +1,4 @@
 # Build first: dotnet build samples/task-sharing/TaskSharingSample.fsproj -c Release
 [runtime]
+permissions = ["IO", "Threading", "Native"]
 extern-assemblies = ["bin/Release/net11.0/FScript.TaskSharing.Sample.dll"]

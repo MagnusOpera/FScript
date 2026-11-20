@@ -25,7 +25,10 @@ let runCompileCommand (argv: string array) =
     let usage () =
         Console.Error.WriteLine("Usage: fscript compile <program.fss> [--target <ir|csharp|dotnet>] [--output <directory>] [--reference <assembly.dll>] [--single-file|--aot] [--runtime <rid>] [--size-optimized|--no-size-optimized] [--no-aot] [--no-single-file] [--no-result]")
         1
-    if argv.Length < 2 then usage ()
+    if Array.contains "--permissions" argv || (argv |> Array.exists (fun arg -> arg.StartsWith("--permissions=", StringComparison.Ordinal))) then
+        Console.Error.WriteLine("--permissions applies to interpreted execution and analysis, not compilation. Compiled programs are unrestricted.")
+        usage ()
+    elif argv.Length < 2 then usage ()
     else
         let scriptPath = Path.GetFullPath(argv.[1])
         let tryOption name =
@@ -83,7 +86,7 @@ let runCompileCommand (argv: string array) =
                         0
                     let program = FScript.parseFileWithIncludes sourceRoot scriptPath
                     settings.ConfigurationPath |> Option.iter (fun path -> report $"Loading configuration {path}...")
-                    let loaded = EnvironmentLoader.loadWithInfoAndPermissions HostPermissions.All settings |> function Ok environment -> environment | Error message -> failwith message
+                    let loaded = EnvironmentLoader.loadWithInfoAndPermissions HostPermissions.All {settings with Permissions=None} |> function Ok environment -> environment | Error message -> failwith message
                     let sdkReferences = if loaded.ProviderMethods.IsEmpty then [] else [typeof<FScript.Extensibility.ScriptValue>.Assembly.Location; typeof<Microsoft.FSharp.Core.Unit>.Assembly.Location]
                     let references = allOptions "--reference" @ loaded.AssemblyPaths @ sdkReferences |> List.distinct
                     let purity = FScript.Compiler.ClrBindings.providerPurity (loaded.ProviderMethods |> List.map snd)
@@ -229,6 +232,7 @@ let runAnalyzeCommand (argv: string array) =
             let root = Path.GetDirectoryName(path) |> Option.ofObj |> Option.defaultValue (Directory.GetCurrentDirectory())
             let settings =
                 EnvironmentConfiguration.resolveForCli (args.TryGetResult <@ AnalyzeArgs.Config @>) (args.Contains <@ AnalyzeArgs.No_Config @>) (Directory.GetCurrentDirectory()) root (args.TryGetResult <@ AnalyzeArgs.Root @>) (args.Contains <@ AnalyzeArgs.No_Default_Externs @>) (args.GetResults <@ AnalyzeArgs.Extern_Assembly @>)
+                |> Result.bind (PermissionPolicy.forCli (args.TryGetResult <@ AnalyzeArgs.Permissions @>))
                 |> function Ok settings -> settings | Error message -> failwith message
             let loaded = EnvironmentLoader.loadWithInfoAndPermissions HostPermissions.All settings |> function Ok loaded -> loaded | Error message -> failwith message
             let providers = loaded.ProviderMethods |> List.map snd
@@ -460,6 +464,7 @@ let runOrdinaryCommand argv =
                     (args.TryGetResult <@ Root @>)
                     (args.Contains <@ No_Default_Externs @>)
                     (args.GetResults <@ Extern_Assembly @>)
+                |> Result.bind (PermissionPolicy.forCli (args.TryGetResult <@ Permissions @>))
             let rootDirectory = settingsResult |> Result.map (fun settings -> settings.RootDirectory) |> Result.defaultValue defaultRoot
             let externsResult = settingsResult |> Result.bind (EnvironmentLoader.loadWithPermissions HostPermissions.All)
 

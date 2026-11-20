@@ -75,3 +75,6 @@ safe to call concurrently, without claiming purity or a freshness contract.
 Warnings identify potential sharing, not proven data races. No warning is not a
 proof of safety. See the [analysis specification](../../docs/specs/static-task-sharing-analysis.md)
 for the model and its limits.
+
+The adjacent `fscript.toml` explicitly grants IO for console output, Threading for script tasks, and Native for the provider.
+Interpreted execution otherwise defaults to no permissions.

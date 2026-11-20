@@ -443,12 +443,13 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
 
 /// File launches share configuration loading and inference with ordinary CLI execution.
 module DebugLaunch =
-    let createWithPermissions permissions (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry =
+    let private createCore cliDefaults permissions (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry =
         let path = Path.GetFullPath programPath
         let defaultRoot = if configuration.IsSome then defaultArg root (Path.GetDirectoryName path) else Path.GetDirectoryName path
         let settings =
             EnvironmentConfiguration.resolveForCli configuration (noConfiguration && configuration.IsNone) (Directory.GetCurrentDirectory()) defaultRoot None false []
             |> Result.defaultWith (fun error -> invalidOp error)
+        let settings = if cliDefaults then PermissionPolicy.forCli None settings |> Result.defaultWith invalidOp else settings
         let registration = EnvironmentLoader.loadWithPermissions permissions settings |> Result.defaultWith (fun error -> invalidOp error)
         let escape (text: string) = text.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r","\\r").Replace("\n","\\n").Replace("\t","\\t")
         let args = arguments |> Array.map (fun arg -> "\"" + escape arg + "\"") |> String.concat "; "
@@ -470,6 +471,14 @@ module DebugLaunch =
             pair.Key,mappings) |> Map.ofSeq
         new DebugSession(registration,prelude @ program,stopOnEntry,sourceAliases = aliases)
 
-    /// Embedded launches are default-deny; CLI/editor launchers explicitly grant capabilities.
+    /// Hosted launches preserve explicit grants as a ceiling on manifest permissions.
+    let createWithPermissions permissions programPath configuration noConfiguration root arguments stopOnEntry =
+        createCore false permissions programPath configuration noConfiguration root arguments stopOnEntry
+
+    /// CLI/editor launches use manifest grants, or None when omitted.
+    let createForCli programPath configuration noConfiguration root arguments stopOnEntry =
+        createCore true HostPermissions.All programPath configuration noConfiguration root arguments stopOnEntry
+
+    /// Embedded launches are default-deny.
     let create programPath configuration noConfiguration root arguments stopOnEntry =
         createWithPermissions HostPermissions.None programPath configuration noConfiguration root arguments stopOnEntry
