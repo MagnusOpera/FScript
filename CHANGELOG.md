@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Retry failed Terrabuild cache entries when rerunning GitHub Actions builds and test shards.
 - Expose SDK 3 async I/O while keeping Process execution in Runtime and task spawning and awaiting in scripts.
 - Add generic mutable references with `Ref.create`, `Ref.get`, and value-first `Ref.set` in the .NET runtime.
 - Speed up repeated local `make test` runs by using Terrabuild to cache builds and successful tests, with tooling checks available separately.

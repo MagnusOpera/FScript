@@ -76,7 +76,7 @@ jobs:
       - name: Build and populate the Terrabuild cache
         env:
           FSCRIPT_PUBLISH_TOOLCHAIN: 'true'
-        run: make build TB_FLAGS="${TB_FLAGS:-} --debug --log"
+        run: make build TB_FLAGS="${TB_FLAGS:---retry} --debug --log"
       - name: Test release workflow orchestration
         run: make test-release-workflows
       - name: Logout from Terrabuild

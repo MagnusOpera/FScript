@@ -32,6 +32,12 @@ while [[ $# -gt 0 ]]; do
 done
 case "$TB_TEST_RESULT" in
     success) printf '{"status":"success"}\n' > "$report" ;;
+    cached-failure)
+        if grep -qx -- '--retry' "$TB_TEST_ARGS"; then
+            printf '{"status":"success"}\n' > "$report"
+        else
+            printf '{"status":"failure"}\n' > "$report"
+        fi ;;
     failed-graph) printf '{"status":"failure"}\n' > "$report" ;;
     failed-process) printf '{"status":"success"}\n' > "$report"; exit 7 ;;
     missing-report) ;;
@@ -45,7 +51,7 @@ STUB
 chmod +x "$fixture/bin/terrabuild" "$fixture/bin/dotnet"
 export TB_TEST_ARGS="$fixture/args" TB_TEST_DOTNET="$fixture/dotnet-called"
 # The ungrouped cases model normal local builds, even when tested inside CI.
-unset TERRABUILD_GROUP
+unset TERRABUILD_GROUP GITHUB_RUN_ATTEMPT
 
 run_build() {
     PATH="$fixture/bin" TB_TEST_RESULT="$1" "$make_command" --no-print-directory -C "$fixture/repo" \
@@ -127,6 +133,38 @@ for result in failed-graph failed-process missing-report; do
         exit 1
     fi
 done
+# Match CI's TB_FLAGS override, which removes Make's default --retry.
+run_cached_build() {
+    PATH="$fixture/bin" TB_TEST_RESULT=cached-failure "$make_command" --no-print-directory -C "$fixture/repo" \
+        build TB_FLAGS='--debug --log' > "$fixture/log" 2>&1
+}
+if run_cached_build; then
+    echo 'ERROR: a local invocation unexpectedly retried the failed cache entry.' >&2
+    exit 1
+fi
+export GITHUB_RUN_ATTEMPT=1
+if run_cached_build; then
+    echo 'ERROR: the first GitHub attempt unexpectedly retried the failed cache entry.' >&2
+    exit 1
+fi
+for attempt in 2 10; do
+    export GITHUB_RUN_ATTEMPT=$attempt
+    if ! run_cached_build; then cat "$fixture/log"; exit 1; fi
+    test "$(grep -cx -- '--retry' "$fixture/args")" = 1
+    grep -qx -- '--debug' "$fixture/args"
+    grep -qx -- '--log' "$fixture/args"
+done
+# Shards call the wrapper directly, bypassing Make's default flags.
+export GITHUB_RUN_ATTEMPT=2
+PATH="$fixture/bin" TB_TEST_RESULT=cached-failure bash "$fixture/repo/.build/run-terrabuild.sh" \
+    test --project tests/example --restore --local-only > "$fixture/log" 2>&1
+test "$(grep -cx -- '--retry' "$fixture/args")" = 1
+grep -qx -- '--restore' "$fixture/args"
+grep -qx -- '--local-only' "$fixture/args"
+# Explicit local/CI retry flags are preserved without duplication.
+if ! run_test success; then cat "$fixture/log"; exit 1; fi
+test "$(grep -cx -- '--retry' "$fixture/args")" = 1
+unset GITHUB_RUN_ATTEMPT
 rm "$fixture/bin/terrabuild"
 if run_build success; then
     echo "ERROR: make build succeeded without Terrabuild on PATH." >&2

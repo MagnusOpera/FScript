@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, existsSync} from 'node:fs';
 import {load} from 'js-yaml';
 import {test} from 'node:test';
+import {spawnSync} from 'node:child_process';
 
 const workflow = (name) => load(readFileSync(new URL(`../workflows/${name}.yml`, import.meta.url), 'utf8'));
 const list = (value) => value === undefined ? [] : Array.isArray(value) ? value : [value];
@@ -167,5 +168,20 @@ test('stored credentials and publishing identities are used only by restricted e
   assert.equal(build.env.FSCRIPT_PUBLISH_TOOLCHAIN, 'true');
   for (const job of Object.values(workflow('ci').jobs)) {
     assert.ok(!JSON.stringify(job).includes('FSCRIPT_PUBLISH_TOOLCHAIN'));
+  }
+});
+
+test('CI logging flags preserve the retry default and explicit cache settings', () => {
+  for (const name of ['ci', 'ci-trusted']) {
+    const command = workflow(name).jobs.build.steps.find(step => step.name === 'Build and populate the Terrabuild cache').run;
+    for (const flags of [undefined, '', '--local-only']) {
+      const env = { ...process.env };
+      delete env.TB_FLAGS;
+      if (flags !== undefined) env.TB_FLAGS = flags;
+      // Execute the workflow's actual shell expansion with Make stubbed out.
+      const result = spawnSync('bash', ['-c', `make() { printf '%s\\n' "$@"; }; ${command}`], { env, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.stdout.trim().split('\n'), ['build', `TB_FLAGS=${flags || '--retry'} --debug --log`]);
+    }
   }
 });
