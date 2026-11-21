@@ -5,6 +5,31 @@ namespace FScript.LanguageServer.Tests;
 
 public class PermissionEnvironmentTests
 {
+    [TestCase("math_test.fss", true)]
+    [TestCase("math.fss", false)]
+    public void Test_apis_have_editor_types_in_test_files(string filename, bool testFile)
+    {
+        var directory = Directory.CreateTempSubdirectory("fscript-lsp-tests-");
+        var client = LspClient.Start();
+        try
+        {
+            LspTestFixture.InitializeWith(client, null);
+            var uri = new Uri(Path.Combine(directory.FullName, filename)).AbsoluteUri;
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1,
+                    ["text"] = "Test.each \"doubling\" [(\"positive\", 2)] (fun x -> Assert.equal 4 (x * 2))"
+                }
+            });
+            var diagnostics = LspClient.ReadUntil(client, 10_000,
+                message => message["method"]?.ToString() == "textDocument/publishDiagnostics" && message["params"]?["uri"]?.ToString() == uri);
+            Assert.That(diagnostics["params"]!["diagnostics"]!.AsArray().Count, testFile ? Is.Zero : Is.GreaterThan(0));
+        }
+        finally { LspClient.Stop(client); directory.Delete(true); }
+    }
+
     [TestCase(null, "Console.writeLine \"denied\"", false)]
     [TestCase("[]", "Task.fromResult 42", false)]
     [TestCase("['IO']", "Console.writeLine \"allowed\"", true)]

@@ -50,6 +50,7 @@
     <Compile Include="ExportSignatures.fs" />
     <Compile Include="TaskSharingContracts.fs" />
     <Compile Include="ScriptHost.fs" />
+    <Compile Include="TestSupport.fs" />
     <Compile Include="DebugSession.fs" />
   </ItemGroup>
 

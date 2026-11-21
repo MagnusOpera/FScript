@@ -10,6 +10,7 @@ All notable changes to FScript are documented in this file.
 - Run named data rows as individual test cases with `Test.each`.
 - Show file setup time and slow test cases with `fscript test --profile`.
 - Show the source file, line, and column for failed test assertions.
+- Support editor test discovery, exact case runs, source diagnostics, and debugging one test case.
 
 ## [0.95]
 

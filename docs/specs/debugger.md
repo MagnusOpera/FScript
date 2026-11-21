@@ -136,3 +136,10 @@ default to None. Embedded `DebugLaunch.create` grants none; `createWithPermissio
 uses explicit host grants as a ceiling on manifest selections. Provider loading
 requires Native before registration executes. Debugger stepping, task execution,
 and resumed callbacks retain the resulting interpreter policy.
+
+
+## Debugging a test case
+
+A launch may select one exact registered case name with `testCase`, including the full `group / row` name for a parameterized case. The adapter initializes the test file, then invokes the chosen case using the same test registration and assertion functions as `fscript test`. The debug launch uses the project working directory to resolve the default manifest.
+
+The adapter reports the result before termination in an `fscript/testResult` event. The event contains `passed`, a diagnostic message, and the assertion's source location when available. A cancelled session can terminate without a result. The CLI advertises support with `testProtocolVersion: 1` in its debugger capabilities response.

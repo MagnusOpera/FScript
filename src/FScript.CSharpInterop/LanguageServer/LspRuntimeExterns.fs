@@ -61,14 +61,17 @@ module LspRuntimeExterns =
         | None -> ()
 
     let forSourcePath (sourcePath: string) : ExtensionRegistration =
-        registration |> Option.defaultWith (fun () ->
-            let root = Path.GetDirectoryName(Path.GetFullPath sourcePath) |> Option.ofObj |> Option.defaultWith Directory.GetCurrentDirectory
-            match settings with
-            | Some effective when error.IsNone ->
-                let permissions = defaultArg effective.Permissions HostPermissions.None
-                if effective.DefaultExterns then Registry.registration {HostContext.create root with Permissions=permissions}
-                else {HostInterop.empty with Permissions=permissions}
-            | _ -> Registry.registration (HostContext.create root))
+        let environment =
+            registration |> Option.defaultWith (fun () ->
+                let root = Path.GetDirectoryName(Path.GetFullPath sourcePath) |> Option.ofObj |> Option.defaultWith Directory.GetCurrentDirectory
+                match settings with
+                | Some effective when error.IsNone ->
+                    let permissions = defaultArg effective.Permissions HostPermissions.None
+                    if effective.DefaultExterns then Registry.registration {HostContext.create root with Permissions=permissions}
+                    else {HostInterop.empty with Permissions=permissions}
+                | _ -> Registry.registration (HostContext.create root))
+        if sourcePath.EndsWith("_test.fss", StringComparison.Ordinal) then TestSupport.extend environment TestSupport.symbols
+        else environment
 
     let descriptors sourcePath = (forSourcePath sourcePath).Types
 

@@ -169,15 +169,24 @@ public static class DebuggerEntry
         var launch = protocol.ReadAsync().GetAwaiter().GetResult() ?? throw new IOException("Debugger disconnected before launch.");
         if (launch["client_seq"] is { } originalLaunch) launch["seq"] = originalLaunch.GetValue<int>();
         var args = launch["arguments"];
+        var testCase = Option(Text(args, "testCase"));
         DebugSession session;
         try
         {
-            session = DebugLaunch.createForCli(Text(args,"program"),Option(Text(args,"configurationPath")),true,Option(Text(args,"rootDirectory")),
-                args?["args"]?.AsArray().Select(value => value!.GetValue<string>()).ToArray() ?? [],Boolean(args,"stopOnEntry"));
+            var program = Text(args, "program");
+            var configuration = Option(Text(args, "configurationPath"));
+            var root = Option(Text(args, "rootDirectory"));
+            var stopOnEntry = Boolean(args, "stopOnEntry");
+            session = testCase is not null
+                ? DebugLaunch.createTestForCli(program, configuration, false, root, testCase.Value, stopOnEntry)
+                : DebugLaunch.createForCli(program, configuration, true, root,
+                    args?["args"]?.AsArray().Select(value => value!.GetValue<string>()).ToArray() ?? [], stopOnEntry);
         }
         catch (Exception error)
         {
             protocol.Response(launch,error: error.Message).GetAwaiter().GetResult();
+            if (testCase is not null)
+                protocol.Event("fscript/testResult", new { passed = false, message = DebugSession.ErrorMessage(error) }).GetAwaiter().GetResult();
             protocol.Event("terminated").GetAwaiter().GetResult();
             return 1;
         }
@@ -272,9 +281,18 @@ public static class DebuggerEntry
                 }
             });
             var exit = 0;
-            try { configured.Wait(); session.Run(); Console.WriteLine(session.ResultSummary); }
+            var completed = false;
+            Exception? failure = null;
+            try
+            {
+                configured.Wait();
+                session.Run();
+                completed = true;
+                if (testCase is null) Console.WriteLine(session.ResultSummary);
+                else exit = session.ResultExitCode;
+            }
             catch (OperationCanceledException) { }
-            catch (Exception error) { Console.Error.WriteLine(error.Message); exit = 3; }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); exit = 3; failure = error; }
             finally
             {
                 Interlocked.Exchange(ref terminated,1);
@@ -282,6 +300,15 @@ public static class DebuggerEntry
                 {
                     events.Writer.TryComplete();
                     eventPump.GetAwaiter().GetResult();
+                    if (testCase is not null && (completed || failure is not null))
+                    {
+                        var location = failure is not null ? DebugSession.ErrorLocation(failure) : null;
+                        var message = failure is not null ? DebugSession.ErrorMessage(failure) : exit == 0 ? "" : $"Test case set exit status {exit}.";
+                        protocol.Event("fscript/testResult", new
+                        {
+                            passed = exit == 0, message, source = location?.File, line = location?.Line, column = location?.Column
+                        }).GetAwaiter().GetResult();
+                    }
                     protocol.Event("exited",new { exitCode = exit }).GetAwaiter().GetResult();
                     protocol.Event("terminated").GetAwaiter().GetResult();
                 }

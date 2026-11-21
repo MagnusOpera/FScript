@@ -4,75 +4,11 @@ open System
 open System.IO
 open System.Diagnostics
 open System.Globalization
+open System.Text.Json
 open Argu
 open CliArgs
 open FScript.Language
 open FScript.Runtime
-
-let private externalFunction name typeVariables signature arity implementation : ExternalFunction =
-    { Name = name
-      Scheme = Forall(typeVariables, signature)
-      Arity = arity
-      RequiredPermissions = HostPermissions.None
-      Impl = implementation }
-
-exception private AssertionFailure of string
-
-let private assertions =
-    let failAssertion message = raise (AssertionFailure message)
-    let assertion name typeVariables signature arity implementation =
-        externalFunction name typeVariables signature arity (fun context arguments ->
-            try implementation arguments
-            with AssertionFailure message ->
-                raise (EvalException { Message = message; Span = HostInterop.currentCallSpan context }))
-
-    let fail expected actual details =
-        let show = Pretty.valueToString
-        failAssertion $"Expected {show expected}, got {show actual}{details}."
-
-    let floatComparison = TFun(TFloat, TFun(TFloat, TFun(TFloat, TUnit)))
-    let showFloat value = Pretty.valueToString (VFloat value)
-    let validateTolerance assertion tolerance =
-        if not (Double.IsFinite tolerance) || tolerance < 0.0 then
-            failAssertion $"{assertion} requires a finite, nonnegative tolerance. Got {showFloat tolerance}."
-
-    [ assertion "Assert.equal" [0] (TFun(TVar 0, TFun(TVar 0, TUnit))) 2 (function
-          | [expected; actual] ->
-              if not (Eval.valuesEqual expected actual) then fail expected actual ""
-              VUnit
-          | _ -> invalidOp "Invalid arguments to Assert.equal.")
-      assertion "Assert.some" [0] (TFun(TOption(TVar 0), TVar 0)) 1 (function
-          | [VOption (Some value)] -> value
-          | [VOption None] -> failAssertion "Expected Some, got None."
-          | _ -> invalidOp "Invalid arguments to Assert.some.")
-      assertion "Assert.none" [0] (TFun(TOption(TVar 0), TUnit)) 1 (function
-          | [VOption None] -> VUnit
-          | [(VOption (Some _) as actual)] -> fail (VOption None) actual ""
-          | _ -> invalidOp "Invalid arguments to Assert.none.")
-      assertion "Assert.near" [] floatComparison 3 (function
-          | [VFloat tolerance; (VFloat expected as expectedValue); (VFloat actual as actualValue)] ->
-              validateTolerance "Assert.near" tolerance
-              let difference = abs (expected - actual)
-              if not (Double.IsFinite difference) || difference > tolerance then
-                  fail expectedValue actualValue $" (absolute error {showFloat difference}, tolerance {showFloat tolerance})"
-              VUnit
-          | _ -> invalidOp "Invalid arguments to Assert.near.")
-      assertion "Assert.relative" [] floatComparison 3 (function
-          | [VFloat tolerance; (VFloat expected as expectedValue); (VFloat actual as actualValue)] ->
-              validateTolerance "Assert.relative" tolerance
-              if not (Double.IsFinite expected && Double.IsFinite actual) then
-                  fail expectedValue actualValue " (relative comparison requires finite values)"
-              elif expected = 0.0 then
-                  if actual <> 0.0 then fail expectedValue actualValue " (zero reference requires an exact match)"
-              else
-                  let difference = actual - expected
-                  let error =
-                      if Double.IsFinite difference then abs (difference / expected)
-                      else abs (actual / expected - 1.0)
-                  if error > tolerance then
-                      fail expectedValue actualValue $" (relative error {showFloat error}, tolerance {showFloat tolerance})"
-              VUnit
-          | _ -> invalidOp "Invalid arguments to Assert.relative.") ]
 
 let private discover directory =
     let options = EnumerationOptions(
@@ -84,6 +20,78 @@ let private discover directory =
     |> Seq.sortWith (fun left right -> StringComparer.Ordinal.Compare(left, right))
     |> Seq.toArray
 
+let private selectFile directory path =
+    let fullPath = Path.GetFullPath(path, directory)
+    let relative = Path.GetRelativePath(directory, fullPath)
+    if Path.IsPathRooted relative || relative = ".." || relative.StartsWith(".." + string Path.DirectorySeparatorChar, StringComparison.Ordinal) then
+        invalidArg "file" "The test file must be under the working directory."
+    if not (fullPath.EndsWith("_test.fss", StringComparison.Ordinal) && File.Exists fullPath) then
+        invalidArg "file" "Expected an existing *_test.fss file."
+    relative.Split(Path.DirectorySeparatorChar)
+    |> Array.fold (fun parent segment ->
+        let current = Path.Combine(parent, segment)
+        if File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint) then
+            invalidArg "file" "Test discovery skips symbolic links."
+        current) directory
+    |> ignore
+    fullPath
+
+[<CLIMutable>]
+type TestEvent =
+    { Status: string
+      File: string
+      Name: string
+      Line: int
+      Column: int
+      Source: string
+      Message: string
+      Input: string }
+
+let private event status file name (span: Span) message input =
+    { Status = status; File = file; Name = name; Line = span.Start.Line; Column = span.Start.Column
+      Source = defaultArg span.Start.File file; Message = message; Input = input }
+
+let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
+
+let private errorSpan = function
+    | ParseException error -> error.Span
+    | TypeException error -> error.Span
+    | EvalException error -> error.Span
+    | _ -> unknownSpan
+
+let private errorMessage = function
+    | ParseException error -> error.Message
+    | TypeException error -> error.Message
+    | EvalException error -> error.Message
+    | error -> error.Message
+
+let private staticCases path =
+    let mutable lists = Map.empty
+    let rec unwrap = function EParen (inner, _) -> unwrap inner | expression -> expression
+    let rows expression =
+        match unwrap expression with
+        | EList (values, _) -> values
+        | EVar (name, _) -> lists |> Map.tryFind name |> Option.defaultValue []
+        | _ -> []
+    let declarations expression =
+        match unwrap expression with
+        | EApply (EApply (EFieldGet (EVar ("Test", _), "case", _), ELiteral (LString name, _), _), _, span) ->
+            [event "discovered" path name span "" ""]
+        | EApply (EApply (EApply (EFieldGet (EVar ("Test", _), "each", _), ELiteral (LString group, _), _), input, _), _, _) ->
+            rows input |> List.choose (fun row ->
+                match unwrap row with
+                | ETuple ([ELiteral (LString name, _); _], span) -> Some (event "discovered" path $"{group} / {name}" span "" "")
+                | _ -> None)
+        | _ -> []
+    File.ReadAllText path
+    |> FScript.parseWithSourceName (Some path)
+    |> List.collect (function
+        | SExpr expression -> declarations expression
+        | SLet (name, [], _, expression, _, _, _) ->
+            lists <- lists.Add(name, rows expression)
+            declarations expression
+        | _ -> [])
+
 let private describeError = function
     | ParseException error -> $"{error.Span.Start.Line}:{error.Span.Start.Column}: {error.Message}"
     | TypeException error -> $"{error.Span.Start.Line}:{error.Span.Start.Column}: {error.Message}"
@@ -91,14 +99,6 @@ let private describeError = function
         let file = error.Span.Start.File |> Option.defaultValue "<test>"
         $"{file}:{error.Span.Start.Line}:{error.Span.Start.Column}: {error.Message}"
     | error -> error.Message
-
-let private caseName = "Test.case"
-let private eachName = "Test.each"
-
-type private TestCase =
-    { Name: string
-      Body: Value
-      Row: Value option }
 
 type private TestProfile =
     { Setups: ResizeArray<string * TimeSpan>
@@ -128,42 +128,10 @@ let private printProfile profile =
     printTimings "File setup" profile.Setups.Count profile.Setups
     printTimings "Slowest cases" 10 profile.Cases
 
-let private runFile prelude (environment: ExtensionRegistration) directory root (filter: string option) profile path =
+let private runFile prelude (environment: ExtensionRegistration) directory root (selected: string -> bool) listOnly emit profile path =
     let displayPath = Path.GetRelativePath(directory, path)
-    let cases = ResizeArray<TestCase>()
-    let names = Collections.Generic.HashSet<string>(StringComparer.Ordinal)
-    let mutable registering = true
-    let register api action =
-        lock cases (fun () ->
-            if not registering then failwith $"{api} can only register during test file initialization."
-            action ()
-            VUnit)
-    let addCase name body row =
-        if not (names.Add name) then failwith $"Duplicate test name '{name}'."
-        cases.Add({ Name = name; Body = body; Row = row })
-    let single =
-        externalFunction caseName [] (TFun(TString, TFun(TFun(TUnit, TUnit), TUnit))) 2 (fun _ -> function
-            | [VString name; body] ->
-                register caseName (fun () ->
-                    if String.IsNullOrWhiteSpace name then failwith "Test.case requires a nonempty name."
-                    addCase name body None)
-            | _ -> invalidOp "Invalid arguments to Test.case.")
-    let rowType = TVar 0
-    let rowsType = TList(TTuple [TString; rowType])
-    let eachSignature = TFun(TString, TFun(rowsType, TFun(TFun(rowType, TUnit), TUnit)))
-    let each =
-        externalFunction eachName [0] eachSignature 3 (fun _ -> function
-            | [VString group; VList rows; body] ->
-                register eachName (fun () ->
-                    if String.IsNullOrWhiteSpace group then failwith "Test.each requires a nonempty group name."
-                    for row in rows do
-                        match row with
-                        | VTuple [VString label; data] ->
-                            if String.IsNullOrWhiteSpace label then failwith "Test.each requires a nonempty row name."
-                            addCase $"{group} / {label}" body (Some data)
-                        | _ -> invalidOp "Invalid row in Test.each.")
-            | _ -> invalidOp "Invalid arguments to Test.each.")
-    let registration = { environment with Functions = [single; each] @ assertions @ environment.Functions }
+    let functions, cases, seal = TestSupport.create ()
+    let registration = TestSupport.extend environment functions
     let setupSamples = profile |> Option.map (fun timings -> timings.Setups)
     let caseSamples = profile |> Option.map (fun timings -> timings.Cases)
     try
@@ -175,27 +143,36 @@ let private runFile prelude (environment: ExtensionRegistration) directory root 
                         let typed = TypeInfer.inferProgramWithRegistration registration program
                         Eval.evalProgramWithRegistrationState registration typed
                     finally
-                        lock cases (fun () -> registering <- false)
+                        seal ()
                 if state.ExitCode <> 0 then failwith $"Test file initialization set exit status {state.ExitCode}."
                 if cases.Count = 0 then failwith "No cases registered with Test.case or Test.each."
                 state)
         cases
-        |> Seq.filter (fun test -> filter |> Option.forall (fun substring -> test.Name.Contains(substring, StringComparison.Ordinal)))
+        |> Seq.filter (fun test -> selected test.Name)
         |> Seq.fold (fun (passed, failed) test ->
             let name = $"{displayPath} / {test.Name}"
-            try
+            if listOnly then
+                emit (event "discovered" path test.Name test.Span "" "")
+                Console.WriteLine name
+                passed + 1, failed
+            else
+              try
                 measure caseSamples name (fun () ->
                     let argument = test.Row |> Option.defaultValue VUnit
                     let result = Eval.invokeValueWithPermissionsAndExitCode registration.Permissions state.TypeDefs test.Body [argument]
                     if result.ExitCode <> 0 then failwith $"Test case set exit status {result.ExitCode}.")
+                emit (event "passed" path test.Name test.Span "" "")
                 Console.WriteLine($"PASS {name}")
                 passed + 1, failed
-            with error ->
+              with error ->
+                let input = test.Row |> Option.map Pretty.valueToString |> Option.defaultValue ""
+                emit (event "failed" path test.Name (errorSpan error) (errorMessage error) input)
                 Console.Error.WriteLine($"FAIL {name}")
                 test.Row |> Option.iter (fun row -> Console.Error.WriteLine($"  Input: {Pretty.valueToString row}"))
                 Console.Error.WriteLine($"  {describeError error}")
                 passed, failed + 1) (0, 0)
     with error ->
+        emit (event "error" path "" (errorSpan error) (errorMessage error) "")
         Console.Error.WriteLine($"FAIL {displayPath}")
         Console.Error.WriteLine($"  {describeError error}")
         0, 1
@@ -209,36 +186,52 @@ let run prelude argv =
         else
             let args = parser.ParseCommandLine(inputs = argv, raiseOnUsage = true)
             let directory = Directory.GetCurrentDirectory()
-            let files = discover directory
+            let file = args.TryGetResult <@ TestArgs.File @>
+            let exact = args.TryGetResult <@ TestArgs.Case @>
             let filter = args.TryGetResult <@ TestArgs.Filter @>
-            let settings =
-                EnvironmentConfiguration.resolveForCli
-                    (args.TryGetResult <@ TestArgs.Config @>) (args.Contains <@ TestArgs.No_Config @>)
-                    directory directory None (args.Contains <@ TestArgs.No_Default_Externs @>)
-                    (args.GetResults <@ TestArgs.Extern_Assembly @>)
-                |> Result.bind (PermissionPolicy.forCli (args.TryGetResult <@ TestArgs.Permissions @>))
-                |> function Ok settings -> settings | Error message -> failwith message
-            let registration =
-                EnvironmentLoader.loadWithPermissions HostPermissions.All settings
-                |> function Ok registration -> registration | Error message -> failwith message
-            let reserved = Set.ofList (caseName :: eachName :: List.map (fun (assertion: ExternalFunction) -> assertion.Name) assertions)
-            for externalFunction in registration.Functions do
-                if reserved.Contains externalFunction.Name then
-                    failwith $"External function '{externalFunction.Name}' conflicts with the test API."
-            let profile =
-                if args.Contains <@ TestArgs.Profile @> then Some { Setups = ResizeArray(); Cases = ResizeArray() }
-                else None
-            let passed, failed =
-                files |> Array.fold (fun (passed, failed) path ->
-                    let filePassed, fileFailed = runFile prelude registration directory settings.RootDirectory filter profile path
-                    passed + filePassed, failed + fileFailed) (0, 0)
-            Console.WriteLine($"{passed} passed, {failed} failed")
-            profile |> Option.iter printProfile
-            if failed > 0 then 1
-            elif passed = 0 then
-                Console.Error.WriteLine("No test cases matched.")
-                1
-            else 0
+            if exact.IsSome && (file.IsNone || filter.IsSome) then
+                invalidArg "case" "--case requires --file and cannot be combined with --filter."
+            let selected (name: string) =
+                exact |> Option.forall ((=) name)
+                && (filter |> Option.forall (fun substring -> name.Contains(substring, StringComparison.Ordinal)))
+            let files = match file with Some path -> [|selectFile directory path|] | None -> discover directory
+            let report = args.TryGetResult <@ TestArgs.Report @>
+            let events = ResizeArray<TestEvent>()
+            let emit value = if report.IsSome then events.Add value
+            if args.Contains <@ TestArgs.Discover @> then
+                let results =
+                    files |> Array.collect (fun path ->
+                        try staticCases path |> List.filter (fun test -> selected test.Name) |> List.toArray
+                        with error -> [|event "error" path "" (errorSpan error) (errorMessage error) ""|])
+                Console.WriteLine(JsonSerializer.Serialize results)
+                0
+            else
+              let listOnly = args.Contains <@ TestArgs.List @>
+              let settings =
+                  EnvironmentConfiguration.resolveForCli
+                      (args.TryGetResult <@ TestArgs.Config @>) (args.Contains <@ TestArgs.No_Config @>)
+                      directory directory None (args.Contains <@ TestArgs.No_Default_Externs @>)
+                      (args.GetResults <@ TestArgs.Extern_Assembly @>)
+                  |> Result.bind (PermissionPolicy.forCli (args.TryGetResult <@ TestArgs.Permissions @>))
+                  |> function Ok settings -> settings | Error message -> failwith message
+              let registration =
+                  EnvironmentLoader.loadWithPermissions HostPermissions.All settings
+                  |> function Ok registration -> registration | Error message -> failwith message
+              let profile =
+                  if args.Contains <@ TestArgs.Profile @> then Some { Setups = ResizeArray(); Cases = ResizeArray() }
+                  else None
+              let passed, failed =
+                  files |> Array.fold (fun (passed, failed) path ->
+                      let filePassed, fileFailed = runFile prelude registration directory settings.RootDirectory selected listOnly emit profile path
+                      passed + filePassed, failed + fileFailed) (0, 0)
+              report |> Option.iter (fun path -> File.WriteAllText(path, JsonSerializer.Serialize events))
+              if not listOnly then Console.WriteLine($"{passed} passed, {failed} failed")
+              profile |> Option.iter printProfile
+              if failed > 0 then 1
+              elif passed = 0 then
+                  Console.Error.WriteLine("No test cases matched.")
+                  1
+              else 0
     with error ->
         Console.Error.WriteLine(error.Message)
         1

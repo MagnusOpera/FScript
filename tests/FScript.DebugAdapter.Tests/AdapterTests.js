@@ -235,3 +235,27 @@ test('debugger defaults deny effects and selected manifest grants apply', async 
   await allowed.client.request('configurationDone');
   await allowed.client.wait(message => message.event === 'terminated');
 });
+
+test('debugging one named data row stops in the imported code and reports the assertion', async t => {
+  const {client, dir} = await fixture(t, '()');
+  const program = path.join(dir, 'worker_test.fss');
+  const imported = path.join(dir, 'worker.fss');
+  fs.writeFileSync(imported, 'export let double value =\n    value * 2\n');
+  fs.writeFileSync(program, `import "worker.fss" as Worker
+Test.case "unselected" (fun () -> raise "unexpected case")
+Test.each "rows" [("first", 3); ("second", 4)] (fun value ->
+    Assert.equal 6 (Worker.double value))
+`);
+  await client.launch(program, {cwd: dir, rootDirectory: dir, testCase: 'rows / second'});
+  await client.request('setExceptionBreakpoints', {filters: []});
+  const points = await client.request('setBreakpoints', {source: {path: imported}, breakpoints: [{line: 2}]});
+  assert.equal(points.body.breakpoints[0].verified, true);
+  await client.request('configurationDone');
+  const stop = await client.wait(message => message.event === 'stopped');
+  const stack = await client.request('stackTrace', {threadId: stop.body.threadId});
+  assert.equal(stack.body.stackFrames[0].source.path, imported);
+  await client.request('continue', {threadId: stop.body.threadId});
+  const result = await client.wait(message => message.event === 'fscript/testResult');
+  assert.deepEqual(result.body, {passed: false, message: 'Expected 6, got 8.', source: program, line: 4, column: 5});
+  await client.wait(message => message.event === 'terminated');
+});

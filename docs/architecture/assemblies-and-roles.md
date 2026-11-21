@@ -315,3 +315,5 @@ Internal FileSystemPolicy values preserve original ancestor HostContexts. Public
 The CLI registers the test API in the interpreter's extension registration for each test file. Initialization captures the named closures, any inputs supplied by `Test.each`, and the evaluator's type definitions. The runner invokes each selected case with its own evaluator invocation and the project's permission policy. The assertions use the interpreter's value equality. On failure, the CLI reads the call span from the evaluator's host invocation metadata and raises a located evaluation error.
 
 With `--profile`, the CLI records elapsed time around file initialization and case invocation, including exceptions. The timing data lives in the runner.
+
+Runtime shares test registration and assertions between the CLI and debugger. The debugger evaluates the original test file and calls the selected closure inside the existing debug session. The language server uses the same signatures for test-file inference, with executable handlers disabled.

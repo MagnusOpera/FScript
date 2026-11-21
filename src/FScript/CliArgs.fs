@@ -51,6 +51,11 @@ type AnalyzeArgs =
 type TestArgs =
     | [<Unique>] Filter of substring: string
     | [<Unique>] Profile
+    | [<Unique>] File of path: string
+    | [<Unique; CustomAssignmentOrSpaced("=")>] Case of name: string
+    | [<Unique>] Discover
+    | [<Unique>] List
+    | [<Unique>] Report of path: string
     | [<AltCommandLine("-c")>] Config of path: string
     | No_Config
     | No_Default_Externs
@@ -61,6 +66,11 @@ type TestArgs =
             match this with
             | TestArgs.Filter _ -> "Run cases whose names contain the given substring."
             | TestArgs.Profile -> "Show file setup times and the slowest test cases."
+            | TestArgs.File _ -> "Select one test file under the working directory."
+            | TestArgs.Case _ -> "Select one exact case name in the selected test file."
+            | TestArgs.Discover -> "List statically identifiable cases as JSON, without evaluation."
+            | TestArgs.List -> "Load the selected files and list registered cases."
+            | TestArgs.Report _ -> "Write structured test results to a JSON file."
             | TestArgs.Config _ -> "Select an explicit fscript.toml environment."
             | TestArgs.No_Config -> "Disable automatic fscript.toml loading."
             | TestArgs.No_Default_Externs -> "Disable default runtime externs."

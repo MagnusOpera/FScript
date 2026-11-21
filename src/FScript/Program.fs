@@ -433,7 +433,7 @@ let runOrdinaryCommand argv =
         if argv = [| "--debug-adapter" |] then runDebugAdapter ()
         elif argv.Length = 3 && argv[0] = "--debug-host" then runDebugHost (Int32.Parse argv[1]) argv[2]
         elif argv = [| "--debug-capabilities" |] then
-            Console.WriteLine("{\"protocolVersion\":1,\"transport\":\"stdio\",\"terminal\":true}")
+            Console.WriteLine("{\"protocolVersion\":1,\"testProtocolVersion\":1,\"transport\":\"stdio\",\"terminal\":true}")
             0
         elif cliArgv |> Array.exists (fun value -> value = "--debug-adapter" || value = "--debug-capabilities" || value = "--debug-host") then
             Console.Error.WriteLine("Debugger modes must be invoked separately from ordinary CLI arguments.")

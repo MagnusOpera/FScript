@@ -37,3 +37,12 @@ Use `--filter <substring>` for a case-sensitive substring match on case names. F
 Add `--profile` to report wall-clock timings after the test summary. File setup covers prelude and import loading, parsing, type checking, and case registration. The report lists every file setup, including unsuccessful ones. It also shows the ten slowest selected cases in descending order, with each `Test.each` row timed separately. Failed cases are included. The totals cover all measured setups and selected cases, even when the case list shows only the slowest ten.
 
 Use `--filter` with the case name to rerun a slow case. File setup still runs for each discovered file when a filter is active. Case time covers interpreter invocation and excludes the runner's own result printing. CLI startup and project configuration happen before these measurements.
+
+
+## Editor integration
+
+`fscript test --discover` parses test files and emits a JSON array to standard output. Discovery recognizes top-level literal `Test.case` names and `Test.each` rows declared inline or in a preceding list binding. It does not evaluate files or load their environment. `--list` instead initializes the selected files to collect runtime-generated cases and skips case bodies.
+
+`--file <path>` selects an existing `*_test.fss` file inside the working directory. `--case <name>` requires `--file` and selects an exact full case name. It is mutually exclusive with `--filter`. The assignment form `--case=<name>` accepts names that look like CLI flags. Use workspace-relative paths for editor requests.
+
+With `--report <path>`, listing and execution write a JSON array to the given file independently of script console output. Entries carry `Status` (`discovered`, `passed`, `failed`, or `error`), `File`, `Name`, `Source`, `Line`, `Column`, `Message`, and `Input`. Source coordinates are one-based, with zero indicating an unavailable coordinate. A file error has an empty case name.

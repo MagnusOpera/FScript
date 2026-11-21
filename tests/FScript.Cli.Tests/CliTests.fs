@@ -118,6 +118,40 @@ type CliTests() =
         Assert.That(emptyError, Does.Contain("No test cases matched."))
 
     [<Test>]
+    member _.``Test Explorer discovers without execution and runs one exact case with a report``() =
+        use project = new PermissionDirectory("fscript-test-explorer-")
+        let file = Path.Combine(project.FullName, "explorer_test.fss")
+        File.WriteAllLines(file,
+            [ "let rows = [(\"first\", 2); (\"second\", 3)]"
+              "Test.each \"group\" rows (fun input -> Assert.equal 2 input)"
+              "Test.case \"--profile\" (fun () -> ())"
+              "let register () = Test.case \"generated\" (fun () -> raise \"case ran\")"
+              "register ()" ])
+        File.WriteAllLines(Path.Combine(project.FullName, "other_test.fss"),
+            [ "Test.case \"--profile\" (fun () -> ())"
+              "raise \"other file ran\"" ])
+        let cli args = runCliRaw (findRepoRoot ()) project.FullName ("test" :: args) None
+        let discovered, json, discoveryError = cli ["--discover"]
+        Assert.That(discovered, Is.Zero, discoveryError)
+        Assert.That(json, Does.Contain("group / first").And.Contain("other_test.fss").And.Not.Contain("generated"))
+        let report = Path.Combine(project.FullName, "report.json")
+        let listed, _, listError = cli ["--file"; "explorer_test.fss"; "--list"; "--report"; report]
+        Assert.That(listed, Is.Zero, listError)
+        Assert.That(File.ReadAllText report, Does.Contain("generated"))
+        let passed, output, exactError = cli ["--file"; "explorer_test.fss"; "--case=--profile"; "--report"; report]
+        Assert.That(passed, Is.Zero, exactError)
+        Assert.That(output, Does.Contain("1 passed, 0 failed").And.Not.Contain("Test profile"))
+        let failed, _, failedError = cli ["--file"; "explorer_test.fss"; "--case"; "group / second"; "--report"; report]
+        Assert.That(failed, Is.EqualTo(1), failedError)
+        use contents = System.Text.Json.JsonDocument.Parse(File.ReadAllText report)
+        let result = contents.RootElement[0]
+        Assert.That(contents.RootElement.GetArrayLength(), Is.EqualTo(1))
+        Assert.That(result.GetProperty("Name").GetString(), Is.EqualTo("group / second"))
+        Assert.That(result.GetProperty("Message").GetString(), Is.EqualTo("Expected 2, got 3."))
+        Assert.That(result.GetProperty("Input").GetString(), Is.EqualTo("3"))
+        Assert.That(result.GetProperty("Line").GetInt32(), Is.EqualTo(2))
+
+    [<Test>]
     member _.``Assertion failures include the exact call location including imported helpers``() =
         use project = new PermissionDirectory("fscript-test-location-")
         File.WriteAllLines(Path.Combine(project.FullName, "checks.fss"),

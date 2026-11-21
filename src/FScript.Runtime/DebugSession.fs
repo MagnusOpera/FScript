@@ -52,6 +52,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
     let mutable breakOnException = true
     let mutable disposed = false
     let mutable resultSummary = ""
+    let mutable resultExitCode = 0
     let id () = nextId <- nextId + 1; nextId
     let publish kind task reason message = changed.Trigger { Kind = kind; TaskId = task; Reason = reason; Message = message }
     let location (span: Span) =
@@ -428,6 +429,20 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
         for task in tasks.Values do task.Gate |> Option.iter (fun gate -> gate.TrySetResult(()) |> ignore)
         for queue in hostQueues.Values do queue.CompleteAdding())
     member _.ResultSummary = resultSummary
+    member _.ResultExitCode = resultExitCode
+    static member ErrorMessage(error: exn) =
+        match error with
+        | ParseException detail -> detail.Message
+        | TypeException detail -> detail.Message
+        | EvalException detail -> detail.Message
+        | _ -> error.Message
+    static member ErrorLocation(error: exn) =
+        match error with
+        | EvalException detail ->
+            let span = detail.Span
+            { File = defaultArg span.Start.File ""; Line = span.Start.Line; Column = span.Start.Column
+              EndLine = span.End.Line; EndColumn = span.End.Column }
+        | _ -> { File = ""; Line = 0; Column = 0; EndLine = 0; EndColumn = 0 }
     member this.Run() =
         lock sync (fun () ->
             if started then invalidOp "A debug session can only execute once."
@@ -438,6 +453,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
                 cancelled.Token.ThrowIfCancellationRequested()
                 let result = Eval.evalProgramWithDebugger observer registration typed
                 resultSummary <- Pretty.valueToString result.LastValue
+                resultExitCode <- result.ExitCode
             with error when cancelled.IsCancellationRequested ->
                 raise (OperationCanceledException("FScript debugging cancelled.",error,cancelled.Token))
         finally
@@ -453,9 +469,11 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
 
 /// File launches share configuration loading and inference with ordinary CLI execution.
 module DebugLaunch =
-    let private createCore cliDefaults permissions (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry =
+    let private createCore cliDefaults permissions (programPath: string) (configuration: string option) (noConfiguration: bool) (root: string option) (arguments: string array) stopOnEntry testCase =
         let path = Path.GetFullPath programPath
-        let defaultRoot = if configuration.IsSome then defaultArg root (Path.GetDirectoryName path) else Path.GetDirectoryName path
+        let defaultRoot =
+            if configuration.IsSome || Option.isSome testCase then defaultArg root (Path.GetDirectoryName path)
+            else Path.GetDirectoryName path
         let settings =
             EnvironmentConfiguration.resolveForCli configuration (noConfiguration && configuration.IsNone) (Directory.GetCurrentDirectory()) defaultRoot None false []
             |> Result.defaultWith (fun error -> invalidOp error)
@@ -479,15 +497,22 @@ module DebugLaunch =
                     prefixes.TryFind resolved |> Option.map (fun prefix -> alias,prefix)
                 | _ -> None) |> Map.ofList
             pair.Key,mappings) |> Map.ofSeq
+        let registration, program =
+            match testCase with
+            | Some name -> TestSupport.prepareDebugCase registration program name
+            | None -> registration, program
         new DebugSession(registration,prelude @ program,stopOnEntry,sourceAliases = aliases)
 
     /// Hosted launches preserve explicit grants as a ceiling on manifest permissions.
     let createWithPermissions permissions programPath configuration noConfiguration root arguments stopOnEntry =
-        createCore false permissions programPath configuration noConfiguration root arguments stopOnEntry
+        createCore false permissions programPath configuration noConfiguration root arguments stopOnEntry None
 
     /// CLI/editor launches use manifest grants, or None when omitted.
     let createForCli programPath configuration noConfiguration root arguments stopOnEntry =
-        createCore true HostPermissions.All programPath configuration noConfiguration root arguments stopOnEntry
+        createCore true HostPermissions.All programPath configuration noConfiguration root arguments stopOnEntry None
+
+    let createTestForCli programPath configuration noConfiguration root name stopOnEntry =
+        createCore true HostPermissions.All programPath configuration noConfiguration root [||] stopOnEntry (Some name)
 
     /// Embedded launches are default-deny.
     let create programPath configuration noConfiguration root arguments stopOnEntry =
