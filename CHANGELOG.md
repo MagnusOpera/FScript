@@ -4,6 +4,10 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.95]
+
+### [v0.95.0]
+
 - Use `Json.deserialize<T> json` to decode JSON into `T option`, with the target inferred when the result type is known.
 - Default interpreted execution to no permissions and configure grants through CLI options or fscript.toml while keeping compilation unrestricted.
 - Retry failed Terrabuild cache entries when rerunning GitHub Actions builds and test shards.
@@ -22,6 +26,8 @@ All notable changes to FScript are documented in this file.
 - Add asynchronous `FScript.exec` with isolated child interpreters, restricted permissions and roots, cooperative timeouts, and string results.
 - Keep script union constructors from being shadowed by registered host unions.
 - Add asynchronous `Process.exec` requiring Native and Threading permissions, bounded output, timeouts, and matching interpreter and compiled .NET behavior.
+
+**Full Changelog**: https://github.com/FScriptLang/FScript/compare/b3de94b077f695da9d1eb3e51b0405fde18bf479...v0.95.0
 
 ## [0.94]
 
