@@ -4,12 +4,16 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.95]
+
+### [v0.95.1]
+
 - Restore debugger responsiveness in scripts that compute large values before reaching a breakpoint.
 - Allow breakpoints inside generic functions that decode JSON.
 - Verify that the packaged language server ships the same Extensibility SDK that configured providers reference.
 - Document Extensibility SDK 3.0.0 in the graphics provider sample.
 
-## [0.95]
+**Full Changelog**: https://github.com/FScriptLang/FScript/compare/v0.95.0...v0.95.1
 
 ### [v0.95.0]
 
