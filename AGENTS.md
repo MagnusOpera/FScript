@@ -2,9 +2,25 @@
 
 This file defines contributor expectations for building, testing, regression safety, and release-note hygiene.
 
+## Repository ownership and coordination
+
+- This repository owns the language, runtime, compiler, CLI, language server,
+  and debug adapter. Document their contracts in `docs/specs/` and their
+  architecture in `docs/architecture/`.
+- Client commands, TextMate highlighting, VSIX packaging, and editor
+  marketplaces belong to [vscode-extension](https://github.com/FScriptLang/vscode-extension).
+  Keep changes and release notes for those features there. Change this repo
+  only when its own language-server, CLI, or debugger behavior also changes.
+- User manuals, playground, and Pages publication belong to the
+  [website](https://github.com/FScriptLang/FScriptLang.github.io). This repo
+  owns the language changelog the website consumes.
+- Before pushing coordinated changes, fetch and check the intended commits in
+  every affected repo, including work in other chats or branches. Confirm any
+  ambiguous change with the release owner. Open a PR only when asked.
+
 ## Build, Test, and Non-Regression
 
-Use these commands before opening or updating a PR:
+Use these commands before opening or updating a PR, and before pushing a release tag:
 
 - Build: `make build`
 - Full test suite: `make test`
@@ -59,12 +75,25 @@ Targeted test suites (when working on specific areas):
 
 Follow this exact sequence for every release:
 
-1. Commit the intended changes and Unreleased notes on `main` for a new release line, or on `release/vX.Y` for a maintenance release.
-2. Run `make release-prepare version=vX.Y.Z`. Use `dryrun=true` to preview without changing files or Git state.
-3. For a new release line prepared on `main`, create `release/vX.Y` at the prepared commit. For maintenance releases, remain on that release branch.
-4. Run `make release-check version=vX.Y.Z`, then push the branch and tag together: `git push origin release/vX.Y --follow-tags`. Push the preparation commit on `main` too when it originated there.
-5. The tag workflow validates and tests the source, packages binaries, signs and notarizes macOS, and publishes the GitHub Release automatically.
-6. The same run explicitly publishes NuGet, npm, and the Homebrew tap. Confirm all publication jobs pass; no manual draft publication is required.
+1. Confirm the requested version and intended commits. Commit the changes and
+   Unreleased notes on `main` for a new line, or on `release/vX.Y` for maintenance.
+2. Run `make release-prepare version=vX.Y.Z`. Use `dryrun=true` to preview.
+   For a new line prepared on `main`, create `release/vX.Y` at the prepared commit.
+3. Before pushing, run `make release-check version=vX.Y.Z`, `make build`,
+   `make test`, and `make smoke-tests` on the exact release commit. Confirm
+   that the .NET packages use the intended Extensibility SDK. Wait for the checks
+   to finish. A failure needs diagnosis and a passing check before tagging publicly.
+4. Push the release branch and tag together with
+   `git push --atomic origin release/vX.Y --follow-tags`. Push the new-line
+   preparation commit to `main` too. For a coordinated maintenance release,
+   sync the release notes to `main` so the website can consume them.
+5. Watch the tag workflow through validation, tests, macOS signing and
+   notarization, GitHub Release publication, and NuGet, npm, and Homebrew.
+   Verify the requested version on each distribution channel.
+6. For a coordinated release, plan and validate the extension and website
+   in their repos. Publish the language first and have the extension pin the
+   exact released language commit and SDK. Deploy the website last, after the
+   requested version is available through npm's public `latest` tag.
 
 Rules:
 - Tag-triggered CI is the source of truth for release artifacts and publication.
@@ -75,11 +104,13 @@ Rules:
 - Release notes must match the `CHANGELOG.md` version section and keep the compare link.
 - `make release-prepare` requires a clean checkout, moves Unreleased into the release section, adds its compare link, commits only `CHANGELOG.md`, and creates an annotated prefixed tag. New changelog patch headings use `[vX.Y.Z]`; archived historical entries are left intact. If no earlier prefixed tag exists, the first compare link uses the initial repository commit. It never builds or commits website snapshots.
 - `make release-check` validates an existing `vX.Y.Z` tag without modifying files, making commits, or creating tags.
-- Failed distribution can be retried with **Publish Release Artifacts**, supplying the existing published release tag. Do not move published tags or change package versions to retry distribution.
+- A pushed tag is immutable, even if its workflow fails before GitHub Release
+  publication. If the source needs to change, fix it and agree on a new patch
+  version with the release owner. If only distribution fails, retry the same
+  artifacts with **Publish Release Artifacts** and the existing release tag.
+  Keep a partially published release visible as such until every channel is verified.
 - Keep `on-release-published.yml` as the NuGet publisher workflow identity used by the trusted publishing policy, even though it is now called directly by the tag workflow.
 - Repositories and CI images are hosted under FScriptLang, while Magnus Opera package and publisher identities remain unchanged. See [organization ownership](docs/architecture/organization-ownership.md).
-- VS Code extension sources, client/grammar tests, packaging, and marketplace publication belong to [FScriptLang/vscode-extension](https://github.com/FScriptLang/vscode-extension). Keep language-server and CLI/DAP tests here. See [extension publication](docs/architecture/extension-publication.md).
-- Website content and deployment belong to [FScriptLang/FScriptLang.github.io](https://github.com/FScriptLang/FScriptLang.github.io), independently of language releases. Do not reintroduce website sources or deployment into this repository.
 - Keep language release notes in `CHANGELOG.md`; the website fetches them from main for Stable history and Next Unreleased. See [website publication](docs/architecture/website-publication.md).
 
 ## Specification Maintenance (Mandatory)

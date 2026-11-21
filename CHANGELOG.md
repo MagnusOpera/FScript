@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Clarify release checks, publication order, and repository ownership.
 - Keep VS Code grammar documentation with the extension.
 
 ## [0.95]
