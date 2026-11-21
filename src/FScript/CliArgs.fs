@@ -46,3 +46,23 @@ type AnalyzeArgs =
             | AnalyzeArgs.No_Default_Externs -> "Disable default runtime externs."
             | AnalyzeArgs.Permissions _ -> "Select permissions as a comma-separated list; overrides configuration, defaults to None."
             | AnalyzeArgs.Extern_Assembly _ -> "Load an external-function provider assembly (repeatable)."
+
+[<RequireQualifiedAccess>]
+type TestArgs =
+    | [<Unique>] Filter of substring: string
+    | [<Unique>] Profile
+    | [<AltCommandLine("-c")>] Config of path: string
+    | No_Config
+    | No_Default_Externs
+    | [<Unique>] Permissions of names: string
+    | Extern_Assembly of path: string
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | TestArgs.Filter _ -> "Run cases whose names contain the given substring."
+            | TestArgs.Profile -> "Show file setup times and the slowest test cases."
+            | TestArgs.Config _ -> "Select an explicit fscript.toml environment."
+            | TestArgs.No_Config -> "Disable automatic fscript.toml loading."
+            | TestArgs.No_Default_Externs -> "Disable default runtime externs."
+            | TestArgs.Permissions _ -> "Select permissions as a comma-separated list; overrides configuration, defaults to None."
+            | TestArgs.Extern_Assembly _ -> "Load an external-function provider assembly (repeatable)."

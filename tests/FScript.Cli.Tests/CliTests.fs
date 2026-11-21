@@ -86,6 +86,172 @@ type CliTests() =
     let basicSampleDirectory (repoRoot: string) =
         Path.Combine(repoRoot, "samples", "basic")
 
+    [<Test>]
+    member _.``Test command discovers neighboring files and runs named cases independently``() =
+        use project = new PermissionDirectory("fscript-test-")
+        let folder = Directory.CreateDirectory(Path.Combine(project.FullName, "pricing")).FullName
+        File.WriteAllText(Path.Combine(folder, "pricing.fss"), "export let price = 2.5")
+        File.WriteAllLines(Path.Combine(folder, "pricing_test.fss"),
+            [ "import \"pricing.fss\" as Pricing"
+              ""
+              "let register pair ="
+              "    match pair with"
+              "    | (name, expected) -> Test.case name (fun () -> Assert.near 0.01 expected Pricing.price)"
+              ""
+              "List.iter register [(\"bad price\", 3.0); (\"good price\", 2.5)]"
+              ""
+              "Test.case \"structural equality\" (fun () -> Assert.equal (Some [1; 2]) (Some [1; 2]))"
+              "Test.case \"different values\" (fun () -> Assert.equal [1; 2] [2; 1])"
+              "Test.case \"invalid tolerance\" (fun () -> Assert.near (0.0 - 1.0) 2.5 2.5)" ])
+        File.WriteAllText(Path.Combine(project.FullName, "ignored.fss"), "this ordinary script should be ignored")
+        let cli args = runCliRaw (findRepoRoot ()) project.FullName ("test" :: "--no-config" :: "--no-default-externs" :: "--permissions" :: "None" :: args) None
+        let code, output, error = cli []
+        Assert.That(code, Is.EqualTo(1), error)
+        Assert.That(output, Does.Contain("good price").And.Contain("structural equality").And.Contain("2 passed, 3 failed"), error)
+        Assert.That(error, Does.Contain("bad price").And.Contain("Expected 3, got 2.5 (absolute error 0.5, tolerance 0.01)"))
+        Assert.That(error, Does.Contain("Expected [1;2], got [2;1]").And.Contain("finite, nonnegative tolerance"))
+        let filteredCode, filteredOutput, filteredError = cli ["--filter"; "good price"]
+        Assert.That(filteredCode, Is.Zero, filteredError)
+        Assert.That(filteredOutput, Does.Contain("1 passed, 0 failed"))
+        let emptyCode, _, emptyError = cli ["--filter"; "missing"]
+        Assert.That(emptyCode, Is.EqualTo(1))
+        Assert.That(emptyError, Does.Contain("No test cases matched."))
+
+    [<Test>]
+    member _.``Assertion failures include the exact call location including imported helpers``() =
+        use project = new PermissionDirectory("fscript-test-location-")
+        File.WriteAllLines(Path.Combine(project.FullName, "checks.fss"),
+            [ "export let check value ="
+              "    Assert.equal 0 value" ])
+        File.WriteAllLines(Path.Combine(project.FullName, "location_test.fss"),
+            [ "import \"checks.fss\" as Checks"
+              "Test.each \"helper\" [(\"bad\", 2); (\"good\", 0)] Checks.check"
+              "Test.case \"direct\" (fun () ->"
+              "    Assert.equal 1 1"
+              "    Assert.near 0.0 0.0 1.0)" ])
+        let code, output, error = runCliRaw (findRepoRoot ()) project.FullName ["test"; "--no-default-externs"; "--permissions"; "None"] None
+        Assert.That(code, Is.EqualTo(1), error)
+        Assert.That(output, Does.Contain("helper / good").And.Contain("1 passed, 2 failed"))
+        Assert.That(error, Does.Contain("helper / bad").And.Contain("Input: 2").And.Contain("checks.fss:2:5: Expected 0, got 2."))
+        Assert.That(error, Does.Contain("location_test.fss:5:5: Expected 0, got 1"))
+
+    [<Test>]
+    member _.``Test profiling is opt in and times selected rows and failed setup``() =
+        use project = new PermissionDirectory("fscript-test-profile-")
+        File.WriteAllLines(Path.Combine(project.FullName, "rows_test.fss"),
+            [ "Test.each \"pricing\" [(\"good\", 2); (\"bad\", 3)] (fun value -> Assert.equal 2 value)"
+              "Test.case \"unselected\" (fun () -> ())" ])
+        File.WriteAllText(Path.Combine(project.FullName, "broken_test.fss"), "let broken =")
+        let cli args = runCliRaw (findRepoRoot ()) project.FullName (["test"; "--filter"; "pricing"] @ args) None
+
+        let ordinaryCode, ordinaryOutput, ordinaryError = cli []
+        Assert.That(ordinaryCode, Is.EqualTo(1))
+        Assert.That(ordinaryOutput, Does.Not.Contain("Test profile"))
+
+        let code, output, error = cli ["--profile"]
+        Assert.That(code, Is.EqualTo(ordinaryCode))
+        Assert.That(error, Is.EqualTo(ordinaryError))
+        Assert.That(output, Does.StartWith(ordinaryOutput))
+        let profile = output.Substring(ordinaryOutput.Length)
+        Assert.That(profile, Does.Contain("Test profile (wall-clock time)"))
+        Assert.That(profile, Does.Contain("File setup (2,").And.Contain("Slowest cases (2,"))
+        Assert.That(profile, Does.Match(@"(?m)^    \d+\.\d{3} ms  broken_test\.fss\r?$"))
+        Assert.That(profile, Does.Match(@"(?m)^    \d+\.\d{3} ms  rows_test\.fss / pricing / bad\r?$"))
+        Assert.That(profile, Does.Contain("rows_test.fss / pricing / good").And.Not.Contain("unselected"))
+
+    [<Test>]
+    member _.``Test profiling reports all case totals and limits the ranked list``() =
+        use project = new PermissionDirectory("fscript-test-profile-")
+        let lines = [ for index in 1 .. 12 -> $"Test.case \"case-{index}\" (fun () -> ())" ]
+        File.WriteAllLines(Path.Combine(project.FullName, "many_test.fss"), lines)
+        let code, output, error = runCliRaw (findRepoRoot ()) project.FullName ["test"; "--profile"] None
+        Assert.That(code, Is.Zero, error)
+        Assert.That(output, Does.Contain("12 passed, 0 failed").And.Contain("Slowest cases (12,"))
+        let rows = Regex.Matches(output, @"(?m)^    (\d+\.\d{3}) ms  many_test\.fss / case-\d+\r?$")
+        Assert.That(rows.Count, Is.EqualTo(10))
+        let times = [ for row in rows -> Double.Parse(row.Groups[1].Value, Globalization.CultureInfo.InvariantCulture) ]
+        Assert.That(times, Is.EqualTo(List.sortDescending times))
+
+    [<Test>]
+    member _.``Parameterized tests report inputs and filter individual rows``() =
+        use project = new PermissionDirectory("fscript-test-each-")
+        File.WriteAllLines(Path.Combine(project.FullName, "each_test.fss"),
+            [ "let rows = [(\"bad row\", (3, 10)); (\"good row\", (4, 8))]"
+              "Test.each \"doubling\" rows (fun row ->"
+              "    match row with"
+              "    | (input, expected) -> Assert.equal expected (2 * input))"
+              "Test.each \"strings\" [(\"another type\", \"hello\")] (fun value -> Assert.equal \"hello\" value)"
+              "Test.case \"standalone\" (fun () -> Assert.equal 0 0)" ])
+        let cli args = runCliRaw (findRepoRoot ()) project.FullName (["test"; "--no-default-externs"; "--permissions"; "None"] @ args) None
+        let code, output, error = cli []
+        Assert.That(code, Is.EqualTo(1), error)
+        Assert.That(error, Does.Contain("doubling / bad row").And.Contain("Input: (3, 10)").And.Contain("Expected 10, got 6."))
+        Assert.That(output, Does.Contain("doubling / good row").And.Contain("strings / another type").And.Contain("3 passed, 1 failed"))
+        let filteredCode, filteredOutput, filteredError = cli ["--filter"; "doubling / good row"]
+        Assert.That(filteredCode, Is.Zero, filteredError)
+        Assert.That(filteredOutput, Does.Contain("1 passed, 0 failed"))
+        Assert.That(filteredError, Is.Empty)
+
+    [<Test>]
+    member _.``Parameterized tests reject duplicate combined names``() =
+        use project = new PermissionDirectory("fscript-test-each-")
+        File.WriteAllLines(Path.Combine(project.FullName, "duplicate_test.fss"),
+            [ "Test.case \"doubling / row\" (fun () -> ())"
+              "Test.each \"doubling\" [(\"row\", 2)] (fun value -> Assert.equal 2 value)" ])
+        let code, _, error = runCliRaw (findRepoRoot ()) project.FullName ["test"] None
+        Assert.That(code, Is.EqualTo(1))
+        Assert.That(error, Does.Contain("Duplicate test name 'doubling / row'."))
+
+    [<Test>]
+    member _.``Relative assertions check tails zero and finite operands``() =
+        use project = new PermissionDirectory("fscript-test-relative-")
+        File.WriteAllLines(Path.Combine(project.FullName, "relative_test.fss"),
+            [ "let tiny = Float.pow 10.0 (0.0 - 200.0)"
+              "let nonfinite = Float.exp 1000.0"
+              "let large = Float.pow 10.0 308.0"
+              "Test.case \"small fractional error\" (fun () -> Assert.relative 0.01 tiny (tiny * 1.001))"
+              "Test.case \"large fractional error\" (fun () -> Assert.relative 0.01 tiny (tiny * 1.5))"
+              "Test.case \"exact zero\" (fun () -> Assert.relative 0.0 0.0 0.0)"
+              "Test.case \"nonzero versus zero\" (fun () -> Assert.relative 1.0 0.0 tiny)"
+              "Test.case \"infinite operands\" (fun () -> Assert.relative 0.1 nonfinite nonfinite)"
+              "Test.case \"invalid tolerance\" (fun () -> Assert.relative nonfinite 1.0 1.0)"
+              "Test.case \"overflowing subtraction\" (fun () -> Assert.relative 2.0 large (0.0 - large))" ])
+        let code, output, error = runCliRaw (findRepoRoot ()) project.FullName ["test"; "--no-default-externs"; "--permissions"; "None"] None
+        Assert.That(code, Is.EqualTo(1), error)
+        Assert.That(output, Does.Contain("3 passed, 4 failed"), error)
+        Assert.That(error, Does.Contain("large fractional error").And.Contain("relative error").And.Contain("tolerance 0.01"))
+        Assert.That(error, Does.Contain("zero reference requires an exact match"))
+        Assert.That(error, Does.Contain("relative comparison requires finite values"))
+        Assert.That(error, Does.Contain("Assert.relative requires a finite, nonnegative tolerance"))
+
+    [<Test>]
+    member _.``Option assertions unwrap values and diagnose mismatches``() =
+        use project = new PermissionDirectory("fscript-test-options-")
+        File.WriteAllLines(Path.Combine(project.FullName, "option_test.fss"),
+            [ "Test.case \"unwraps int and string payloads\" (fun () ->"
+              "    Assert.equal 42 (Assert.some (Some 42))"
+              "    Assert.equal \"answer\" (Assert.some (Some \"answer\")))"
+              "Test.case \"rejects unexpected None\" (fun () -> Assert.equal 42 (Assert.some None))"
+              "Test.case \"rejects unexpected Some\" (fun () -> Assert.none (Some 42))"
+              "Test.case \"accepts None after failures\" (fun () -> Assert.none None)" ])
+        let code, output, error = runCliRaw (findRepoRoot ()) project.FullName ["test"; "--no-default-externs"; "--permissions"; "None"] None
+        Assert.That(code, Is.EqualTo(1), error)
+        Assert.That(output, Does.Contain("unwraps int and string payloads").And.Contain("accepts None after failures").And.Contain("2 passed, 2 failed"), error)
+        Assert.That(error, Does.Contain("rejects unexpected None").And.Contain("Expected Some, got None."))
+        Assert.That(error, Does.Contain("rejects unexpected Some").And.Contain("Expected None, got Some 42."))
+
+    [<Test>]
+    member _.``Test command reports initialization failures and continues with other files``() =
+        use project = new PermissionDirectory("fscript-test-")
+        File.WriteAllLines(Path.Combine(project.FullName, "a_test.fss"),
+            [ "Test.case \"duplicate\" (fun () -> ())"
+              "Test.case \"duplicate\" (fun () -> ())" ])
+        File.WriteAllText(Path.Combine(project.FullName, "b_test.fss"), "Test.case \"other file\" (fun () -> Assert.equal 1 1)")
+        let code, output, error = runCliRaw (findRepoRoot ()) project.FullName ["test"] None
+        Assert.That(code, Is.EqualTo(1))
+        Assert.That(error, Does.Contain("a_test.fss").And.Contain("Duplicate test name 'duplicate'"))
+        Assert.That(output, Does.Contain("other file").And.Contain("1 passed, 1 failed"))
+
     [<TestCase("dotnet")>]
     [<TestCase("csharp")>]
     member _.``Refs compile and preserve mutation through aliases and closures``(target: string) =

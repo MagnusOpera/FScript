@@ -507,5 +507,7 @@ let main argv =
         runCompileCommand argv
     elif argv.Length > 0 && String.Equals(argv.[0], "analyze", StringComparison.OrdinalIgnoreCase) then
         runAnalyzeCommand argv
+    elif argv.Length > 0 && String.Equals(argv.[0], "test", StringComparison.OrdinalIgnoreCase) then
+        TestCommand.run (fun path -> parseEnvironmentPrelude (Some (Path.GetFileName(path: string))) []) argv.[1..]
     else
         runOrdinaryCommand argv

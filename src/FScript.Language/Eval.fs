@@ -194,7 +194,7 @@ module Eval =
         | VUnionCtor (_, caseName) -> sprintf "<ctor %s>" caseName
         | VExternal _ -> "<extern>"
 
-    let rec private valueEquals a b =
+    let rec valuesEqual a b =
         match a, b with
         | VUnit, VUnit -> true
         | VInt x, VInt y -> x = y
@@ -202,27 +202,27 @@ module Eval =
         | VBool x, VBool y -> x = y
         | VString x, VString y -> x = y
         | VList xs, VList ys ->
-            xs.Length = ys.Length && List.forall2 valueEquals xs ys
+            xs.Length = ys.Length && List.forall2 valuesEqual xs ys
         | VTuple xs, VTuple ys ->
-            xs.Length = ys.Length && List.forall2 valueEquals xs ys
+            xs.Length = ys.Length && List.forall2 valuesEqual xs ys
         | VHostManaged left, VHostManaged right when not (left.Descriptor.TypeParameters.IsEmpty && right.Descriptor.TypeParameters.IsEmpty) ->
             left.Descriptor.Name = right.Descriptor.Name && obj.ReferenceEquals(left.Payload, right.Payload)
         | VHostManaged value, _ | _, VHostManaged value when not value.Descriptor.TypeParameters.IsEmpty -> false
         | RecordFields xf, RecordFields yf ->
             xf.Count = yf.Count
             && (xf |> Map.forall (fun key value ->
-                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
+                yf |> Map.tryFind key |> Option.exists (valuesEqual value)))
         | VMap xf, VMap yf ->
             xf.Count = yf.Count
             && (xf |> Map.forall (fun key value ->
-                yf |> Map.tryFind key |> Option.exists (valueEquals value)))
+                yf |> Map.tryFind key |> Option.exists (valuesEqual value)))
         | VOption None, VOption None -> true
-        | VOption (Some x), VOption (Some y) -> valueEquals x y
+        | VOption (Some x), VOption (Some y) -> valuesEqual x y
         | VUnionCase (tx, cx, px), VUnionCase (ty, cy, py) ->
             tx = ty && cx = cy &&
             match px, py with
             | None, None -> true
-            | Some xv, Some yv -> valueEquals xv yv
+            | Some xv, Some yv -> valuesEqual xv yv
             | _ -> false
         | VTypeToken tx, VTypeToken ty -> tx = ty
         | VTask tx, VTask ty -> obj.ReferenceEquals(tx, ty)
@@ -350,7 +350,7 @@ module Eval =
             let mutable merged = left
             for KeyValue(k, v) in right do
                 match merged.TryFind k with
-                | Some existing when not (valueEquals existing v) ->
+                | Some existing when not (valuesEqual existing v) ->
                     ok <- false
                 | Some _ -> ()
                 | None -> merged <- Map.add k v merged
@@ -425,7 +425,7 @@ module Eval =
         | PWildcard _, _ -> Some Map.empty
         | PVar (name, _), v -> Some (Map.ofList [ name, v ])
         | PLiteral (lit, _), v ->
-            if valueEquals (literalToValue lit) v then Some Map.empty else None
+            if valuesEqual (literalToValue lit) v then Some Map.empty else None
         | PNil _, VList [] -> Some Map.empty
         | PCons (p1, p2, _), VList (h :: t) ->
             match patternMatch typeDefs p1 h, patternMatch typeDefs p2 (VList t) with
@@ -489,7 +489,7 @@ module Eval =
             match av, bv with
             | VInt x, VInt y -> VInt (x % y)
             | _ -> raise (EvalException { Message = "Integer operands required"; Span = span })
-        | "=" -> VBool (valueEquals av bv)
+        | "=" -> VBool (valuesEqual av bv)
         | "<" | ">" | "<=" | ">=" ->
             match av, bv with
             | VInt x, VInt y ->
@@ -556,7 +556,7 @@ module Eval =
 #endif
             }
 #if !FABLE_COMPILER
-        HostInterop.registerInvocation context runtime.Permissions (fun start ->
+        HostInterop.registerInvocation context span runtime.Permissions (fun start ->
             let cancellation = if runtime.Cancellation.CanBeCanceled then runtime.Cancellation else (match runtime.Debug with Some observer -> observer.CancellationToken | None -> System.Threading.CancellationToken.None)
             exposeAsyncValue runtime (fun () -> start cancellation))
 #endif

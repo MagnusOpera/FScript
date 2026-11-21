@@ -6,13 +6,14 @@ module HostInterop =
     let private fail message = raise (EvalException { Message = message; Span = span })
 
 #if !FABLE_COMPILER
-    type private InvocationMetadata(permissions: HostPermissions, exposeAsync: (System.Threading.CancellationToken -> System.Threading.Tasks.Task<Value>) -> Value) =
+    type private InvocationMetadata(callSpan: Span, permissions: HostPermissions, exposeAsync: (System.Threading.CancellationToken -> System.Threading.Tasks.Task<Value>) -> Value) =
+        member _.CallSpan = callSpan
         member _.Permissions = permissions
         member _.ExposeAsync = exposeAsync
     let private invocations = System.Runtime.CompilerServices.ConditionalWeakTable<ExternalCallContext, InvocationMetadata>()
 
-    let internal registerInvocation context permissions exposeAsync =
-        invocations.Add(context, InvocationMetadata(permissions, exposeAsync))
+    let internal registerInvocation context callSpan permissions exposeAsync =
+        invocations.Add(context, InvocationMetadata(callSpan, permissions, exposeAsync))
 
     let private invocation (context: ExternalCallContext) =
         context.CheckPermissions HostPermissions.None
@@ -20,6 +21,9 @@ module HostInterop =
         match invocations.TryGetValue context with
         | true, metadata -> metadata
         | _ -> fail "No active evaluator policy exists for this invocation."
+
+    /// Read the source span of the call that invoked this extern.
+    let currentCallSpan context = (invocation context).CallSpan
 
     /// Read the active evaluator's grants, rather than a captured registration's policy.
     let currentPermissions context = (invocation context).Permissions

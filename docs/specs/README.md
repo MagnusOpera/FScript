@@ -20,6 +20,7 @@ Normative behavior for the language, runtime surface, hosting model, and editor/
 - Typed F# host function adapters: [`host-functions.md`](./host-functions.md)
 - External functions and extensibility: [`external-functions.md`](./external-functions.md)
 - Shared CLI/editor environments: [`environment-configuration.md`](./environment-configuration.md)
+- Project tests: [`test-command.md`](./test-command.md)
 
 - Static task-sharing analysis: [`static-task-sharing-analysis.md`](./static-task-sharing-analysis.md)
 
