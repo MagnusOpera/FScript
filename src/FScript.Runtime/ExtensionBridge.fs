@@ -102,6 +102,11 @@ module ExtensionBridge =
     /// Expose host-supplied standard functions without exposing their implementation types.
     let toExtensionFunctions (functions: ExternalFunction list) : FScript.Extensibility.ExternalFunction list =
         functions |> List.map (fun fn ->
+            // The stable SDK supplies its target as a value at the provider boundary.
+            let fn =
+                if fn.Name = JsonDeserialization.name && fn.Scheme = JsonDeserialization.scheme then
+                    JsonDeserialization.withToken (TVar 0) fn
+                else fn
             let (Forall(vars, signature)) = fn.Scheme
             let adapted : FScript.Extensibility.ExternalFunction =
                 { Name = fn.Name; Arity = fn.Arity

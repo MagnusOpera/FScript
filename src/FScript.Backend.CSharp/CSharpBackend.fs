@@ -464,7 +464,7 @@ module CSharpBackend =
             | "Hash.md5", _ -> build (fun a _ -> $"FsRuntime.Try(() => Convert.ToHexString(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes({a.[0]}))).ToLowerInvariant())")
             | "Guid.new", _ -> build (fun _ _ -> "Option<string>.Some(Guid.NewGuid().ToString())")
             | "Json.serialize", _ -> build (fun a _ -> $"FsRuntime.Try(() => {jsonEncodeName parameters.[0]}({a.[0]}))")
-            | "Json.deserialize", _ -> build (fun a r -> match r with TOption item -> $"FsRuntime.ParseJson({a.[1]}, {jsonDecodeName item})" | _ -> invalidOp "Expected option.")
+            | "Json.deserialize", _ -> build (fun a r -> match r with TOption item -> $"FsRuntime.ParseJson({a.[0]}, {jsonDecodeName item})" | _ -> invalidOp "Expected option.")
             | "Xml.queryValues", _ -> build (fun a _ -> $"FsRuntime.QueryXml({a.[0]}, {a.[1]})")
             | "Task.spawn", _ -> build (fun a _ -> $"FsTasks.Spawn({a.[0]})")
             | "Task.await", _ -> build (fun a _ -> $"FsTasks.Await({a.[0]})")
@@ -1361,12 +1361,20 @@ module CSharpBackend =
             let ctx=sdk+"ExternalCallContext"
             let fnType=sdk+"ExternalFunction"
             let listType= $"global::Microsoft.FSharp.Collections.FSharpList<{sv}>"
-            let wrappers=CompilerExternCatalog.defaults |> List.filter (fun fn -> fn.Name<>"Env" && not (fn.Name.StartsWith("Task.",StringComparison.Ordinal))) |> List.map (fun fn ->
-                let (Forall(variables,t))=fn.Scheme
-                let variables=variables |> List.map string |> String.concat comma
-                let scheme= $"{sdk}FunctionScheme.NewForall(global::Microsoft.FSharp.Collections.ListModule.OfArray(new int[] {{ {variables} }}),{sdkType t})"
-                let invoke= $"global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{ctx},global::Microsoft.FSharp.Core.FSharpFunc<{listType},{sv}>>(ctx => global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{listType},{sv}>(args => SdkInterop.Default({quote fn.Name},ctx,args.ToArray())))"
-                $"new {fnType}({quote fn.Name},{scheme},{invoke},{fn.Arity})") |> String.concat comma
+            let wrappers =
+                CompilerExternCatalog.defaults
+                |> List.filter (fun fn -> fn.Name<>"Env" && not (fn.Name.StartsWith("Task.",StringComparison.Ordinal)))
+                |> List.map (fun fn ->
+                    // The stable SDK supplies its target as a value at the provider boundary.
+                    let signature, arity =
+                        if fn.Name = JsonDeserialization.name then JsonDeserialization.tokenScheme (TVar 0), 2
+                        else fn.Scheme, fn.Arity
+                    let (Forall(variables,t))=signature
+                    let variables=variables |> List.map string |> String.concat comma
+                    let scheme= $"{sdk}FunctionScheme.NewForall(global::Microsoft.FSharp.Collections.ListModule.OfArray(new int[] {{ {variables} }}),{sdkType t})"
+                    let invoke= $"global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{ctx},global::Microsoft.FSharp.Core.FSharpFunc<{listType},{sv}>>(ctx => global::Microsoft.FSharp.Core.FuncConvert.FromFunc<{listType},{sv}>(args => SdkInterop.Default({quote fn.Name},ctx,args.ToArray())))"
+                    $"new {fnType}({quote fn.Name},{scheme},{invoke},{arity})")
+                |> String.concat comma
             addMember $"private static global::Microsoft.FSharp.Collections.FSharpList<{fnType}> ProviderDefaults() => global::Microsoft.FSharp.Collections.ListModule.OfArray(new {fnType}[] {{ {wrappers} }});"
         for KeyValue(path,name) in sdkProviders do
             let link=ClrBindings.tryMethodLink ("clr:"+path.Substring(8)) |> Option.get
@@ -1409,20 +1417,10 @@ module CSharpBackend =
               yield {RelativePath="RuntimeSDK.cs"; Content=sdkReader.ReadToEnd().Replace("__NAMESPACE__",options.Namespace)} ]
 
     let private specializeAssembly (program: Lir.Program) =
-        let exports=program.Declarations |> List.filter _.IsExported
-        match exports with
-        | [] -> LirMonomorphization.specialize program
-        | first::_ ->
-            for declaration in exports do
-                if NativeSpecialization.containsVariable declaration.Type then
-                    fail "FSC6009" $"Export '{declaration.Name}' requires a concrete native type." (Some declaration.Span)
-            // Analysis roots only: discard the synthetic tuple immediately after specialization.
-            let entry=program.Entry |> Option.defaultValue {Type=TUnit;Span=first.Span;Node=Lir.Constant Lir.Unit}
-            let roots=entry :: (exports |> List.map (fun declaration -> {Type=declaration.Type;Span=declaration.Span;Node=Lir.Load declaration.Id}))
-            let rooted={program with Entry=Some {Type=TTuple(List.map (fun (root: Lir.Expression) -> root.Type) roots);Span=entry.Span;Node=Lir.Tuple roots}}
-            LirMonomorphization.specialize rooted |> Result.map (fun specialized ->
-                let entry=match specialized.Entry with Some {Node=Lir.Tuple(first::_)} when program.Entry.IsSome -> Some first | _ -> None
-                {specialized with Entry=entry})
+        for declaration in program.Declarations do
+            if declaration.IsExported && NativeSpecialization.containsVariable declaration.Type then
+                fail "FSC6009" $"Export '{declaration.Name}' requires a concrete native type." (Some declaration.Span)
+        LirMonomorphization.specializeWithExports program
 
     let private generateWith assemblyMode printResult optimize options (program: Lir.Program) =
         try

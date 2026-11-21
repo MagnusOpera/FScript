@@ -62,6 +62,30 @@ type LirInterpreterTests() =
             | Ok result -> Assert.That(result.Value, Is.EqualTo(LirValue.VOption(Some(LirValue.VString "sandboxed"))))
 
     [<Test>]
+    member _.``Generic JSON wrappers specialize calls to the registered codec`` () =
+        let source = """let decode<'a> json : 'a option = Json.deserialize<'a> json
+export let readInt json : int option = decode json
+(readInt "42", decode<bool> "true")"""
+        let codec =
+            { Name = "Json.deserialize"
+              Invoke = function
+                  | [LirValue.VTypeToken TInt; LirValue.VString "42"] -> Ok(LirValue.VOption(Some(LirValue.VInt 42L)))
+                  | [LirValue.VTypeToken TBool; LirValue.VString "true"] -> Ok(LirValue.VOption(Some(LirValue.VBool true)))
+                  | args -> Error $"Unexpected codec arguments: {args}" }
+        match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with
+        | Error diagnostics -> Assert.Fail(errorText diagnostics)
+        | Ok compiled ->
+            match LirInterpreter.load { ScriptName = None; Arguments = [] } [codec] compiled.Lir with
+            | Error diagnostic -> Assert.Fail(errorText diagnostic)
+            | Ok loaded ->
+                let integer = LirValue.VOption(Some(LirValue.VInt 42L))
+                let boolean = LirValue.VOption(Some(LirValue.VBool true))
+                Assert.That(loaded.Value, Is.EqualTo(LirValue.VTuple [integer; boolean]))
+                match LirInterpreter.invoke loaded.Program "readInt" [LirValue.VString "42"] with
+                | Error diagnostic -> Assert.Fail(errorText diagnostic)
+                | Ok result -> Assert.That(result.Value, Is.EqualTo(integer))
+
+    [<Test>]
     member _.``Trampolines deep tail recursion`` () =
         let source = "let rec loop n = if n <= 0 then n else loop (n - 1)\nloop 200000"
         match Compiler.compile { Program = Parser.parseProgram source; Externs = [] } with

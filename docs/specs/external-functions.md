@@ -114,13 +114,13 @@ Higher-order externs are implemented in runtime extern modules and receive an `E
 - See [`stdlib-functions.md`](./stdlib-functions.md) for the full stdlib function reference.
 
 ### Serialization and XML queries
-- `Json.deserialize : type -> string -> 'a option`
+- `Json.deserialize<'a> : string -> 'a option`
 - `Json.serialize : 'a -> string option`
   - encoding supports scalars, unit/options, lists, tuples, records, visible host-managed fields, and maps with string/int/bool keys
   - unsupported nested values (including unions, functions, tasks, and union-keyed maps) return `None`
   - non-finite float values (`NaN` and either infinity), at the root or nested in containers, return `None` instead of invalid JSON, including compiled and SDK-forwarded calls
-- JSON decoding uses the runtime token, with missing option fields mapped to `None` and extra record properties ignored; unsupported targets, including opaque host-managed types, cannot be manufactured
-- The generic decoder scheme does not statically associate its token with the result; receiving functions can declare the intended return type
+- JSON decoding uses the resolved type argument, including closed generic and recursive record types. Missing option fields become `None` and extra record properties are ignored. Malformed JSON, incompatible values, and unsupported target types, including opaque host-managed types, return `None`.
+- The result is an option of the target type. Generic functions can forward their own type parameter, as in `let decode<'a> json : 'a option = Json.deserialize<'a> json`. The target must be concrete when the decoder runs.
 - `Xml.queryValues : string -> string -> string list option`
   - argument order: `query -> xmldoc`
   - query subset: `.../@attr` and `.../text()` selectors only

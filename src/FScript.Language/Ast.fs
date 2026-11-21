@@ -61,6 +61,9 @@ and Expr =
     | ELiteral of Literal * Span
     | EVar of string * Span
     | ETypeApply of Expr * TypeRef list * Span
+    // Evaluator-only annotations added after type inference.
+    | EEvaluationType of Expr * Type
+    | EClosureSignature of Expr * Type
     | EParen of Expr * Span
     | ELambda of Param * Expr * Span
     | EApply of Expr * Expr * Span
@@ -126,12 +129,13 @@ module Ast =
         | PUnionCase (_, _, _, s) -> s
         | PTypeRef (_, s) -> s
 
-    let spanOfExpr expr =
+    let rec spanOfExpr expr =
         match expr with
         | EUnit s -> s
         | ELiteral (_, s) -> s
         | EVar (_, s) -> s
         | ETypeApply (_, _, s) -> s
+        | EEvaluationType (inner, _) | EClosureSignature (inner, _) -> spanOfExpr inner
         | EParen (_, s) -> s
         | ELambda (_, _, s) -> s
         | EApply (_, _, s) -> s

@@ -82,3 +82,29 @@ type ExtensionRegistration =
       Types: HostTypeDescriptor list
       Unions: HostUnionDescriptor list
       Functions: ExternalFunction list }
+
+/// The script call has one argument. The evaluator binds the target and its
+/// type definitions before calling the host codec.
+module JsonDeserialization =
+    let name = "Json.deserialize"
+    let scheme = Forall([0], TFun(TString, TOption(TVar 0)))
+
+    let tokenScheme target =
+        Forall(Set.toList (Types.ftvType target), TFun(TTypeToken, TFun(TString, TOption target)))
+
+    let withToken target (external: ExternalFunction) =
+        { external with Scheme = tokenScheme target; Arity = 2 }
+
+    let withTarget definitions target (external: ExternalFunction) =
+        let typeDefinitions = VTypeToken(TRecord definitions)
+        { external with
+            Scheme = Forall([], TFun(TString, TOption target))
+            Impl = fun context arguments -> external.Impl context (VTypeToken target :: typeDefinitions :: arguments) }
+
+    let expandTarget definitions target =
+        let rec expand seen typ =
+            let expanded = Types.expand definitions typ
+            if expanded = typ then Types.mapChildren (expand seen) typ
+            elif Set.contains typ seen then typ
+            else expand (Set.add typ seen) expanded
+        expand Set.empty target

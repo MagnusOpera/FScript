@@ -26,8 +26,12 @@ module internal HostDecode =
             | _ -> None
         | _ -> None
 
-    let rec decodeJson (target: Type) (el: JsonElement) : Value option =
+    let rec decodeJsonWithDefinitions definitions (target: Type) (el: JsonElement) : Value option =
         match target with
+        | TNamed _ | TApplied _ ->
+            let expanded = Types.expand definitions target
+            if expanded = target then None
+            else decodeJsonWithDefinitions definitions expanded el
         | TUnit -> Some VUnit
         | TString when el.ValueKind = JsonValueKind.String ->
             match el.GetString() with
@@ -38,21 +42,21 @@ module internal HostDecode =
         | TBool when el.ValueKind = JsonValueKind.True || el.ValueKind = JsonValueKind.False -> Some (VBool (el.GetBoolean()))
         | TList inner when el.ValueKind = JsonValueKind.Array ->
             el.EnumerateArray()
-            |> Seq.map (decodeJson inner)
+            |> Seq.map (decodeJsonWithDefinitions definitions inner)
             |> Seq.fold (fun acc next ->
                 match acc, next with
                 | Some xs, Some x -> Some (x :: xs)
                 | _ -> None) (Some [])
             |> Option.map (List.rev >> VList)
         | TOption _ when el.ValueKind = JsonValueKind.Null -> Some (VOption None)
-        | TOption inner -> decodeJson inner el |> Option.map (Some >> VOption)
+        | TOption inner -> decodeJsonWithDefinitions definitions inner el |> Option.map (Some >> VOption)
         | TTuple elements when el.ValueKind = JsonValueKind.Array ->
             let arr = el.EnumerateArray() |> Seq.toList
             if arr.Length <> elements.Length then None
             else
                 (arr, elements)
                 ||> List.zip
-                |> List.map (fun (json, t) -> decodeJson t json)
+                |> List.map (fun (json, t) -> decodeJsonWithDefinitions definitions t json)
                 |> List.fold (fun acc next ->
                     match acc, next with
                     | Some xs, Some x -> Some (x :: xs)
@@ -62,7 +66,7 @@ module internal HostDecode =
             let mutable ok = true
             let mutable map = Map.empty<MapKey, Value>
             for prop in el.EnumerateObject() do
-                match decodeMapKey keyType prop.Name, decodeJson inner prop.Value with
+                match decodeMapKey keyType prop.Name, decodeJsonWithDefinitions definitions inner prop.Value with
                 | Some key, Some v -> map <- map.Add(key, v)
                 | _ -> ok <- false
             if ok then Some (VMap map) else None
@@ -72,7 +76,7 @@ module internal HostDecode =
             for KeyValue(name, ft) in fields do
                 let mutable prop = Unchecked.defaultof<JsonElement>
                 if el.TryGetProperty(name, &prop) then
-                    match decodeJson ft prop with
+                    match decodeJsonWithDefinitions definitions ft prop with
                     | Some v -> map <- map.Add(name, v)
                     | None -> ok <- false
                 else
@@ -82,9 +86,7 @@ module internal HostDecode =
             if ok then Some (VRecord map) else None
         | THostManaged _
         | TRecordShape _
-        | TApplied _
         | TGenericDefinition _
-        | TNamed _
         | TUnion _
         | TTypeToken
         | TTask _
@@ -92,6 +94,8 @@ module internal HostDecode =
         | TVar _
         | TNumeric _ -> None
         | _ -> None
+
+    let decodeJson target el = decodeJsonWithDefinitions Map.empty target el
 
     let rec decodeXmlValue (target: Type) (el: XElement) : Value option =
         let parseInt (s: string) =

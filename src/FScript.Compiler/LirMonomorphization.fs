@@ -42,6 +42,18 @@ module LirMonomorphization =
             fail "FSL2107" $"Reachable value at {source}:{span.Start.Line}:{span.Start.Column} has open type '{Types.typeToString value}' after native specialization." span
         value
 
+    // Variables with no observable runtime representation normally use unit.
+    // Keep that choice distinct from a statically inferred unit until reified
+    // operations such as JSON decoding have checked their type arguments.
+    let private unusedTypeArgument = TNamed "$unusedTypeArgument"
+
+    let rec private hasUnusedTypeArgument typ =
+        if typ = unusedTypeArgument then true
+        else
+            let mutable found = false
+            Types.mapChildren (fun item -> found <- found || hasUnusedTypeArgument item; item) typ |> ignore
+            found
+
     let private closeUnusedTypeArguments typ =
         // At a fully checked call or match, a remaining variable confined to a
         // data type's arguments has no observable value of its own. Use unit to
@@ -55,7 +67,7 @@ module LirMonomorphization =
                 TUnit
             | _ -> Types.mapChildren maskApplications typ
         let remaining = maskApplications typ |> Types.ftvType
-        let defaults = Set.difference argumentVariables remaining |> Seq.map (fun id -> id, TUnit) |> Map.ofSeq
+        let defaults = Set.difference argumentVariables remaining |> Seq.map (fun id -> id, unusedTypeArgument) |> Map.ofSeq
         NativeSpecialization.apply defaults typ
 
     let private bindingKey value = Types.typeToString value
@@ -164,7 +176,7 @@ module LirMonomorphization =
             declarations.Add {declaration with Value=value}
         {program with Declarations=List.ofSeq declarations}
 
-    let specialize (program: Lir.Program) : Result<Lir.Program, CompilerDiagnostic list> =
+    let private specializeProgram preserveExports (program: Lir.Program) : Result<Lir.Program, CompilerDiagnostic list> =
         let program = shareInitializerInputs program
         try
             let nativeEffect = LirEffects.create program
@@ -316,7 +328,7 @@ module LirMonomorphization =
                     | _ -> false
                 let concrete =
                     (if isBottom then
-                         let defaults = Types.ftvType concrete |> Seq.map (fun variable -> variable, TUnit) |> Map.ofSeq
+                         let defaults = Types.ftvType concrete |> Seq.map (fun variable -> variable, unusedTypeArgument) |> Map.ofSeq
                          NativeSpecialization.apply defaults concrete
                      else concrete)
                     |> preserveNamedRepresentation source.Type
@@ -385,7 +397,7 @@ module LirMonomorphization =
                 let effectiveSubstitution =
                     if representationInsensitive then
                         expressionVariables expression
-                        |> Set.fold (fun current variable -> Map.add variable TUnit current) substitution
+                        |> Set.fold (fun current variable -> Map.add variable unusedTypeArgument current) substitution
                     else substitution
                 let rec resolvedType (value: Lir.Expression) =
                     let applied = NativeSpecialization.apply effectiveSubstitution value.Type
@@ -535,7 +547,7 @@ module LirMonomorphization =
                             match resolvedType target with
                             | TTuple _ as typ ->
                                 // Unused tuple fields need one representative layout.
-                                let defaults = Types.ftvType typ |> Seq.map (fun variable -> variable, TUnit) |> Map.ofSeq
+                                let defaults = Types.ftvType typ |> Seq.map (fun variable -> variable, unusedTypeArgument) |> Map.ofSeq
                                 NativeSpecialization.apply defaults typ
                             | typ -> closeUnusedTypeArguments typ
                         let transformedCases = cases |> List.map (fun item ->
@@ -556,6 +568,8 @@ module LirMonomorphization =
                         let replacement = freshSymbol state
                         Lir.ForEach(replacement, name, concreteItem, recurse source, transform effectiveSubstitution (bind id concreteItem replacement environment) body)
                     | Lir.TypeToken valueType -> Lir.TypeToken(NativeSpecialization.apply effectiveSubstitution valueType)
+                    | Lir.HostExternal(name, _) when name = JsonDeserialization.name && hasUnusedTypeArgument concreteType ->
+                        fail "FSL2107" "Json.deserialize requires a concrete target type." expression.Span
                     | value -> value
                 let resultType =
                     match node with
@@ -577,6 +591,10 @@ module LirMonomorphization =
                         | _ -> fail "FSL2108" $"Generalized binding '{declaration.Name}' has observable initialization and cannot be omitted or cloned safely." declaration.Span
                     else requestDeclaration declaration.Id representation declaration.Span |> ignore
             let entry = program.Entry |> Option.map (transform Map.empty Map.empty)
+            if preserveExports then
+                for declaration in program.Declarations do
+                    if declaration.IsExported then
+                        requestDeclaration declaration.Id declaration.Type declaration.Span |> ignore
             let functions = state.OutputFunctions |> Seq.sortBy (_.Id >> functionNumber) |> Seq.toList
             let declarations = state.OutputDeclarations |> Seq.toList
 
@@ -586,7 +604,11 @@ module LirMonomorphization =
             let templates = program.Types |> List.map (fun declaration -> declaration.Name, declaration) |> Map.ofList
             let instances = Dictionary<Type, string>()
             let layouts = ResizeArray<Lir.TypeDeclaration>()
+            let rec eraseUnusedTypeArguments typ =
+                if typ = unusedTypeArgument then TUnit
+                else Types.mapChildren eraseUnusedTypeArguments typ
             let rec layoutType span typ =
+                let typ = eraseUnusedTypeArguments typ
                 match typ with
                 | TApplied (name, arguments) when templates.[name].Import.IsSome ->
                     closedType span typ |> ignore
@@ -672,3 +694,8 @@ module LirMonomorphization =
         with
         | Failure value -> Error [ value ]
         | ex -> Error [ { Code = "FSL2101"; Stage = Lowering; Message = ex.Message; Span = None } ]
+
+
+    let specialize program = specializeProgram false program
+
+    let specializeWithExports program = specializeProgram true program

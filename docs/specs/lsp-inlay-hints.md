@@ -72,7 +72,7 @@ Behavior:
 
 ## Injected Function Signature and Definition Behavior
 
-- Runtime externs and stdlib prelude functions are injected into LSP typing/signature data.
+- Runtime externs and stdlib prelude functions are injected into LSP typing/signature data. `Json.deserialize<'a>` has one value parameter named `json`.
 - When injected parameter names are known, hover/signature displays named arrows:
   - `Option.map: (mapper: 't -> 'u) -> (value: 't option) -> 'u option`
 - Go-to-definition on injected stdlib symbols resolves to virtual readonly documents:

@@ -66,7 +66,7 @@ module CompilerExternCatalog =
           descriptor "Regex.matchGroups" (Forall([], TFun(TString, TFun(TString, TOption(TList TString))))) 2 UnsupportedHostExtern
           descriptor "Hash.md5" (Forall([], TFun(TString, TOption TString))) 1 UnsupportedHostExtern
           descriptor "Guid.new" (Forall([ 0 ], TFun(TVar 0, TOption TString))) 1 UnsupportedHostExtern
-          descriptor "Json.deserialize" (Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption(TVar 0))))) 2 UnsupportedHostExtern
+          descriptor JsonDeserialization.name JsonDeserialization.scheme 1 UnsupportedHostExtern
           descriptor "Json.serialize" (Forall([ 0 ], TFun(TVar 0, TOption TString))) 1 UnsupportedHostExtern
           descriptor "Xml.queryValues" (Forall([], TFun(TString, TFun(TString, TOption(TList TString))))) 2 UnsupportedHostExtern
         ] @ (TaskFunctions.signatures |> List.map (fun (name,scheme,parameters) -> descriptor name scheme parameters.Length UnsupportedHostExtern))

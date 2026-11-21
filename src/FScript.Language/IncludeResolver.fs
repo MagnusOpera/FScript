@@ -417,6 +417,7 @@ module IncludeResolver =
             | ENone _ -> expr
             | EVar (name, span) ->
                 EVar(rewriteValueName boundNames name, span)
+            | EEvaluationType _ | EClosureSignature _ -> invalidOp "Includes resolve before type inference."
             | ETypeApply (target, arguments, span) ->
                 ETypeApply (rewriteExpr boundNames target, List.map (rewriteTypeRef aliases selfPrefix topLevelTypeNames) arguments, span)
             | ENameOf (name, span) ->

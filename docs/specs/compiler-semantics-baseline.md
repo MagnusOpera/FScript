@@ -82,8 +82,12 @@ The compiler-owned runtime catalog is declarative and contains no executable hos
 | Host filesystem | `Fs.exists`, `Fs.kind`, `Fs.createDirectory`, `Fs.writeText`, `Fs.glob`, `Fs.enumerateFiles`, `Fs.combinePath`, `Fs.parentDirectory`, `Fs.extension`, `Fs.fileNameWithoutExtension` |
 | Host regex | `Regex.matchGroups` |
 | Pure host candidates | `Hash.md5` |
-| Host-only/deferred data services | `Guid.new`, `Json.deserialize`, `Json.serialize`, `Xml.queryValues` |
+| Host-only/deferred data services | `Guid.new`, `Json.deserialize<'a>`, `Json.serialize`, `Xml.queryValues` |
 | Task runtime | `Task.spawn`, `Task.await` |
+
+A registered LIR host implementation of `Json.deserialize` receives the
+resolved target token and JSON string. The LIR interpreter specializes the
+program, including its concrete exports, before dispatching to that codec.
 
 All entries are type-checkable and retained as linkage in HIR/LIR. The LIR interpreter supplies the compiler context and portable intrinsics; other linkage requires a registered callback or produces an unsupported diagnostic. Native runtime support is specified in [the .NET backend specification](./dotnet-backends.md). Unused linkage remains inert.
 

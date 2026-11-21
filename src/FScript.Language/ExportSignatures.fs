@@ -18,6 +18,7 @@ module ExportSignatures =
         let rec loop (acc: string list) (current: Expr) =
             match current with
             | ELambda (parameter, body, _) -> loop (parameter.Name :: acc) body
+            | EClosureSignature(body, _) -> loop acc body
             | _ -> List.rev acc
         loop [] expression
 

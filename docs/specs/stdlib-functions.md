@@ -196,14 +196,14 @@ The following functions require runtime registration. See [external functions](.
 - `Fs.writeText : string -> string -> bool`
 - `Guid.new : 'a -> string option`
 - `Hash.md5 : string -> string option`
-- `Json.deserialize : type -> string -> 'a option`
+- `Json.deserialize<'a> : string -> 'a option`
 - `Json.serialize : 'a -> string option`
 - `Regex.matchGroups : string -> string -> string list option`
 - `Task.await : 'a task -> 'a`
 - `Task.spawn : (unit -> 'a) -> 'a task`
 - `Xml.queryValues : string -> string -> string list option`
 
-`Json.deserialize` selects a decoder from a runtime token; its generic scheme does not statically associate the token and output. `Guid.new` ignores its argument; scripts conventionally pass `()`. Filesystem and serialization options represent supported absence/conversion failure, not a universal exception boundary.
+The type argument to `Json.deserialize<'a>` determines both the decoder and the result type. Pass it explicitly with `Json.deserialize<Settings> json` or infer it from an expected `Settings option`. `Guid.new` ignores its argument; scripts conventionally pass `()`. Filesystem and serialization options represent supported absence/conversion failure, not a universal exception boundary.
 
 `Json.serialize` returns `None` for non-finite floats, including inside options,
 lists, tuples, records, and maps. It does not emit `NaN` or infinity as JSON

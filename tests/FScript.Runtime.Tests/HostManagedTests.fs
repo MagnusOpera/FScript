@@ -33,11 +33,11 @@ type HostManagedTests() =
         Assert.That(Pretty.valueToString node, Is.EqualTo("{ Value = 42 }"))
         let interpolated = load "$\"node={Host.node}\""
         Assert.That(Pretty.valueToString interpolated.LastValue, Is.EqualTo("\"node={ Value = 42 }\""))
-        let ordinary = load "type Plain = { Value: int }\nJson.deserialize (typeof Plain) \"{\\\"Value\\\":42}\""
+        let ordinary = load "type Plain = { Value: int }\nJson.deserialize<Plain> \"{\\\"Value\\\":42}\""
         Assert.That(Pretty.valueToString ordinary.LastValue, Is.EqualTo("Some { Value = 42 }"))
-        let decoded = load "Json.deserialize (typeof Node) \"{\\\"Value\\\":42}\""
+        let decoded = load "Json.deserialize<Node> \"{\\\"Value\\\":42}\""
         Assert.That(Pretty.valueToString decoded.LastValue, Is.EqualTo("None"))
-        let nested = load "type Box = { Item: Node }\nJson.deserialize (typeof Box) \"{\\\"Item\\\":{\\\"Value\\\":42}}\""
+        let nested = load "type Box = { Item: Node }\nJson.deserialize<Box> \"{\\\"Item\\\":{\\\"Value\\\":42}}\""
         Assert.That(Pretty.valueToString nested.LastValue, Is.EqualTo("None"))
 
     [<Test>]

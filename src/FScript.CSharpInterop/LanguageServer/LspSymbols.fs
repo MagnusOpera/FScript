@@ -172,7 +172,7 @@ let new : 'a -> string option
     let private jsonStdlibDoc =
         stdlibDoc "Json.fss" """module Json
 
-let deserialize : type -> string -> 'a option
+let deserialize<'a> : string -> 'a option
 let serialize : 'a -> string option
 """
 
@@ -475,7 +475,7 @@ let queryValues : string -> string -> string list option
               "Int.toString", [ "value" ]
               "Float.toString", [ "value" ]
               "Bool.toString", [ "value" ]
-              "Json.deserialize", [ "targetType"; "json" ]
+              "Json.deserialize", [ "json" ]
               "Json.serialize", [ "value" ]
               "Console.writeLine", [ "message" ]
               "Console.readLine", [ "unit" ]
@@ -972,7 +972,7 @@ let queryValues : string -> string -> string list option
         let rec collectExpr (acc: Map<string, Span list>) (expr: Expr) =
             match expr with
             | EVar (name, span) -> addOccurrence name span acc
-            | EParen (inner, _) | ETypeApply (inner, _, _) -> collectExpr acc inner
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) -> collectExpr acc inner
             | ELambda (_, body, _) -> collectExpr acc body
             | EApply (fn, arg, _) ->
                 let withFn = collectExpr acc fn
@@ -1116,7 +1116,7 @@ let queryValues : string -> string -> string list option
                 match lookupBinding scopes name with
                 | Some declSpan -> [ usageSpan, declSpan ]
                 | None -> []
-            | EParen (inner, _) | ETypeApply (inner, _, _)
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _)
             | ERaise (inner, _)
             | ESome (inner, _) ->
                 resolveExpr scopes inner
@@ -1339,7 +1339,7 @@ let queryValues : string -> string -> string list option
                 for _, guard, body, _ in cases do
                     Option.iter visitExpr guard
                     visitExpr body
-            | EParen(inner, _) | ETypeApply(inner, _, _) | ELambda(_, inner, _)
+            | EParen(inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) | ELambda(_, inner, _)
             | ERaise(inner, _) | ESome(inner, _) | EFieldGet(inner, _, _) -> visitExpr inner
             | EList(items, _) | ETuple(items, _) -> List.iter visitExpr items
             | ERecord(fields, _) | EStructuralRecord(fields, _) -> fields |> List.iter (snd >> visitExpr)
@@ -1656,7 +1656,7 @@ let queryValues : string -> string -> string list option
             match expr with
             | ELet (_, _, body, _, _, _, _) -> terminalExpr body
             | ELetRecGroup (_, body, _) -> terminalExpr body
-            | EParen (inner, _) | ETypeApply (inner, _, _) -> terminalExpr inner
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) -> terminalExpr inner
             | _ -> expr
 
         let tryResolve expr =
@@ -1744,7 +1744,7 @@ let queryValues : string -> string -> string list option
                     @ collectFieldVarUses fieldTypes f
                 | ERaise (inner, _)
                 | ESome (inner, _)
-                | EParen (inner, _) | ETypeApply (inner, _, _) -> collectFieldVarUses fieldTypes inner
+                | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) -> collectFieldVarUses fieldTypes inner
                 | EFor (_, source, body, _) ->
                     collectFieldVarUses fieldTypes source @ collectFieldVarUses fieldTypes body
                 | EMatch (scrutinee, cases, _) ->
@@ -1931,7 +1931,7 @@ let queryValues : string -> string -> string list option
                 collectExprBindings c @ collectExprBindings t @ collectExprBindings f
             | ERaise (inner, _)
             | ESome (inner, _)
-            | EParen (inner, _) | ETypeApply (inner, _, _) ->
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) ->
                 collectExprBindings inner
             | EList (items, _)
             | ETuple (items, _) ->
@@ -2009,7 +2009,7 @@ let queryValues : string -> string -> string list option
             match expr with
             | ELambda (param, body, _) ->
                 param :: collectLambdaParams body
-            | EParen (inner, _) | ETypeApply (inner, _, _) ->
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) ->
                 collectLambdaParams inner
             | _ ->
                 []
@@ -2072,7 +2072,7 @@ let queryValues : string -> string -> string list option
             match expr with
             | ELambda (param, body, _) ->
                 param :: collectLambdaParams body
-            | EParen (inner, _) | ETypeApply (inner, _, _) ->
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) ->
                 collectLambdaParams inner
             | _ ->
                 []
@@ -2212,7 +2212,7 @@ let queryValues : string -> string -> string list option
             | EBinOp (_, target, key, _) ->
                 collectExpr (collectExpr acc target) key
             | ESome (inner, _)
-            | EParen (inner, _) | ETypeApply (inner, _, _) ->
+            | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) ->
                 collectExpr acc inner
             | EInterpolatedString (parts, _) ->
                 parts
@@ -2336,7 +2336,7 @@ let queryValues : string -> string -> string list option
                 | EBinOp (_, target, key, _) ->
                     collectExpr (collectExpr acc false target) false key
                 | ESome (inner, _)
-                | EParen (inner, _) | ETypeApply (inner, _, _) ->
+                | EParen (inner, _) | EEvaluationType(inner, _) | EClosureSignature(inner, _) | ETypeApply(inner, _, _) ->
                     collectExpr acc false inner
                 | EInterpolatedString (parts, _) ->
                     parts

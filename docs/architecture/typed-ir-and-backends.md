@@ -245,3 +245,15 @@ load binaries into collectible assembly contexts. Console capture runs serially
 and restores the host writer even when script execution fails. Deterministic
 seeds and scope-preserving shrinkers produce replayable source counterexamples.
 See [the campaign guide](../guides/backend-property-tests.md) for bounds and limits.
+
+## Generic JSON decoding
+
+The AST evaluator retains checked function signatures and instantiates generic
+closures using the type at the reference site. Closures capture the resolved
+types they use, so a generic wrapper can forward its target through aliases,
+callbacks, and recursive calls. The runtime codec receives the target as
+internal type evidence. The C# and .NET backends specialize the decoder for
+each concrete result type. When a host registers a JSON codec, the LIR
+interpreter specializes the program and supplies the resolved type token to the
+codec. This LIR path requires concrete exported signatures. Providers calling
+the codec through the stable extension SDK supply a type token.

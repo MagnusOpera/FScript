@@ -7,7 +7,7 @@ module TypeInfer =
 
     let private emptySubst : Subst = Map.empty
 
-    let private applyType (s: Subst) (t: Type) : Type =
+    let internal applyType (s: Subst) (t: Type) : Type =
         if Map.isEmpty s then
             t
         else
@@ -1119,6 +1119,7 @@ module TypeInfer =
                 recordLocalVariableUse telemetry name span t
                 emptySubst, t, asTyped telemetry expr t |> withOpaqueEffect effect
             | None -> raise (TypeException { Message = sprintf "Unbound variable '%s'" name; Span = span })
+        | EEvaluationType _ | EClosureSignature _ -> invalidOp "Evaluation annotations require a checked program."
         | ETypeApply (target, arguments, span) ->
             let rec qualified = function
                 | EVar (name, _) -> Some name
@@ -2026,9 +2027,89 @@ module TypeInfer =
         with _ ->
             reraise ()
 
+    // The compiler consumes the resolved tree. Keep interpreter evidence on its
+    // copy of the AST so closures retain it across tasks and REPL submissions.
+    let private annotateEvaluation (expressions: ResolvedExpressionType list) (program: TypedProgram) =
+        let types = expressions |> List.map (fun item -> item.Expr, item.Type) |> Map.ofList
+        let rec annotate expr =
+            let typ = Map.tryFind expr types
+            let fields = List.map (fun (name, value) -> name, annotate value)
+            let mapped =
+                match expr with
+                | ELambda(parameter, body, span) ->
+                    let body = annotate body
+                    let body =
+                        match typ with
+                        | Some signature when not (Types.ftvType signature).IsEmpty -> EClosureSignature(body, signature)
+                        | _ -> body
+                    ELambda(parameter, body, span)
+                | ETypeApply _ -> expr
+                | EParen(value, span) -> EParen(annotate value, span)
+                | EApply(fn, value, span) -> EApply(annotate fn, annotate value, span)
+                | EIf(condition, yes, no, span) -> EIf(annotate condition, annotate yes, annotate no, span)
+                | ERaise(value, span) -> ERaise(annotate value, span)
+                | EFor(name, source, body, span) -> EFor(name, annotate source, annotate body, span)
+                | EMatch(value, cases, span) ->
+                    EMatch(annotate value, cases |> List.map (fun (pattern, guard, body, at) -> pattern, Option.map annotate guard, annotate body, at), span)
+                | ELet(name, value, body, recursive, result, count, span) ->
+                    ELet(name, annotate value, annotate body, recursive, result, count, span)
+                | ELetPattern(pattern, value, body, span) -> ELetPattern(pattern, annotate value, annotate body, span)
+                | ELetRecGroup(bindings, body, span) ->
+                    let bindings =
+                        bindings |> List.map (fun (name, parameters, result, value, at) ->
+                            let lambda = List.foldBack (fun parameter inner -> ELambda(parameter, inner, at)) parameters value
+                            name, [], result, annotate lambda, at)
+                    ELetRecGroup(bindings, annotate body, span)
+                | EList(items, span) -> EList(List.map annotate items, span)
+                | ERange(first, last, span) -> ERange(annotate first, annotate last, span)
+                | ETuple(items, span) -> ETuple(List.map annotate items, span)
+                | ERecord(items, span) -> ERecord(fields items, span)
+                | EStructuralRecord(items, span) -> EStructuralRecord(fields items, span)
+                | EMap(entries, span) ->
+                    EMap(entries |> List.map (function
+                        | MEKeyValue(key, value) -> MEKeyValue(annotate key, annotate value)
+                        | MESpread value -> MESpread(annotate value)), span)
+                | ERecordUpdate(value, items, span) -> ERecordUpdate(annotate value, fields items, span)
+                | EStructuralRecordUpdate(value, items, span) -> EStructuralRecordUpdate(annotate value, fields items, span)
+                | EFieldGet(value, field, span) ->
+                    // Keep qualified lookup paths intact.
+                    let rec qualified = function EVar _ -> true | EFieldGet(parent, _, _) -> qualified parent | _ -> false
+                    EFieldGet((if qualified value then value else annotate value), field, span)
+                | EIndexGet(value, key, span) -> EIndexGet(annotate value, annotate key, span)
+                | ECons(head, tail, span) -> ECons(annotate head, annotate tail, span)
+                | EAppend(left, right, span) -> EAppend(annotate left, annotate right, span)
+                | EBinOp(op, left, right, span) -> EBinOp(op, annotate left, annotate right, span)
+                | ESome(value, span) -> ESome(annotate value, span)
+                | EInterpolatedString(parts, span) ->
+                    EInterpolatedString(parts |> List.map (function IPExpr value -> IPExpr(annotate value) | text -> text), span)
+                | _ -> expr
+            match mapped, typ with
+            | ELambda _, _ -> mapped
+            | _, Some (TFun _ as signature) -> EEvaluationType(mapped, signature)
+            | _ -> mapped
+        program |> List.map (function
+            | TSLet(name, value, typ, recursive, exported, span) -> TSLet(name, annotate value, typ, recursive, exported, span)
+            | TSLetPattern(pattern, value, bindings, exported, span) -> TSLetPattern(pattern, annotate value, bindings, exported, span)
+            | TSLetRecGroup(bindings, exported, span) ->
+                TSLetRecGroup(bindings |> List.map (fun (name, value, typ, at) -> name, annotate value, typ, at), exported, span)
+            | TSExpr value -> TSExpr { value with Expr = annotate value.Expr }
+            | statement -> statement)
+
+    let private requiresEvaluationEvidence registration =
+        registration.Functions |> List.exists (fun ext -> ext.Name = JsonDeserialization.name)
+
+    let private evaluationProgram registration typed expressions =
+        if requiresEvaluationEvidence registration then annotateEvaluation expressions typed else typed
+
+    let private inferForEvaluation registration program =
+        let typed, _, expressions = inferProgramWithExternsRawAndLocals (requiresEvaluationEvidence registration) registration program
+        evaluationProgram registration typed expressions
+
+    let internal specializeEvaluationType typeDefs span template instance =
+        unify typeDefs template instance span
+
     let inferProgramWithExternsRaw (externs: ExternalFunction list) (program: Program) : TypedProgram =
-        let typed, _, _ = inferProgramWithExternsRawAndLocals false (HostInterop.ofExterns externs) program
-        typed
+        inferForEvaluation (HostInterop.ofExterns externs) program
 
     let private validateProgramBindings (externs: ExternalFunction list) (program: Program) =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -2045,8 +2126,9 @@ module TypeInfer =
 
     let inferProgramWithExternsAndLocalVariableTypes (externs: ExternalFunction list) (program: Program) : TypedProgram * LocalVariableTypeInfo list =
         validateProgramBindings externs program
-        let typed, locals, _ = inferProgramWithExternsRawAndLocals true (HostInterop.ofExterns externs) program
-        typed, locals
+        let registration = HostInterop.ofExterns externs
+        let typed, locals, expressions = inferProgramWithExternsRawAndLocals true registration program
+        evaluationProgram registration typed expressions, locals
 
     let inferResolvedProgramWithRegistration (registration: ExtensionRegistration) (program: Program) : ResolvedProgram =
         let externs = registration.Functions
@@ -2187,7 +2269,7 @@ module TypeInfer =
             let visitSame item = visit environment item
             match expression with
             | EVar(name, span) -> recordReference environment name expression span
-            | ETypeApply(target, _, _) -> visitSame target
+            | EEvaluationType(target, _) | EClosureSignature(target, _) | ETypeApply(target, _, _) -> visitSame target
             | ENameOf(name, span) -> recordReference environment name expression span
             | ETypeOf(name, span) -> recordReference environment name expression span
             | ELambda(parameter, body, _) ->
@@ -2377,7 +2459,7 @@ module TypeInfer =
                 | EUnit _ -> ResolvedConstant ResolvedUnit
                 | ELiteral(value, _) -> ResolvedConstant(resolvedLiteral value)
                 | EVar _ | ETypeApply _ -> ResolvedReference(Option.get reference)
-                | EParen(inner, _) -> (resolveExpression inner).Node
+                | EEvaluationType(inner, _) | EClosureSignature(inner, _) | EParen(inner, _) -> (resolveExpression inner).Node
                 | ELambda(parameter, body, _) ->
                     let parameterType = match expressionType with TFun(argument, _) -> argument | _ -> Types.freshVar()
                     ResolvedLambda(bindingAt ParameterSymbol parameter.Name parameter.Span parameterType, resolveExpression body)
@@ -2596,7 +2678,7 @@ module TypeInfer =
                       Cases = match definition with TUnion(_, cases) -> Map.toList cases | _ -> []
                       Import = None } })
         { Purity = PurityContracts.empty
-          TypedProgram = typed
+          TypedProgram = evaluationProgram registration typed expressions
           ResolvedStatements = hostStatements @ resolvedStatements
           ExpressionTypes = expressions
           Symbols = symbols |> Seq.toList
@@ -2632,8 +2714,7 @@ module TypeInfer =
             raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
         if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
             raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
-        let typed, _, _ = inferProgramWithExternsRawAndLocals false registration program
-        typed
+        inferForEvaluation registration program
 
     let inferProgramWithRegistrationAndTypes (registration: ExtensionRegistration) program =
         let reserved = BuiltinSignatures.builtinReservedNames
@@ -2641,7 +2722,8 @@ module TypeInfer =
             raise (TypeException { Message = "Host extern collides with reserved stdlib symbol"; Span = unknownSpan })
         if topLevelBindingNames program |> List.exists (fun name -> Set.contains name reserved) then
             raise (TypeException { Message = "Top-level binding collides with reserved stdlib symbol"; Span = unknownSpan })
-        inferProgramWithExternsRawAndLocals true registration program
+        let typed, locals, expressions = inferProgramWithExternsRawAndLocals true registration program
+        evaluationProgram registration typed expressions, locals, expressions
 
     let inferProgramWithRegistrationAndLocalVariableTypes registration program =
         let typed, locals, _ = inferProgramWithRegistrationAndTypes registration program

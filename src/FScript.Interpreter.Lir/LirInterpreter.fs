@@ -596,6 +596,12 @@ module LirInterpreter =
         | Lir.Intrinsic name ->
             if intrinsicArity name = 0 then invokeIntrinsic (applyValue expression.Span) expression.Span name []
             else Ok(VIntrinsic(name, []))
+        | Lir.HostExternal(name, 1) when name = JsonDeserialization.name && Map.containsKey name currentHostExternals.Value ->
+            match expression.Type with
+            | TFun(TString, TOption target) when not (NativeSpecialization.containsVariable target) ->
+                let token = VTypeToken(JsonDeserialization.expandTarget currentTypeDefinitions.Value target)
+                Ok(VExternal(name, 2, [token]))
+            | _ -> fail "FSI3021" expression.Span "Json.deserialize requires a concrete target type."
         | Lir.HostExternal(name, arity) -> Ok(VExternal(name, arity, []))
         | Lir.RuntimeContext -> Ok VRuntimeContext
         | Lir.TargetImport(modulePath, memberName) -> Ok(VTargetImport(modulePath, memberName, arityFromType expression.Type, []))
@@ -781,7 +787,16 @@ module LirInterpreter =
         (hostExternals: HostExternal list)
         (program: Lir.Program)
         : Result<LoadResult, CompilerDiagnostic> =
-        match LirValidation.validate program with
+        let prepare (validated: Lir.Program) =
+            let suppliesJson = hostExternals |> List.exists (fun external -> external.Name = JsonDeserialization.name)
+            let usesJson =
+                validated.Declarations |> List.exists (fun declaration ->
+                    match declaration.Value.Node with
+                    | Lir.HostExternal(name, 1) -> name = JsonDeserialization.name
+                    | _ -> false)
+            if suppliesJson && usesJson then LirMonomorphization.specializeWithExports validated
+            else Ok validated
+        match LirValidation.validate program |> Result.bind prepare with
         | Error diagnostics -> Error diagnostics.Head
         | Ok validated ->
             let previous=currentExitCode.Value

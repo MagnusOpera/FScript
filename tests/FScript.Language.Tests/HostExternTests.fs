@@ -374,16 +374,46 @@ type HostExternTests () =
         | _ -> Assert.Fail("Expected Some \"fscript\"")
 
     [<Test>]
-    member _.``Json deserialize uses typeof record`` () =
+    member _.``Json deserialize uses its record type argument`` () =
         let script =
             "type Package = { Name: string; Version: string option; Deps: int map }\n" +
             "let json = \"{\\\"Name\\\":\\\"pkg\\\",\\\"Version\\\":null,\\\"Deps\\\":{\\\"a\\\":1}}\"\n" +
-            "Json.deserialize (typeof Package) json"
+            "Json.deserialize<Package> json"
 
         match Helpers.evalWithExterns externs script with
         | VOption (Some (VRecord fields)) ->
             fields.ContainsKey "Name" |> should equal true
         | _ -> Assert.Fail("Expected Some record")
+
+    [<Test>]
+    member _.``JSON target follows generic wrappers and function values`` () =
+        let script = """type Box<'a> = { Value: 'a }
+let decode<'a> json : 'a option = Json.deserialize<'a> json
+let forward<'a> json : 'a option = decode<'a> json
+let alias = Json.deserialize
+let readInt = alias<int>
+let readBool json : bool option = Json.deserialize json
+let capture<'a> () : (string -> 'a option) = fun text -> Json.deserialize<'a> text
+let rec read<'a> n json : 'a option =
+    if n = 0 then Json.deserialize<'a> json else read (n - 1) json
+(forward<int> "42", forward<bool> "true", readInt "bad", readBool "false", capture<int> () "20", read<Box<int list>> 2 "{\"Value\":[1,2]}")"""
+        let result = evalRegistered (Registry.registration host) script
+        Assert.That(Pretty.valueToString result, Is.EqualTo("(Some 42, Some true, None, Some false, Some 20, Some { Value = [1;2] })"))
+
+    [<Test>]
+    member _.``JSON type evidence survives interactive submissions`` () =
+        let session = Interactive.createWithRegistration (Registry.registration host)
+        let submit session source = Interactive.submit session (Parser.parseProgram source)
+        let wrapper = submit session "let decode<'a> json : 'a option = Json.deserialize<'a> json"
+        let integer = submit wrapper.Session "decode<int> \"42\""
+        let boolean = submit integer.Session "decode<bool> \"true\""
+        Assert.That(Pretty.valueToString integer.State.LastValue, Is.EqualTo("Some 42"))
+        Assert.That(Pretty.valueToString boolean.State.LastValue, Is.EqualTo("Some true"))
+
+    [<TestCase("type Person = { Name: string }\nJson.deserialize (typeof Person) \"{}\"")>]
+    [<TestCase("let expect (value: int option) = value\nJson.deserialize<bool> \"true\" |> expect")>]
+    member _.``JSON rejects tokens and mismatched result types`` (source: string) =
+        Assert.Throws<TypeException>(Action(fun () -> Helpers.evalWithExterns externs source |> ignore)) |> ignore
 
     [<Test>]
     member _.``Json serialize returns string payload`` () =

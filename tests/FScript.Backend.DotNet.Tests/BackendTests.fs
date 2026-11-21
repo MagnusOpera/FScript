@@ -469,13 +469,52 @@ let valueOr<'err, 'ok> (fallback: 'ok) (result: Outcome<Box<'ok>, 'err>) : 'ok =
 
     [<TestCase("Json.serialize (Some {| Count=2; Name=\"Ada\" |})")>]
     [<TestCase("Json.serialize { [\"quote\\\"\"] = 1 }")>]
-    [<TestCase("type Person = { Name: string; Age: int option }\nlet person (value: Person option) = value\nJson.deserialize typeof Person \"{\\\"Name\\\":\\\"Ada\\\"}\" |> person")>]
+    [<TestCase("type Person = { Name: string; Age: int option }\nlet person (value: Person option) = value\nJson.deserialize<Person> \"{\\\"Name\\\":\\\"Ada\\\"}\" |> person")>]
     [<TestCase("Xml.queryValues \"//item/@name\" \"<root><item name=\\\"a\\\"/><item name=\\\"b\\\"/></root>\"")>]
     [<TestCase("Xml.queryValues \"root/item/text()\" \"<root><item> x </item><item> </item></root>\"")>]
     [<TestCase("let values=Some [\"x\";\"y\"]\n$\"{values}\"")>]
     [<TestCase("{| Z=1; A=2 |}")>]
     member _.``Generated formatting JSON XML and interpolation conform to the legacy evaluator`` (source: string) =
         Assert.That(Harness.execute (Harness.compile source), Is.EqualTo(Harness.legacy source))
+
+    [<TestCase(true)>]
+    [<TestCase(false)>]
+    member _.``Generic JSON wrappers decode the specialized target`` (assemblyTarget: bool) =
+        let source = """type Person = { Name: string }
+type Box<'a> = { Value: 'a }
+type rec Tree<'a> = { Value: 'a; Child: Tree<'a> option }
+let decode<'a> json : 'a option = Json.deserialize<'a> json
+let alias = decode
+let rec forward<'a> n json : 'a option =
+    if n = 0 then alias<'a> json else forward (n - 1) json
+let readBool = Json.deserialize<bool>
+let readString json : string option = Json.deserialize json
+(forward<Box<Person>> 2 "{\"Value\":{\"Name\":\"Ada\"}}", forward<int list> 1 "[1,2]", readBool "bad", readString "\"ok\"", decode<Tree<int>> "{\"Value\":1,\"Child\":{\"Value\":2}}")"""
+        let expected = "(Some { Value = { Name = \"Ada\" } }, Some [1;2], None, Some \"ok\", Some { Child = Some { Child = None; Value = 2 }; Value = 1 })"
+        let program = Harness.compile source
+        let actual =
+            if assemblyTarget then Harness.execute program
+            else
+                let assembly = Harness.csharpAssembly [] program
+                let target = assembly.GetType("Generated.Program") |> nonNull
+                let result = (target.GetMethod("Run") |> nonNull).Invoke(null, [||])
+                ((target.GetMethod("FormatResult") |> nonNull).Invoke(null, [|result|]) |> nonNull) :?> string
+        Assert.That(actual, Is.EqualTo(expected))
+        Assert.That(actual, Is.EqualTo(Harness.legacy source))
+
+    [<Test>]
+    member _.``JSON requires a target even when only the outer option is used`` () =
+        let source = "let decode<'a> json : 'a option = Json.deserialize<'a> json\nOption.isSome (decode \"42\")"
+        let program = Harness.compile source
+        let assertDiagnostic = function
+            | Error diagnostics ->
+                Assert.That(diagnostics |> List.exists (fun diagnostic -> diagnostic.Message.Contains("Json.deserialize requires a concrete target type")), Is.True)
+            | Ok _ -> Assert.Fail("Expected a diagnostic for an ambiguous JSON target")
+        assertDiagnostic (CSharpBackend.generate { Namespace = "Generated"; ClassName = "Program"; References = [] } program)
+        assertDiagnostic (DotNetBackend.generate Harness.options program)
+        let error = Assert.Throws<EvalException>(fun () -> Harness.legacy source |> ignore)
+        Assert.That(error |> nonNull |> _.Message, Does.Contain("Json.deserialize requires a concrete target type"))
+        Assert.That(Harness.execute (Harness.compile "Option.isSome (Json.deserialize<unit> \"null\")"), Is.EqualTo("true"))
 
     [<TestCase(true, false)>]
     [<TestCase(false, false)>]

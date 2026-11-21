@@ -23,8 +23,8 @@
     <Compile Include="Span.fs" />
     <Compile Include="Error.fs" />
     <Compile Include="Token.fs" />
-    <Compile Include="Ast.fs" />
     <Compile Include="Types.fs" />
+    <Compile Include="Ast.fs" />
     <Compile Include="Value.fs" />
     <Compile Include="Lexer.fs" />
     <Compile Include="Parser.fs" />

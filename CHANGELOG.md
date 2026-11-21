@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Use `Json.deserialize<T> json` to decode JSON into `T option`, with the target inferred when the result type is known.
 - Default interpreted execution to no permissions and configure grants through CLI options or fscript.toml while keeping compilation unrestricted.
 - Retry failed Terrabuild cache entries when rerunning GitHub Actions builds and test shards.
 - Expose SDK 3 async I/O while keeping Process execution in Runtime and task spawning and awaiting in scripts.

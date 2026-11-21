@@ -90,7 +90,7 @@ let x =
 - FScript has a smaller built-in surface and relies on host-provided externs for host/system capabilities (for example `Fs.*`, `Json.*`, `Xml.*`, `Regex.*`), while collection helpers are provided by the embedded prelude.
 
 ### Reflection-style type tokens
-- FScript provides `typeof Name` tokens for host extern workflows (for example `Json.deserialize`).
+- FScript provides `typeof Name` tokens for host extern workflows.
 - This is a focused runtime integration feature, not full .NET/OCaml runtime reflection.
 
 ## Practical porting checklist

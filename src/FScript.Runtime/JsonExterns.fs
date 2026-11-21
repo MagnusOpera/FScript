@@ -4,19 +4,22 @@ open System.Text.Json
 open FScript.Language
 
 module JsonExterns =
+    let private decode definitions target json =
+        try
+            use doc = JsonDocument.Parse(json: string)
+            match HostDecode.decodeJsonWithDefinitions definitions target doc.RootElement with
+            | Some value -> HostCommon.some value
+            | None -> HostCommon.none
+        with _ -> HostCommon.none
+
     let deserialize : ExternalFunction =
-        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Json.deserialize"
-          Scheme = Forall([ 0 ], TFun(TTypeToken, TFun(TString, TOption (TVar 0))))
-          Arity = 2
+        { RequiredPermissions = FScript.Language.HostPermissions.None; Name = JsonDeserialization.name
+          Scheme = JsonDeserialization.scheme
+          Arity = 1
           Impl = fun _ -> function
-              | [ VTypeToken t; VString json ] ->
-                  try
-                      use doc = JsonDocument.Parse(json)
-                      match HostDecode.decodeJson t doc.RootElement with
-                      | Some value -> HostCommon.some value
-                      | None -> HostCommon.none
-                  with _ -> HostCommon.none
-              | _ -> raise (HostCommon.evalError "Json.deserialize expects (type, string)") }
+              | [ VTypeToken target; VTypeToken(TRecord definitions); VString json ] -> decode definitions target json
+              | [ VTypeToken target; VString json ] -> decode Map.empty target json
+              | _ -> raise (HostCommon.evalError "Json.deserialize requires a concrete target type") }
 
     let serialize : ExternalFunction =
         { RequiredPermissions = FScript.Language.HostPermissions.None; Name = "Json.serialize"

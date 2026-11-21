@@ -32,6 +32,50 @@ module Eval =
 
     let private unknownSpan = Span.mk (Span.pos 0 0) (Span.pos 0 0)
 
+    let private evidencePrefix = "\000type:"
+    let private evidenceKey id = $"{evidencePrefix}{id}"
+
+#if !FABLE_COMPILER
+    let private visibleEnvironment (env: Env) =
+        env |> Map.filter (fun name _ -> not (name.StartsWith(evidencePrefix, System.StringComparison.Ordinal)))
+#endif
+
+    let private applyTypeEvidence (env: Env) typ =
+        let evidence =
+            Types.ftvType typ
+            |> Seq.choose (fun id ->
+                match env.TryFind(evidenceKey id) with
+                | Some (VTypeToken target) -> Some(id, target)
+                | _ -> None)
+            |> Map.ofSeq
+        TypeInfer.applyType evidence typ
+
+    let private closureBody = function
+        | EClosureSignature(body, _) -> body
+        | body -> body
+
+    let private specializeFunction typeDefs env span signature value =
+        match value with
+        | VExternal(external, []) when external.Name = JsonDeserialization.name && external.Scheme = JsonDeserialization.scheme ->
+            match applyTypeEvidence env signature with
+            | TFun(TString, TOption target) when (Types.ftvType target).IsEmpty ->
+                VExternal(JsonDeserialization.withTarget typeDefs target external, [])
+            | _ -> value
+        | VClosure(parameter, (EClosureSignature(_, template) as body), captured) ->
+            let instance = applyTypeEvidence env signature
+            let template = applyTypeEvidence captured.Value template
+            if (Types.ftvType template).IsEmpty || template = instance then value
+            else
+                let evidence = TypeInfer.specializeEvaluationType typeDefs span template instance
+                let specialized =
+                    (captured.Value, evidence)
+                    ||> Map.fold (fun scope id target ->
+                        if (Types.ftvType target).IsEmpty then Map.add (evidenceKey id) (VTypeToken target) scope
+                        else scope)
+                if obj.ReferenceEquals(specialized, captured.Value) then value
+                else VClosure(parameter, body, ref specialized)
+        | _ -> value
+
     let private wrapUnexpectedTaskFailure (ex: exn) =
         { Message = $"Task failed: {ex.Message}"
           Span = unknownSpan }
@@ -485,7 +529,7 @@ module Eval =
         match runtime.Debug with
         | Some observer ->
             observer.CheckCancellation()
-            Execution.awaitUnit(observer.Expression(runtime.TaskId,expression,environment,phase))
+            Execution.awaitUnit(observer.Expression(runtime.TaskId,expression,visibleEnvironment environment,phase))
         | None -> Execution.result ()
 #endif
 
@@ -696,30 +740,33 @@ module Eval =
     and private applyFunctionValue (runtime: RuntimeState) (typeDefs: Map<string, Type>) (span: Span) (fnValue: Value) (argValue: Value) : Execution<Value> = execution {
         checkRuntime runtime
         match fnValue with
-        | VClosure(argName, ELambda(parameter,body,_), closureEnv) ->
-            return VClosure(parameter.Name,body,ref (closureEnv.Value.Add(argName,argValue)))
-        | VClosure(argName, body, closureEnv) ->
+        | VClosure(argName, annotatedBody, closureEnv) ->
             let scope = closureEnv.Value.Add(argName, argValue)
+            match closureBody annotatedBody with
+            | ELambda(parameter, body, _) -> return VClosure(parameter.Name, body, ref scope)
+            | body ->
 #if !FABLE_COMPILER
-            match runtime.Debug with
-            | None -> return! evalExpr runtime typeDefs scope body
-            | Some observer ->
-                let name = closureEnv.Value |> Map.toSeq |> Seq.tryPick (fun (name, value) -> if obj.ReferenceEquals(value, fnValue) then Some name else None) |> Option.defaultValue "<lambda>"
-                observer.EnterFrame(runtime.TaskId, name, Ast.spanOfExpr body, Map.ofList [argName, argValue], closureEnv.Value)
-                try
-                    try return! evalExpr runtime typeDefs scope body
-                    with error ->
-                        match runtime.Debug with
-                        | Some observer -> observer.RecordFault(runtime.TaskId,error)
-                        | None -> ()
-                        return raise error
-                finally
-                    match runtime.Debug with Some observer -> observer.LeaveFrame(runtime.TaskId) | None -> ()
+                match runtime.Debug with
+                | None -> return! evalExpr runtime typeDefs scope body
+                | Some observer ->
+                    let name = closureEnv.Value |> Map.toSeq |> Seq.tryPick (fun (name, value) -> if obj.ReferenceEquals(value, fnValue) then Some name else None) |> Option.defaultValue "<lambda>"
+                    observer.EnterFrame(runtime.TaskId, name, Ast.spanOfExpr body, Map.ofList [argName, argValue], visibleEnvironment closureEnv.Value)
+                    try
+                        try return! evalExpr runtime typeDefs scope body
+                        with error ->
+                            match runtime.Debug with
+                            | Some observer -> observer.RecordFault(runtime.TaskId,error)
+                            | None -> ()
+                            return raise error
+                    finally
+                        match runtime.Debug with Some observer -> observer.LeaveFrame(runtime.TaskId) | None -> ()
 #else
-            return! evalExpr runtime typeDefs scope body
+                return! evalExpr runtime typeDefs scope body
 #endif
         | VUnionCtor(typeName, caseName) -> return VUnionCase(typeName, caseName, Some argValue)
         | VExternal(ext, args) ->
+            if ext.Name = JsonDeserialization.name && ext.Scheme = JsonDeserialization.scheme then
+                raise (EvalException { Message = "Json.deserialize requires a concrete target type"; Span = span })
             let arguments = argValue :: args
             if arguments.Length = ext.Arity then
                 return! invokeExternal runtime typeDefs span ext (List.rev arguments)
@@ -796,6 +843,10 @@ module Eval =
 #endif
                 Execution.result value
         match expr with
+        | EEvaluationType(inner, signature) -> execution {
+            let! value = evalExpr runtime typeDefs env inner
+            return specializeFunction typeDefs env (Ast.spanOfExpr inner) signature value
+          }
         | EUnit _ -> immediate VUnit
         | ELiteral(literal,_) -> immediate (literalToValue literal)
         | EVar(name,span) ->
@@ -819,12 +870,17 @@ module Eval =
             | _ -> do! debugPoint runtime expr env "before"
 #endif
         match expr with
-        | EParen(inner,_) | ETypeApply(inner, _, _) -> return! evalExpr runtime typeDefs env inner
+        | EClosureSignature(inner, _) | EParen(inner,_) | ETypeApply(inner, _, _) -> return! evalExpr runtime typeDefs env inner
         | EApply(fn, arg, span) ->
             let! f = evalExpr runtime typeDefs env fn
             let! a = evalExpr runtime typeDefs env arg
 #if !FABLE_COMPILER
-            let partial = runtime.Debug.IsNone || (match f with VExternal(ext,args) -> args.Length + 1 < ext.Arity | VClosure(_,ELambda _,_) -> true | _ -> false)
+            let partial =
+                runtime.Debug.IsNone ||
+                (match f with
+                 | VExternal(ext, args) -> args.Length + 1 < ext.Arity
+                 | VClosure(_, body, _) -> match closureBody body with ELambda _ -> true | _ -> false
+                 | _ -> false)
             if not partial then
                 return! debugApplication runtime typeDefs span expr env f a
             else
@@ -872,7 +928,6 @@ module Eval =
         | ELetRecGroup(bindings, body, span) ->
             let recEnv = ref env
             let entries = bindings |> List.map (fun (name, args, _, value, bindingSpan) ->
-                if args.IsEmpty then raise (EvalException { Message = "'let rec ... and ...' requires function arguments for each binding"; Span = bindingSpan })
                 match Seq.foldBack (fun arg acc -> ELambda(arg, acc, bindingSpan)) args value with
                 | ELambda(param, lambdaBody, _) -> name, VClosure(param.Name, lambdaBody, recEnv)
                 | _ -> raise (EvalException { Message = "let rec requires a function binding"; Span = span }))
@@ -1005,7 +1060,7 @@ module Eval =
                     let! value = evalExpr runtime typeDefs env expression
                     sb.Append(valueToInterpolationString value) |> ignore
             return VString(sb.ToString())
-        | EUnit _ | ELiteral _ | EVar _ | ELambda _ | ENone _ | ETypeOf _ | ENameOf _ ->
+        | EUnit _ | ELiteral _ | EVar _ | ELambda _ | ENone _ | ETypeOf _ | ENameOf _ | EEvaluationType _ ->
             return invalidOp "Immediate expressions are handled before compound evaluation."
     }
 
@@ -1024,6 +1079,8 @@ module Eval =
             }
 
         let applyExternal (ext: ExternalFunction) (existingArgsRev: Value list) (newArgs: Value list) =
+            if ext.Name = JsonDeserialization.name && ext.Scheme = JsonDeserialization.scheme then
+                raise (EvalException { Message = "Json.deserialize requires a concrete target type"; Span = unknownSpan })
             let allArgs = (existingArgsRev |> List.rev) @ newArgs
             if allArgs.Length = ext.Arity then
                 HostInterop.invoke typeDefs ext (createExternContext runtime typeDefs unknownSpan) allArgs
@@ -1041,7 +1098,7 @@ module Eval =
                 let initialEnv = closureEnv.Value |> Map.add argName firstArg
 
                 let rec bindLambdaChain (envAcc: Env) (exprAcc: Expr) (argsAcc: Value list) =
-                    match exprAcc, argsAcc with
+                    match closureBody exprAcc, argsAcc with
                     | ELambda (param, nextBody, _), nextArg :: rest ->
                         bindLambdaChain (envAcc |> Map.add param.Name nextArg) nextBody rest
                     | _ ->
