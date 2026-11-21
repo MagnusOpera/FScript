@@ -1016,6 +1016,44 @@ public sealed class CSharpServerCoreTests
     }
 
     [Test]
+    public void CSharp_server_semantic_tokens_classify_nameof_and_typeof_as_keywords()
+    {
+        var client = LspClient.StartCSharp();
+        try
+        {
+            LspTestFixture.Initialize(client);
+            var uri = "file:///tmp/csharp-semantic-reflection-keywords.fss";
+            var lines = new[]
+            {
+                "let defaults = 42",
+                "let typeofValue = typeof int",
+                "let nameof' = { [nameof defaults] = [defaults] }"
+            };
+            LspClient.SendNotification(client, "textDocument/didOpen", new JsonObject
+            {
+                ["textDocument"] = new JsonObject
+                {
+                    ["uri"] = uri, ["languageId"] = "fscript", ["version"] = 1, ["text"] = string.Join('\n', lines)
+                }
+            });
+            LspClient.SendRequest(client, 602, "textDocument/semanticTokens/full", new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = uri }
+            });
+            var response = LspClient.ReadUntil(client, 10_000, msg => msg["id"] is JsonValue idv && idv.TryGetValue<int>(out var id) && id == 602);
+            var tokens = DecodeSemanticTokens(response["result"]!["data"]!.AsArray());
+            var keywords = tokens.Where(token => token.tokenType == 0)
+                .Select(token => lines[token.line].Substring(token.start, token.length));
+            Assert.That(keywords, Is.EqualTo(new[] { "let", "let", "typeof", "let", "nameof" }));
+        }
+        finally
+        {
+            try { LspTestFixture.Shutdown(client); } catch { }
+            LspClient.Stop(client);
+        }
+    }
+
+    [Test]
     public void CSharp_server_semantic_tokens_classify_numeric_annotations_as_types()
     {
         var client = LspClient.StartCSharp();

@@ -112,7 +112,7 @@ module LspHandlers =
     let private keywordSet =
         [ "let"; "rec"; "and"; "if"; "then"; "elif"; "else"; "match"; "with"; "when"
           "for"; "in"; "do"; "type"; "module"; "true"; "false"; "None"; "Some"
-          "fun"; "raise"; "import"; "qualified" ]
+          "fun"; "raise"; "import"; "qualified"; "typeof"; "nameof" ]
         |> Set.ofList
 
     let private builtinTypeTokenSet =

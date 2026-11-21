@@ -114,6 +114,8 @@ Hovering a field label in a nominal record literal shows the declared field type
 
 ## VS Code Syntax Highlighting
 
+The language server emits the `keyword` semantic token for `typeof` and `nameof`, so both keep their keyword highlighting when semantic tokens arrive.
+
 The VS Code extension requires VS Code 1.91 or later, matching its language client dependency. It requests the .NET 11 runtime through the .NET Install Tool to launch the language server and falls back to `dotnet` on `PATH` if runtime acquisition is unavailable.
 
 The extension supplies a VS Code logging output channel for language-client logs and trace events. Activation awaits language-server initialization before showing the ready status; asynchronous startup failures show an error status and a user-facing message. The language client is stopped during deactivation and configuration restarts; its startup promise is not registered as a disposable.

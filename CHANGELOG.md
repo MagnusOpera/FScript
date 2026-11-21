@@ -4,6 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Keep `typeof` and `nameof` highlighted as keywords when the VS Code language server is active.
 - Clarify release checks, publication order, and repository ownership.
 - Keep VS Code grammar documentation with the extension.
 
