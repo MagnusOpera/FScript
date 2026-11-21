@@ -4,7 +4,7 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
-- Document VS Code keyword highlighting for `typeof` and `nameof`.
+- Keep VS Code grammar documentation with the extension.
 
 ## [0.95]
 
