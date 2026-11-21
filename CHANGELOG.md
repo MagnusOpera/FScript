@@ -4,11 +4,15 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+## [0.95]
+
+### [v0.95.2]
+
 - Keep `typeof` and `nameof` highlighted as keywords when the VS Code language server is active.
 - Clarify release checks, publication order, and repository ownership.
 - Keep VS Code grammar documentation with the extension.
 
-## [0.95]
+**Full Changelog**: https://github.com/FScriptLang/FScript/compare/v0.95.1...v0.95.2
 
 ### [v0.95.1]
 
