@@ -1,4 +1,5 @@
 using System.Reflection;
+using FScript.Extensibility;
 using NUnit.Framework;
 
 namespace FScript.LanguageServer.Tests;
@@ -17,8 +18,8 @@ public sealed class ReleasePackagingTests
         var expected = Version.Parse(releaseVersion!);
         expected = new Version(expected.Major, expected.Minor, expected.Build, 0);
         var sdk = AssemblyName.GetAssemblyName(Path.Combine(directory!, "FScript.Extensibility.dll"));
-        Assert.That(sdk.Version, Is.EqualTo(new Version(2, 0, 0, 0)),
-            "The SDK assembly identity is independent of the product release.");
+        Assert.That(sdk.Version, Is.EqualTo(typeof(FScriptExternProviderAttribute).Assembly.GetName().Version),
+            "The staged SDK must match the SDK referenced by the provider fixtures.");
         Assert.That(sdk.GetPublicKeyToken(), Is.Empty, "The SDK is unsigned.");
         foreach (var name in new[] { "FScript.Language", "FScript.Runtime", "FScript.CSharpInterop", "FScript.LanguageServer" })
         {

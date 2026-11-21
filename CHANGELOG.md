@@ -4,6 +4,9 @@ All notable changes to FScript are documented in this file.
 
 ## [Unreleased]
 
+- Verify that the packaged language server ships the same Extensibility SDK that configured providers reference.
+- Document Extensibility SDK 3.0.0 in the graphics provider sample.
+
 ## [0.95]
 
 ### [v0.95.0]
