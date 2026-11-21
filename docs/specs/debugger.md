@@ -55,7 +55,8 @@ Blank/nonexecutable locations remain unverified. Semantic stepping distinguishes
 binding initializers, calls, pipeline stages, branch/match decisions and bodies,
 and loop iterations. Calls and pipeline stages also expose return boundaries,
 with `$result` available in Locals. Name lookups, parentheses, and partial function
-application are skipped by stepping. Explicit breakpoints still take precedence.
+application are skipped by stepping. Explicit breakpoints still take precedence. Generic type evidence does not
+introduce breakpoint locations or appear in variable scopes.
 
 Step In enters FScript callbacks, including those invoked by standard-library and
 native functions. Step Over skips deeper frames unless a breakpoint is reached.

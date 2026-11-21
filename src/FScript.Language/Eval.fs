@@ -37,7 +37,10 @@ module Eval =
 
 #if !FABLE_COMPILER
     let private visibleEnvironment (env: Env) =
-        env |> Map.filter (fun name _ -> not (name.StartsWith(evidencePrefix, System.StringComparison.Ordinal)))
+        // Evidence keys begin with NUL and sort before script identifiers.
+        if not env.IsEmpty && (fst (Map.minKeyValue env)).StartsWith(evidencePrefix, System.StringComparison.Ordinal) then
+            env |> Map.filter (fun name _ -> not (name.StartsWith(evidencePrefix, System.StringComparison.Ordinal)))
+        else env
 #endif
 
     let private applyTypeEvidence (env: Env) typ =

@@ -112,6 +112,32 @@ test('real CLI DAP lifecycle, locals, safe watches, stepping, and terminal argum
   await client.wait(message => message.event === 'terminated');
 });
 
+test('generic JSON decoding exposes script variables in debugger scopes', async t => {
+  const {client, program} = await fixture(t,
+    `let decode<'item> json : 'item option =
+    let input = json
+    Json.deserialize<'item> input
+decode<int> "42"
+`);
+  await client.launch(program);
+  const points = await client.request('setBreakpoints', {
+    source: {path: program}, breakpoints: [{line: 3}]
+  });
+  assert.equal(points.body.breakpoints[0].verified, true);
+  await client.request('configurationDone');
+  const stop = await client.wait(message => message.event === 'stopped');
+  const stack = await client.request('stackTrace', {threadId: stop.body.threadId});
+  const scopes = await client.request('scopes', {frameId: stack.body.stackFrames[0].id});
+  const variables = [];
+  for (const {variablesReference} of scopes.body.scopes) {
+    const response = await client.request('variables', {variablesReference});
+    variables.push(...response.body.variables);
+  }
+  assert.ok(variables.some(value => value.name === 'input' && value.value === '"42"'));
+  assert.ok(variables.every(value => !value.name.startsWith('\0type:')));
+  await client.request('disconnect');
+});
+
 test('imported breakpoints and selected manifest failures use the real host', async t => {
   const { client,program,dir } = await fixture(t,'import "worker.fss" as Worker\nWorker.run 20\n');
   const imported = path.join(dir,'worker.fss'); fs.writeFileSync(imported,'export let run x = x * 2\n');

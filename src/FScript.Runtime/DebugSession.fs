@@ -60,8 +60,12 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
     let key (span: Span) = sprintf "%s:%d:%d:%d:%d" (defaultArg span.Start.File "") span.Start.Line span.Start.Column span.End.Line span.End.Column
     let displayName (name: string) =
         name.Split('.') |> Array.filter (fun part -> not (part.StartsWith("__imp", StringComparison.Ordinal) && part.Length > 5 && (part.Substring(5) |> String.forall Char.IsDigit))) |> String.concat "."
+    let rec withoutTypeEvidence = function
+        | EEvaluationType(inner, _) | EClosureSignature(inner, _) -> withoutTypeEvidence inner
+        | expression -> expression
     let children expression =
         match expression with
+        | EEvaluationType(x, _) | EClosureSignature(x, _) -> [x]
         | EParen(x, _) | ELambda(_, x, _) | ERaise(x, _) | ESome(x, _) | EFieldGet(x, _, _) -> [x]
         | EApply(a,b,_) | ERange(a,b,_) | EIndexGet(a,b,_) | ECons(a,b,_) | EAppend(a,b,_) | EBinOp(_,a,b,_) -> [a;b]
         | EIf(a,b,c,_) -> [a;b;c]
@@ -78,9 +82,15 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
         yield expression
         for child in children expression do yield! walk child
     }
-    let rec functionBody expression = match expression with ELambda(_,body,_) -> functionBody body | _ -> expression
+    let rec functionBody expression =
+        match withoutTypeEvidence expression with
+        | ELambda(_, body, _) -> functionBody body
+        | body -> body
     let addFunction name expression =
-        let rec parameters = function ELambda(parameter,body,_) -> parameter.Name :: parameters body | _ -> []
+        let rec parameters expression =
+            match withoutTypeEvidence expression with
+            | ELambda(parameter, body, _) -> parameter.Name :: parameters body
+            | _ -> []
         let body = functionBody expression
         let position = key (Ast.spanOfExpr body)
         names[position] <- displayName name
@@ -113,16 +123,16 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
                 guard |> Option.iter (fun expression -> annotate expression scope)
                 annotate body scope
         | _ -> for child in children expression do annotate child locals
+    let addDebugRoot expression = roots.Add (withoutTypeEvidence expression) |> ignore
     let addRoot name expression =
         annotate expression Set.empty
-        roots.Add expression |> ignore
+        addDebugRoot expression
         for node in walk expression do
             nodes.Add node
             match node with
-            | ELambda(_, body, _) -> roots.Add body |> ignore
-            | EFor(_,_,body,_) -> roots.Add body |> ignore
-            | EIf(_,yes,no,_) -> roots.Add yes |> ignore; roots.Add no |> ignore
-            | EMatch(_,cases,_) -> for _,_,body,_ in cases do roots.Add body |> ignore
+            | ELambda(_, body, _) | EFor(_,_,body,_) -> addDebugRoot body
+            | EIf(_,yes,no,_) -> addDebugRoot yes; addDebugRoot no
+            | EMatch(_,cases,_) -> for _,_,body,_ in cases do addDebugRoot body
             | ELet(binding,value,_,_,_, _,_) -> addFunction binding value
             | _ -> ()
         if name <> "" then addFunction name expression
@@ -137,7 +147,7 @@ type DebugSession(registration: ExtensionRegistration, program: Program, stopOnE
     let pointSpan expression = match expression with EBinOp("|>",_,stage,_) -> Ast.spanOfExpr stage | _ -> Ast.spanOfExpr expression
     let semantic expression =
         match expression with
-        | EParen _ -> false
+        | EEvaluationType _ | EClosureSignature _ | EParen _ -> false
         | _ when roots.Contains expression -> true
         | EUnit _ | ELiteral _ | EVar _ | ELambda _ | EParen _ | EFieldGet _ | ETypeOf _ | ENameOf _ -> false
         | _ -> true

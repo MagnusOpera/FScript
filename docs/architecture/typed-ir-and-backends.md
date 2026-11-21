@@ -252,8 +252,9 @@ The AST evaluator retains checked function signatures and instantiates generic
 closures using the type at the reference site. Closures capture the resolved
 types they use, so a generic wrapper can forward its target through aliases,
 callbacks, and recursive calls. The runtime codec receives the target as
-internal type evidence. The C# and .NET backends specialize the decoder for
-each concrete result type. When a host registers a JSON codec, the LIR
+internal type evidence. The evaluator filters evidence bindings from debugger
+scopes and reuses ordinary environments as-is. The C# and .NET backends
+specialize the decoder for each concrete result type. When a host registers a JSON codec, the LIR
 interpreter specializes the program and supplies the resolved type token to the
 codec. This LIR path requires concrete exported signatures. Providers calling
 the codec through the stable extension SDK supply a type token.
